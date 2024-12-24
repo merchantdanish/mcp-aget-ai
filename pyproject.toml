@@ -1,0 +1,36 @@
+[project]
+name = "mcp-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Sarmad Qadri", email = "sarmad@lastmileai.dev" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.6",
+    "instructor>=1.7.0",
+    "mcp>=1.1.2",
+    "pydantic>=2.10.4",
+    "pyyaml>=6.0.2",
+    "rich>=13.9.4",
+    "typer>=0.15.1",
+]
+
+[project.optional-dependencies]
+temporal = [
+    "temporalio>=1.8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.0.1",
+    "ruff>=0.8.4",
+]
+
+[project.scripts]
+mcp-agent = "mcp_agent.cli.__main__:app"
