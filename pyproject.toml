@@ -1,16 +1,25 @@
 [project]
 name = "mcp-agent"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.0.1"
+description = "Agent framework for Model Context Protocol (MCP) built on temporal"
 readme = "README.md"
+license = { file = "LICENSE" }
 authors = [
     { name = "Sarmad Qadri", email = "sarmad@lastmileai.dev" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent"
 ]
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115.6",
     "instructor>=1.7.0",
-    "mcp>=1.1.2",
+    "mcp>=1.2.0rc1",
+    "opentelemetry-distro>=0.50b0",
+    "opentelemetry-exporter-otlp-proto-http>=1.29.0",
+    "pydantic-settings>=2.7.0",
     "pydantic>=2.10.4",
     "pyyaml>=6.0.2",
     "rich>=13.9.4",

@@ -8,11 +8,11 @@ server initialization.
 """
 
 from datetime import timedelta
-from typing import Callable, List, Dict
+from typing import Callable, List, Literal, Dict
 
 import yaml
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.sse import sse_client
@@ -23,10 +23,7 @@ class AuthConfig(BaseModel):
 
     api_key: str | None = None
 
-    class Config:
-        """Allow extra properties for the configuration."""
-
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class ServerConfig(BaseModel):
@@ -34,8 +31,8 @@ class ServerConfig(BaseModel):
     Represents the configuration for an individual server.
     """
 
-    transport: str
-    """The transport mechanism (e.g., "stdio", "sse")."""
+    transport: Literal["stdio", "sse"]
+    """The transport mechanism."""
 
     command: str | None = None
     """The command to execute the server (e.g. npx)."""
