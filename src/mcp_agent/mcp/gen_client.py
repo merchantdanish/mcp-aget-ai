@@ -1,69 +1,152 @@
-# from contextlib import asynccontextmanager
-# from typing import Dict, Any
-# from mcp import ClientSession
-# from ..context import get_current_context
+import logging
+from contextlib import asynccontextmanager
+from datetime import timedelta
+from typing import AsyncGenerator, Callable
+
+from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
+from mcp import ClientSession
+from mcp.shared.session import RequestResponder
+from mcp.types import (
+    CreateMessageRequest,
+    CreateMessageResult,
+    ErrorData,
+    ServerNotification,
+    ServerRequest,
+    ClientResult,
+    TextContent,
+)
+
+from ..mcp_server_registry import ServerRegistry, ReceiveLoopCallable
+from ..context import get_current_context, get_current_config
+
+logger = logging.getLogger(__name__)
 
 
-# async def handle_sampling_request(request, responder):
-#     ctx = get_current_context()
-#     session = ctx.upstream_session
-#     if session is None:
-#         # TODO: saqadri - consider handling the sampling request here as a client
-#         await responder.send_error(
-#             code=-32603, message="No upstream client available for sampling requests."
-#         )
-#         return
-#     params = request["params"]
-#     try:
-#         result = await session.create_message(**params)
-#         await responder.send_result(result)
-#     except Exception as e:
-#         await responder.send_error(code=-32603, message=str(e))
+class MCPAgentClientSession(ClientSession):
+    """
+    MCP Agent framework acts as a client to the servers providing tools/resources/prompts for the agent workloads.
+    This is a simple client session for those server connections, and supports
+        - handling sampling requests
+        - notifications
+
+    Developers can extend this class to add more custom functionality as needed
+    """
+
+    async def _received_request(
+        self, responder: RequestResponder[ServerRequest, ClientResult]
+    ) -> None:
+        request = responder.request.root
+
+        if isinstance(request, CreateMessageRequest):
+            return await self.handle_sampling_request(request, responder)
+
+        # Handle other requests as usual
+        await super()._received_request(responder)
+
+    async def handle_sampling_request(
+        self,
+        request: CreateMessageRequest,
+        responder: RequestResponder[ServerRequest, ClientResult],
+    ):
+        ctx = get_current_context()
+        config = get_current_config()
+        session = ctx.upstream_session
+        if session is None:
+            # TODO: saqadri - consider whether we should be handling the sampling request here as a client
+            print(
+                f"Error: No upstream client available for sampling requests. Request: {request}"
+            )
+            try:
+                from anthropic import AsyncAnthropic
+
+                client = AsyncAnthropic(api_key=config.anthropic.api_key)
+
+                params = request.params
+                response = await client.messages.create(
+                    model="claude-3-sonnet-20240229",
+                    max_tokens=params.maxTokens,
+                    messages=[
+                        {
+                            "role": m.role,
+                            "content": m.content.text
+                            if hasattr(m.content, "text")
+                            else m.content.data,
+                        }
+                        for m in params.messages
+                    ],
+                    system=getattr(params, "systemPrompt", None),
+                    temperature=getattr(params, "temperature", 0.7),
+                    stop_sequences=getattr(params, "stopSequences", None),
+                )
+
+                await responder.respond(
+                    CreateMessageResult(
+                        model="claude-3-sonnet-20240229",
+                        role="assistant",
+                        content=TextContent(type="text", text=response.content[0].text),
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Error handling sampling request: {e}")
+                await responder.respond(ErrorData(code=-32603, message=str(e)))
+        else:
+            try:
+                # If a session is available, we'll pass-through the sampling request to the upstream client
+                result = await session.send_request(
+                    request=ServerRequest(request), result_type=CreateMessageResult
+                )
+
+                # Pass the result from the upstream client back to the server. We just act as a pass-through client here.
+                await responder.send_result(result)
+            except Exception as e:
+                await responder.send_error(code=-32603, message=str(e))
 
 
-# class MCPClient:
-#     def __init__(self, session: ClientSession):
-#         self.session = session
-
-#     async def call_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-#         return await self.session.call_tool(name=name, arguments=arguments)
-
-#     async def get_prompt(
-#         self, name: str, arguments: Dict[str, Any] = {}
-#     ) -> Dict[str, Any]:
-#         return await self.session.get_prompt(name=name, arguments=arguments)
-
-#     async def list_resources(self) -> Dict[str, Any]:
-#         return await self.session.list_resources()
-
-#     async def read_resource(self, uri: str) -> Dict[str, Any]:
-#         return await self.session.read_resource(uri=uri)
-
-
-# async def connect_transport(cfg: Dict[str, Any]):
-#     transport = cfg.get("transport", "stdio")
-#     if transport == "stdio":
-#         from mcp.client import stdio_client, StdioServerParameters
-
-#         return stdio_client(
-#             StdioServerParameters(command=cfg["command"], args=cfg["args"])
-#         )
+async def receive_loop(session: ClientSession):
+    """
+    A default message receive loop to handle messages from the server.
+    Developers can extend this function to add more custom message handling as needed
+    """
+    logger.info("Starting receive loop")
+    async for message in session.incoming_messages:
+        if isinstance(message, Exception):
+            logger.error("Error: %s", message)
+            continue
+        elif isinstance(message, ServerNotification):
+            logger.info("Received notification from server: %s", message)
+            continue
+        else:
+            # This is a message request (RequestResponder[ServerRequest, ClientResult])
+            # TODO: saqadri - handle this message request as needed
+            continue
 
 
-# @asynccontextmanager
-# async def gen_client(server_name: str, registry: Dict[str, Any] = SERVER_REGISTRY):
-#     cfg = registry[server_name]
-#     auth = cfg.get("auth", {})
-#     init_hook_name = cfg.get("init_hook", None)
+@asynccontextmanager
+async def gen_client(
+    server_name: str,
+    client_session_constructor: Callable[
+        [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
+        ClientSession,
+    ] = MCPAgentClientSession,
+    server_registry: ServerRegistry | None = None,
+    message_receive_loop: ReceiveLoopCallable = receive_loop,
+) -> AsyncGenerator[ClientSession, None]:
+    """
+    Create a client session to the specified server.
+    Handles server startup, initialization, and message receive loop setup.
+    If required, callers can specify their own message receive loop and ClientSession class constructor to customize further.
+    """
+    ctx = get_current_context()
+    server_registry = server_registry or ctx.server_registry
 
-#     transport_ctx = await connect_transport(cfg)
-#     async with transport_ctx as (r, w):
-#         async with ClientSession(r, w) as session:
-#             await session.initialize()
-#             session.set_request_handler(
-#                 "sampling/createMessage", handle_sampling_request
-#             )
-#             if init_hook_name and init_hook_name in INIT_HOOKS:
-#                 init_hook = INIT_HOOKS[init_hook_name]
-#                 await init_hook(session, auth)
-#             yield MCPClient(session)
+    if not server_registry:
+        raise ValueError(
+            "Server registry not found in the context. Please specify one either on this method, or in the context."
+        )
+
+    async with server_registry.initialize_server(
+        server_name=server_name,
+        receive_loop=message_receive_loop,
+        client_session_constructor=client_session_constructor,
+    ) as session:
+        yield session

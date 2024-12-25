@@ -3,8 +3,28 @@ Reading settings from environment variables and providing a settings object
 for the application configuration.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class AnthropicSettings(BaseModel):
+    """
+    Settings for using Anthropic models in the MCP Agent application.
+    """
+
+    api_key: str
+
+    model_config = ConfigDict(extra="allow")
+
+
+class OpenAISettings(BaseModel):
+    """
+    Settings for using OpenAI models in the MCP Agent application.
+    """
+
+    api_key: str
+
+    model_config = ConfigDict(extra="allow")
 
 
 class TemporalSettings(BaseModel):
@@ -29,6 +49,12 @@ class Settings(BaseSettings):
 
     temporal: TemporalSettings | None = None
     """Settings for Temporal workflow orchestration"""
+
+    anthropic: AnthropicSettings | None = None
+    """Settings for using Anthropic models in the MCP Agent application"""
+
+    openai: OpenAISettings | None = None
+    """Settings for using OpenAI models in the MCP Agent application"""
 
     otlp_endpoint: str | None = None
     """OTLP endpoint for OpenTelemetry tracing"""

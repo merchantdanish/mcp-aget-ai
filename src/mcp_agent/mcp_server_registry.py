@@ -7,9 +7,11 @@ supports dynamic registration of initialization hooks, and provides methods for
 server initialization.
 """
 
+from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import Callable, List, Literal, Dict
+from typing import Callable, Coroutine, List, Literal, Dict, AsyncGenerator
 
+import anyio
 import yaml
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from pydantic import BaseModel, ConfigDict
@@ -31,7 +33,7 @@ class ServerConfig(BaseModel):
     Represents the configuration for an individual server.
     """
 
-    transport: Literal["stdio", "sse"]
+    transport: Literal["stdio", "sse"] = "stdio"
     """The transport mechanism."""
 
     command: str | None = None
@@ -62,35 +64,10 @@ Returns:
     bool: Result of the post-init hook (false indicates failure).
 """
 
-
-class ClosableClientSession:
-    """
-    A wrapper around MCP's ClientSession that tracks the underlying streams
-    and provides a `close` method for proper cleanup.
-    """
-
-    def __init__(
-        self,
-        read_stream: MemoryObjectReceiveStream,
-        write_stream: MemoryObjectSendStream,
-        read_timeout_seconds: timedelta | None = None,
-    ):
-        self._read_stream = read_stream
-        self._write_stream = write_stream
-        self.session = ClientSession(
-            read_stream=read_stream,
-            write_stream=write_stream,
-            read_timeout_seconds=read_timeout_seconds,
-        )
-
-    async def close(self) -> bool:
-        """
-        Close the underlying streams to release resources.
-        """
-        await self._read_stream.aclose()
-        await self._write_stream.aclose()
-        print("Session closed successfully.")
-        return True
+ReceiveLoopCallable = Callable[[ClientSession], Coroutine[None, None, None]]
+"""
+A type alias for a receive loop function that processes incoming messages from the server.
+"""
 
 
 class ServerRegistry:
@@ -116,7 +93,6 @@ class ServerRegistry:
         """
         self.registry = self.load_registry(config_path)
         self.init_hooks: dict[str, InitHookCallable] = {}
-        self.sessions: dict[str, ClosableClientSession] = {}
 
     def load_registry(self, config_path: str | None = None) -> Dict[str, ServerConfig]:
         """
@@ -141,35 +117,17 @@ class ServerRegistry:
 
         return servers
 
-    async def initialize(self):
+    @asynccontextmanager
+    async def start_server(
+        self,
+        server_name: str,
+        client_session_constructor: Callable[
+            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
+            ClientSession,
+        ] = ClientSession,
+    ) -> AsyncGenerator[ClientSession]:
         """
-        Initialize all servers in the registry. If any sessions are already active, they will be closed first.
-
-        Returns:
-            Dict[str, ClientSession]: A dictionary of client sessions for each server.
-        """
-
-        for server_name in self.sessions:
-            is_closed = await self.close_session(server_name)
-            if not is_closed:
-                print(
-                    f"Warning: Failed to close session for server '{server_name}'. Continuing with reinitialization..."
-                )
-
-        for server_name in self.registry:
-            session = await self.initialize_server(server_name)
-            self.execute_init_hook(server_name, session)
-            self.sessions[server_name] = session
-
-        sessions = {name: self.sessions[name].session for name in self.sessions}
-
-        return sessions
-
-    async def initialize_server(
-        self, server_name: str, init_hook: InitHookCallable = None
-    ) -> ClientSession:
-        """
-        Initialize a server based on its configuration.
+        Starts the server process based on its configuration. To initialize, call initialize_server
 
         Args:
             server_name (str): The name of the server to initialize.
@@ -182,12 +140,6 @@ class ServerRegistry:
         """
         if server_name not in self.registry:
             raise ValueError(f"Server '{server_name}' not found in registry.")
-
-        if server_name in self.sessions:
-            print(
-                f"Session already exists for server '{server_name}'. Reinitializing..."
-            )
-            await self.close_session(server_name)
 
         config = self.registry[server_name]
 
@@ -208,18 +160,16 @@ class ServerRegistry:
             )
 
             async with stdio_client(server_params) as (read_stream, write_stream):
-                closable_session = ClosableClientSession(
-                    read_stream=read_stream,
-                    write_stream=write_stream,
-                    read_timeout_seconds=read_timeout_seconds,
+                session = client_session_constructor(
+                    read_stream,
+                    write_stream,
+                    read_timeout_seconds,
                 )
-                session = closable_session.session
                 print(f"Connected to server '{server_name}' using stdio transport.")
-                if init_hook:
-                    print(f"Executing init hook for '{server_name}'")
-                    init_hook(session, config.auth)
-                self.sessions[server_name] = closable_session
-                return session
+                try:
+                    yield session
+                finally:
+                    print("Closing session...")
 
         elif config.transport == "sse":
             if not config.url:
@@ -227,49 +177,74 @@ class ServerRegistry:
 
             # Use sse_client to get the read and write streams
             async with sse_client(config.url) as (read_stream, write_stream):
-                closable_session = ClosableClientSession(
-                    read_stream=read_stream,
-                    write_stream=write_stream,
-                    read_timeout_seconds=read_timeout_seconds,
+                session = client_session_constructor(
+                    read_stream,
+                    write_stream,
+                    read_timeout_seconds,
                 )
-                session = closable_session.session
-
                 print(f"Connected to server '{server_name}' using SSE transport.")
-                if init_hook:
-                    print(f"Executing init hook for '{server_name}'")
-                    init_hook(session, config.auth)
-                self.sessions[server_name] = closable_session
-                return session
+                try:
+                    yield session
+                finally:
+                    print("Closing session...")
 
         # Unsupported transport
         else:
             raise ValueError(f"Unsupported transport: {config.transport}")
 
-    async def close_session(self, server_name: str) -> bool:
+    @asynccontextmanager
+    async def initialize_server(
+        self,
+        server_name: str,
+        receive_loop: ReceiveLoopCallable,
+        client_session_constructor: Callable[
+            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
+            ClientSession,
+        ] = ClientSession,
+        init_hook: InitHookCallable = None,
+    ) -> AsyncGenerator[ClientSession]:
         """
-        Close the session for a specific server by closing its underlying streams.
+        Initialize a server based on its configuration.
+        After initialization, also calls any registered or provided initialization hook for the server.
 
         Args:
-            server_name (str): The name of the server to close.
+            server_name (str): The name of the server to initialize.
+            receive_loop (ReceiveLoopCallable): The message loop function for processing incoming messages.
+            init_hook (InitHookCallable): Optional initialization hook function to call after initialization.
+
+        Returns:
+            StdioServerParameters: The server parameters for stdio transport.
 
         Raises:
-            ValueError: If the server has no active session.
+            ValueError: If the server is not found or has an unsupported transport.
         """
-        if server_name not in self.sessions:
-            raise ValueError(f"No active session found for server '{server_name}'.")
 
-        session = self.sessions[server_name]
-        try:
-            # Close the underlying streams
-            await session.close()
-            print(f"Closed session for server '{server_name}'.")
-        except Exception as e:
-            print(f"Error while closing session for server '{server_name}': {e}")
-            return False
-        finally:
-            del self.sessions[server_name]
+        if server_name not in self.registry:
+            raise ValueError(f"Server '{server_name}' not found in registry.")
 
-        return True
+        config = self.registry[server_name]
+
+        async with (
+            self.start_server(
+                server_name, client_session_constructor=client_session_constructor
+            ) as session,
+            anyio.create_task_group() as tg,
+        ):
+            # We start the message loop in a separate task group
+            tg.start_soon(receive_loop, session)
+
+            print(f"Initializing server '{server_name}'...")
+            await session.initialize()
+            print(f"Initialized server '{server_name}'.")
+
+            intialization_callback = (
+                init_hook if init_hook is not None else self.init_hooks.get(server_name)
+            )
+
+            if intialization_callback:
+                print(f"Executing init hook for '{server_name}'")
+                intialization_callback(session, config.auth)
+            yield session
 
     def register_init_hook(self, server_name: str, hook: InitHookCallable) -> None:
         """
