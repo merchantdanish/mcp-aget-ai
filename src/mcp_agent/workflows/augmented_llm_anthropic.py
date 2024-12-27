@@ -164,3 +164,41 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                     )
 
         return "\n".join(final_text)
+
+    def message_param_str(self, message: MessageParam) -> str:
+        """Convert an input message to a string representation."""
+
+        if message.get("content"):
+            content = message["content"]
+            if isinstance(content, str):
+                return content
+            else:
+                final_text: List[str] = []
+                for block in content:
+                    if block.text:
+                        final_text.append(str(block.text))
+                    else:
+                        final_text.append(str(block))
+
+                return "\n".join(final_text)
+
+        return str(message)
+
+    def message_str(self, message: Message) -> str:
+        """Convert an output message to a string representation."""
+        content = message.content
+
+        if content:
+            if isinstance(content, list):
+                final_text: List[str] = []
+                for block in content:
+                    if block.text:
+                        final_text.append(str(block.text))
+                    else:
+                        final_text.append(str(block))
+
+                return "\n".join(final_text)
+            else:
+                return str(content)
+
+        return str(message)

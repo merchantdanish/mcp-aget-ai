@@ -33,6 +33,14 @@ class ServerConfig(BaseModel):
     Represents the configuration for an individual server.
     """
 
+    # TODO: saqadri - server name should be something a server can provide itself during initialization
+    name: str | None = None
+    """The name of the server."""
+
+    # TODO: saqadri - server description should be something a server can provide itself during initialization
+    description: str | None = None
+    """The description of the server."""
+
     transport: Literal["stdio", "sse"] = "stdio"
     """The transport mechanism."""
 
@@ -108,11 +116,13 @@ class ServerRegistry:
         if config_path is not None:
             self.config_path = config_path
 
+        # TODO: saqadri - add additional validation
         with open(self.config_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         servers = {
-            name: ServerConfig(**config) for name, config in data["servers"].items()
+            name: ServerConfig(name=name, **config)
+            for name, config in data["servers"].items()
         }
 
         return servers
@@ -275,3 +285,15 @@ class ServerRegistry:
             return hook(session, config.auth)
         else:
             print(f"No init hook registered for '{server_name}'")
+
+    def get_server_config(self, server_name: str) -> ServerConfig | None:
+        """
+        Get the configuration for a specific server.
+
+        Args:
+            server_name (str): The name of the server.
+
+        Returns:
+            ServerConfig: The server configuration.
+        """
+        return self.registry.get(server_name)
