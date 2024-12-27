@@ -35,6 +35,7 @@ class MCPAggregator(BaseModel):
         Note: The server names must be resolvable by the gen_client function, and specified in the server registry.
         """
         super().__init__()
+        self.initialized = False
         self.server_names: List[str] = server_names or []
 
         # Maps namespaced_tool_name -> namespaced tool info
@@ -87,14 +88,22 @@ class MCPAggregator(BaseModel):
                 self._namespaced_tool_map[namespaced_tool_name] = namespaced_tool
                 self._server_to_tool_map[server_name].append(namespaced_tool)
 
+        self.initialized = True
+
     async def list_servers(self) -> List[str]:
         """Return the list of server names aggregated by this agent."""
+        if not self.initialized:
+            await self.load_servers()
+
         return self.server_names
 
     async def list_tools(self) -> ListToolsResult:
         """
         :return: Tools from all servers aggregated, and renamed to be dot-namespaced by server name.
         """
+        if not self.initialized:
+            await self.load_servers()
+
         return ListToolsResult(
             tools=[
                 namespaced_tool.tool.model_copy(update={"name": namespaced_tool_name})
@@ -108,6 +117,8 @@ class MCPAggregator(BaseModel):
         """
         Call a namespaced tool, e.g., 'server_name.tool_name'.
         """
+        if not self.initialized:
+            await self.load_servers()
 
         server_name: str = None
         local_tool_name: str = None
