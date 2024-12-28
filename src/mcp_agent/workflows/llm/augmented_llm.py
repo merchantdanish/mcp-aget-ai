@@ -6,7 +6,7 @@ from mcp.types import (
     TextContent,
 )
 
-from mcp_agent.agents.mcp_agent import Agent
+from mcp_agent.agents.agent import Agent
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator
 
 MessageParamT = TypeVar("MessageParamT")

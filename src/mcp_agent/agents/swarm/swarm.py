@@ -3,7 +3,7 @@ from collections import defaultdict
 
 from mcp.types import CallToolRequest, CallToolResult, TextContent, Tool
 
-from mcp_agent.agents.mcp_agent import AgentFunctionResult, AgentResource, SwarmAgent
+from mcp_agent.agents.agent import AgentFunctionResult, AgentResource, SwarmAgent
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,

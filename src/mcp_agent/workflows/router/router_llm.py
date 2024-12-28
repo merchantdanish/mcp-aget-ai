@@ -2,7 +2,7 @@ from typing import Callable, List, Literal
 
 from pydantic import BaseModel
 
-from mcp_agent.agents.mcp_agent import Agent
+from mcp_agent.agents.agent import Agent
 from mcp_agent.mcp_server_registry import ServerRegistry
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 from mcp_agent.workflows.router.router_base import Router, RouterResult

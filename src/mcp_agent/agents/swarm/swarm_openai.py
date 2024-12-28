@@ -1,4 +1,4 @@
-from mcp_agent.agents.swarm import Swarm
+from mcp_agent.agents.swarm.swarm import Swarm
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 

@@ -4,7 +4,7 @@ from typing import Callable, Dict, List
 from pydantic import BaseModel, Field
 from mcp.server.fastmcp.tools import Tool as FastTool
 
-from mcp_agent.agents.mcp_agent import Agent
+from mcp_agent.agents.agent import Agent
 from mcp_agent.context import get_current_context
 from mcp_agent.mcp_server_registry import ServerRegistry
 

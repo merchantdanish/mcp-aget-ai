@@ -2,7 +2,7 @@ from typing import Callable, List
 
 from numpy import mean
 
-from mcp_agent.agents.mcp_agent import Agent
+from mcp_agent.agents.agent import Agent
 from mcp_agent.mcp_server_registry import ServerRegistry
 from mcp_agent.workflows.embedding.embedding_base import (
     EmbeddingModel,
