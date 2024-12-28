@@ -11,7 +11,8 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.propagate import set_global_textmap, extract as otel_extract
 from opentelemetry.trace import set_span_in_context
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-from ..config import settings
+
+from mcp_agent.config import settings
 
 # Set global propagator
 set_global_textmap(TraceContextTextMapPropagator())

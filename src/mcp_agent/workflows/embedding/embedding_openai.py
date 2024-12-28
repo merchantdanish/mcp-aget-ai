@@ -3,8 +3,8 @@ from typing import List
 from numpy import array, float32, stack
 from openai import OpenAI
 
-from ..context import get_current_config
-from .embedding import EmbeddingModel, FloatArray
+from mcp_agent.context import get_current_config
+from mcp_agent.workflows.embedding.embedding_base import EmbeddingModel, FloatArray
 
 
 class OpenAIEmbeddingModel(EmbeddingModel):

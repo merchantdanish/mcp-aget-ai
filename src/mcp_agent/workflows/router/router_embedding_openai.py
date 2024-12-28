@@ -1,14 +1,14 @@
 from typing import Callable, List
 
-from ..agents.mcp_agent import Agent
-from ..mcp_server_registry import ServerRegistry
-from .embedding_cohere import CohereEmbeddingModel
-from .router_embedding import EmbeddingRouter
+from mcp_agent.agents.mcp_agent import Agent
+from mcp_agent.mcp_server_registry import ServerRegistry
+from mcp_agent.workflows.embedding.embedding_openai import OpenAIEmbeddingModel
+from mcp_agent.workflows.router.router_embedding import EmbeddingRouter
 
 
-class CohereEmbeddingRouter(EmbeddingRouter):
+class OpenAIEmbeddingRouter(EmbeddingRouter):
     """
-    A router that uses Cohere embedding similarity to route requests to appropriate categories.
+    A router that uses OpenAI embedding similarity to route requests to appropriate categories.
     This class helps to route an input to a specific MCP server, an Agent (an aggregation of MCP servers),
     or a function (any Callable).
     """
@@ -19,9 +19,9 @@ class CohereEmbeddingRouter(EmbeddingRouter):
         agents: List[Agent] | None = None,
         functions: List[Callable] | None = None,
         server_registry: ServerRegistry | None = None,
-        embedding_model: CohereEmbeddingModel | None = None,
+        embedding_model: OpenAIEmbeddingModel | None = None,
     ):
-        embedding_model = embedding_model or CohereEmbeddingModel()
+        embedding_model = embedding_model or OpenAIEmbeddingModel()
 
         super().__init__(
             embedding_model=embedding_model,
@@ -38,8 +38,8 @@ class CohereEmbeddingRouter(EmbeddingRouter):
         agents: List[Agent] | None = None,
         functions: List[Callable] | None = None,
         server_registry: ServerRegistry | None = None,
-        embedding_model: CohereEmbeddingModel | None = None,
-    ) -> "CohereEmbeddingRouter":
+        embedding_model: OpenAIEmbeddingModel | None = None,
+    ) -> "OpenAIEmbeddingRouter":
         """
         Factory method to create and initialize a router.
         Use this instead of constructor since we need async initialization.

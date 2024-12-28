@@ -5,8 +5,8 @@ A central context object to store global state that is shared across the applica
 from pydantic import BaseModel, ConfigDict
 from mcp import ServerSession
 
-from .config import Settings, settings
-from .mcp_server_registry import ServerRegistry
+from mcp_agent.config import Settings, settings
+from mcp_agent.mcp_server_registry import ServerRegistry
 
 
 class Context(BaseModel):

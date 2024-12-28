@@ -2,13 +2,17 @@ from typing import List
 
 from numpy import mean
 
-from .embedding import (
+from mcp_agent.workflows.embedding import (
     FloatArray,
     EmbeddingModel,
     compute_confidence,
     compute_similarity_scores,
 )
-from .intent_classifier import Intent, IntentClassifier, IntentClassificationResult
+from mcp_agent.workflows.intent_classifier.intent_classifier_base import (
+    Intent,
+    IntentClassifier,
+    IntentClassificationResult,
+)
 
 
 class EmbeddingIntent(Intent):

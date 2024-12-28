@@ -6,8 +6,8 @@ from mcp.types import (
     TextContent,
 )
 
-from ..agents.mcp_agent import Agent
-from ..mcp.mcp_aggregator import MCPAggregator
+from mcp_agent.agents.mcp_agent import Agent
+from mcp_agent.mcp.mcp_aggregator import MCPAggregator
 
 MessageParamT = TypeVar("MessageParamT")
 """A type representing an input message to an LLM."""

@@ -1,9 +1,9 @@
 from typing import Callable, List
 
-from ..agents.mcp_agent import Agent
-from ..mcp_server_registry import ServerRegistry
-from .augmented_llm_openai import OpenAIAugmentedLLM
-from .router_llm import LLMRouter
+from mcp_agent.agents.mcp_agent import Agent
+from mcp_agent.mcp_server_registry import ServerRegistry
+from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
+from mcp_agent.workflows.router.router_llm import LLMRouter
 
 ROUTING_SYSTEM_INSTRUCTION = """
 You are a highly accurate request router that directs incoming requests to the most appropriate category.
@@ -13,9 +13,9 @@ You can choose one or more categories, or choose none if no category is appropri
 """
 
 
-class OpenAILLMRouter(LLMRouter):
+class AnthropicLLMRouter(LLMRouter):
     """
-    An LLM router that uses an OpenAI model to make routing decisions.
+    An LLM router that uses an Anthropic model to make routing decisions.
     """
 
     def __init__(
@@ -26,10 +26,10 @@ class OpenAILLMRouter(LLMRouter):
         routing_instruction: str | None = None,
         server_registry: ServerRegistry | None = None,
     ):
-        openai_llm = OpenAIAugmentedLLM(instruction=ROUTING_SYSTEM_INSTRUCTION)
+        anthropic_llm = AnthropicAugmentedLLM(instruction=ROUTING_SYSTEM_INSTRUCTION)
 
         super().__init__(
-            llm=openai_llm,
+            llm=anthropic_llm,
             mcp_servers_names=mcp_servers_names,
             agents=agents,
             functions=functions,
@@ -45,9 +45,9 @@ class OpenAILLMRouter(LLMRouter):
         functions: List[Callable] | None = None,
         routing_instruction: str | None = None,
         server_registry: ServerRegistry | None = None,
-    ) -> "OpenAILLMRouter":
+    ) -> "AnthropicLLMRouter":
         """
-        Factory method to create and initialize a classifier.
+        Factory method to create and initialize a router.
         Use this instead of constructor since we need async initialization.
         """
         instance = cls(

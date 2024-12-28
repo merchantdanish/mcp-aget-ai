@@ -1,4 +1,4 @@
-from ..config import settings
+from mcp_agent.config import settings
 
 
 def send_usage_data():

@@ -1,5 +1,5 @@
-from .swarm import Swarm
-from ..workflows.augmented_llm_anthropic import AnthropicAugmentedLLM
+from mcp_agent.agents.swarm import Swarm
+from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
 
 
 class AnthropicSwarm(Swarm, AnthropicAugmentedLLM):

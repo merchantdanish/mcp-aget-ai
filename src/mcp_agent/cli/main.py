@@ -1,6 +1,6 @@
 import typer
-from .terminal import Application
-from .commands import config
+from mcp_agent.cli.terminal import Application
+from mcp_agent.cli.commands import config
 
 app = typer.Typer()
 

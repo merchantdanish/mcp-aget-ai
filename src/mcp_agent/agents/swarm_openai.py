@@ -1,6 +1,5 @@
-# TODO: saqadri - consider moving these to a separate file so they can be imported on-demand
-from .swarm import Swarm
-from ..workflows.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.agents.swarm import Swarm
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 
 class OpenAISwarm(Swarm, OpenAIAugmentedLLM):

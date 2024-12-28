@@ -1,8 +1,12 @@
 from typing import List, Literal
 from pydantic import BaseModel
 
-from .augmented_llm import AugmentedLLM
-from .intent_classifier import Intent, IntentClassifier, IntentClassificationResult
+from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
+from mcp_agent.workflows.intent_classifier.intent_classifier_base import (
+    Intent,
+    IntentClassifier,
+    IntentClassificationResult,
+)
 
 DEFAULT_INTENT_CLASSIFICATION_INSTRUCTION = """
 You are a precise intent classifier that analyzes user requests to determine their intended action or purpose.

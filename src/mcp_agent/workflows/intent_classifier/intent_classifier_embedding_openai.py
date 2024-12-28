@@ -1,8 +1,10 @@
 from typing import List
 
-from .embedding_openai import OpenAIEmbeddingModel
-from .intent_classifier import Intent
-from .intent_classifier_embedding import EmbeddingIntentClassifier
+from mcp_agent.workflows.embedding.embedding_openai import OpenAIEmbeddingModel
+from mcp_agent.workflows.intent_classifier.intent_classifier_base import Intent
+from mcp_agent.workflows.intent_classifier.intent_classifier_embedding import (
+    EmbeddingIntentClassifier,
+)
 
 
 class OpenAIEmbeddingIntentClassifier(EmbeddingIntentClassifier):

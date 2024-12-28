@@ -8,7 +8,7 @@ Read more: https://docs.temporal.io/develop/python/core-application
 from temporalio import workflow
 from temporalio.client import Client
 
-from ..config import settings
+from mcp_agent.config import settings
 
 
 def activity_call(activity_func, **activity_opts):

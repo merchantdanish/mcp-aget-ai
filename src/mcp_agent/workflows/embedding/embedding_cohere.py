@@ -3,8 +3,8 @@ from typing import List
 from cohere import Client
 from numpy import array, float32
 
-from ..context import get_current_config
-from .embedding import EmbeddingModel, FloatArray
+from mcp_agent.context import get_current_config
+from mcp_agent.workflows.embedding.embedding_base import EmbeddingModel, FloatArray
 
 
 class CohereEmbeddingModel(EmbeddingModel):

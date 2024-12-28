@@ -23,8 +23,8 @@ from mcp.types import (
     TextResourceContents,
 )
 
-from .augmented_llm import AugmentedLLM, ModelT
-from ..context import get_current_config
+from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM, ModelT
+from mcp_agent.context import get_current_config
 
 
 class OpenAIAugmentedLLM(

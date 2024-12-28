@@ -11,7 +11,7 @@ from mcp.types import (
     Tool,
 )
 
-from ..mcp.mcp_aggregator import MCPAggregator
+from mcp_agent.mcp.mcp_aggregator import MCPAggregator
 
 
 class AgentResource(EmbeddedResource):

@@ -2,15 +2,15 @@ from typing import Callable, List
 
 from numpy import mean
 
-from ..agents.mcp_agent import Agent
-from ..mcp_server_registry import ServerRegistry
-from .embedding import (
+from mcp_agent.agents.mcp_agent import Agent
+from mcp_agent.mcp_server_registry import ServerRegistry
+from mcp_agent.workflows.embedding.embedding_base import (
     EmbeddingModel,
     FloatArray,
     compute_similarity_scores,
     compute_confidence,
 )
-from .router import (
+from mcp_agent.workflows.router.router_base import (
     Router,
     RouterCategory,
     RouterResult,

@@ -16,8 +16,8 @@ from mcp.types import (
     TextContent,
 )
 
-from ..mcp_server_registry import ServerRegistry, ReceiveLoopCallable
-from ..context import get_current_context, get_current_config
+from mcp_agent.mcp_server_registry import ServerRegistry, ReceiveLoopCallable
+from mcp_agent.context import get_current_context, get_current_config
 
 logger = logging.getLogger(__name__)
 

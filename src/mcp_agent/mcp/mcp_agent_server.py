@@ -2,8 +2,8 @@ import asyncio
 from mcp.server import NotificationOptions
 from mcp.server.fastmcp import FastMCP
 from mcp.server.stdio import stdio_server
-from ..orchestrator.temporal import get_temporal_client
-from ..telemetry.tracing import setup_tracing
+from mcp_agent.orchestrator.temporal import get_temporal_client
+from mcp_agent.telemetry.tracing import setup_tracing
 
 app = FastMCP("mcp-agent-server")
 
