@@ -1,5 +1,6 @@
-from typing import List
+from typing import List, Type
 
+import instructor
 from anthropic import Anthropic
 from anthropic.types import (
     Message,
@@ -12,7 +13,7 @@ from mcp.types import (
     CallToolRequestParams,
 )
 
-from .augmented_llm import AugmentedLLM
+from .augmented_llm import AugmentedLLM, ModelT
 from ..context import get_current_config
 
 
@@ -164,6 +165,45 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                     )
 
         return "\n".join(final_text)
+
+    async def generate_structured(
+        self,
+        message,
+        response_model: Type[ModelT],
+        use_history: bool = True,
+        max_iterations: int = 10,
+        model: str = "claude-3-5-sonnet-20240620",
+        stop_sequences: List[str] = None,
+        max_tokens: int = 2048,
+        parallel_tool_calls: bool = True,
+    ) -> ModelT:
+        # First we invoke the LLM to generate a string response
+        # We need to do this in a two-step process because Instructor doesn't
+        # know how to invoke MCP tools via call_tool, so we'll handle all the
+        # processing first and then pass the final response through Instructor
+        response = await self.generate_str(
+            message=message,
+            use_history=use_history,
+            max_iterations=max_iterations,
+            model=model,
+            stop_sequences=stop_sequences,
+            max_tokens=max_tokens,
+            parallel_tool_calls=parallel_tool_calls,
+        )
+
+        # Next we pass the text through instructor to extract structured data
+        client = instructor.from_anthropic(
+            Anthropic(api_key=get_current_config().anthropic.api_key),
+        )
+
+        # Extract structured data from natural language
+        structured_response = client.chat.completions.create(
+            model=model,
+            response_model=response_model,
+            messages=[{"role": "user", "content": response}],
+        )
+
+        return structured_response
 
     def message_param_str(self, message: MessageParam) -> str:
         """Convert an input message to a string representation."""

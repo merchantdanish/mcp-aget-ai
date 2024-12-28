@@ -1,4 +1,4 @@
-from typing import Generic, List, Protocol, TypeVar
+from typing import Generic, List, Protocol, Type, TypeVar
 
 from mcp.types import (
     CallToolRequest,
@@ -14,6 +14,9 @@ MessageParamT = TypeVar("MessageParamT")
 
 MessageT = TypeVar("MessageT")
 """A type representing an output message from an LLM."""
+
+ModelT = TypeVar("ModelT")
+"""A type representing a structured output message from an LLM."""
 
 
 class Memory(Protocol, Generic[MessageParamT]):
@@ -73,10 +76,10 @@ class AugmentedLLM(Protocol, Generic[MessageParamT, MessageT]):
 
     def __init__(
         self,
-        server_names: List[str] | None,
-        instruction: str | None,
-        name: str | None,
-        agent: Agent | None,
+        server_names: List[str] | None = None,
+        instruction: str | None = None,
+        name: str | None = None,
+        agent: Agent | None = None,
     ):
         """
         Initialize the LLM with a list of server names and an instruction.
@@ -86,7 +89,7 @@ class AugmentedLLM(Protocol, Generic[MessageParamT, MessageT]):
         self.aggregator = agent if agent is not None else MCPAggregator(server_names)
         self.name = name or (agent.name if agent else None)
         self.instruction = instruction or (
-            agent.instructions if agent and isinstance(agent.instruction, str) else None
+            agent.instruction if agent and isinstance(agent.instruction, str) else None
         )
         self.history: Memory[MessageParamT] = SimpleMemory[MessageParamT]()
 
@@ -95,7 +98,7 @@ class AugmentedLLM(Protocol, Generic[MessageParamT, MessageT]):
         message: str | MessageParamT | List[MessageParamT],
         use_history: bool = True,
         max_iterations: int = 10,
-        model: str = "",
+        model: str = None,
         stop_sequences: List[str] = None,
         max_tokens: int = 2048,
         parallel_tool_calls: bool = True,
@@ -107,12 +110,25 @@ class AugmentedLLM(Protocol, Generic[MessageParamT, MessageT]):
         message: str | MessageParamT | List[MessageParamT],
         use_history: bool = True,
         max_iterations: int = 10,
-        model: str = "",
+        model: str = None,
         stop_sequences: List[str] = None,
         max_tokens: int = 2048,
         parallel_tool_calls: bool = True,
     ) -> str:
         """Request an LLM generation and return the string representation of the result"""
+
+    async def generate_structured(
+        self,
+        message: str | MessageParamT | List[MessageParamT],
+        response_model: Type[ModelT],
+        use_history: bool = True,
+        max_iterations: int = 10,
+        model: str = None,
+        stop_sequences: List[str] = None,
+        max_tokens: int = 2048,
+        parallel_tool_calls: bool = True,
+    ) -> ModelT:
+        """Request a structured LLM generation and return the result as a Pydantic model."""
 
     async def get_last_message(self) -> MessageParamT | None:
         """

@@ -17,6 +17,16 @@ class AnthropicSettings(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class CohereSettings(BaseModel):
+    """
+    Settings for using Cohere models in the MCP Agent application.
+    """
+
+    api_key: str
+
+    model_config = ConfigDict(extra="allow")
+
+
 class OpenAISettings(BaseModel):
     """
     Settings for using OpenAI models in the MCP Agent application.
@@ -52,6 +62,9 @@ class Settings(BaseSettings):
 
     anthropic: AnthropicSettings | None = None
     """Settings for using Anthropic models in the MCP Agent application"""
+
+    cohere: CohereSettings | None = None
+    """Settings for using Cohere models in the MCP Agent application"""
 
     openai: OpenAISettings | None = None
     """Settings for using OpenAI models in the MCP Agent application"""

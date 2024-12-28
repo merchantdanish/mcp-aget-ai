@@ -65,16 +65,28 @@ class Swarm(AugmentedLLM[MessageParamT, MessageT], Generic[MessageParamT, Messag
         for content in result.content:
             if isinstance(content, AgentResource):
                 # Set the new agent as the current agent
-                self.agent = content.agent
+                self._set_agent(content.agent)
                 contents.append(TextContent(text=content.resource.text))
             elif isinstance(content, AgentFunctionResult):
+                self.context_variables.update(content.context_variables)
                 if content.agent:
                     # Set the new agent as the current agent
-                    self.agent = content.agent
-                self.context_variables.update(content.context_variables)
+                    self._set_agent(content.agent)
+
                 contents.append(TextContent(text=content.resource.text))
             else:
                 content.append(content)
 
         result.content = contents
         return result
+
+    def _set_agent(
+        self,
+        agent: SwarmAgent,
+    ):
+        self.agent = agent
+        self.instruction = (
+            agent.instruction(self.context_variables)
+            if callable(agent.instruction)
+            else agent.instruction
+        )

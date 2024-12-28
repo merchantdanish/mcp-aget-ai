@@ -16,7 +16,7 @@ from ..mcp.mcp_aggregator import MCPAggregator
 
 class AgentResource(EmbeddedResource):
     """
-    A resource that returns an agent. Meant for use with tool calls that want to return an agent for further processing.
+    A resource that returns an agent. Meant for use with tool calls that want to return an Agent for further processing.
     """
 
     agent: "Agent"
@@ -35,12 +35,12 @@ class Agent(MCPAggregator):
     def __init__(
         self,
         name: str,
-        instructions: str | Callable[[], str] = "You are a helpful agent.",
+        instruction: str | Callable[[Dict], str] = "You are a helpful agent.",
         server_names: list[str] = None,
     ):
         super().__init__(server_names)
         self.name = name
-        self.instructions = instructions
+        self.instruction = instruction
 
     async def initialize(self):
         await super().load_servers()
@@ -93,14 +93,12 @@ class SwarmAgent(Agent):
     def __init__(
         self,
         name: str,
-        instructions: str | Callable[[], str] = "You are a helpful agent.",
+        instruction: str | Callable[[Dict], str] = "You are a helpful agent.",
         server_names: list[str] = None,
         functions: List["AgentFunctionCallable"] = None,
         parallel_tool_calls: bool = True,
     ):
-        super().__init__(
-            name=name, instructions=instructions, server_names=server_names
-        )
+        super().__init__(name=name, instruction=instruction, server_names=server_names)
         self.functions = functions
         self.parallel_tool_calls = parallel_tool_calls
 

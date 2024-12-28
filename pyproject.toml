@@ -24,6 +24,8 @@ dependencies = [
     "pyyaml>=6.0.2",
     "rich>=13.9.4",
     "typer>=0.15.1",
+    "numpy>=2.2.1",
+    "scikit-learn>=1.6.0",
 ]
 
 [project.optional-dependencies]
@@ -32,9 +34,13 @@ temporal = [
 ]
 anthropic = [
     "anthropic>=0.42.0",
+    "instructor[anthropic]>=1.7.2",
 ]
 openai = [
     "openai>=1.58.1",
+]
+cohere = [
+    "cohere>=5.13.4",
 ]
 
 [build-system]
