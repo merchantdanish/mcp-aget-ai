@@ -71,6 +71,25 @@ class LLMIntentClassifier(IntentClassifier):
         self.llm = llm
         self.classification_instruction = classification_instruction
 
+    @classmethod
+    async def create(
+        cls,
+        llm: AugmentedLLM,
+        intents: List[Intent],
+        classification_instruction: str | None = None,
+    ) -> "LLMIntentClassifier":
+        """
+        Factory method to create and initialize a classifier.
+        Use this instead of constructor since we need async initialization.
+        """
+        instance = cls(
+            llm=llm,
+            intents=intents,
+            classification_instruction=classification_instruction,
+        )
+        await instance.initialize()
+        return instance
+
     async def classify(
         self, request: str, top_k: int = 1
     ) -> List[LLMIntentClassificationResult]:

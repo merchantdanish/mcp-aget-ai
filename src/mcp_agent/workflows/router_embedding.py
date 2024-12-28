@@ -3,7 +3,6 @@ from typing import Callable, List
 from numpy import mean
 
 from ..agents.mcp_agent import Agent
-from ..context import get_current_context
 from ..mcp_server_registry import ServerRegistry
 from .embedding import (
     EmbeddingModel,
@@ -53,7 +52,7 @@ class EmbeddingRouter(Router):
         mcp_servers_names: List[str] | None = None,
         agents: List[Agent] | None = None,
         functions: List[Callable] | None = None,
-        server_registry: ServerRegistry = get_current_context().server_registry,
+        server_registry: ServerRegistry | None = None,
     ):
         super().__init__(
             mcp_servers_names=mcp_servers_names,
@@ -63,6 +62,29 @@ class EmbeddingRouter(Router):
         )
 
         self.embedding_model = embedding_model
+
+    @classmethod
+    async def create(
+        cls,
+        embedding_model: EmbeddingModel,
+        mcp_servers_names: List[str] | None = None,
+        agents: List[Agent] | None = None,
+        functions: List[Callable] | None = None,
+        server_registry: ServerRegistry | None = None,
+    ) -> "EmbeddingRouter":
+        """
+        Factory method to create and initialize a router.
+        Use this instead of constructor since we need async initialization.
+        """
+        instance = cls(
+            embedding_model=embedding_model,
+            mcp_servers_names=mcp_servers_names,
+            agents=agents,
+            functions=functions,
+            server_registry=server_registry,
+        )
+        await instance.initialize()
+        return instance
 
     async def initialize(self):
         """Initialize by computing embeddings for all categories"""
@@ -96,7 +118,7 @@ class EmbeddingRouter(Router):
             self.agent_categories[name] = category_with_embedding
             self.categories[name] = category_with_embedding
 
-        for name, category in self.agent_categories.items():
+        for name, category in self.function_categories.items():
             category_with_embedding = await create_category_with_embedding(category)
             self.function_categories[name] = category_with_embedding
             self.categories[name] = category_with_embedding
@@ -178,19 +200,19 @@ class EmbeddingRouter(Router):
 
         results: List[RouterResult] = []
         if include_servers:
-            for category in self.server_categories.items():
+            for _, category in self.server_categories.items():
                 result = create_result(category, request_embedding)
                 if result:
                     results.append(result)
 
         if include_agents:
-            for category in self.agent_categories.items():
+            for _, category in self.agent_categories.items():
                 result = create_result(category, request_embedding)
                 if result:
                     results.append(result)
 
         if include_functions:
-            for category in self.function_categories.items():
+            for _, category in self.function_categories.items():
                 result = create_result(category, request_embedding)
                 if result:
                     results.append(result)

@@ -13,7 +13,7 @@ You can choose one or more intents, or choose none if no intent is appropriate.
 
 class AnthropicLLMIntentClassifier(LLMIntentClassifier):
     """
-    An LLM router that uses an OpenAI model to make routing decisions.
+    An LLM router that uses an Anthropic model to make routing decisions.
     """
 
     def __init__(
@@ -28,3 +28,20 @@ class AnthropicLLMIntentClassifier(LLMIntentClassifier):
             intents=intents,
             classification_instruction=classification_instruction,
         )
+
+    @classmethod
+    async def create(
+        cls,
+        intents: List[Intent],
+        classification_instruction: str | None = None,
+    ) -> "AnthropicLLMIntentClassifier":
+        """
+        Factory method to create and initialize a classifier.
+        Use this instead of constructor since we need async initialization.
+        """
+        instance = cls(
+            intents=intents,
+            classification_instruction=classification_instruction,
+        )
+        await instance.initialize()
+        return instance

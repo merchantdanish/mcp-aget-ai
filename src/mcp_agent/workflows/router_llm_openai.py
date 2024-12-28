@@ -1,7 +1,6 @@
 from typing import Callable, List
 
 from ..agents.mcp_agent import Agent
-from ..context import get_current_context
 from ..mcp_server_registry import ServerRegistry
 from .augmented_llm_openai import OpenAIAugmentedLLM
 from .router_llm import LLMRouter
@@ -25,7 +24,7 @@ class OpenAILLMRouter(LLMRouter):
         agents: List[Agent] | None = None,
         functions: List[Callable] | None = None,
         routing_instruction: str | None = None,
-        server_registry: ServerRegistry = get_current_context().server_registry,
+        server_registry: ServerRegistry | None = None,
     ):
         openai_llm = OpenAIAugmentedLLM(instruction=ROUTING_SYSTEM_INSTRUCTION)
 
@@ -37,3 +36,26 @@ class OpenAILLMRouter(LLMRouter):
             routing_instruction=routing_instruction,
             server_registry=server_registry,
         )
+
+    @classmethod
+    async def create(
+        cls,
+        mcp_servers_names: List[str] | None = None,
+        agents: List[Agent] | None = None,
+        functions: List[Callable] | None = None,
+        routing_instruction: str | None = None,
+        server_registry: ServerRegistry | None = None,
+    ) -> "OpenAILLMRouter":
+        """
+        Factory method to create and initialize a classifier.
+        Use this instead of constructor since we need async initialization.
+        """
+        instance = cls(
+            mcp_servers_names=mcp_servers_names,
+            agents=agents,
+            functions=functions,
+            routing_instruction=routing_instruction,
+            server_registry=server_registry,
+        )
+        await instance.initialize()
+        return instance

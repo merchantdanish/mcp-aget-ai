@@ -3,7 +3,6 @@ from typing import Callable, List, Literal
 from pydantic import BaseModel
 
 from ..agents.mcp_agent import Agent
-from ..context import get_current_context
 from ..mcp_server_registry import ServerRegistry
 from .augmented_llm import AugmentedLLM
 from .router import Router, RouterResult
@@ -84,7 +83,7 @@ class LLMRouter(Router):
         agents: List[Agent] | None = None,
         functions: List[Callable] | None = None,
         routing_instruction: str | None = None,
-        server_registry: ServerRegistry = get_current_context().server_registry,
+        server_registry: ServerRegistry | None = None,
     ):
         super().__init__(
             mcp_servers_names=mcp_servers_names,
@@ -95,6 +94,31 @@ class LLMRouter(Router):
         )
 
         self.llm = llm
+
+    @classmethod
+    async def create(
+        cls,
+        llm: AugmentedLLM,
+        mcp_servers_names: List[str] | None = None,
+        agents: List[Agent] | None = None,
+        functions: List[Callable] | None = None,
+        routing_instruction: str | None = None,
+        server_registry: ServerRegistry | None = None,
+    ) -> "LLMRouter":
+        """
+        Factory method to create and initialize a router.
+        Use this instead of constructor since we need async initialization.
+        """
+        instance = cls(
+            llm=llm,
+            mcp_servers_names=mcp_servers_names,
+            agents=agents,
+            functions=functions,
+            routing_instruction=routing_instruction,
+            server_registry=server_registry,
+        )
+        await instance.initialize()
+        return instance
 
     async def route(
         self, request: str, top_k: int = 1

@@ -86,20 +86,20 @@ class Router(ABC):
         agents: List[Agent] | None = None,
         functions: List[Callable] | None = None,
         routing_instruction: str | None = None,
-        server_registry: ServerRegistry = get_current_context().server_registry,
+        server_registry: ServerRegistry | None = None,
     ):
         self.routing_instruction = routing_instruction
         self.server_names = mcp_servers_names or []
         self.agents = agents or []
         self.functions = functions or []
-        self.server_registry = server_registry
+        self.server_registry = server_registry or get_current_context().server_registry
 
         # A dict of categories to route to, keyed by category name.
         # These are populated in the initialize method.
-        self.server_categories: Dict[str, ServerRouterCategory] = []
-        self.agent_categories: Dict[str, AgentRouterCategory] = []
-        self.function_categories: Dict[str, RouterCategory] = []
-        self.categories: Dict[str, RouterCategory] = []
+        self.server_categories: Dict[str, ServerRouterCategory] = {}
+        self.agent_categories: Dict[str, AgentRouterCategory] = {}
+        self.function_categories: Dict[str, RouterCategory] = {}
+        self.categories: Dict[str, RouterCategory] = {}
         self.initialized: bool = False
 
         if not self.server_names and not self.agents and not self.functions:

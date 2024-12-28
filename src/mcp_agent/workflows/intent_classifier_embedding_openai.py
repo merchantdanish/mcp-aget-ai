@@ -17,3 +17,20 @@ class OpenAIEmbeddingIntentClassifier(EmbeddingIntentClassifier):
     ):
         embedding_model = embedding_model or OpenAIEmbeddingModel()
         super().__init__(embedding_model=embedding_model, intents=intents)
+
+    @classmethod
+    async def create(
+        cls,
+        intents: List[Intent],
+        embedding_model: OpenAIEmbeddingModel | None = None,
+    ) -> "OpenAIEmbeddingIntentClassifier":
+        """
+        Factory method to create and initialize a classifier.
+        Use this instead of constructor since we need async initialization.
+        """
+        instance = cls(
+            intents=intents,
+            embedding_model=embedding_model,
+        )
+        await instance.initialize()
+        return instance

@@ -32,18 +32,38 @@ class EmbeddingIntentClassifier(IntentClassifier):
 
     def __init__(
         self,
-        embedding_model: EmbeddingModel,
         intents: List[Intent],
+        embedding_model: EmbeddingModel,
     ):
         super().__init__(intents=intents)
         self.embedding_model = embedding_model
         self.initialized = False
+
+    @classmethod
+    async def create(
+        cls,
+        intents: List[Intent],
+        embedding_model: EmbeddingModel,
+    ) -> "EmbeddingIntentClassifier":
+        """
+        Factory method to create and initialize a classifier.
+        Use this instead of constructor since we need async initialization.
+        """
+        instance = cls(
+            intents=intents,
+            embedding_model=embedding_model,
+        )
+        await instance.initialize()
+        return instance
 
     async def initialize(self):
         """
         Precompute embeddings for all intents by combining their
         descriptions and examples
         """
+        if self.initialized:
+            return
+
         for intent in self.intents.values():
             # Combine all text for a rich intent representation
             intent_texts = [intent.name, intent.description] + intent.examples

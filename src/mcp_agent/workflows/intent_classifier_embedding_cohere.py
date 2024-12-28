@@ -17,3 +17,20 @@ class CohereEmbeddingIntentClassifier(EmbeddingIntentClassifier):
     ):
         embedding_model = embedding_model or CohereEmbeddingModel()
         super().__init__(embedding_model=embedding_model, intents=intents)
+
+    @classmethod
+    async def create(
+        cls,
+        intents: List[Intent],
+        embedding_model: CohereEmbeddingModel | None = None,
+    ) -> "CohereEmbeddingIntentClassifier":
+        """
+        Factory method to create and initialize a classifier.
+        Use this instead of constructor since we need async initialization.
+        """
+        instance = cls(
+            intents=intents,
+            embedding_model=embedding_model,
+        )
+        await instance.initialize()
+        return instance

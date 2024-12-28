@@ -46,10 +46,27 @@ class MCPAggregator(BaseModel):
 
         # TODO: saqadri - add resources and prompt maps as well
 
+    @classmethod
+    async def create(
+        cls,
+        server_names: List[str],
+    ) -> "MCPAggregator":
+        """
+        Factory method to create and initialize an MCPAggregator.
+        Use this instead of constructor since we need async initialization.
+        """
+        instance = cls(
+            server_names=server_names,
+        )
+        await instance.load_servers()
+        return instance
+
     async def load_servers(self):
         """
         Discover tools from each server in parallel and build an index of namespaced tool names.
         """
+        if self.initialized:
+            return
 
         async with self._tool_map_lock:
             self._namespaced_tool_map.clear()
