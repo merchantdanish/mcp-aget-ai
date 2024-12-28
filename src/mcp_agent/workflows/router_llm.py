@@ -1,19 +1,12 @@
 from typing import Callable, List, Literal
 
 from pydantic import BaseModel
-from mcp.server.fastmcp.tools import Tool as FastTool
 
 from ..agents.mcp_agent import Agent
 from ..context import get_current_context
 from ..mcp_server_registry import ServerRegistry
 from .augmented_llm import AugmentedLLM
-from .router import (
-    AgentRouterCategory,
-    Router,
-    RouterCategory,
-    RouterResult,
-    ServerRouterCategory,
-)
+from .router import Router, RouterResult
 
 
 DEFAULT_ROUTING_INSTRUCTION = """
@@ -222,54 +215,17 @@ class LLMRouter(Router):
         # Format all categories
         if include_servers:
             for category in self.server_categories.values():
-                context_list.append(self._format_server_category(category, idx))
+                context_list.append(self.format_category(category, idx))
                 idx += 1
 
         if include_agents:
             for category in self.agent_categories.values():
-                context_list.append(self._format_agent_category(category, idx))
+                context_list.append(self.format_category(category, idx))
                 idx += 1
 
         if include_functions:
             for category in self.function_categories.values():
-                context_list.append(self._format_function_category(category, idx))
+                context_list.append(self.format_category(category, idx))
                 idx += 1
 
         return "\n\n".join(context_list)
-
-    def _format_tools(self, tools: List[FastTool]) -> str:
-        """Format a list of tools into a readable string."""
-        if not tools:
-            return "No tool information provided."
-
-        tool_descriptions = []
-        for tool in tools:
-            desc = f"- {tool.name}: {tool.description}"
-            tool_descriptions.append(desc)
-
-        return "\n".join(tool_descriptions)
-
-    def _format_server_category(
-        self, category: ServerRouterCategory, index: int
-    ) -> str:
-        """Format a server category into a readable string."""
-        description = category.description or "No description provided"
-        tools = self._format_tools(category.tools)
-
-        return f"{index}. Server Category: {category.name}\nDescription: {description}\nTools in server:\n{tools}"
-
-    def _format_agent_category(self, category: AgentRouterCategory, index: int) -> str:
-        """Format an agent category into a readable string."""
-        description = category.description or "No description provided"
-        servers = "\n".join(
-            [f"- {server.name} ({server.description})" for server in category.servers]
-        )
-
-        return f"{index}. Agent Category: {category.name}\nDescription: {description}\nServers in agent:\n{servers}"
-
-    def _format_function_category(self, category: RouterCategory, index: int) -> str:
-        """Format a function category into a readable string."""
-        description = category.description or "No description provided"
-        return (
-            f"{index}. Function Category: {category.name}\nDescription: {description}"
-        )

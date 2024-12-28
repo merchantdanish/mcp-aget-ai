@@ -207,3 +207,52 @@ class Router(ABC):
             name=tool.name,
             description=tool.description,
         )
+
+    def format_category(
+        self, category: RouterCategory, index: int | None = None
+    ) -> str:
+        """Format a category into a readable string."""
+
+        index_str = f"{index}. " if index is not None else " "
+        category_str = ""
+
+        if isinstance(category, ServerRouterCategory):
+            category_str = self._format_server_category(category)
+        elif isinstance(category, AgentRouterCategory):
+            category_str = self._format_agent_category(category)
+        else:
+            category_str = self._format_function_category(category)
+
+        return f"{index_str}{category_str}"
+
+    def _format_tools(self, tools: List[FastTool]) -> str:
+        """Format a list of tools into a readable string."""
+        if not tools:
+            return "No tool information provided."
+
+        tool_descriptions = []
+        for tool in tools:
+            desc = f"- {tool.name}: {tool.description}"
+            tool_descriptions.append(desc)
+
+        return "\n".join(tool_descriptions)
+
+    def _format_server_category(self, category: ServerRouterCategory) -> str:
+        """Format a server category into a readable string."""
+        description = category.description or "No description provided"
+        tools = self._format_tools(category.tools)
+        return f"Server Category: {category.name}\nDescription: {description}\nTools in server:\n{tools}"
+
+    def _format_agent_category(self, category: AgentRouterCategory) -> str:
+        """Format an agent category into a readable string."""
+        description = category.description or "No description provided"
+        servers = "\n".join(
+            [f"- {server.name} ({server.description})" for server in category.servers]
+        )
+
+        return f"Agent Category: {category.name}\nDescription: {description}\nServers in agent:\n{servers}"
+
+    def _format_function_category(self, category: RouterCategory) -> str:
+        """Format a function category into a readable string."""
+        description = category.description or "No description provided"
+        return f"Function Category: {category.name}\nDescription: {description}"

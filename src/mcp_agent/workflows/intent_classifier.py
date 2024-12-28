@@ -76,3 +76,39 @@ class IntentClassifier(ABC):
     async def initialize(self):
         """Initialize the classifier. Override this method if needed."""
         self.initialized = True
+
+
+# Example
+# Define some intents
+# intents = [
+#     Intent(
+#         name="schedule_meeting",
+#         description="Schedule or set up a meeting or appointment",
+#         examples=[
+#             "Can you schedule a meeting with John?",
+#             "Set up a call for next week",
+#             "I need to arrange a meeting"
+#         ]
+#     ),
+#     Intent(
+#         name="check_calendar",
+#         description="Check calendar availability or existing appointments",
+#         examples=[
+#             "What meetings do I have today?",
+#             "Show me my calendar",
+#             "Am I free tomorrow afternoon?"
+#         ]
+#     )
+# ]
+
+# # Initialize with OpenAI embeddings
+# classifier = OpenAIEmbeddingIntentClassifier(intents=intents, model="text-embedding-3-small")
+
+# # Or use Cohere embeddings
+# classifier = OpenAIEmbeddingIntentClassifier(intents=intents, model="embed-multilingual-v3.0")
+
+# # Classify some text
+# results = await classifier.classify(
+#     request="Can you set up a meeting with Sarah for tomorrow?"
+#     top_k=3
+# )

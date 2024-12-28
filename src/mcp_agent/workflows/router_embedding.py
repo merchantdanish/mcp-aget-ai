@@ -1,0 +1,208 @@
+from typing import Callable, List
+
+from numpy import mean
+
+from ..agents.mcp_agent import Agent
+from ..context import get_current_context
+from ..mcp_server_registry import ServerRegistry
+from .embedding import (
+    EmbeddingModel,
+    FloatArray,
+    compute_similarity_scores,
+    compute_confidence,
+)
+from .router import (
+    Router,
+    RouterCategory,
+    RouterResult,
+)
+
+
+class EmbeddingRouterCategory(RouterCategory):
+    """A category for embedding-based routing"""
+
+    embedding: FloatArray | None = None
+    """Pre-computed embedding for this category"""
+
+
+class EmbeddingRouter(Router):
+    """
+    A router that uses embedding similarity to route requests to appropriate categories.
+    This class helps to route an input to a specific MCP server, an Agent (an aggregation of MCP servers),
+    or a function (any Callable).
+
+    Features:
+    - Semantic similarity based routing using embeddings
+    - Flexible embedding model support
+    - Support for formatting and combining category metadata
+
+    Example usage:
+        # Initialize router with embedding model
+        router = EmbeddingRouter(
+            embedding_model=OpenAIEmbeddingModel(model="text-embedding-3-small"),
+            mcp_servers_names=["customer_service", "tech_support"],
+        )
+
+        # Route a request
+        results = await router.route("My laptop keeps crashing")
+    """
+
+    def __init__(
+        self,
+        embedding_model: EmbeddingModel,
+        mcp_servers_names: List[str] | None = None,
+        agents: List[Agent] | None = None,
+        functions: List[Callable] | None = None,
+        server_registry: ServerRegistry = get_current_context().server_registry,
+    ):
+        super().__init__(
+            mcp_servers_names=mcp_servers_names,
+            agents=agents,
+            functions=functions,
+            server_registry=server_registry,
+        )
+
+        self.embedding_model = embedding_model
+
+    async def initialize(self):
+        """Initialize by computing embeddings for all categories"""
+
+        async def create_category_with_embedding(
+            category: RouterCategory,
+        ) -> EmbeddingRouterCategory:
+            # Get formatted text representation of category
+            category_text = self.format_category(category)
+            embedding = self._compute_embedding([category_text])
+            category_with_embedding = EmbeddingRouterCategory(
+                **category, embedding=embedding
+            )
+
+            return category_with_embedding
+
+        if self.initialized:
+            return
+
+        # Create categories for servers, agents, and functions
+        await super().initialize()
+        self.initialized = False  # We are not initialized yet
+
+        for name, category in self.server_categories.items():
+            category_with_embedding = await create_category_with_embedding(category)
+            self.server_categories[name] = category_with_embedding
+            self.categories[name] = category_with_embedding
+
+        for name, category in self.agent_categories.items():
+            category_with_embedding = await create_category_with_embedding(category)
+            self.agent_categories[name] = category_with_embedding
+            self.categories[name] = category_with_embedding
+
+        for name, category in self.agent_categories.items():
+            category_with_embedding = await create_category_with_embedding(category)
+            self.function_categories[name] = category_with_embedding
+            self.categories[name] = category_with_embedding
+
+        self.initialized = True
+
+    async def route(
+        self, request: str, top_k: int = 1
+    ) -> List[str | Agent | Callable | RouterResult]:
+        """Route the request based on embedding similarity"""
+        if not self.initialized:
+            await self.initialize()
+
+        return await self._route_with_embedding(request, top_k)
+
+    async def route_to_server(self, request: str, top_k: int = 1) -> List[str]:
+        """Route specifically to server categories"""
+        if not self.initialized:
+            await self.initialize()
+
+        results = await self._route_with_embedding(
+            request,
+            top_k,
+            include_servers=True,
+            include_agents=False,
+            include_functions=False,
+        )
+        return [r.result for r in results[:top_k]]
+
+    async def route_to_agent(self, request: str, top_k: int = 1) -> List[Agent]:
+        """Route specifically to agent categories"""
+        if not self.initialized:
+            await self.initialize()
+
+        results = await self._route_with_embedding(
+            request,
+            top_k,
+            include_servers=False,
+            include_agents=True,
+            include_functions=False,
+        )
+        return [r.result for r in results[:top_k]]
+
+    async def route_to_function(self, request: str, top_k: int = 1) -> List[Callable]:
+        """Route specifically to function categories"""
+        if not self.initialized:
+            await self.initialize()
+
+        results = await self._route_with_embedding(
+            request,
+            top_k,
+            include_servers=False,
+            include_agents=False,
+            include_functions=True,
+        )
+        return [r.result for r in results[:top_k]]
+
+    async def _route_with_embedding(
+        self,
+        request: str,
+        top_k: int = 1,
+        include_servers: bool = True,
+        include_agents: bool = True,
+        include_functions: bool = True,
+    ) -> List[str | Agent | Callable | RouterResult]:
+        def create_result(category: RouterCategory, request_embedding):
+            if category.embedding is None:
+                return None
+
+            similarity = compute_similarity_scores(
+                request_embedding, category.embedding
+            )
+
+            return RouterResult(
+                p_score=compute_confidence(similarity), result=category.category
+            )
+
+        request_embedding = self._compute_embedding([request])
+
+        results: List[RouterResult] = []
+        if include_servers:
+            for category in self.server_categories.items():
+                result = create_result(category, request_embedding)
+                if result:
+                    results.append(result)
+
+        if include_agents:
+            for category in self.agent_categories.items():
+                result = create_result(category, request_embedding)
+                if result:
+                    results.append(result)
+
+        if include_functions:
+            for category in self.function_categories.items():
+                result = create_result(category, request_embedding)
+                if result:
+                    results.append(result)
+
+        results.sort(key=lambda x: x.p_score, reverse=True)
+        return results[:top_k]
+
+    async def _compute_embedding(self, data: List[str]):
+        # Get embedding for the provided text
+        embeddings = await self.embedding_model.embed(data)
+
+        # Use mean pooling to combine embeddings
+        embedding = mean(embeddings, axis=0)
+
+        return embedding
