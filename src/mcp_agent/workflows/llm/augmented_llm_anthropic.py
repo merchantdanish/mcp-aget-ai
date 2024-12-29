@@ -25,6 +25,13 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
     selecting appropriate tools, and determining what information to retain.
     """
 
+    @classmethod
+    async def convert_message_to_message_param(
+        cls, message: Message, **kwargs
+    ) -> MessageParam:
+        """Convert a response object to an input parameter object to allow LLM calls to be chained."""
+        return Message(role="assistant", content=message.content, **kwargs)
+
     async def generate(
         self,
         message,

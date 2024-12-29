@@ -1,4 +1,3 @@
-import asyncio
 import json
 from typing import List, Type
 
@@ -35,6 +34,20 @@ class OpenAIAugmentedLLM(
     such as retrieval, tools, and memory provided from a collection of MCP servers.
     This implementation uses OpenAI's ChatCompletion as the LLM.
     """
+
+    @classmethod
+    async def convert_message_to_message_param(
+        cls, message: ChatCompletionMessage, **kwargs
+    ) -> ChatCompletionMessageParam:
+        """Convert a response object to an input parameter object to allow LLM calls to be chained."""
+        return ChatCompletionAssistantMessageParam(
+            role="assistant",
+            content=message.content,
+            tool_calls=message.tool_calls,
+            audio=message.audio,
+            refusal=message.refusal,
+            **kwargs,
+        )
 
     async def generate(
         self,
@@ -123,13 +136,7 @@ class OpenAIAugmentedLLM(
 
                 if message.content:
                     messages.append(
-                        ChatCompletionAssistantMessageParam(
-                            role="assistant",
-                            content=message.content,
-                            refusal=message.refusal,
-                            tool_calls=message.tool_calls,
-                            name=self.name,
-                        )
+                        self.convert_message_to_message_param(message, name=self.name)
                     )
 
                 if message.tool_calls:
@@ -140,9 +147,7 @@ class OpenAIAugmentedLLM(
                     ]
 
                     # Wait for all tool calls to complete
-                    tool_results = await asyncio.gather(
-                        *tool_tasks, return_exceptions=True
-                    )
+                    tool_results = await self.executor.execute(*tool_tasks)
 
                     # Add non-None results to messages
                     for result in tool_results:
@@ -152,6 +157,8 @@ class OpenAIAugmentedLLM(
                             continue
                         if result is not None:
                             messages.append(result)
+        if use_history:
+            self.history.set(messages)
 
         return responses
 

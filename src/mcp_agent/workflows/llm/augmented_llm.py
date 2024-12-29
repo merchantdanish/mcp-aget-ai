@@ -7,6 +7,7 @@ from mcp.types import (
 )
 
 from mcp_agent.agents.agent import Agent
+from mcp_agent.executor.executor import Executor, AsyncioExecutor
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator
 
 MessageParamT = TypeVar("MessageParamT")
@@ -74,18 +75,28 @@ class AugmentedLLM(Protocol, Generic[MessageParamT, MessageT]):
     # TODO: saqadri - add streaming support (e.g. generate_stream)
     # TODO: saqadri - consider adding middleware patterns for pre/post processing of messages, for now we have pre/post_tool_call
 
+    @classmethod
+    async def convert_message_to_message_param(
+        cls, message: MessageT, **kwargs
+    ) -> MessageParamT:
+        """Convert a response object to an input parameter object to allow LLM calls to be chained."""
+        # Many LLM implementations will allow the same type for input and output messages
+        return message
+
     def __init__(
         self,
         server_names: List[str] | None = None,
         instruction: str | None = None,
         name: str | None = None,
         agent: Agent | None = None,
+        executor: Executor | None = None,
     ):
         """
         Initialize the LLM with a list of server names and an instruction.
         If a name is provided, it will be used to identify the LLM.
         If an agent is provided, all other properties are optional
         """
+        self.executor = executor or AsyncioExecutor()
         self.aggregator = agent if agent is not None else MCPAggregator(server_names)
         self.name = name or (agent.name if agent else None)
         self.instruction = instruction or (
