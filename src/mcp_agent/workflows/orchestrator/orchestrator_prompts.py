@@ -76,3 +76,6 @@ Results so far that may provide helpful context:
 
 SYNTHESIZE_STEP_PROMPT_TEMPLATE = """Synthesize the results of these parallel tasks into a cohesive result:
 {step_result}"""
+
+SYNTHESIZE_PLAN_PROMPT_TEMPLATE = """Synthesize the results of executing all steps in the plan into a cohesive result:
+{plan_result}"""

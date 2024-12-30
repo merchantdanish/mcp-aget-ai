@@ -26,6 +26,7 @@ from mcp_agent.workflows.orchestrator.orchestrator_models import (
 from mcp_agent.workflows.orchestrator.orchestrator_prompts import (
     FULL_PLAN_PROMPT_TEMPLATE,
     ITERATIVE_PLAN_PROMPT_TEMPLATE,
+    SYNTHESIZE_PLAN_PROMPT_TEMPLATE,
     SYNTHESIZE_STEP_PROMPT_TEMPLATE,
     TASK_PROMPT_TEMPLATE,
 )
@@ -212,8 +213,24 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             else:
                 raise ValueError(f"Invalid plan type {self.plan_type}")
 
+            plan_result.plan = plan
+
             if plan.is_complete:
                 plan_result.is_complete = True
+
+                # Synthesize final result into a single message
+                synthesis_prompt = SYNTHESIZE_PLAN_PROMPT_TEMPLATE.format(
+                    plan_result=format_plan_result(plan_result)
+                )
+
+                plan_result.result = await self.planner.generate_str(
+                    message=synthesis_prompt,
+                    max_iterations=1,
+                    model=model,
+                    stop_sequences=stop_sequences,
+                    max_tokens=max_tokens,
+                )
+
                 return plan_result
 
             # Execute each step, collecting results
@@ -254,7 +271,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         )
 
         # Execute subtasks in parallel
-        futures: Coroutine[Any, Any, str] = []
+        futures: List[Coroutine[Any, Any, str]] = []
         for task in step.tasks:
             llm = self._get_llm_for_subtask(task)
 
@@ -281,7 +298,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         # Store task results
         for task, result in zip(step.tasks, results):
             step_result.add_task_result(
-                TaskWithResult(**task.model_dump(), result=result)
+                TaskWithResult(**task.model_dump(), result=str(result))
             )
 
         # Synthesize overall step result
@@ -334,23 +351,19 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
     ) -> Plan:
         """Generate full plan considering previous results"""
 
-        servers = {
-            "\n".join(
-                [
-                    f"{idx}. {self._format_server_info(server)}"
-                    for idx, server in enumerate(self.server_names, 1)
-                ]
-            )
-        }
+        servers = "\n".join(
+            [
+                f"{idx}. {self._format_server_info(server)}"
+                for idx, server in enumerate(self.server_names, 1)
+            ]
+        )
 
-        agents = {
-            "\n".join(
-                [
-                    f"{idx}. {self._format_server_info(server)}"
-                    for idx, server in enumerate(self.server_names, 1)
-                ]
-            )
-        }
+        agents = "\n".join(
+            [
+                f"{idx}. {self._format_server_info(server)}"
+                for idx, server in enumerate(self.server_names, 1)
+            ]
+        )
 
         prompt = FULL_PLAN_PROMPT_TEMPLATE.format(
             objective=objective,
@@ -371,23 +384,19 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
     async def _get_next_step(self, objective: str, plan_result: PlanResult) -> NextStep:
         """Generate just the next needed step"""
 
-        servers = {
-            "\n".join(
-                [
-                    f"{idx}. {self._format_server_info(server)}"
-                    for idx, server in enumerate(self.server_names, 1)
-                ]
-            )
-        }
+        servers = "\n".join(
+            [
+                f"{idx}. {self._format_server_info(server)}"
+                for idx, server in enumerate(self.server_names, 1)
+            ]
+        )
 
-        agents = {
-            "\n".join(
-                [
-                    f"{idx}. {self._format_server_info(server)}"
-                    for idx, server in enumerate(self.server_names, 1)
-                ]
-            )
-        }
+        agents = "\n".join(
+            [
+                f"{idx}. {self._format_server_info(server)}"
+                for idx, server in enumerate(self.server_names, 1)
+            ]
+        )
 
         prompt = ITERATIVE_PLAN_PROMPT_TEMPLATE.format(
             objective=objective,
@@ -399,7 +408,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         next_step = await self.planner.generate_structured(prompt, NextStep)
         return next_step
 
-    async def _format_server_info(self, server_name: str) -> str:
+    def _format_server_info(self, server_name: str) -> str:
         """Format server information for display to planners"""
         server_config = self.server_metadata.get(server_name)
         server_str = f"Server Name: {server_name}"
@@ -412,7 +421,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
 
         return server_str
 
-    async def _format_agent_info(self, agent_name: str) -> str:
+    def _format_agent_info(self, agent_name: str) -> str:
         """Format Agent information for display to planners"""
         agent = self.agents.get(agent_name)
         if not agent:
