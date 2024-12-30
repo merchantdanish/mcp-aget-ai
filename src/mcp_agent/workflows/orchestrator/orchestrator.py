@@ -156,7 +156,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         parallel_tool_calls: bool = True,
     ) -> ModelT:
         """Request a structured LLM generation and return the result as a Pydantic model."""
-        result_str = await self.generate(
+        result_str = await self.generate_str(
             message=message,
             use_history=use_history,
             max_iterations=max_iterations,
