@@ -3,6 +3,8 @@ Reading settings from environment variables and providing a settings object
 for the application configuration.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -45,6 +47,7 @@ class TemporalSettings(BaseModel):
     host: str
     namespace: str = "default"
     task_queue: str
+    api_key: str | None = None
 
 
 class Settings(BaseSettings):
@@ -56,6 +59,8 @@ class Settings(BaseSettings):
         env_nested_delimiter="__",
         nested_model_default_partial_update=True,
     )  # Customize the behavior of settings here
+
+    execution_engine: Literal["asyncio", "temporal"] = "asyncio"
 
     temporal: TemporalSettings | None = None
     """Settings for Temporal workflow orchestration"""
