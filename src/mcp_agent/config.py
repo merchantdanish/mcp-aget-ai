@@ -8,6 +8,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from mcp_agent.logging.events import EventType
+
 
 class AnthropicSettings(BaseModel):
     """
@@ -84,6 +86,36 @@ class OpenTelemetrySettings(BaseModel):
     """Sample rate for tracing (1.0 = sample everything)"""
 
 
+class LoggerSettings(BaseModel):
+    """
+    Logger settings for the MCP Agent application.
+    """
+
+    type: Literal["none", "console", "http"] = "console"
+
+    level: EventType = "info"
+    """Minimum logging level"""
+
+    batch_size: int = 100
+    """Number of events to accumulate before processing"""
+
+    flush_interval: float = 2.0
+    """How often to flush events in seconds"""
+
+    max_queue_size: int = 2048
+    """Maximum queue size for event processing"""
+
+    # HTTP transport settings
+    http_endpoint: str | None = None
+    """HTTP endpoint for event transport"""
+
+    http_headers: dict[str, str] | None = None
+    """HTTP headers for event transport"""
+
+    http_timeout: float = 5.0
+    """HTTP timeout seconds for event transport"""
+
+
 class Settings(BaseSettings):
     """
     Settings class for the MCP Agent application.
@@ -108,8 +140,11 @@ class Settings(BaseSettings):
     openai: OpenAISettings | None = None
     """Settings for using OpenAI models in the MCP Agent application"""
 
-    logger: OpenTelemetrySettings | None = OpenTelemetrySettings()
+    otel: OpenTelemetrySettings | None = OpenTelemetrySettings()
     """OpenTelemetry logging settings for the MCP Agent application"""
+
+    logger: LoggerSettings | None = LoggerSettings()
+    """Logger settings for the MCP Agent application"""
 
     usage_telemetry: UsageTelemetrySettings | None = UsageTelemetrySettings()
     """Usage tracking settings for the MCP Agent application"""

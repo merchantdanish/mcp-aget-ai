@@ -10,10 +10,13 @@ Logger module for the MCP Agent, which provides:
 import asyncio
 import time
 
+from typing import Any
+
 from contextlib import asynccontextmanager, contextmanager
 
-from mcp_agent.logging.events import Event, EventContext, EventType
-from mcp_agent.logging.transport import AsyncEventBus
+from mcp_agent.logging.events import Event, EventContext, EventFilter, EventType
+from mcp_agent.logging.listeners import BatchingListener, LoggingListener
+from mcp_agent.logging.transport import AsyncEventBus, EventTransport
 
 
 class Logger:
@@ -147,6 +150,72 @@ async def async_event_context(
             None,
             {"duration": duration, **data},
         )
+
+
+class LoggingConfig:
+    """Global configuration for the logging system."""
+
+    _initialized = False
+
+    @classmethod
+    async def configure(
+        cls,
+        event_filter: EventFilter | None = None,
+        transport: EventTransport | None = None,
+        batch_size: int = 100,
+        flush_interval: float = 2.0,
+        **kwargs: Any,
+    ):
+        """
+        Configure the logging system.
+
+        Args:
+            event_filter: Default filter for all loggers
+            transport: Transport for sending events to external systems
+            batch_size: Default batch size for batching listener
+            flush_interval: Default flush interval for batching listener
+            **kwargs: Additional configuration options
+        """
+        if cls._initialized:
+            return
+
+        bus = AsyncEventBus.get(transport=transport)
+
+        # Add standard listeners
+        if "logging" not in bus.listeners:
+            bus.add_listener("logging", LoggingListener(event_filter=event_filter))
+
+        if "batching" not in bus.listeners:
+            bus.add_listener(
+                "batching",
+                BatchingListener(
+                    event_filter=event_filter,
+                    batch_size=batch_size,
+                    flush_interval=flush_interval,
+                ),
+            )
+
+        await bus.start()
+        cls._initialized = True
+
+    @classmethod
+    async def shutdown(cls):
+        """Shutdown the logging system gracefully."""
+        if not cls._initialized:
+            return
+        bus = AsyncEventBus.get()
+        await bus.stop()
+        cls._initialized = False
+
+    @classmethod
+    @asynccontextmanager
+    async def managed(cls, **config_kwargs):
+        """Context manager for the logging system lifecycle."""
+        try:
+            await cls.configure(**config_kwargs)
+            yield
+        finally:
+            await cls.shutdown()
 
 
 ##########

@@ -2,6 +2,8 @@
 A central context object to store global state that is shared across the application.
 """
 
+import asyncio
+
 from pydantic import BaseModel, ConfigDict
 from mcp import ServerSession
 from opentelemetry import trace
@@ -13,6 +15,9 @@ from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapProp
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 from mcp_agent.config import Settings, settings
+from mcp_agent.logging.events import EventFilter
+from mcp_agent.logging.logger import LoggingConfig
+from mcp_agent.logging.transport import create_transport
 from mcp_agent.mcp_server_registry import ServerRegistry
 
 
@@ -30,19 +35,19 @@ class Context(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-def configure_logging(config: Settings):
+async def configure_otel(config: Settings):
     """
-    Configure logging and tracing based on the application config.
+    Configure OpenTelemetry based on the application config.
     """
-    if not config.logger.enabled:
+    if not config.otel.enabled:
         return
 
     # Set up global textmap propagator first
     set_global_textmap(TraceContextTextMapPropagator())
 
-    service_name = config.logger.service_name
-    service_instance_id = config.logger.service_instance_id
-    service_version = config.logger.service_version
+    service_name = config.otel.service_name
+    service_instance_id = config.otel.service_instance_id
+    service_version = config.otel.service_version
 
     # Create resource identifying this service
     resource = Resource.create(
@@ -57,12 +62,12 @@ def configure_logging(config: Settings):
     tracer_provider = TracerProvider(resource=resource)
 
     # Add exporters based on config
-    otlp_endpoint = config.logger.otlp_endpoint
+    otlp_endpoint = config.otel.otlp_endpoint
     if otlp_endpoint:
         exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
         tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
 
-        if config.logger.console_debug:
+        if config.otel.console_debug:
             tracer_provider.add_span_processor(
                 BatchSpanProcessor(ConsoleSpanExporter())
             )
@@ -74,7 +79,21 @@ def configure_logging(config: Settings):
     trace.set_tracer_provider(tracer_provider)
 
 
-def configure_usage_telemetry(_config: Settings):
+async def configure_logger(config: Settings):
+    """
+    Configure logging and tracing based on the application config.
+    """
+    event_filter: EventFilter = EventFilter(min_level=config.logger.level)
+    transport = create_transport(config.logger)
+    await LoggingConfig.configure(
+        event_filter=event_filter,
+        transport=transport,
+        batch_size=config.logger.batch_size,
+        flush_interval=config.logger.flush_interval,
+    )
+
+
+async def configure_usage_telemetry(_config: Settings):
     """
     Configure usage telemetry based on the application config.
     TODO: saqadri - implement usage tracking
@@ -82,7 +101,7 @@ def configure_usage_telemetry(_config: Settings):
     pass
 
 
-def initialize_context(config: Settings | None = None):
+async def initialize_context(config: Settings | None = None):
     """
     Initialize the global application context.
     """
@@ -94,16 +113,26 @@ def initialize_context(config: Settings | None = None):
     context.server_registry = ServerRegistry(config.config_yaml)
 
     # Configure logging and telemetry
-    configure_logging(config)
-    configure_usage_telemetry(config)
+    await configure_otel(config)
+    await configure_logger(config)
+    await configure_usage_telemetry(config)
 
     # Store the tracer in context if needed
-    context.tracer = trace.get_tracer(config.logger.service_name)
+    context.tracer = trace.get_tracer(config.otel.service_name)
 
     return context
 
 
-global_context = initialize_context()
+async def cleanup_context():
+    """
+    Cleanup the global application context.
+    """
+
+    # Shutdown logging and telemetry
+    await LoggingConfig.shutdown()
+
+
+global_context = asyncio.run(initialize_context())
 
 
 def get_current_context():
