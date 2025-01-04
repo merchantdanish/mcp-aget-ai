@@ -10,12 +10,13 @@ Logger module for the MCP Agent, which provides:
 import asyncio
 import time
 
-from typing import Any
+from typing import Any, Dict
 
 from contextlib import asynccontextmanager, contextmanager
 
 from mcp_agent.logging.events import Event, EventContext, EventFilter, EventType
 from mcp_agent.logging.listeners import BatchingListener, LoggingListener
+from mcp_agent.logging.tracing import telemetry
 from mcp_agent.logging.transport import AsyncEventBus, EventTransport
 
 
@@ -29,6 +30,8 @@ class Logger:
     def __init__(self, namespace: str):
         self.namespace = namespace
         self.event_bus = AsyncEventBus.get()
+        self.tracer = telemetry.tracer
+        self.traced = telemetry.traced
 
     async def debug(
         self,
@@ -216,6 +219,27 @@ class LoggingConfig:
             yield
         finally:
             await cls.shutdown()
+
+
+_logger_lock = asyncio.Lock()
+_loggers: Dict[str, Logger] = {}
+
+
+def get_logger(namespace: str) -> Logger:
+    """
+    Get a logger instance for a given namespace.
+    Creates a new logger if one doesn't exist for this namespace.
+
+    Args:
+        namespace: The namespace for the logger (e.g. "agent.helper", "workflow.demo")
+
+    Returns:
+        A Logger instance for the given namespace
+    """
+    with _logger_lock:
+        if namespace not in _loggers:
+            _loggers[namespace] = Logger(namespace)
+        return _loggers[namespace]
 
 
 ##########
