@@ -16,7 +16,7 @@ from mcp.types import (
     TextContent,
 )
 
-from mcp_agent.mcp_server_registry import ServerRegistry, ReceiveLoopCallable
+from mcp_agent.mcp_server_registry import ReceiveLoopCallable, ServerRegistry
 from mcp_agent.context import get_current_context, get_current_config
 
 logger = logging.getLogger(__name__)
@@ -150,3 +150,57 @@ async def gen_client(
         client_session_constructor=client_session_constructor,
     ) as session:
         yield session
+
+
+async def connect(
+    server_name: str,
+    client_session_constructor: Callable[
+        [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
+        ClientSession,
+    ] = MCPAgentClientSession,
+    server_registry: ServerRegistry | None = None,
+    message_receive_loop: ReceiveLoopCallable = receive_loop,
+) -> ClientSession:
+    """
+    Create a persistent client session to the specified server.
+    Handles server startup, initialization, and message receive loop setup.
+    If required, callers can specify their own message receive loop and ClientSession class constructor to customize further.
+    """
+    ctx = get_current_context()
+    server_registry = server_registry or ctx.server_registry
+
+    if not server_registry:
+        raise ValueError(
+            "Server registry not found in the context. Please specify one either on this method, or in the context."
+        )
+
+    server_connection = await server_registry.connection_manager.get_server(
+        server_name=server_name,
+        client_session_constructor=client_session_constructor,
+        receive_loop=message_receive_loop,
+    )
+
+    return server_connection.session
+
+
+async def disconnect(
+    server_name: str | None,
+    server_registry: ServerRegistry | None = None,
+) -> None:
+    """
+    Disconnect from the specified server. If server_name is None, disconnect from all servers.
+    """
+    ctx = get_current_context()
+    server_registry = server_registry or ctx.server_registry
+
+    if not server_registry:
+        raise ValueError(
+            "Server registry not found in the context. Please specify one either on this method, or in the context."
+        )
+
+    if server_name:
+        await server_registry.connection_manager.disconnect_server(
+            server_name=server_name
+        )
+    else:
+        await server_registry.connection_manager.disconnect_all_servers()
