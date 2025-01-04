@@ -50,7 +50,7 @@ class FilteredListener(LifecycleAwareListener):
         self.filter = event_filter
 
     async def handle_event(self, event):
-        if not filter or self.filter.matches(event):
+        if not self.filter or self.filter.matches(event):
             await self.handle_matched_event(event)
 
     async def handle_matched_event(self, event: Event):

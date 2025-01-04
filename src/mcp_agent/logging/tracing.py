@@ -5,9 +5,14 @@ for the Logger module for MCP Agent
 
 import asyncio
 import functools
-from typing import Any, Dict, Callable
+from typing import Any, Dict, Callable, Tuple
 
 from opentelemetry import trace
+from opentelemetry.context import Context
+from opentelemetry.propagate import extract as otel_extract
+from opentelemetry.trace import set_span_in_context
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from mcp_agent.context import get_current_context
@@ -87,6 +92,45 @@ class TelemetryManager:
         for k, v in kwargs.items():
             if isinstance(v, (str, int, float, bool)):
                 span.set_attribute(k, str(v))
+
+
+class MCPRequestTrace:
+    """Helper class for trace context propagation in MCP"""
+
+    @staticmethod
+    def start_span_from_mcp_request(
+        method: str, params: Dict[str, Any]
+    ) -> Tuple[trace.Span, Context]:
+        """Extract trace context from incoming MCP request and start a new span"""
+        # Extract trace context from _meta if present
+        carrier = {}
+        _meta = params.get("_meta", {})
+        if "traceparent" in _meta:
+            carrier["traceparent"] = _meta["traceparent"]
+        if "tracestate" in _meta:
+            carrier["tracestate"] = _meta["tracestate"]
+
+        # Extract context and start span
+        ctx = otel_extract(carrier, context=Context())
+        tracer = trace.get_tracer(__name__)
+        span = tracer.start_span(method, context=ctx, kind=SpanKind.SERVER)
+        return span, set_span_in_context(span)
+
+    @staticmethod
+    def inject_trace_context(arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Inject current trace context into outgoing MCP request arguments"""
+        carrier = {}
+        TraceContextTextMapPropagator().inject(carrier)
+
+        # Create or update _meta with trace context
+        _meta = arguments.get("_meta", {})
+        if "traceparent" in carrier:
+            _meta["traceparent"] = carrier["traceparent"]
+        if "tracestate" in carrier:
+            _meta["tracestate"] = carrier["tracestate"]
+        arguments["_meta"] = _meta
+
+        return arguments
 
 
 telemetry = TelemetryManager()

@@ -5,9 +5,11 @@ A central context object to store global state that is shared across the applica
 from pydantic import BaseModel, ConfigDict
 from mcp import ServerSession
 from opentelemetry import trace
+from opentelemetry.propagate import set_global_textmap
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 from mcp_agent.config import Settings, settings
@@ -34,6 +36,9 @@ def configure_logging(config: Settings):
     """
     if not config.logger.enabled:
         return
+
+    # Set up global textmap propagator first
+    set_global_textmap(TraceContextTextMapPropagator())
 
     service_name = config.logger.service_name
     service_instance_id = config.logger.service_instance_id
