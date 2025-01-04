@@ -50,6 +50,40 @@ class TemporalSettings(BaseModel):
     api_key: str | None = None
 
 
+class UsageTelemetrySettings(BaseModel):
+    """
+    Settings for usage telemetry in the MCP Agent application.
+    Anonymized usage metrics are sent to a telemetry server to help improve the product.
+    """
+
+    enabled: bool = True
+    """Enable usage telemetry in the MCP Agent application."""
+
+    enable_detailed_telemetry: bool = False
+    """If enabled, detailed telemetry data, including prompts and agents, will be sent to the telemetry server."""
+
+
+class OpenTelemetrySettings(BaseModel):
+    """
+    OTEL settings for the MCP Agent application.
+    """
+
+    enabled: bool = True
+
+    service_name: str = "mcp-agent"
+    service_instance_id: str | None = None
+    service_version: str | None = None
+
+    otlp_endpoint: str | None = None
+    """OTLP endpoint for OpenTelemetry tracing"""
+
+    console_debug: bool = False
+    """Log spans to console"""
+
+    sample_rate: float = 1.0
+    """Sample rate for tracing (1.0 = sample everything)"""
+
+
 class Settings(BaseSettings):
     """
     Settings class for the MCP Agent application.
@@ -74,16 +108,14 @@ class Settings(BaseSettings):
     openai: OpenAISettings | None = None
     """Settings for using OpenAI models in the MCP Agent application"""
 
-    otlp_endpoint: str | None = None
-    """OTLP endpoint for OpenTelemetry tracing"""
+    logger: OpenTelemetrySettings | None = OpenTelemetrySettings()
+    """OpenTelemetry logging settings for the MCP Agent application"""
 
-    disable_usage_telemetry: bool = False
-    """Disable usage tracking that is enabled by default in mcp-agent"""
+    usage_telemetry: UsageTelemetrySettings | None = UsageTelemetrySettings()
+    """Usage tracking settings for the MCP Agent application"""
 
     config_yaml: str = "mcp-agent.config.yaml"
     """Path to the configuration file for the MCP Agent application"""
-
-    upstream_server_name: str | None = None
 
 
 settings = Settings()
