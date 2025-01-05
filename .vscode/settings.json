@@ -5,5 +5,11 @@
     "editor.defaultFormatter": "charliermarsh.ruff",
     "editor.formatOnSave": true,
     "editor.rulers": []
+  },
+  "yaml.schemas": {
+    "./schema/mcp-agent.config.schema.json": [
+      "mcp-agent.config.yaml",
+      "mcp_agent.config.yaml"
+    ]
   }
 }

@@ -10,70 +10,28 @@ server initialization.
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import Any, Callable, Coroutine, List, Literal, Dict, AsyncGenerator
+from typing import Any, Callable, Coroutine, Dict, AsyncGenerator
 
 import anyio
 import anyio.abc
-import yaml
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from pydantic import BaseModel, ConfigDict
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.sse import sse_client
 from mcp.types import ServerNotification
 
+from mcp_agent.config import get_settings, MCPServerAuthSettings, MCPServerSettings
 from mcp_agent.logging.logger import get_logger
 
 logger = get_logger(__name__)
 
-
-class AuthConfig(BaseModel):
-    """Represents authentication configuration for a server."""
-
-    api_key: str | None = None
-
-    model_config = ConfigDict(extra="allow")
-
-
-class ServerConfig(BaseModel):
-    """
-    Represents the configuration for an individual server.
-    """
-
-    # TODO: saqadri - server name should be something a server can provide itself during initialization
-    name: str | None = None
-    """The name of the server."""
-
-    # TODO: saqadri - server description should be something a server can provide itself during initialization
-    description: str | None = None
-    """The description of the server."""
-
-    transport: Literal["stdio", "sse"] = "stdio"
-    """The transport mechanism."""
-
-    command: str | None = None
-    """The command to execute the server (e.g. npx)."""
-
-    args: List[str] | None = None
-    """The arguments for the server command."""
-
-    read_timeout_seconds: int | None = None
-    """The timeout in seconds for the server connection."""
-
-    url: str | None = None
-    """The URL for the server (e.g. for SSE transport)."""
-
-    auth: AuthConfig | None = None
-    """The authentication configuration for the server."""
-
-
-InitHookCallable = Callable[[ClientSession | None, AuthConfig | None], bool]
+InitHookCallable = Callable[[ClientSession | None, MCPServerAuthSettings | None], bool]
 """
 A type alias for an initialization hook function that is invoked after MCP server initialization.
 
 Args:
     session (ClientSession | None): The client session for the server connection.
-    auth (AuthConfig | None): The authentication configuration for the server.
+    auth (MCPServerAuthSettings | None): The authentication configuration for the server.
 
 Returns:
     bool: Result of the post-init hook (false indicates failure).
@@ -95,7 +53,7 @@ class ServerRegistry:
 
     Attributes:
         config_path (str): Path to the YAML configuration file.
-        registry (Dict[str, ServerConfig]): Loaded server configurations.
+        registry (Dict[str, MCPServerSettings]): Loaded server configurations.
         init_hooks (Dict[str, InitHookCallable]): Registered initialization hooks.
     """
 
@@ -106,33 +64,25 @@ class ServerRegistry:
         Args:
             config_path (str): Path to the YAML configuration file.
         """
+        self.config_path = config_path
         self.registry = self.load_registry(config_path)
-        self.init_hooks: dict[str, InitHookCallable] = {}
+        self.init_hooks: Dict[str, InitHookCallable] = {}
         self.connection_manager = MCPConnectionManager(self)
 
-    def load_registry(self, config_path: str | None = None) -> Dict[str, ServerConfig]:
+    def load_registry(
+        self, config_path: str | None = None
+    ) -> Dict[str, MCPServerSettings]:
         """
         Load the YAML configuration file and validate it.
 
         Returns:
-            Dict[str, ServerConfig]: A dictionary of server configurations.
+            Dict[str, MCPServerSettings]: A dictionary of server configurations.
 
         Raises:
             ValueError: If the configuration is invalid.
         """
 
-        if config_path is not None:
-            self.config_path = config_path
-
-        # TODO: saqadri - add additional validation
-        with open(self.config_path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-
-        servers = {
-            name: ServerConfig(name=name, **config)
-            for name, config in data["servers"].items()
-        }
-
+        servers = get_settings(config_path).mcp.servers or {}
         return servers
 
     @asynccontextmanager
@@ -296,7 +246,7 @@ class ServerRegistry:
         else:
             logger.info(f"No init hook registered for '{server_name}'")
 
-    def get_server_config(self, server_name: str) -> ServerConfig | None:
+    def get_server_config(self, server_name: str) -> MCPServerSettings | None:
         """
         Get the configuration for a specific server.
 
@@ -304,7 +254,7 @@ class ServerRegistry:
             server_name (str): The name of the server.
 
         Returns:
-            ServerConfig: The server configuration.
+            MCPServerSettings: The server configuration.
         """
         return self.registry.get(server_name)
 

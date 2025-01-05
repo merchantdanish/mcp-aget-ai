@@ -3,12 +3,58 @@ Reading settings from environment variables and providing a settings object
 for the application configuration.
 """
 
-from typing import Literal
+from pathlib import Path
+from typing import Dict, List, Literal
 
 from pydantic import BaseModel, ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from mcp_agent.logging.events import EventType
+
+class MCPServerAuthSettings(BaseModel):
+    """Represents authentication configuration for a server."""
+
+    api_key: str | None = None
+
+    model_config = ConfigDict(extra="allow")
+
+
+class MCPServerSettings(BaseModel):
+    """
+    Represents the configuration for an individual server.
+    """
+
+    # TODO: saqadri - server name should be something a server can provide itself during initialization
+    name: str | None = None
+    """The name of the server."""
+
+    # TODO: saqadri - server description should be something a server can provide itself during initialization
+    description: str | None = None
+    """The description of the server."""
+
+    transport: Literal["stdio", "sse"] = "stdio"
+    """The transport mechanism."""
+
+    command: str | None = None
+    """The command to execute the server (e.g. npx)."""
+
+    args: List[str] | None = None
+    """The arguments for the server command."""
+
+    read_timeout_seconds: int | None = None
+    """The timeout in seconds for the server connection."""
+
+    url: str | None = None
+    """The URL for the server (e.g. for SSE transport)."""
+
+    auth: MCPServerAuthSettings | None = None
+    """The authentication configuration for the server."""
+
+
+class MCPSettings(BaseModel):
+    """Configuration for all MCP servers."""
+
+    servers: Dict[str, MCPServerSettings] = {}
+    model_config = ConfigDict(extra="allow")
 
 
 class AnthropicSettings(BaseModel):
@@ -93,7 +139,7 @@ class LoggerSettings(BaseModel):
 
     type: Literal["none", "console", "http"] = "console"
 
-    level: EventType = "info"
+    level: Literal["debug", "info", "warning", "error"] = "info"
     """Minimum logging level"""
 
     batch_size: int = 100
@@ -123,10 +169,17 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="allow",
         nested_model_default_partial_update=True,
     )  # Customize the behavior of settings here
 
+    mcp: MCPSettings | None = MCPSettings()
+    """MCP config, such as MCP servers"""
+
     execution_engine: Literal["asyncio", "temporal"] = "asyncio"
+    """Execution engine for the MCP Agent application"""
 
     temporal: TemporalSettings | None = None
     """Settings for Temporal workflow orchestration"""
@@ -149,8 +202,47 @@ class Settings(BaseSettings):
     usage_telemetry: UsageTelemetrySettings | None = UsageTelemetrySettings()
     """Usage tracking settings for the MCP Agent application"""
 
-    config_yaml: str = "mcp-agent.config.yaml"
-    """Path to the configuration file for the MCP Agent application"""
+    @classmethod
+    def find_config(cls) -> Path | None:
+        """Find the config file in the current directory or parent directories."""
+        current_dir = Path.cwd()
+
+        # Check current directory and parent directories
+        while current_dir != current_dir.parent:
+            for filename in ["mcp-agent.config.yaml", "mcp_agent.config.yaml"]:
+                config_path = current_dir / filename
+                if config_path.exists():
+                    return config_path
+            current_dir = current_dir.parent
+
+        return None
 
 
-settings = Settings()
+def get_settings(config_path: str | None = None) -> Settings:
+    """Get settings instance, automatically loading from config file if available."""
+    from mcp_agent.logging.logger import get_logger  # pylint: disable=C0415
+
+    logger = get_logger(__name__)
+
+    logger.info("Initializing app settings")
+    config_file = config_path or Settings.find_config()
+    if config_file:
+        logger.info(f"Loading settings from {config_file}")
+        if not config_file.exists():
+            logger.warning(
+                f"Config file {config_file} does not exist. Using environment."
+            )
+        else:
+            import yaml  # pylint: disable=C0415
+
+            with open(config_file, "r", encoding="utf-8") as f:
+                yaml_settings = yaml.safe_load(f)
+                return Settings(**yaml_settings)
+    else:
+        logger.warn("No mcp-agent.config.yaml found, defaulting to environment")
+
+    logger.info("Loading app settings from environment")
+    return Settings()
+
+
+settings = get_settings()
