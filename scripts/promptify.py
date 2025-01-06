@@ -32,20 +32,79 @@ def parse_gitignore(path: Path) -> List[str]:
     return patterns
 
 
+def normalize_pattern(pattern: str) -> str:
+    """
+    Normalize a pattern by removing unnecessary whitespace and escaping special characters.
+    """
+    # Strip whitespace
+    pattern = pattern.strip()
+    return pattern
+
+
+def pattern_match(path: str, pattern: str) -> bool:
+    """
+    Improved pattern matching that better handles **/ patterns and different path separators.
+    """
+    # Normalize the pattern first
+    pattern = normalize_pattern(pattern)
+    path = path.replace("\\", "/")  # Normalize path separators
+
+    # Handle **/ prefix more flexibly
+    if pattern.startswith("**/"):
+        base_pattern = pattern[3:]  # Pattern without **/ prefix
+        # Try matching both with and without the **/ prefix
+        return (
+            fnmatch.fnmatch(path, base_pattern)
+            or fnmatch.fnmatch(path, pattern)
+            or fnmatch.fnmatch(path, f"**/{base_pattern}")
+        )
+
+    # Handle *registry.py style patterns
+    elif pattern.startswith("*") and not pattern.startswith("**/"):
+        return fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(path, f"**/{pattern}")
+
+    return fnmatch.fnmatch(path, pattern)
+
+
+def should_include(path: Path, include_patterns: List[str]) -> bool:
+    """Check if path should be included based on patterns."""
+    if not include_patterns:
+        return True
+
+    str_path = str(path).replace("\\", "/")
+
+    # For directories, we want to include them if they might contain matching files
+    if path.is_dir():
+        # If any pattern starts with the directory path, include it
+        dir_path = str_path + "/"
+        for pattern in include_patterns:
+            pattern = normalize_pattern(pattern)
+            if pattern.startswith("**/"):
+                # Always include directories when we have **/ patterns
+                return True
+            # Check if this directory might contain matching files
+            if fnmatch.fnmatch(dir_path + "anyfile", pattern):
+                return True
+        return False
+
+    # For files, check against all patterns
+    return any(pattern_match(str_path, p) for p in include_patterns)
+
+
 def should_ignore(
     path: Path, ignore_patterns: List[str], gitignore_patterns: List[str]
 ) -> bool:
     """Check if path should be ignored based on patterns."""
-    str_path = str(path)
+    str_path = str(path).replace("\\", "/")
 
     # Check custom ignore patterns
     for pattern in ignore_patterns:
-        if fnmatch.fnmatch(str_path, pattern):
+        if pattern_match(str_path, pattern):
             return True
 
     # Check gitignore patterns
     for pattern in gitignore_patterns:
-        if fnmatch.fnmatch(str_path, pattern):
+        if pattern_match(str_path, pattern):
             return True
 
     return False
@@ -61,15 +120,14 @@ def create_tree_structure(
     tree = Tree(f"📁 {path.name}")
 
     def add_to_tree(current_path: Path, tree: Tree):
-        for item in sorted(current_path.iterdir()):
+        items = sorted(current_path.iterdir())
+        for item in items:
             # Skip if should be ignored
             if should_ignore(item, ignore_patterns, gitignore_patterns):
                 continue
 
             # Check if item matches include patterns (if any)
-            if include_patterns and not any(
-                fnmatch.fnmatch(str(item), p) for p in include_patterns
-            ):
+            if not should_include(item, include_patterns):
                 continue
 
             if item.is_file():
@@ -115,9 +173,7 @@ def package_project(
                 if should_ignore(item, ignore_patterns, gitignore_patterns):
                     continue
 
-                if include_patterns and not any(
-                    fnmatch.fnmatch(str(item), p) for p in include_patterns
-                ):
+                if include_patterns and not should_include(item, include_patterns):
                     continue
 
                 if item.is_file():
