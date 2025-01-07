@@ -94,8 +94,8 @@ def create_requirements_file(
 
         if use_local:
             # Add the local source
-            # f.write("-e ../../\n")
-            f.write("mcp-agent @ file://../../\n")
+            f.write("-e ../../\n")
+            # f.write("mcp-agent @ file://../../\n")
         else:
             # Add the PyPI version
             version_str = f"=={version}" if version else ""
@@ -159,82 +159,74 @@ def run(
     if clean:
         clean_venv(example_dir)
 
-    with console.status(f"Setting up example: {example_name}") as status:
-        venv_dir = create_venv(example_dir)
-        temp_req = create_requirements_file(example_dir, use_local, version)
-        python_path = get_python_path(venv_dir)
-        site_packages = get_site_packages(venv_dir, python_path)
+    # with console.status(f"Setting up example: {example_name}") as status:
+    venv_dir = create_venv(example_dir)
+    temp_req = create_requirements_file(example_dir, use_local, version)
+    python_path = get_python_path(venv_dir)
+    site_packages = get_site_packages(venv_dir, python_path)
 
+    if debug:
+        console.print(f"Using Python: {python_path}")
+        console.print(f"Using site-packages: {site_packages}")
+
+    env = {
+        **os.environ,
+        "VIRTUAL_ENV": str(venv_dir),
+        "PYTHONPATH": f"{str(site_packages)}:{str(project_root)}/src",
+    }
+
+    try:
+        # Install dependencies using uv
+        console.print("Installing dependencies...")
+
+        result = subprocess.run(
+            ["uv", "pip", "install", "-r", str(temp_req)],
+            cwd=example_dir,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        if result.returncode != 0:
+            console.print(f"[red]Error installing dependencies:[/]\n{result.stderr}")
+            raise typer.Exit(1)
+        else:
+            pass
+            # status.update("[green]Dependencies installed successfully[/]")
+
+        # Debug: List installed packages
         if debug:
-            console.print(f"Using Python: {python_path}")
-            console.print(f"Using site-packages: {site_packages}")
-
-        # env = {
-        #     **os.environ,  # Keep existing env
-        #     "VIRTUAL_ENV": str(venv_dir),
-        #     "PYTHONPATH": f"{str(site_packages)}:{str(project_root)}/src",
-        #     "PATH": f"{venv_dir}/bin:{os.environ.get('PATH', '')}",  # Add venv bin to PATH
-        # }
-
-        env = {
-            **os.environ,
-            "VIRTUAL_ENV": str(venv_dir),
-            "PYTHONPATH": f"{str(site_packages)}:{str(project_root)}/src",
-        }
-
-        try:
-            # Install dependencies using uv
-            console.print("Installing dependencies...")
-
-            result = subprocess.run(
-                ["uv", "pip", "install", "-r", str(temp_req)],
-                cwd=example_dir,
-                env=env,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-
-            if result.returncode != 0:
-                console.print(
-                    f"[red]Error installing dependencies:[/]\n{result.stderr}"
-                )
-                raise typer.Exit(1)
-            else:
-                status.update("[green]Dependencies installed successfully[/]")
-
-            # Debug: List installed packages
-            if debug:
-                console.print("\nInstalled packages:")
-                subprocess.run(
-                    ["uv", "pip", "list"],
-                    cwd=example_dir,
-                    env=env,
-                    check=True,
-                )
-
-                console.print("\nPython path:")
-                subprocess.run(
-                    [str(python_path), "-c", "import sys; print('\\n'.join(sys.path))"],
-                    cwd=example_dir,
-                    env=env,
-                    check=True,
-                )
-
-            # Run the example
-            console.print(f"\n[bold green]Running {example_name}[/]\n")
-            status.update(f"Running {example_name}")
+            console.print("\nInstalled packages:")
             subprocess.run(
-                [str(python_path), "main.py"],
+                ["uv", "pip", "list"],
                 cwd=example_dir,
                 env=env,
                 check=True,
             )
-        except subprocess.CalledProcessError as e:
-            console.print(f"[red]Error: {e}")
-            raise typer.Exit(1)
-        finally:
-            temp_req.unlink()
+
+            console.print("\nPython path:")
+            subprocess.run(
+                [str(python_path), "-c", "import sys; print('\\n'.join(sys.path))"],
+                cwd=example_dir,
+                env=env,
+                check=True,
+            )
+
+        # Run the example
+        console.print(f"\n[bold green]Running {example_name}[/]\n")
+        # status.update(f"Running {example_name}")
+        subprocess.run(
+            [str(python_path), "main.py"],
+            cwd=example_dir,
+            env=env,
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]Error: {e}")
+        raise typer.Exit(1)
+    finally:
+        temp_req.unlink()
 
 
 @app.command(name="clean")

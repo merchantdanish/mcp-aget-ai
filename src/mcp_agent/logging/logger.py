@@ -8,6 +8,7 @@ Logger module for the MCP Agent, which provides:
 """
 
 import asyncio
+import threading
 import time
 
 from typing import Any, Dict
@@ -16,7 +17,6 @@ from contextlib import asynccontextmanager, contextmanager
 
 from mcp_agent.logging.events import Event, EventContext, EventFilter, EventType
 from mcp_agent.logging.listeners import BatchingListener, LoggingListener
-from mcp_agent.logging.tracing import telemetry
 from mcp_agent.logging.transport import AsyncEventBus, EventTransport
 
 
@@ -30,57 +30,28 @@ class Logger:
     def __init__(self, namespace: str):
         self.namespace = namespace
         self.event_bus = AsyncEventBus.get()
-        self.tracer = telemetry.tracer
-        self.traced = telemetry.traced
 
-    async def debug(
-        self,
-        message: str,
-        name: str | None = None,
-        context: EventContext = None,
-        **data,
-    ):
-        await self.event("debug", name, message, context, data)
+    def _ensure_event_loop(self):
+        """Ensure we have an event loop we can use."""
+        try:
+            return asyncio.get_running_loop()
+        except RuntimeError:
+            # If no loop is running, create a new one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return loop
 
-    async def info(
-        self,
-        message: str,
-        name: str | None = None,
-        context: EventContext = None,
-        **data,
-    ):
-        await self.event("info", name, message, context, data)
+    def _emit_event(self, event: Event):
+        """Emit an event by running it in the event loop."""
+        loop = self._ensure_event_loop()
+        if loop.is_running():
+            # If we're in a thread with a running loop, schedule the coroutine
+            asyncio.create_task(self.event_bus.emit(event))
+        else:
+            # If no loop is running, run it until the emit completes
+            loop.run_until_complete(self.event_bus.emit(event))
 
-    async def warning(
-        self,
-        message: str,
-        name: str | None = None,
-        context: EventContext = None,
-        **data,
-    ):
-        await self.event("warning", name, message, context, data)
-
-    async def error(
-        self,
-        message: str,
-        name: str | None = None,
-        context: EventContext = None,
-        **data,
-    ):
-        await self.event("error", name, message, context, data)
-
-    async def progress(
-        self,
-        message: str,
-        name: str | None = None,
-        percentage: float = None,
-        context: EventContext = None,
-        **data,
-    ):
-        merged_data = dict(percentage=percentage, **data)
-        await self.event("progress", name, message, context, merged_data)
-
-    async def event(
+    def event(
         self,
         etype: EventType,
         ename: str | None,
@@ -88,6 +59,7 @@ class Logger:
         context: EventContext | None,
         data: dict,
     ):
+        """Create and emit an event."""
         evt = Event(
             type=etype,
             name=ename,
@@ -96,7 +68,59 @@ class Logger:
             context=context,
             data=data,
         )
-        await self.event_bus.emit(evt)
+        self._emit_event(evt)
+
+    def debug(
+        self,
+        message: str,
+        name: str | None = None,
+        context: EventContext = None,
+        **data,
+    ):
+        """Log a debug message."""
+        self.event("debug", name, message, context, data)
+
+    def info(
+        self,
+        message: str,
+        name: str | None = None,
+        context: EventContext = None,
+        **data,
+    ):
+        """Log an info message."""
+        self.event("info", name, message, context, data)
+
+    def warning(
+        self,
+        message: str,
+        name: str | None = None,
+        context: EventContext = None,
+        **data,
+    ):
+        """Log a warning message."""
+        self.event("warning", name, message, context, data)
+
+    def error(
+        self,
+        message: str,
+        name: str | None = None,
+        context: EventContext = None,
+        **data,
+    ):
+        """Log an error message."""
+        self.event("error", name, message, context, data)
+
+    def progress(
+        self,
+        message: str,
+        name: str | None = None,
+        percentage: float = None,
+        context: EventContext = None,
+        **data,
+    ):
+        """Log a progress message."""
+        merged_data = dict(percentage=percentage, **data)
+        self.event("progress", name, message, context, merged_data)
 
 
 @contextmanager
@@ -117,18 +141,16 @@ def event_context(
     finally:
         duration = time.time() - start_time
 
-        async def finalize():
-            await logger.event(
-                event_type,
-                name,
-                f"{message} finished in {duration:.3f}s",
-                None,
-                {"duration": duration, **data},
-            )
-
-        asyncio.get_event_loop().create_task(finalize())
+        logger.event(
+            event_type,
+            name,
+            f"{message} finished in {duration:.3f}s",
+            None,
+            {"duration": duration, **data},
+        )
 
 
+# TODO: saqadri - check if we need this
 @asynccontextmanager
 async def async_event_context(
     logger: Logger,
@@ -146,7 +168,7 @@ async def async_event_context(
         yield
     finally:
         duration = time.time() - start_time
-        await logger.event(
+        logger.event(
             event_type,
             name,
             f"{message} finished in {duration:.3f}s",
@@ -221,7 +243,7 @@ class LoggingConfig:
             await cls.shutdown()
 
 
-_logger_lock = asyncio.Lock()
+_logger_lock = threading.Lock()
 _loggers: Dict[str, Logger] = {}
 
 
@@ -236,6 +258,7 @@ def get_logger(namespace: str) -> Logger:
     Returns:
         A Logger instance for the given namespace
     """
+
     with _logger_lock:
         if namespace not in _loggers:
             _loggers[namespace] = Logger(namespace)

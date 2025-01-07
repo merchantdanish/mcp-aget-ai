@@ -61,7 +61,7 @@ class TaskWithResult(Task):
         description="Result of executing the task", default="Task completed"
     )
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class StepResult(BaseModel):

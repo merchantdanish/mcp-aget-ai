@@ -20,7 +20,12 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.sse import sse_client
 from mcp.types import ServerNotification
 
-from mcp_agent.config import get_settings, MCPServerAuthSettings, MCPServerSettings
+from mcp_agent.config import (
+    get_settings,
+    MCPServerAuthSettings,
+    MCPServerSettings,
+    Settings,
+)
 from mcp_agent.logging.logger import get_logger
 
 logger = get_logger(__name__)
@@ -57,19 +62,23 @@ class ServerRegistry:
         init_hooks (Dict[str, InitHookCallable]): Registered initialization hooks.
     """
 
-    def __init__(self, config_path: str):
+    def __init__(self, config: Settings | None = None, config_path: str | None = None):
         """
         Initialize the ServerRegistry with a configuration file.
 
         Args:
+            config (Settings): The Settings object containing the server configurations.
             config_path (str): Path to the YAML configuration file.
         """
-        self.config_path = config_path
-        self.registry = self.load_registry(config_path)
+        self.registry = (
+            self.load_registry_from_file(config_path)
+            if config is None
+            else config.mcp.servers
+        )
         self.init_hooks: Dict[str, InitHookCallable] = {}
         self.connection_manager = MCPConnectionManager(self)
 
-    def load_registry(
+    def load_registry_from_file(
         self, config_path: str | None = None
     ) -> Dict[str, MCPServerSettings]:
         """
@@ -93,7 +102,7 @@ class ServerRegistry:
             [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
             ClientSession,
         ] = ClientSession,
-    ) -> AsyncGenerator[ClientSession]:
+    ) -> AsyncGenerator[ClientSession, None]:
         """
         Starts the server process based on its configuration. To initialize, call initialize_server
 
@@ -172,7 +181,7 @@ class ServerRegistry:
             ClientSession,
         ] = ClientSession,
         init_hook: InitHookCallable = None,
-    ) -> AsyncGenerator[ClientSession]:
+    ) -> AsyncGenerator[ClientSession, None]:
         """
         Initialize a server based on its configuration.
         After initialization, also calls any registered or provided initialization hook for the server.

@@ -163,7 +163,7 @@ class AgentFunctionResult(BaseModel):
     agent: Agent | None = None
     context_variables: dict = {}
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 AgentFunctionReturnType = str | Agent | dict | AgentFunctionResult

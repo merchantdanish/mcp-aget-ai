@@ -165,7 +165,7 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
 class TemporalExecutorConfig(ExecutorConfig, TemporalSettings):
     """Configuration for Temporal executors."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class TemporalExecutor(Executor):

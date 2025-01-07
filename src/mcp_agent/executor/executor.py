@@ -25,7 +25,7 @@ class ExecutorConfig(BaseModel):
     timeout_seconds: timedelta | None = None  # No timeout by default
     retry_policy: Dict[str, Any] | None = None
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class Executor(ABC):

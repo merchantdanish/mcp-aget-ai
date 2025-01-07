@@ -28,8 +28,7 @@ class TelemetryManager:
         # If needed, configure resources, exporters, etc.
         # E.g.: from opentelemetry.sdk.trace import TracerProvider
         # trace.set_tracer_provider(TracerProvider(...))
-        context = get_current_context()
-        self.tracer = context.tracer or trace.get_tracer("mcp_agent")
+        pass
 
     def traced(
         self,
@@ -45,9 +44,12 @@ class TelemetryManager:
         def decorator(func):
             span_name = name or f"{func.__module__}.{func.__qualname__}"
 
+            context = get_current_context()
+            tracer = context.tracer or trace.get_tracer("mcp_agent")
+
             @functools.wraps(func)
             async def async_wrapper(*args, **kwargs):
-                with self.tracer.start_as_current_span(span_name, kind=kind) as span:
+                with tracer.start_as_current_span(span_name, kind=kind) as span:
                     if attributes:
                         for k, v in attributes.items():
                             span.set_attribute(k, v)
@@ -63,7 +65,7 @@ class TelemetryManager:
 
             @functools.wraps(func)
             def sync_wrapper(*args, **kwargs):
-                with self.tracer.start_as_current_span(span_name, kind=kind) as span:
+                with tracer.start_as_current_span(span_name, kind=kind) as span:
                     if attributes:
                         for k, v in attributes.items():
                             span.set_attribute(k, v)

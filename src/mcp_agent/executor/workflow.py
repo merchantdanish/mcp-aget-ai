@@ -35,7 +35,7 @@ class WorkflowState(BaseModel):
     updated_at: float | None = None
     error: Dict[str, Any] | None = None
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
     def record_error(self, error: Exception) -> None:
         self.error = {

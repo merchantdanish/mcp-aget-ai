@@ -32,7 +32,7 @@ class EventContext(BaseModel):
     # correlation_id: Optional[str] = None
     # user_id: Optional[str] = None
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class Event(BaseModel):
@@ -53,7 +53,7 @@ class Event(BaseModel):
     span_id: str | None = None
     trace_id: str | None = None
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class EventFilter(BaseModel):

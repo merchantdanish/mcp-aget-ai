@@ -1,8 +1,9 @@
-from mcp_agent.config import settings
+from mcp_agent.config import get_settings
 
 
 def send_usage_data():
-    if settings.disable_usage_telemetry:
+    config = get_settings()
+    if not config.usage_telemetry.enabled:
         print("Usage tracking disabled")
         return
 

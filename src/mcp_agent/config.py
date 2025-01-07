@@ -15,7 +15,7 @@ class MCPServerAuthSettings(BaseModel):
 
     api_key: str | None = None
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class MCPServerSettings(BaseModel):
@@ -54,7 +54,7 @@ class MCPSettings(BaseModel):
     """Configuration for all MCP servers."""
 
     servers: Dict[str, MCPServerSettings] = {}
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class AnthropicSettings(BaseModel):
@@ -64,7 +64,7 @@ class AnthropicSettings(BaseModel):
 
     api_key: str
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class CohereSettings(BaseModel):
@@ -74,7 +74,7 @@ class CohereSettings(BaseModel):
 
     api_key: str
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class OpenAISettings(BaseModel):
@@ -84,7 +84,7 @@ class OpenAISettings(BaseModel):
 
     api_key: str
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class TemporalSettings(BaseModel):
@@ -218,31 +218,40 @@ class Settings(BaseSettings):
         return None
 
 
+# Global settings object
+_settings: Settings | None = None
+
+
 def get_settings(config_path: str | None = None) -> Settings:
     """Get settings instance, automatically loading from config file if available."""
-    from mcp_agent.logging.logger import get_logger  # pylint: disable=C0415
+    global _settings
+    if _settings:
+        return _settings
 
-    logger = get_logger(__name__)
+    # from mcp_agent.logging.logger import get_logger  # pylint: disable=C0415
 
-    logger.info("Initializing app settings")
+    # logger = get_logger(__name__)
+
+    # logger.info("Initializing app settings")
     config_file = config_path or Settings.find_config()
     if config_file:
-        logger.info(f"Loading settings from {config_file}")
+        # logger.info(f"Loading settings from {config_file}")
         if not config_file.exists():
-            logger.warning(
-                f"Config file {config_file} does not exist. Using environment."
-            )
+            pass
+            # logger.warning(
+            #     f"Config file {config_file} does not exist. Using environment."
+            # )
         else:
             import yaml  # pylint: disable=C0415
 
             with open(config_file, "r", encoding="utf-8") as f:
                 yaml_settings = yaml.safe_load(f)
-                return Settings(**yaml_settings)
+                _settings = Settings(**yaml_settings)
+                return _settings
     else:
-        logger.warn("No mcp-agent.config.yaml found, defaulting to environment")
+        # logger.warn("No mcp-agent.config.yaml found, defaulting to environment")
+        pass
 
-    logger.info("Loading app settings from environment")
-    return Settings()
-
-
-settings = get_settings()
+    # logger.info("Loading app settings from environment")
+    _settings = Settings()
+    return _settings

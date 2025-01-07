@@ -58,10 +58,15 @@ class ConsoleTransport(EventTransport):
         # Map log levels to styles
         style = self.log_level_styles.get(event.type, "white")
 
+        # Create namespace without None
+        namespace = event.namespace
+        if event.name:
+            namespace = f"{namespace}.{event.name}"
+
         log_text = Text.assemble(
             (f"[{event.type.upper()}] ", style),
             (f"{event.timestamp.isoformat()} ", "cyan"),
-            (f"{event.namespace}.{event.name} ", "magenta"),
+            (f"{namespace} ", "magenta"),
             (f"- {event.message}", "white"),
         )
         self.console.print(log_text)
@@ -163,33 +168,54 @@ class AsyncEventBus:
 
     def __init__(self, transport: EventTransport | None = None):
         self.transport: EventTransport = transport or NoOpTransport()
-
         self.listeners: Dict[str, EventListener] = {}
         self._queue = asyncio.Queue()
         self._task: asyncio.Task | None = None
+        self._running = False
+        self._stop_event = asyncio.Event()
 
     @classmethod
     def get(cls, transport: EventTransport | None = None) -> "AsyncEventBus":
-        """
-        Get the singleton instance of the event bus.
-        """
+        """Get the singleton instance of the event bus."""
         if cls._instance is None:
             cls._instance = cls(transport=transport)
+        elif transport is not None:
+            # Update transport if provided
+            cls._instance.transport = transport
         return cls._instance
 
     async def start(self):
         """Start the event bus and all lifecycle-aware listeners."""
+        if self._running:
+            return
+
         # Start each lifecycle-aware listener
         for listener in self.listeners.values():
             if isinstance(listener, LifecycleAwareListener):
                 await listener.start()
 
-        if not self._task:
-            self._task = asyncio.create_task(self._process_events())
+        # Clear stop event and start processing
+        self._stop_event.clear()
+        self._running = True
+        self._task = asyncio.create_task(self._process_events())
 
     async def stop(self):
         """Stop the event bus and all lifecycle-aware listeners."""
-        # Cancel background processing
+        if not self._running:
+            return
+
+        # Signal processing to stop
+        self._running = False
+        self._stop_event.set()
+
+        # Wait for queue to be processed
+        if not self._queue.empty():
+            try:
+                await self._queue.join()
+            except Exception:
+                pass
+
+        # Cancel and wait for task
         if self._task:
             self._task.cancel()
             try:
@@ -204,6 +230,10 @@ class AsyncEventBus:
                 await listener.stop()
 
     async def emit(self, event: Event):
+        """Emit an event to all listeners and transport."""
+        if not self._running:
+            return
+
         # Inject current tracing info if available
         span = trace.get_current_span()
         if span.is_recording():
@@ -211,10 +241,14 @@ class AsyncEventBus:
             event.trace_id = f"{ctx.trace_id:032x}"
             event.span_id = f"{ctx.span_id:016x}"
 
-        # Enqueue for local in-process listeners
+        # Forward to transport first (immediate processing)
+        try:
+            await self.transport.send_event(event)
+        except Exception as e:
+            print(f"Error in transport.send_event: {e}")
+
+        # Then queue for listeners
         await self._queue.put(event)
-        # Also forward to remote transport
-        await self.transport.send_event(event)
 
     def add_listener(self, name: str, listener: EventListener):
         """Add a listener to the event bus."""
@@ -225,13 +259,52 @@ class AsyncEventBus:
         self.listeners.pop(name, None)
 
     async def _process_events(self):
-        while True:
-            event = await self._queue.get()
-            tasks = []
-            for listener in self.listeners.values():
-                tasks.append(listener.handle_event(event))
-            await asyncio.gather(*tasks, return_exceptions=True)
-            self._queue.task_done()
+        """Process events from the queue until stopped."""
+        while self._running:
+            try:
+                # Use wait_for with a timeout to allow checking running state
+                try:
+                    event = await asyncio.wait_for(self._queue.get(), timeout=0.1)
+                except asyncio.TimeoutError:
+                    continue
+
+                # Process the event through all listeners
+                tasks = []
+                for listener in self.listeners.values():
+                    try:
+                        tasks.append(listener.handle_event(event))
+                    except Exception as e:
+                        print(f"Error creating listener task: {e}")
+
+                if tasks:
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    for r in results:
+                        if isinstance(r, Exception):
+                            print(f"Error in listener: {r}")
+
+                self._queue.task_done()
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"Error in event processing loop: {e}")
+                continue
+
+        # Process remaining events in queue
+        while not self._queue.empty():
+            try:
+                event = self._queue.get_nowait()
+                tasks = []
+                for listener in self.listeners.values():
+                    try:
+                        tasks.append(listener.handle_event(event))
+                    except Exception:
+                        pass
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                self._queue.task_done()
+            except asyncio.QueueEmpty:
+                break
 
 
 def create_transport(settings: LoggerSettings) -> EventTransport:
