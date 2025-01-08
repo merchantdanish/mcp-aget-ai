@@ -12,13 +12,10 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import Any, Callable, Dict, AsyncGenerator
 
-import anyio
-import anyio.abc
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.sse import sse_client
-from mcp.types import ServerNotification
 
 from mcp_agent.config import (
     get_settings,
@@ -270,18 +267,15 @@ class ServerConnection:
     """
     Represents a long-lived MCP server connection, including:
       - The ClientSession
-      - The background receive loop task group
       - The cleanup functionality
     """
 
     def __init__(
         self,
         session: ClientSession,
-        task_group: anyio.abc.TaskGroup,
         transport_context: Any | None = None,
     ):
         self.session = session
-        self._task_group = task_group
         self._transport_context = transport_context
 
     async def disconnect(self):
@@ -289,9 +283,8 @@ class ServerConnection:
         Cancel background tasks and clean up the connection.
         """
         try:
-            # Cancel the task group first
-            self._task_group.cancel_scope.cancel()
-            await self._task_group.__aexit__(None, None, None)
+            # The session's __aexit__ will handle the receive loop cleanup
+            await self.session.__aexit__(None, None, None)
 
             # Clean up transport context if it exists
             if self._transport_context:
@@ -315,22 +308,6 @@ class MCPConnectionManager:
         self.running_servers: Dict[str, ServerConnection] = {}
         self._lock = asyncio.Lock()
 
-    async def default_receive_loop(self, session: ClientSession):
-        """
-        A default message receive loop to handle messages from the server.
-        """
-        async for message in session.incoming_messages:
-            if isinstance(message, Exception):
-                logger.error(f"Error in receive loop: {message}")
-                continue
-            elif isinstance(message, ServerNotification):
-                logger.info(f"Received notification: {message}")
-                continue
-            else:
-                # This is a message request (RequestResponder[ServerRequest, ClientResult])
-                logger.info(f"Received message request: {message}")
-                continue
-
     async def launch_server(
         self,
         server_name: str,
@@ -349,15 +326,17 @@ class MCPConnectionManager:
         if not config:
             raise ValueError(f"Server '{server_name}' not found in registry.")
 
+        logger.debug(
+            f"{server_name}: Found server configuration=", data=config.model_dump()
+        )
+
         read_timeout = (
             timedelta(seconds=config.read_timeout_seconds)
             if config.read_timeout_seconds
             else None
         )
 
-        # Create task group for background tasks
-        task_group = await anyio.create_task_group().__aenter__()
-
+        transport_context = None
         try:
             # Handle different transport types
             if config.transport == "stdio":
@@ -370,66 +349,65 @@ class MCPConnectionManager:
                     command=config.command, args=config.args
                 )
                 # Get stdio context and streams
-                stdio_ctx = stdio_client(server_params)
-
-                read_stream, write_stream = await stdio_ctx.__aenter__()  # pylint: disable=E1101
-
-                # Create the session
-                session = client_session_constructor(
-                    read_stream, write_stream, read_timeout
-                )
-
-                transport_context = stdio_ctx
-
+                transport_context = stdio_client(server_params)
+                read_stream, write_stream = await transport_context.__aenter__()  # pylint: disable=E1101
             elif config.transport == "sse":
                 if not config.url:
                     raise ValueError(f"URL required for SSE transport: {server_name}")
 
                 # Get SSE context and streams
-                sse_ctx = sse_client(config.url)
-                read_stream, write_stream = await sse_ctx.__aenter__()  # pylint: disable=E1101
-
-                # Create the session
-                session = client_session_constructor(
-                    read_stream, write_stream, read_timeout
-                )
-
-                transport_context = sse_ctx
-
+                transport_context = sse_client(config.url)
+                read_stream, write_stream = await transport_context.__aenter__()  # pylint: disable=E1101
             else:
                 raise ValueError(f"Unsupported transport: {config.transport}")
 
-            # Initialize the session
-            logger.info(f"Initializing server '{server_name}'...")
-            await session.initialize()
-            logger.info(f"Initialized server '{server_name}'.")
-
-            # Run init hook if provided
-            intialization_callback = init_hook or self.server_registry.init_hooks.get(
-                server_name
-            )
-            if intialization_callback:
-                logger.info(f"Running init hook for '{server_name}'")
-                intialization_callback(session, config.auth)
-
-            # Create ServerConnection instance
-            running_server = ServerConnection(
-                session=session,
-                task_group=task_group,
-                transport_context=transport_context,
+            # Create the ClientSession
+            session = client_session_constructor(
+                read_stream, write_stream, read_timeout
             )
 
-            # Store in our dictionary of running servers
-            self.running_servers[server_name] = running_server
+            # Enter session context which sets up the receive loop
+            await session.__aenter__()  # pylint: disable=E1101
 
-            logger.info(f"Server '{server_name}' is up and running!")
-            return running_server
+            try:
+                # Initialize the session
+                logger.info(f"{server_name}: Initializing server...")
+                await session.initialize()
+                logger.info(f"{server_name}: Initialized.")
+
+                # Run init hook if provided
+                intialization_callback = (
+                    init_hook or self.server_registry.init_hooks.get(server_name)
+                )
+                if intialization_callback:
+                    logger.info(f"{server_name}: Executing init hook")
+                    intialization_callback(session, config.auth)
+
+                # Create ServerConnection instance
+                running_server = ServerConnection(
+                    session=session,
+                    transport_context=transport_context,
+                )
+
+                # Store in our dictionary of running servers
+                self.running_servers[server_name] = running_server
+
+                logger.info(
+                    f"{server_name}: Up and running with a persistent connection!"
+                )
+                return running_server
+            except Exception as e:
+                # Clean up on error
+                logger.error(f"{server_name}: Error during server intialization: {e}")
+                await session.__aexit__(None, None, None)
+                raise
 
         except Exception as e:
             # Clean up on error
-            logger.error(f"Error launching server '{server_name}': {e}")
-            await task_group.__aexit__(None, None, None)
-            if "transport_context" in locals():
+            logger.error(
+                f"{server_name}: Error launching server with persistent connection: {e}"
+            )
+            if transport_context:
                 await transport_context.__aexit__(None, None, None)
             raise
 
@@ -457,19 +435,25 @@ class MCPConnectionManager:
         """
         Disconnect a specific server if it's running.
         """
+        logger.info(f"{server_name}: Disconnecting persistent connection to server...")
         async with self._lock:
             server_connection = self.running_servers.get(server_name)
             if server_connection:
                 await server_connection.disconnect()
                 del self.running_servers[server_name]
+                logger.info(f"{server_name}: Disconnected.")
+            else:
+                logger.info(f"{server_name}: No persistent connection found.")
 
     async def disconnect_all(self):
         """
         Disconnect all running servers.
         """
+        logger.info("Disconnecting all persistent server connections...")
         async with self._lock:
             for server_name in list(self.running_servers.keys()):
                 server_connection = self.running_servers.get(server_name)
                 if server_connection:
                     await server_connection.disconnect()
                     del self.running_servers[server_name]
+        logger.info("All persistent server connections disconnected.")
