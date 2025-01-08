@@ -10,7 +10,7 @@ server initialization.
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import Any, Callable, Coroutine, Dict, AsyncGenerator
+from typing import Any, Callable, Dict, AsyncGenerator
 
 import anyio
 import anyio.abc
@@ -40,11 +40,6 @@ Args:
 
 Returns:
     bool: Result of the post-init hook (false indicates failure).
-"""
-
-ReceiveLoopCallable = Callable[[ClientSession], Coroutine[None, None, None]]
-"""
-A type alias for a receive loop function that processes incoming messages from the server.
 """
 
 
@@ -142,13 +137,14 @@ class ServerRegistry:
                     write_stream,
                     read_timeout_seconds,
                 )
-                logger.info(
-                    f"Connected to server '{server_name}' using stdio transport."
-                )
-                try:
-                    yield session
-                finally:
-                    logger.info("Closing session...")
+                async with session:
+                    logger.info(
+                        f"{server_name}: Connected to server using stdio transport."
+                    )
+                    try:
+                        yield session
+                    finally:
+                        logger.debug(f"{server_name}: Closed session to server")
 
         elif config.transport == "sse":
             if not config.url:
@@ -161,11 +157,14 @@ class ServerRegistry:
                     write_stream,
                     read_timeout_seconds,
                 )
-                logger.info(f"Connected to server '{server_name}' using SSE transport.")
-                try:
-                    yield session
-                finally:
-                    logger.info("Closing session...")
+                async with session:
+                    logger.info(
+                        f"{server_name}: Connected to server using SSE transport."
+                    )
+                    try:
+                        yield session
+                    finally:
+                        logger.debug(f"{server_name}: Closed session to server")
 
         # Unsupported transport
         else:
@@ -175,7 +174,6 @@ class ServerRegistry:
     async def initialize_server(
         self,
         server_name: str,
-        receive_loop: ReceiveLoopCallable,
         client_session_constructor: Callable[
             [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
             ClientSession,
@@ -188,7 +186,6 @@ class ServerRegistry:
 
         Args:
             server_name (str): The name of the server to initialize.
-            receive_loop (ReceiveLoopCallable): The message loop function for processing incoming messages.
             init_hook (InitHookCallable): Optional initialization hook function to call after initialization.
 
         Returns:
@@ -203,27 +200,28 @@ class ServerRegistry:
 
         config = self.registry[server_name]
 
-        async with (
-            self.start_server(
-                server_name, client_session_constructor=client_session_constructor
-            ) as session,
-            anyio.create_task_group() as tg,
-        ):
-            # We start the message loop in a separate task group
-            tg.start_soon(receive_loop, session)
+        async with self.start_server(
+            server_name, client_session_constructor=client_session_constructor
+        ) as session:
+            try:
+                logger.info(f"{server_name}: Initializing server...")
+                await session.initialize()
+                logger.info(f"{server_name}: Initialized.")
 
-            logger.info(f"Initializing server '{server_name}'...")
-            await session.initialize()
-            logger.info(f"Initialized server '{server_name}'.")
+                intialization_callback = (
+                    init_hook
+                    if init_hook is not None
+                    else self.init_hooks.get(server_name)
+                )
 
-            intialization_callback = (
-                init_hook if init_hook is not None else self.init_hooks.get(server_name)
-            )
+                if intialization_callback:
+                    logger.info(f"{server_name}: Executing init hook")
+                    intialization_callback(session, config.auth)
 
-            if intialization_callback:
-                logger.info(f"Executing init hook for '{server_name}'")
-                intialization_callback(session, config.auth)
-            yield session
+                logger.info(f"{server_name}: Up and running!")
+                yield session
+            finally:
+                logger.info(f"{server_name}: Ending server session.")
 
     def register_init_hook(self, server_name: str, hook: InitHookCallable) -> None:
         """
@@ -340,7 +338,6 @@ class MCPConnectionManager:
             [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
             ClientSession,
         ] = ClientSession,
-        receive_loop: ReceiveLoopCallable | None = None,
         init_hook: InitHookCallable | None = None,
     ) -> ServerConnection:
         """
@@ -407,10 +404,6 @@ class MCPConnectionManager:
             await session.initialize()
             logger.info(f"Initialized server '{server_name}'.")
 
-            # Start the receive loop
-            receive_loop_func = receive_loop or self.default_receive_loop
-            task_group.start_soon(receive_loop_func, session)
-
             # Run init hook if provided
             intialization_callback = init_hook or self.server_registry.init_hooks.get(
                 server_name
@@ -444,7 +437,6 @@ class MCPConnectionManager:
         self,
         server_name: str,
         client_session_constructor: Callable = ClientSession,
-        receive_loop: ReceiveLoopCallable | None = None,
         init_hook: InitHookCallable | None = None,
     ) -> ServerConnection:
         """
@@ -458,7 +450,6 @@ class MCPConnectionManager:
             return await self.launch_server(
                 server_name=server_name,
                 client_session_constructor=client_session_constructor,
-                receive_loop=receive_loop,
                 init_hook=init_hook,
             )
 

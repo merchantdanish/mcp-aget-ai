@@ -5,6 +5,7 @@ from datetime import datetime
 from rich.console import Console
 
 # from mcp_agent.mcp_server_registry import ServerRegistry, MCPConnectionManager
+from mcp_agent.mcp.gen_client import gen_client
 from mcp_agent.context import get_current_context, configure_logger
 from mcp_agent.config import Settings, LoggerSettings
 from mcp_agent.logging.logger import get_logger, LoggingConfig, LoggingListener
@@ -20,7 +21,12 @@ async def example_usage():
     context = get_current_context()
     logger = get_logger("hello_world.example_usage")
     logger.info("Hello, world!")
-    logger.info(f"Current context: {context}")
+    logger.info("Current config:", data=context.config.model_dump())
+
+    async with gen_client("fetch") as fetch_client:
+        logger.info("Connected to filesystem server, calling list_tools...")
+        result = await fetch_client.list_tools()
+        logger.info("Tools available:", data=result.model_dump())
 
     # # Initialize your ServerRegistry
     # registry = ServerRegistry("path/to/config.yaml")

@@ -1,3 +1,17 @@
 $schema: ../../schema/mcp-agent.config.schema.json
 
 execution_engine: asyncio
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args:
+        [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "/Users/saqadri/Desktop",
+          "/Users/saqadri/Downloads",
+        ]
