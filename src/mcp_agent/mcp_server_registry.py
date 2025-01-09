@@ -8,6 +8,7 @@ server initialization.
 """
 
 import asyncio
+import anyio
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import Any, Callable, Dict, AsyncGenerator
@@ -351,6 +352,10 @@ class MCPConnectionManager:
                 # Get stdio context and streams
                 transport_context = stdio_client(server_params)
                 read_stream, write_stream = await transport_context.__aenter__()  # pylint: disable=E1101
+                logger.debug(
+                    f"Opened stdio_client for {server_name}, current_task={anyio.get_current_task()}, id={id(anyio.get_current_task())}"
+                )
+
             elif config.transport == "sse":
                 if not config.url:
                     raise ValueError(f"URL required for SSE transport: {server_name}")
@@ -439,6 +444,9 @@ class MCPConnectionManager:
         async with self._lock:
             server_connection = self.running_servers.get(server_name)
             if server_connection:
+                logger.debug(
+                    f"Closing stdio_client for {server_name}, current_task={anyio.get_current_task()}, id={id(anyio.get_current_task())}"
+                )
                 await server_connection.disconnect()
                 del self.running_servers[server_name]
                 logger.info(f"{server_name}: Disconnected.")
@@ -454,6 +462,9 @@ class MCPConnectionManager:
             for server_name in list(self.running_servers.keys()):
                 server_connection = self.running_servers.get(server_name)
                 if server_connection:
+                    logger.debug(
+                        f"Closing stdio_client for {server_name}, current_task={anyio.get_current_task()}, id={id(anyio.get_current_task())}"
+                    )
                     await server_connection.disconnect()
                     del self.running_servers[server_name]
         logger.info("All persistent server connections disconnected.")

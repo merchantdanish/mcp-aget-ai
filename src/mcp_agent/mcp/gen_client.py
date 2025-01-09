@@ -50,6 +50,18 @@ class MCPAgentClientSession(ClientSession):
             logger.error(f"initialize failed: {e}")
             raise
 
+    async def __aenter__(self):
+        # logger.debug(
+        #     f"__aenter__ {str(self)}: current_task={anyio.get_current_task()}, id={id(anyio.get_current_task())}"
+        # )
+        return await super().__aenter__()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        # logger.debug(
+        #     f"__aexit__ {str(self)}: current_task={anyio.get_current_task()}, id={id(anyio.get_current_task())}"
+        # )
+        return await super().__aexit__(exc_type, exc_val, exc_tb)
+
     async def _received_request(
         self, responder: RequestResponder[ServerRequest, ClientResult]
     ) -> None:
@@ -260,7 +272,7 @@ async def connect(
     client_session_constructor: Callable[
         [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
         ClientSession,
-    ] = ClientSession,
+    ] = MCPAgentClientSession,
     server_registry: ServerRegistry | None = None,
 ) -> ClientSession:
     """
