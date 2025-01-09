@@ -15,7 +15,7 @@ from mcp_agent.context import get_current_context
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.gen_client import gen_client, MCPAgentClientSession
 
-from mcp_agent.mcp_server_registry import MCPConnectionManager
+from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 
 
 logger = get_logger(__name__)
@@ -47,6 +47,13 @@ class MCPAggregator(BaseModel):
     """A list of server names to connect to."""
 
     async def __aenter__(self):
+        # Keep a connection manager to manage persistent connections for this aggregator
+        if self.connection_persistence:
+            ctx = get_current_context()
+            self._persistent_connection_manager = MCPConnectionManager(
+                ctx.server_registry
+            )
+            await self._persistent_connection_manager.__aenter__()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -61,12 +68,7 @@ class MCPAggregator(BaseModel):
             server_names=server_names, connection_persistence=connection_persistence
         )
 
-        # Keep a connection manager to manage persistent connections for this aggregator
-        if connection_persistence:
-            ctx = get_current_context()
-            self._persistent_connection_manager = MCPConnectionManager(
-                ctx.server_registry
-            )
+        self._persistent_connection_manager: MCPConnectionManager = None
 
         # Maps namespaced_tool_name -> namespaced tool info
         self._namespaced_tool_map: Dict[str, NamespacedTool] = {}
@@ -84,8 +86,7 @@ class MCPAggregator(BaseModel):
             try:
                 await self._persistent_connection_manager.disconnect_all()
             finally:
-                return
-                # await self._persistent_connection_manager.__aexit__(None, None, None)
+                await self._persistent_connection_manager.__aexit__(None, None, None)
 
     @classmethod
     async def create(
@@ -107,6 +108,8 @@ class MCPAggregator(BaseModel):
             server_names=server_names,
             connection_persistence=connection_persistence,
         )
+
+        await instance.__aenter__()
 
         logger.debug("Loading servers...")
         await instance.load_servers()

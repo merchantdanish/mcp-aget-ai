@@ -2,7 +2,11 @@ import asyncio
 
 from mcp_agent.context import get_current_context
 from mcp_agent.logging.logger import get_logger
-from mcp_agent.mcp.gen_client import gen_client, connect, disconnect
+from mcp_agent.mcp.gen_client import (
+    gen_client,
+    MCPAgentClientSession,
+)
+from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 
 
 async def example_usage():
@@ -20,23 +24,32 @@ async def example_usage():
 
     # Connect to the filesystem server using a persistent connection via connect/disconnect
     # This is useful when you need to make multiple requests to the same server
+
+    connection_manager = MCPConnectionManager(context.server_registry)
+    await connection_manager.__aenter__()
+
     try:
-        filesystem_client = await connect(server_name="filesystem")
+        filesystem_client = await connection_manager.get_server(
+            server_name="filesystem", client_session_constructor=MCPAgentClientSession
+        )
         logger.info("filesystem: Connected to server with persistent connection.")
 
-        fetch_client = await connect(server_name="fetch")
+        fetch_client = await connection_manager.get_server(
+            server_name="fetch", client_session_constructor=MCPAgentClientSession
+        )
         logger.info("fetch: Connected to server with persistent connection.")
 
-        result = await filesystem_client.list_tools()
+        result = await filesystem_client.session.list_tools()
         logger.info("filesystem: Tools available:", data=result.model_dump())
 
-        result = await fetch_client.list_tools()
+        result = await fetch_client.session.list_tools()
         logger.info("fetch: Tools available:", data=result.model_dump())
     finally:
-        await disconnect(server_name="filesystem")
+        await connection_manager.disconnect_server(server_name="filesystem")
         logger.info("filesystem: Disconnected from server.")
-        await disconnect(server_name="fetch")
+        await connection_manager.disconnect_server(server_name="fetch")
         logger.info("fetch: Disconnected from server.")
+        await connection_manager.__aexit__(None, None, None)
 
 
 if __name__ == "__main__":

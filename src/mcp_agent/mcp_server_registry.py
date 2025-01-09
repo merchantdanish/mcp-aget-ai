@@ -25,6 +25,7 @@ from mcp_agent.config import (
     Settings,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 
 logger = get_logger(__name__)
 
@@ -264,7 +265,7 @@ class ServerRegistry:
         return self.registry.get(server_name)
 
 
-class ServerConnection:
+class ServerConnection2:
     """
     Represents a long-lived MCP server connection, including:
       - The ClientSession
@@ -299,14 +300,14 @@ class ServerConnection:
             raise
 
 
-class MCPConnectionManager:
+class MCPConnectionManager2:
     """
     Manages persistent connections to multiple MCP servers.
     """
 
     def __init__(self, server_registry: ServerRegistry):
         self.server_registry = server_registry
-        self.running_servers: Dict[str, ServerConnection] = {}
+        self.running_servers: Dict[str, ServerConnection2] = {}
         self._lock = asyncio.Lock()
 
     async def launch_server(
@@ -317,7 +318,7 @@ class MCPConnectionManager:
             ClientSession,
         ] = ClientSession,
         init_hook: InitHookCallable | None = None,
-    ) -> ServerConnection:
+    ) -> ServerConnection2:
         """
         Connect to a server and return a RunningServer instance that will persist
         until explicitly disconnected.
@@ -389,7 +390,7 @@ class MCPConnectionManager:
                     intialization_callback(session, config.auth)
 
                 # Create ServerConnection instance
-                running_server = ServerConnection(
+                running_server = ServerConnection2(
                     session=session,
                     transport_context=transport_context,
                 )
@@ -421,7 +422,7 @@ class MCPConnectionManager:
         server_name: str,
         client_session_constructor: Callable = ClientSession,
         init_hook: InitHookCallable | None = None,
-    ) -> ServerConnection:
+    ) -> ServerConnection2:
         """
         Get a running server instance, launching it if needed.
         """

@@ -46,7 +46,7 @@ async def example_usage_persistent():
         logger.info("fetch result:", data=result.model_dump())
     finally:
         logger.info("Closing all server connections on aggregator...")
-        await aggregator.close()
+        await aggregator.__aexit__(None, None, None)
 
 
 async def example_usage():
@@ -92,4 +92,4 @@ async def example_usage():
 
 
 if __name__ == "__main__":
-    asyncio.run(example_usage())
+    asyncio.run(example_usage_persistent())
