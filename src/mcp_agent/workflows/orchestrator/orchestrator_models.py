@@ -137,7 +137,7 @@ def format_step_result(step_result: StepResult) -> str:
 def format_plan_result(plan_result: PlanResult) -> str:
     """Format the full plan execution state for display to planners"""
     steps_str = "\n\n".join(
-        f"{i+1}:\n{format_step_result(step)}"
+        f"{i + 1}:\n{format_step_result(step)}"
         for i, step in enumerate(plan_result.step_results)
     )
 

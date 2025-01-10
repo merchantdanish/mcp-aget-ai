@@ -319,7 +319,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         
         Quality Rating: {feedback.rating}
         Feedback: {feedback.feedback}
-        Areas to Focus On: {', '.join(feedback.focus_areas)}
+        Areas to Focus On: {", ".join(feedback.focus_areas)}
         
         Generate an improved version addressing the feedback while maintaining accuracy and relevance.
         """

@@ -2,10 +2,8 @@ import asyncio
 
 from mcp_agent.context import get_current_context
 from mcp_agent.logging.logger import get_logger
-from mcp_agent.mcp.gen_client import (
-    gen_client,
-    MCPAgentClientSession,
-)
+from mcp_agent.mcp.gen_client import gen_client
+from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 
 
@@ -30,12 +28,12 @@ async def example_usage():
 
     try:
         filesystem_client = await connection_manager.get_server(
-            server_name="filesystem", client_session_constructor=MCPAgentClientSession
+            server_name="filesystem", client_session_factory=MCPAgentClientSession
         )
         logger.info("filesystem: Connected to server with persistent connection.")
 
         fetch_client = await connection_manager.get_server(
-            server_name="fetch", client_session_constructor=MCPAgentClientSession
+            server_name="fetch", client_session_factory=MCPAgentClientSession
         )
         logger.info("fetch: Connected to server with persistent connection.")
 

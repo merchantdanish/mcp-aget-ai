@@ -13,8 +13,9 @@ from mcp.types import (
 
 from mcp_agent.context import get_current_context
 from mcp_agent.logging.logger import get_logger
-from mcp_agent.mcp.gen_client import gen_client, MCPAgentClientSession
+from mcp_agent.mcp.gen_client import gen_client
 
+from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 
 
@@ -132,7 +133,7 @@ class MCPAggregator(BaseModel):
         for server_name in self.server_names:
             if self.connection_persistence:
                 await self._persistent_connection_manager.get_server(
-                    server_name, client_session_constructor=MCPAgentClientSession
+                    server_name, client_session_factory=MCPAgentClientSession
                 )
 
         async def fetch_tools(client: ClientSession):
@@ -148,7 +149,7 @@ class MCPAggregator(BaseModel):
             if self.connection_persistence:
                 server_connection = (
                     await self._persistent_connection_manager.get_server(
-                        server_name, client_session_constructor=MCPAgentClientSession
+                        server_name, client_session_factory=MCPAgentClientSession
                     )
                 )
                 tools = await fetch_tools(server_connection.session)
@@ -246,7 +247,7 @@ class MCPAggregator(BaseModel):
 
         if self.connection_persistence:
             server_connection = await self._persistent_connection_manager.get_server(
-                server_name, client_session_constructor=MCPAgentClientSession
+                server_name, client_session_factory=MCPAgentClientSession
             )
             return await try_call_tool(server_connection.session)
         else:
