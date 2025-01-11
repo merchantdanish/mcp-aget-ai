@@ -46,7 +46,7 @@ async def example_usage_persistent():
         logger.info("fetch result:", data=result.model_dump())
     finally:
         logger.info("Closing all server connections on aggregator...")
-        await aggregator.__aexit__(None, None, None)
+        await aggregator.close()
 
 
 async def example_usage():
@@ -92,4 +92,17 @@ async def example_usage():
 
 
 if __name__ == "__main__":
+    import time
+
+    start = time.time()
     asyncio.run(example_usage_persistent())
+    end = time.time()
+    persistent_time = end - start
+
+    start = time.time()
+    asyncio.run(example_usage())
+    end = time.time()
+    non_persistent_time = end - start
+
+    print(f"Persistent connection time: {persistent_time:.2f}s")
+    print(f"Non-persistent connection time: {non_persistent_time:.2f}s")

@@ -1,4 +1,4 @@
-from typing import Generic, List, Protocol, Type, TypeVar
+from typing import Generic, List, Optional, Protocol, Type, TypeVar, TYPE_CHECKING
 
 from mcp.types import (
     CallToolRequest,
@@ -6,9 +6,11 @@ from mcp.types import (
     TextContent,
 )
 
-from mcp_agent.agents.agent import Agent
 from mcp_agent.executor.executor import Executor, AsyncioExecutor
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator
+
+if TYPE_CHECKING:
+    from mcp_agent.agents.agent import Agent
 
 MessageParamT = TypeVar("MessageParamT")
 """A type representing an input message to an LLM."""
@@ -64,7 +66,48 @@ class SimpleMemory(Memory, Generic[MessageParamT]):
         self.history = []
 
 
-class AugmentedLLM(Protocol, Generic[MessageParamT, MessageT]):
+class AugmentedLLMProtocol(Protocol, Generic[MessageParamT, MessageT]):
+    """Protocol defining the interface for augmented LLMs"""
+
+    async def generate(
+        self,
+        message: str | MessageParamT | List[MessageParamT],
+        use_history: bool = True,
+        max_iterations: int = 10,
+        model: str = None,
+        stop_sequences: List[str] = None,
+        max_tokens: int = 2048,
+        parallel_tool_calls: bool = True,
+    ) -> List[MessageT]:
+        """Request an LLM generation, which may run multiple iterations, and return the result"""
+
+    async def generate_str(
+        self,
+        message: str | MessageParamT | List[MessageParamT],
+        use_history: bool = True,
+        max_iterations: int = 10,
+        model: str = None,
+        stop_sequences: List[str] = None,
+        max_tokens: int = 2048,
+        parallel_tool_calls: bool = True,
+    ) -> str:
+        """Request an LLM generation and return the string representation of the result"""
+
+    async def generate_structured(
+        self,
+        message: str | MessageParamT | List[MessageParamT],
+        response_model: Type[ModelT],
+        use_history: bool = True,
+        max_iterations: int = 10,
+        model: str = None,
+        stop_sequences: List[str] = None,
+        max_tokens: int = 2048,
+        parallel_tool_calls: bool = True,
+    ) -> ModelT:
+        """Request a structured LLM generation and return the result as a Pydantic model."""
+
+
+class AugmentedLLM(Generic[MessageParamT, MessageT]):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
     such as retrieval, tools, and memory provided from a collection of MCP servers.
@@ -88,7 +131,7 @@ class AugmentedLLM(Protocol, Generic[MessageParamT, MessageT]):
         server_names: List[str] | None = None,
         instruction: str | None = None,
         name: str | None = None,
-        agent: Agent | None = None,
+        agent: Optional["Agent"] = None,
         executor: Executor | None = None,
     ):
         """
@@ -201,6 +244,7 @@ class AugmentedLLM(Protocol, Generic[MessageParamT, MessageT]):
             if isinstance(postprocess, CallToolResult):
                 result = postprocess
 
+            return result
         except Exception as e:
             return CallToolResult(
                 isError=True,

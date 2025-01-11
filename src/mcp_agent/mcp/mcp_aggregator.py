@@ -1,7 +1,7 @@
 from asyncio import Lock, gather
 from typing import List, Dict
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from mcp.client.session import ClientSession
 from mcp.server.lowlevel.server import Server
 from mcp.server.stdio import stdio_server
@@ -20,6 +20,8 @@ from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 
 
 logger = get_logger(__name__)
+
+SEP = "-"
 
 
 class NamespacedTool(BaseModel):
@@ -47,6 +49,8 @@ class MCPAggregator(BaseModel):
     server_names: List[str]
     """A list of server names to connect to."""
 
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
     async def __aenter__(self):
         # Keep a connection manager to manage persistent connections for this aggregator
         if self.connection_persistence:
@@ -55,18 +59,25 @@ class MCPAggregator(BaseModel):
                 ctx.server_registry
             )
             await self._persistent_connection_manager.__aenter__()
+
+        await self.load_servers()
+
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
 
-    def __init__(self, server_names: List[str], connection_persistence: bool = False):
+    def __init__(
+        self, server_names: List[str], connection_persistence: bool = False, **kwargs
+    ):
         """
         :param server_names: A list of server names to connect to.
         Note: The server names must be resolvable by the gen_client function, and specified in the server registry.
         """
         super().__init__(
-            server_names=server_names, connection_persistence=connection_persistence
+            server_names=server_names,
+            connection_persistence=connection_persistence,
+            **kwargs,
         )
 
         self._persistent_connection_manager: MCPConnectionManager = None
@@ -110,13 +121,17 @@ class MCPAggregator(BaseModel):
             connection_persistence=connection_persistence,
         )
 
-        await instance.__aenter__()
+        try:
+            await instance.__aenter__()
 
-        logger.debug("Loading servers...")
-        await instance.load_servers()
+            logger.debug("Loading servers...")
+            await instance.load_servers()
 
-        logger.debug("MCPAggregator created and initialized.")
-        return instance
+            logger.debug("MCPAggregator created and initialized.")
+            return instance
+        except Exception as e:
+            logger.error(f"Error creating MCPAggregator: {e}")
+            await instance.__aexit__(None, None, None)
 
     async def load_servers(self):
         """
@@ -172,7 +187,7 @@ class MCPAggregator(BaseModel):
 
             self._server_to_tool_map[server_name] = []
             for tool in tools:
-                namespaced_tool_name = f"{server_name}.{tool.name}"
+                namespaced_tool_name = f"{server_name}{SEP}{tool.name}"
                 namespaced_tool = NamespacedTool(
                     tool=tool,
                     server_name=server_name,
@@ -217,8 +232,8 @@ class MCPAggregator(BaseModel):
         server_name: str = None
         local_tool_name: str = None
 
-        if "." in name:  # Namespaced tool name
-            server_name, local_tool_name = name.split(".", 1)
+        if SEP in name:  # Namespaced tool name
+            server_name, local_tool_name = name.split(SEP, 1)
         else:
             # Assume un-namespaced, loop through all servers to find the tool. First match wins.
             for _, tools in self._server_to_tool_map.items():

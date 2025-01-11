@@ -11,6 +11,7 @@ from openai.types.chat import (
     ChatCompletionSystemMessageParam,
     ChatCompletionToolParam,
     ChatCompletionToolMessageParam,
+    ChatCompletionUserMessageParam,
 )
 from mcp.types import (
     CallToolRequestParams,
@@ -24,6 +25,9 @@ from mcp.types import (
 
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM, ModelT
 from mcp_agent.context import get_current_config
+from mcp_agent.logging.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class OpenAIAugmentedLLM(
@@ -79,7 +83,9 @@ class OpenAIAugmentedLLM(
             messages.extend(self.history.get())
 
         if isinstance(message, str):
-            messages.append(ChatCompletionMessageParam(role="user", content=message))
+            messages.append(
+                ChatCompletionUserMessageParam(role="user", content=message)
+            )
         elif isinstance(message, list):
             messages.extend(message)
         else:
@@ -101,7 +107,12 @@ class OpenAIAugmentedLLM(
 
         responses: List[ChatCompletionMessage] = []
 
-        for _ in range(max_iterations):
+        for i in range(max_iterations):
+            logger.debug(
+                f"Iteration {i}: Calling OpenAI ChatCompletion with messages:",
+                data=messages,
+            )
+
             response = openai_client.chat.completions.create(
                 model=model,
                 messages=messages,
@@ -111,6 +122,11 @@ class OpenAIAugmentedLLM(
                 parallel_tool_calls=parallel_tool_calls,
             )
 
+            logger.debug(
+                f"Iteration {i}: OpenAI ChatCompletion response:",
+                data=response,
+            )
+
             if not response.choices or len(response.choices) == 0:
                 # No response from the model, we're done
                 break
@@ -118,17 +134,25 @@ class OpenAIAugmentedLLM(
             # TODO: saqadri - handle multiple choices for more complex interactions.
             # Keeping it simple for now because multiple choices will also complicate memory management
             choice = response.choices[0]
+            messages.append(choice.message)
             responses.append(choice.message)
 
             if choice.finish_reason == "stop":
                 # We have reached the end of the conversation
+                logger.debug(f"Iteration {i}: Stopping because finish_reason is 'stop'")
                 break
             elif choice.finish_reason == "length":
                 # We have reached the max tokens limit
+                logger.debug(
+                    f"Iteration {i}: Stopping because finish_reason is 'length'"
+                )
                 # TODO: saqadri - would be useful to return the reason for stopping to the caller
                 break
             elif choice.finish_reason == "content_filter":
                 # The response was filtered by the content filter
+                logger.debug(
+                    f"Iteration {i}: Stopping because finish_reason is 'content_filter'"
+                )
                 # TODO: saqadri - would be useful to return the reason for stopping to the caller
                 break
             else:  #  choice.finish_reason in ["tool_calls", "function_call"]
@@ -148,12 +172,17 @@ class OpenAIAugmentedLLM(
 
                     # Wait for all tool calls to complete
                     tool_results = await self.executor.execute(*tool_tasks)
+                    logger.debug(
+                        f"Iteration {i}: Tool call results: {str(tool_results) if tool_results else 'None'}"
+                    )
 
                     # Add non-None results to messages
                     for result in tool_results:
                         if isinstance(result, BaseException):
                             # Handle any unexpected exceptions during parallel execution
-                            print(f"Unexpected error during tool execution: {result}")
+                            logger.error(
+                                f"Warning: Unexpected error during tool execution: {result}. Continuing..."
+                            )
                             continue
                         if result is not None:
                             messages.append(result)
@@ -190,13 +219,13 @@ class OpenAIAugmentedLLM(
         final_text: List[str] = []
 
         for response in responses:
-            for content in response.content:
-                if content.type == "text":
-                    final_text.append(content.text)
-                elif content.type == "tool_use":
-                    final_text.append(
-                        f"[Calling tool {content.name} with args {content.arguments}]"
-                    )
+            content = response.content
+            if not content:
+                continue
+
+            if isinstance(content, str):
+                final_text.append(content)
+                continue
 
         return "\n".join(final_text)
 

@@ -13,6 +13,9 @@ from mcp_agent.executor.workflow_signal import (
     SignalHandler,
     SignalValueT,
 )
+from mcp_agent.logging.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Type variable for the return type of tasks
 R = TypeVar("R")
@@ -38,7 +41,14 @@ class Executor(ABC):
         signal_bus: SignalHandler = None,
     ):
         self.execution_engine = engine
-        self.config = config or ExecutorConfig()
+
+        if config:
+            self.config = config
+        else:
+            # TODO: saqadri - executor config should be loaded from settings
+            # ctx = get_current_context()
+            self.config = ExecutorConfig()
+
         self.signal_bus = signal_bus
 
     @asynccontextmanager
@@ -106,7 +116,6 @@ class Executor(ABC):
         if not (asyncio.iscoroutine(task) or asyncio.iscoroutinefunction(task)):
             raise TypeError(f"Task must be async: {task}")
 
-    @abstractmethod
     async def signal(
         self,
         signal_name: str,
@@ -121,7 +130,6 @@ class Executor(ABC):
         )
         await self.signal_bus.signal(signal)
 
-    @abstractmethod
     async def wait_for_signal(
         self,
         signal_name: str,
@@ -148,7 +156,8 @@ class AsyncioExecutor(Executor):
         signal_bus = signal_bus or AsyncioSignalHandler()
         super().__init__(engine="asyncio", config=config, signal_bus=signal_bus)
 
-        if config.max_concurrent_activities is not None:
+        self._activity_semaphore: asyncio.Semaphore | None = None
+        if self.config.max_concurrent_activities is not None:
             self._activity_semaphore = asyncio.Semaphore(
                 self.config.max_concurrent_activities
             )
@@ -205,3 +214,22 @@ class AsyncioExecutor(Executor):
                 )
                 for future in done:
                     yield await future
+
+    async def signal(
+        self,
+        signal_name: str,
+        payload: SignalValueT = None,
+        signal_description: str | None = None,
+    ) -> None:
+        await super().signal(signal_name, payload, signal_description)
+
+    async def wait_for_signal(
+        self,
+        signal_name: str,
+        signal_description: str | None = None,
+        timeout_seconds: int | None = None,
+        signal_type: Type[SignalValueT] = str,
+    ) -> SignalValueT:
+        return await super().wait_for_signal(
+            signal_name, signal_description, timeout_seconds, signal_type
+        )

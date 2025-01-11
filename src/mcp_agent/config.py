@@ -62,7 +62,7 @@ class AnthropicSettings(BaseModel):
     Settings for using Anthropic models in the MCP Agent application.
     """
 
-    api_key: str
+    api_key: str | None = None
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
@@ -72,7 +72,7 @@ class CohereSettings(BaseModel):
     Settings for using Cohere models in the MCP Agent application.
     """
 
-    api_key: str
+    api_key: str | None = None
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
@@ -82,7 +82,7 @@ class OpenAISettings(BaseModel):
     Settings for using OpenAI models in the MCP Agent application.
     """
 
-    api_key: str
+    api_key: str | None = None
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
@@ -224,34 +224,50 @@ _settings: Settings | None = None
 
 def get_settings(config_path: str | None = None) -> Settings:
     """Get settings instance, automatically loading from config file if available."""
+
+    def deep_merge(base: dict, update: dict) -> dict:
+        """Recursively merge two dictionaries, preserving nested structures."""
+        merged = base.copy()
+        for key, value in update.items():
+            if (
+                key in merged
+                and isinstance(merged[key], dict)
+                and isinstance(value, dict)
+            ):
+                merged[key] = deep_merge(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+
     global _settings
     if _settings:
         return _settings
 
-    # from mcp_agent.logging.logger import get_logger  # pylint: disable=C0415
-
-    # logger = get_logger(__name__)
-
-    # logger.info("Initializing app settings")
     config_file = config_path or Settings.find_config()
+    merged_settings = {}
+
     if config_file:
-        # logger.info(f"Loading settings from {config_file}")
         if not config_file.exists():
             pass
-            # logger.warning(
-            #     f"Config file {config_file} does not exist. Using environment."
-            # )
         else:
             import yaml  # pylint: disable=C0415
 
+            # Load main config
             with open(config_file, "r", encoding="utf-8") as f:
-                yaml_settings = yaml.safe_load(f)
-                _settings = Settings(**yaml_settings)
-                return _settings
+                yaml_settings = yaml.safe_load(f) or {}
+                merged_settings = yaml_settings
+
+            # Look for secrets file in the same directory
+            secrets_file = config_file.parent / "mcp_agent.secrets.yaml"
+            if secrets_file.exists():
+                with open(secrets_file, "r", encoding="utf-8") as f:
+                    yaml_secrets = yaml.safe_load(f) or {}
+                    merged_settings = deep_merge(merged_settings, yaml_secrets)
+
+            _settings = Settings(**merged_settings)
+            return _settings
     else:
-        # logger.warn("No mcp-agent.config.yaml found, defaulting to environment")
         pass
 
-    # logger.info("Loading app settings from environment")
     _settings = Settings()
     return _settings

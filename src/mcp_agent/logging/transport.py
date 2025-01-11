@@ -16,6 +16,7 @@ from rich.text import Text
 
 from mcp_agent.config import LoggerSettings
 from mcp_agent.logging.events import Event
+from mcp_agent.logging.json_serializer import JSONSerializer
 from mcp_agent.logging.listeners import EventListener, LifecycleAwareListener
 
 
@@ -53,6 +54,7 @@ class ConsoleTransport(EventTransport):
             "warning": "bold yellow",
             "error": "bold red",
         }
+        self._serializer = JSONSerializer()
 
     async def send_event(self, event: Event):
         # Map log levels to styles
@@ -73,7 +75,8 @@ class ConsoleTransport(EventTransport):
 
         # Print additional data as a JSON if available
         if event.data:
-            self.console.print(JSON.from_data(event.data))
+            serialized_data = self._serializer(event.data)
+            self.console.print(JSON.from_data(serialized_data))
 
 
 class HTTPTransport(EventTransport):
@@ -97,6 +100,7 @@ class HTTPTransport(EventTransport):
         self.batch: List[Event] = []
         self.lock = asyncio.Lock()
         self._session: aiohttp.ClientSession | None = None
+        self._serializer = JSONSerializer()
 
     async def start(self):
         """Initialize HTTP session."""
@@ -137,7 +141,7 @@ class HTTPTransport(EventTransport):
                     "name": event.name,
                     "namespace": event.namespace,
                     "message": event.message,
-                    "data": event.data,
+                    "data": self._serializer(event.data),
                     "trace_id": event.trace_id,
                     "span_id": event.span_id,
                     "context": event.context.dict() if event.context else None,
