@@ -5,8 +5,10 @@ from anthropic import Anthropic
 from anthropic.types import (
     Message,
     MessageParam,
+    TextBlockParam,
     ToolParam,
     ToolResultBlockParam,
+    ToolUseBlockParam,
 )
 from mcp.types import (
     CallToolRequest,
@@ -15,6 +17,9 @@ from mcp.types import (
 
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM, ModelT
 from mcp_agent.context import get_current_config
+from mcp_agent.logging.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
@@ -30,7 +35,22 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         cls, message: Message, **kwargs
     ) -> MessageParam:
         """Convert a response object to an input parameter object to allow LLM calls to be chained."""
-        return Message(role="assistant", content=message.content, **kwargs)
+        content = []
+
+        for content_block in message.content:
+            if content_block.type == "text":
+                content.append(TextBlockParam(type="text", text=content_block.text))
+            elif content_block.type == "tool_use":
+                content.append(
+                    ToolUseBlockParam(
+                        type="tool_use",
+                        name=content_block.name,
+                        input=content_block.input,
+                        id=content_block.id,
+                    )
+                )
+
+        return MessageParam(role="assistant", content=content, **kwargs)
 
     async def generate(
         self,
@@ -48,7 +68,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         Override this method to use a different LLM.
         """
         config = get_current_config()
-        anthropic = Anthropic(api_key=config.anthropic_api_key)
+        anthropic = Anthropic(api_key=config.anthropic.api_key)
 
         messages: List[MessageParam] = []
 
@@ -74,7 +94,12 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
         responses: List[Message] = []
 
-        for _ in range(max_iterations):
+        for i in range(max_iterations):
+            logger.debug(
+                f"Iteration {i}: Calling {model} with messages:",
+                data=messages,
+            )
+
             response = anthropic.messages.create(
                 model=model,
                 max_tokens=max_tokens,
@@ -84,22 +109,36 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 tools=available_tools,
             )
 
+            logger.debug(
+                f"Iteration {i}: {model} response:",
+                data=response,
+            )
+
+            response_as_message = await self.convert_message_to_message_param(response)
+            messages.append(response_as_message)
             responses.append(response)
 
             if response.stop_reason == "end_turn":
+                logger.debug(
+                    f"Iteration {i}: Stopping because finish_reason is 'end_turn'"
+                )
                 break
             elif response.stop_reason == "stop_sequence":
                 # We have reached a stop sequence
+                logger.debug(
+                    f"Iteration {i}: Stopping because finish_reason is 'stop_sequence'"
+                )
                 break
             elif response.stop_reason == "max_tokens":
                 # We have reached the max tokens limit
+                logger.debug(
+                    f"Iteration {i}: Stopping because finish_reason is 'max_tokens'"
+                )
                 # TODO: saqadri - would be useful to return the reason for stopping to the caller
                 break
             else:  # response.stop_reason == "tool_use":
                 for content in response.content:
-                    if content.type == "text":
-                        messages.append({"role": "assistant", "content": content})
-                    elif content.type == "tool_use":
+                    if content.type == "tool_use":
                         tool_name = content.name
                         tool_args = content.input
                         tool_use_id = content.id
@@ -115,23 +154,24 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                             request=tool_call_request, tool_call_id=tool_use_id
                         )
 
-                        # Continue conversation with tool results
-                        if hasattr(content, "text") and content.text:
-                            messages.append(
-                                {"role": "assistant", "content": content.text}
-                            )
-
                         messages.append(
-                            ToolResultBlockParam(
-                                type="tool_result",
-                                tool_use_id=tool_use_id,
-                                content=result.content,
-                                is_error=result.isError,
+                            MessageParam(
+                                role="user",
+                                content=[
+                                    ToolResultBlockParam(
+                                        type="tool_result",
+                                        tool_use_id=tool_use_id,
+                                        content=result.content,
+                                        is_error=result.isError,
+                                    )
+                                ],
                             )
                         )
 
         if use_history:
             self.history.set(messages)
+
+        logger.debug("Final response:", data=responses)
 
         return responses
 
@@ -150,7 +190,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         The default implementation uses Claude as the LLM.
         Override this method to use a different LLM.
         """
-        responses = await self.generate(
+        responses: List[Message] = await self.generate(
             message=message,
             use_history=use_history,
             max_iterations=max_iterations,

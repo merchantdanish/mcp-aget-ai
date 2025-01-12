@@ -4,6 +4,7 @@ import os
 from mcp_agent.context import get_current_context
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 
@@ -33,12 +34,21 @@ async def example_usage():
 
         llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
         result = await llm.generate_str(
-            message="Print the contents of mcp_agent.config.yaml",
+            message="Print the contents of mcp_agent.config.yaml verbatim",
         )
         logger.info(f"Result: {result}")
 
+        # Let's switch the same agent to a different LLM
+        llm = await finder_agent.attach_llm(AnthropicAugmentedLLM)
+
         result = await llm.generate_str(
             message="Print the first 2 paragraphs of https://www.anthropic.com/research/building-effective-agents",
+        )
+        logger.info(f"Result: {result}")
+
+        # Multi-turn conversations
+        result = await llm.generate_str(
+            message="Summarize those paragraphs in a 128 character tweet",
         )
         logger.info(f"Result: {result}")
 
