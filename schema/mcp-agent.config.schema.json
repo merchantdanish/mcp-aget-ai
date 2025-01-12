@@ -5,13 +5,18 @@
       "description": "Settings for using Anthropic models in the MCP Agent application.",
       "properties": {
         "api_key": {
-          "title": "Api Key",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
         }
       },
-      "required": [
-        "api_key"
-      ],
       "title": "AnthropicSettings",
       "type": "object"
     },
@@ -20,13 +25,18 @@
       "description": "Settings for using Cohere models in the MCP Agent application.",
       "properties": {
         "api_key": {
-          "title": "Api Key",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
         }
       },
-      "required": [
-        "api_key"
-      ],
       "title": "CohereSettings",
       "type": "object"
     },
@@ -263,13 +273,18 @@
       "description": "Settings for using OpenAI models in the MCP Agent application.",
       "properties": {
         "api_key": {
-          "title": "Api Key",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
         }
       },
-      "required": [
-        "api_key"
-      ],
       "title": "OpenAISettings",
       "type": "object"
     },

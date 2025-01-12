@@ -259,6 +259,8 @@ def generate(
                 rel_path: [
                     "mcp-agent.config.yaml",
                     "mcp_agent.config.yaml",
+                    "mcp-agent.secrets.yaml",
+                    "mcp_agent.secrets.yaml",
                 ]
             }
         }
