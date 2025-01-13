@@ -12,7 +12,6 @@ async def example_usage():
     logger = get_logger("mcp_basic_agent.example_usage")
 
     context = get_current_context()
-    logger.info("Hello, world! Let's create an MCP Agent...")
     logger.info("Current config:", data=context.config.model_dump())
 
     # Add the current directory to the filesystem server's args

@@ -51,7 +51,7 @@ class Agent(MCPAggregator):
         server_names: list[str] = None,
     ):
         super().__init__(
-            server_names=server_names,
+            server_names=server_names or [],
             connection_persistence=True,
             name=name,
             instruction=instruction,

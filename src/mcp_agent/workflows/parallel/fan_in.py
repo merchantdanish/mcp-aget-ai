@@ -21,7 +21,7 @@ FanInInput = (
 )
 
 
-class FanInLLM:
+class FanIn:
     """
     Aggregate results from multiple parallel tasks into a single result.
 
@@ -50,7 +50,7 @@ class FanInLLM:
         if isinstance(aggregator_agent, AugmentedLLM):
             self.aggregator_agent = aggregator_agent
         else:
-            self.aggregator_agent = self.llm_factory(aggregator_agent)
+            self.aggregator_agent = self.llm_factory(agent=aggregator_agent)
 
     async def generate(
         self,
@@ -256,7 +256,7 @@ class FanInLLM:
                     # Assume it's a Message/MessageParamT and add attribution
                     agent_message_strings.append(f"Agent {agent_name}: {str(msg)}")
 
-            aggregated_messages.append("\n".join(agent_messages))
+            aggregated_messages.append("\n".join(agent_message_strings))
 
         # Combine all messages with clear separation
         final_message = "\n\n".join(aggregated_messages)

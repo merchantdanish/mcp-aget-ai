@@ -13,7 +13,7 @@ def print_to_console(message: str):
     """
     A simple function that prints a message to the console.
     """
-    logger = get_logger("router_workflow.print_to_console")
+    logger = get_logger("workflow_router.print_to_console")
     logger.info(message)
 
 
@@ -25,10 +25,9 @@ def print_hello_world():
 
 
 async def example_usage():
-    logger = get_logger("router_workflow.example_usage")
+    logger = get_logger("workflow_router.example_usage")
 
     context = get_current_context()
-    logger.info("Hello, world! Let's create an MCP Agent...")
     logger.info("Current config:", data=context.config.model_dump())
 
     # Add the current directory to the filesystem server's args

@@ -6,6 +6,7 @@ from uuid import UUID
 from enum import Enum
 import dataclasses
 import inspect
+import httpx
 
 
 class JSONSerializer:
@@ -38,6 +39,9 @@ class JSONSerializer:
 
         # Try different serialization strategies in order
         try:
+            if isinstance(obj, httpx.Response):
+                return f"<httpx.Response [{obj.status_code}] {obj.url}>"
+
             # Basic JSON-serializable types
             if isinstance(obj, (str, int, float, bool)):
                 return obj

@@ -73,7 +73,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         self.llm_factory = llm_factory
 
         self.planner = planner or llm_factory(
-            Agent(
+            agent=Agent(
                 name="LLM Orchestration Planner",
                 instruction="""
                 You are an expert planner. Given an objective task and a list of MCP servers (which are collections of tools)
@@ -167,7 +167,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         )
 
         llm = self.llm_factory(
-            Agent(
+            agent=Agent(
                 name="Structured Output",
                 instruction="Produce a structured output given a message",
             )
@@ -320,7 +320,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         if isinstance(task, ServerTask):
             # For server tasks, create LLM with access to specified servers
             return self.llm_factory(
-                Agent(
+                agent=Agent(
                     name=f"Task: {task.description}",
                     server_names=task.servers,
                     instruction=task.description,
@@ -335,7 +335,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             elif isinstance(agent, AugmentedLLM):
                 return agent
             else:
-                return self.llm_factory(agent)
+                return self.llm_factory(agent=agent)
         else:
             # TODO: saqadri - this should be handled so we don't crash the orchestrator
             raise ValueError(f"Unknown task type: {type(task)}")

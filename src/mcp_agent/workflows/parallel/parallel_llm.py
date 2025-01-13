@@ -8,7 +8,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     MessageT,
     ModelT,
 )
-from mcp_agent.workflows.parallel.fan_in import FanInInput, FanInLLM
+from mcp_agent.workflows.parallel.fan_in import FanInInput, FanIn
 from mcp_agent.workflows.parallel.fan_out import FanOut
 
 
@@ -64,10 +64,12 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
             None  # History tracking is complex in this workflow, so it is not supported
         )
 
+        self.fan_in_fn: Callable[[FanInInput], Any] = None
+        self.fan_in: FanIn = None
         if isinstance(fan_in_agent, Callable):
             self.fan_in_fn = fan_in_agent
         else:
-            self.fan_in = FanInLLM(
+            self.fan_in = FanIn(
                 aggregator_agent=fan_in_agent,
                 llm_factory=llm_factory,
                 executor=executor,

@@ -171,7 +171,12 @@ class AsyncioExecutor(Executor):
                     return await task
                 elif asyncio.iscoroutinefunction(task):
                     return await task(**kwargs)
-                return task(**kwargs)
+                else:
+                    # Execute the callable and await if it returns a coroutine
+                    result = task(**kwargs)
+                    if asyncio.iscoroutine(result):
+                        return await result
+                    return result
             except Exception as e:
                 # TODO: saqadri - adding logging or other error handling here
                 return e

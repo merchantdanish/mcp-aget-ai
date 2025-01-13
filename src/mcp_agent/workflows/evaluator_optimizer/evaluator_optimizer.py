@@ -91,7 +91,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             if not llm_factory:
                 raise ValueError("llm_factory is required when using an Agent")
 
-            self.optimizer = llm_factory(optimizer)
+            self.optimizer = llm_factory(agent=optimizer)
             self.aggregator = optimizer
             self.instruction = (
                 optimizer.instruction
@@ -118,7 +118,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                     "llm_factory is required when using an Agent evaluator"
                 )
 
-            self.evaluator = llm_factory(evaluator)
+            self.evaluator = llm_factory(agent=evaluator)
         elif isinstance(evaluator, str):
             # If a string is passed as the evaluator, we use it as the evaluation criteria
             # and create an evaluator agent with that instruction
@@ -127,7 +127,9 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                     "llm_factory is required when using a string evaluator"
                 )
 
-            self.evaluator = llm_factory(Agent(name="Evaluator", instruction=evaluator))
+            self.evaluator = llm_factory(
+                agent=Agent(name="Evaluator", instruction=evaluator)
+            )
         else:
             raise ValueError(f"Unsupported evaluator type: {type(evaluator)}")
 
