@@ -127,7 +127,11 @@ class OpenAIAugmentedLLM(
                 data=messages,
             )
 
-            response = openai_client.chat.completions.create(**arguments)
+            executor_result = await self.executor.execute(
+                openai_client.chat.completions.create, **arguments
+            )
+
+            response = executor_result[0]
 
             logger.debug(
                 f"Iteration {i}: OpenAI ChatCompletion response:",
@@ -268,11 +272,14 @@ class OpenAIAugmentedLLM(
         )
 
         # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
+        executor_result = await self.executor.execute(
+            client.chat.completions.create,
             model=model or "gpt-4o-mini",
             response_model=response_model,
             messages=[{"role": "user", "content": response}],
         )
+
+        structured_response = executor_result[0]
 
         return structured_response
 

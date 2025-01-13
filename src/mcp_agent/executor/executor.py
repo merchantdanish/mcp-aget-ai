@@ -173,9 +173,19 @@ class AsyncioExecutor(Executor):
                     return await task(**kwargs)
                 else:
                     # Execute the callable and await if it returns a coroutine
-                    result = task(**kwargs)
+                    loop = asyncio.get_running_loop()
+
+                    # If kwargs are provided, wrap the function with partial
+                    if kwargs:
+                        wrapped_task = functools.partial(task, **kwargs)
+                        result = await loop.run_in_executor(None, wrapped_task)
+                    else:
+                        result = await loop.run_in_executor(None, task)
+
+                    # Handle case where the sync function returns a coroutine
                     if asyncio.iscoroutine(result):
                         return await result
+
                     return result
             except Exception as e:
                 # TODO: saqadri - adding logging or other error handling here

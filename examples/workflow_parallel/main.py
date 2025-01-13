@@ -48,21 +48,21 @@ async def example_usage():
 
     proofreader = Agent(
         name="proofreader",
-        instruction=""""Review the short story for grammar, spelling, and punctuation errors. 
+        instruction=""""Review the short story for grammar, spelling, and punctuation errors.
         Identify any awkward phrasing or structural issues that could improve clarity. 
         Provide detailed feedback on corrections.""",
     )
 
     fact_checker = Agent(
         name="fact_checker",
-        instruction="""Verify the factual consistency within the story. Identify any contradictions, 
+        instruction="""Verify the factual consistency within the story. Identify any contradictions,
         logical inconsistencies, or inaccuracies in the plot, character actions, or setting. 
         Highlight potential issues with reasoning or coherence.""",
     )
 
     style_enforcer = Agent(
         name="style_enforcer",
-        instruction="""Analyze the story for adherence to style guidelines. 
+        instruction="""Analyze the story for adherence to style guidelines.
         Evaluate the narrative flow, clarity of expression, and tone. Suggest improvements to 
         enhance storytelling, readability, and engagement.""",
     )
