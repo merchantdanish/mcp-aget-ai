@@ -140,7 +140,9 @@ class AugmentedLLM(Generic[MessageParamT, MessageT]):
         If an agent is provided, all other properties are optional
         """
         self.executor = executor or AsyncioExecutor()
-        self.aggregator = agent if agent is not None else MCPAggregator(server_names)
+        self.aggregator = (
+            agent if agent is not None else MCPAggregator(server_names or [])
+        )
         self.name = name or (agent.name if agent else None)
         self.instruction = instruction or (
             agent.instruction if agent and isinstance(agent.instruction, str) else None

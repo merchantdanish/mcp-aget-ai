@@ -260,4 +260,10 @@ class ServerRegistry:
         Returns:
             MCPServerSettings: The server configuration.
         """
-        return self.registry.get(server_name)
+        server_config = self.registry.get(server_name)
+        if server_config is None:
+            logger.warning(f"Server '{server_name}' not found in registry.")
+            return None
+        elif server_config.name is None:
+            server_config.name = server_name
+        return server_config

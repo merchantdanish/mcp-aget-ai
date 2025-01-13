@@ -104,23 +104,30 @@ class OpenAIAugmentedLLM(
             )
             for tool in response.tools
         ]
+        if not available_tools:
+            available_tools = None
 
         responses: List[ChatCompletionMessage] = []
 
         for i in range(max_iterations):
+            arguments = {
+                "model": model,
+                "messages": messages,
+                "stop": stop_sequences,
+                "tools": available_tools,
+                "max_tokens": max_tokens,
+            }
+
+            if available_tools:
+                arguments["tools"] = available_tools
+                arguments["parallel_tool_calls"] = parallel_tool_calls
+
             logger.debug(
                 f"Iteration {i}: Calling OpenAI ChatCompletion with messages:",
                 data=messages,
             )
 
-            response = openai_client.chat.completions.create(
-                model=model,
-                messages=messages,
-                stop=stop_sequences,
-                tools=available_tools,
-                max_tokens=max_tokens,
-                parallel_tool_calls=parallel_tool_calls,
-            )
+            response = openai_client.chat.completions.create(**arguments)
 
             logger.debug(
                 f"Iteration {i}: OpenAI ChatCompletion response:",

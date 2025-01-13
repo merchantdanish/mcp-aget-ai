@@ -127,14 +127,16 @@ class EmbeddingRouter(Router):
 
     async def route(
         self, request: str, top_k: int = 1
-    ) -> List[str | Agent | Callable | RouterResult]:
+    ) -> List[RouterResult[str | Agent | Callable]]:
         """Route the request based on embedding similarity"""
         if not self.initialized:
             await self.initialize()
 
         return await self._route_with_embedding(request, top_k)
 
-    async def route_to_server(self, request: str, top_k: int = 1) -> List[str]:
+    async def route_to_server(
+        self, request: str, top_k: int = 1
+    ) -> List[RouterResult[str]]:
         """Route specifically to server categories"""
         if not self.initialized:
             await self.initialize()
@@ -148,7 +150,9 @@ class EmbeddingRouter(Router):
         )
         return [r.result for r in results[:top_k]]
 
-    async def route_to_agent(self, request: str, top_k: int = 1) -> List[Agent]:
+    async def route_to_agent(
+        self, request: str, top_k: int = 1
+    ) -> List[RouterResult[Agent]]:
         """Route specifically to agent categories"""
         if not self.initialized:
             await self.initialize()
@@ -162,7 +166,9 @@ class EmbeddingRouter(Router):
         )
         return [r.result for r in results[:top_k]]
 
-    async def route_to_function(self, request: str, top_k: int = 1) -> List[Callable]:
+    async def route_to_function(
+        self, request: str, top_k: int = 1
+    ) -> List[RouterResult[Callable]]:
         """Route specifically to function categories"""
         if not self.initialized:
             await self.initialize()
@@ -183,7 +189,7 @@ class EmbeddingRouter(Router):
         include_servers: bool = True,
         include_agents: bool = True,
         include_functions: bool = True,
-    ) -> List[str | Agent | Callable | RouterResult]:
+    ) -> List[RouterResult]:
         def create_result(category: RouterCategory, request_embedding):
             if category.embedding is None:
                 return None

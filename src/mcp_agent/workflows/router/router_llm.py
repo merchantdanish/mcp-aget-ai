@@ -5,7 +5,10 @@ from pydantic import BaseModel
 from mcp_agent.agents.agent import Agent
 from mcp_agent.mcp_server_registry import ServerRegistry
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
-from mcp_agent.workflows.router.router_base import Router, RouterResult
+from mcp_agent.workflows.router.router_base import ResultT, Router, RouterResult
+from mcp_agent.logging.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 DEFAULT_ROUTING_INSTRUCTION = """
@@ -23,22 +26,22 @@ Your task is to analyze the following request and determine the most appropriate
 Request: {request}
 
 Respond in JSON format:
-{
+{{
     "categories": [
-        {
+        {{
             "category": <category name>,
             "confidence": <high, medium or low>,
             "reasoning": <brief explanation>
-        }
+        }}
     ]
-}
+}}
 
 Only include categories that are truly relevant. You may return fewer than {top_k} if appropriate.
 If none of the categories are relevant, return an empty list.
 """
 
 
-class LLMRouterResult(RouterResult):
+class LLMRouterResult(RouterResult[ResultT]):
     """A class that represents the result of an LLMRouter.route request"""
 
     confidence: Literal["high", "medium", "low"]
@@ -122,13 +125,15 @@ class LLMRouter(Router):
 
     async def route(
         self, request: str, top_k: int = 1
-    ) -> List[str | Agent | Callable | LLMRouterResult]:
+    ) -> List[LLMRouterResult[str | Agent | Callable]]:
         if not self.initialized:
             await self.initialize()
 
         return await self._route_with_llm(request, top_k)
 
-    async def route_to_server(self, request: str, top_k: int = 1) -> List[str]:
+    async def route_to_server(
+        self, request: str, top_k: int = 1
+    ) -> List[LLMRouterResult[str]]:
         if not self.initialized:
             await self.initialize()
 
@@ -140,7 +145,9 @@ class LLMRouter(Router):
             include_functions=False,
         )
 
-    async def route_to_agent(self, request: str, top_k: int = 1) -> List[Agent]:
+    async def route_to_agent(
+        self, request: str, top_k: int = 1
+    ) -> List[LLMRouterResult[Agent]]:
         if not self.initialized:
             await self.initialize()
 
@@ -152,7 +159,9 @@ class LLMRouter(Router):
             include_functions=False,
         )
 
-    async def route_to_function(self, request: str, top_k: int = 1) -> List[Callable]:
+    async def route_to_function(
+        self, request: str, top_k: int = 1
+    ) -> List[LLMRouterResult[Callable]]:
         if not self.initialized:
             await self.initialize()
 
@@ -171,7 +180,7 @@ class LLMRouter(Router):
         include_servers: bool = True,
         include_agents: bool = True,
         include_functions: bool = True,
-    ) -> List[str | Agent | Callable | LLMRouterResult]:
+    ) -> List[LLMRouterResult]:
         if not self.initialized:
             await self.initialize()
 
@@ -182,6 +191,10 @@ class LLMRouter(Router):
             include_servers=include_servers,
             include_agents=include_agents,
             include_functions=include_functions,
+        )
+
+        logger.debug(
+            f"Requesting routing from LLM, \nrequest: {request} \ntop_k: {top_k} \nrouting_instruction: {routing_instruction} \ncontext={context}"
         )
 
         # Format the prompt with all the necessary information
@@ -200,16 +213,12 @@ class LLMRouter(Router):
             return []
 
         result: List[LLMRouterResult] = []
-        has_metadata = False
         for r in response.categories:
             router_category = self.categories.get(r.category)
             if not router_category:
                 # Skip invalid categories
                 # TODO: saqadri - log or raise an error
                 continue
-
-            if r.confidence or r.reasoning:
-                has_metadata = True
 
             result.append(
                 LLMRouterResult(
@@ -218,10 +227,6 @@ class LLMRouter(Router):
                     reasoning=r.reasoning,
                 )
             )
-
-        if not has_metadata:
-            # If no metadata was provided, return the categories directly
-            return [r.result for r in result[:top_k]]
 
         return result[:top_k]
 

@@ -248,6 +248,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             model=model,
             response_model=response_model,
             messages=[{"role": "user", "content": response}],
+            max_tokens=max_tokens,
         )
 
         return structured_response

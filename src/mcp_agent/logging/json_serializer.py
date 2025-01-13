@@ -52,6 +52,10 @@ class JSONSerializer:
             if isinstance(obj, Enum):
                 return obj.value
 
+            # Handle callables
+            if callable(obj):
+                return f"<callable: {obj.__name__}>"
+
             # Handle Pydantic models
             if hasattr(obj, "model_dump"):  # Pydantic v2
                 return self._serialize_object(obj.model_dump())

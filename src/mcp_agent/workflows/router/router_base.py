@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, List
+from typing import Callable, Dict, Generic, List, TypeVar
 
 from pydantic import BaseModel, Field
 from mcp.server.fastmcp.tools import Tool as FastTool
@@ -7,12 +7,17 @@ from mcp.server.fastmcp.tools import Tool as FastTool
 from mcp_agent.agents.agent import Agent
 from mcp_agent.context import get_current_context
 from mcp_agent.mcp_server_registry import ServerRegistry
+from mcp_agent.logging.logger import get_logger
+
+logger = get_logger(__name__)
+
+ResultT = TypeVar("ResultT", bound=str | Agent | Callable)
 
 
-class RouterResult(BaseModel):
+class RouterResult(BaseModel, Generic[ResultT]):
     """A class that represents the result of a Router.route request"""
 
-    result: str | Agent | Callable
+    result: ResultT
     """The router returns an MCP server name, an Agent, or a function to route the input to."""
 
     p_score: float | None = None
@@ -107,7 +112,7 @@ class Router(ABC):
                 "At least one of mcp_servers_names, agents, or functions must be provided."
             )
 
-        if self.server_names and not server_registry:
+        if self.server_names and not self.server_registry:
             raise ValueError(
                 "server_registry must be provided if mcp_servers_names are provided."
             )
@@ -115,7 +120,7 @@ class Router(ABC):
     @abstractmethod
     async def route(
         self, request: str, top_k: int = 1
-    ) -> List[str | Agent | Callable | RouterResult]:
+    ) -> List[RouterResult[str | Agent | Callable]]:
         """
         Route the input request to one or more MCP servers, agents, or functions.
         If no routing decision can be made, returns an empty list.
@@ -126,15 +131,21 @@ class Router(ABC):
         """
 
     @abstractmethod
-    async def route_to_server(self, request: str, top_k: int = 1) -> List[str]:
+    async def route_to_server(
+        self, request: str, top_k: int = 1
+    ) -> List[RouterResult[str]]:
         """Route the input to one or more MCP servers."""
 
     @abstractmethod
-    async def route_to_agent(self, request: str, top_k: int = 1) -> List[Agent]:
+    async def route_to_agent(
+        self, request: str, top_k: int = 1
+    ) -> List[RouterResult[Agent]]:
         """Route the input to one or more agents."""
 
     @abstractmethod
-    async def route_to_function(self, request: str, top_k: int = 1) -> List[Callable]:
+    async def route_to_function(
+        self, request: str, top_k: int = 1
+    ) -> List[RouterResult[Callable]]:
         """
         Route the input to one or more functions.
 
@@ -180,7 +191,7 @@ class Router(ABC):
         # tools, resources and prompts that the server has access to.
         return ServerRouterCategory(
             category=server_name,
-            name=server_config.name,
+            name=server_config.name if server_config else server_name,
             description=server_config.description,
         )
 
@@ -195,7 +206,7 @@ class Router(ABC):
             description=agent_description,
             servers=[
                 self.get_server_category(server_name)
-                for server_name in agent.mcp_server_names
+                for server_name in agent.server_names
             ],
         )
 
