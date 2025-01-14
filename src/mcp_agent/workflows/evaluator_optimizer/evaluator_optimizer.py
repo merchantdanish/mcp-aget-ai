@@ -1,3 +1,4 @@
+import contextlib
 from enum import Enum
 from typing import Callable, List, Type
 from pydantic import BaseModel, Field
@@ -10,15 +11,18 @@ from mcp_agent.workflows.llm.augmented_llm import (
 )
 from mcp_agent.agents.agent import Agent
 from mcp_agent.executor.executor import Executor
+from mcp_agent.logging.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class QualityRating(str, Enum):
     """Enum for evaluation quality ratings"""
 
-    EXCELLENT = "EXCELLENT"  # No improvements needed
-    GOOD = "GOOD"  # Minor improvements possible
-    FAIR = "FAIR"  # Several improvements needed
-    POOR = "POOR"  # Major improvements needed
+    POOR = 0  # Major improvements needed
+    FAIR = 1  # Several improvements needed
+    GOOD = 2  # Minor improvements possible
+    EXCELLENT = 3  # No improvements needed
 
 
 class EvaluationResult(BaseModel):
@@ -86,12 +90,14 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         # Set up the optimizer
         self.name = optimizer.name
         self.llm_factory = llm_factory
+        self.optimizer = optimizer
+        self.evaluator = evaluator
 
         if isinstance(optimizer, Agent):
             if not llm_factory:
                 raise ValueError("llm_factory is required when using an Agent")
 
-            self.optimizer = llm_factory(agent=optimizer)
+            self.optimizer_llm = llm_factory(agent=optimizer)
             self.aggregator = optimizer
             self.instruction = (
                 optimizer.instruction
@@ -100,25 +106,25 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             )
 
         elif isinstance(optimizer, AugmentedLLM):
-            self.optimizer = optimizer
+            self.optimizer_llm = optimizer
             self.aggregator = optimizer.aggregator
             self.instruction = optimizer.instruction
 
         else:
             raise ValueError(f"Unsupported optimizer type: {type(optimizer)}")
 
-        self.history = self.optimizer.history
+        self.history = self.optimizer_llm.history
 
         # Set up the evaluator
         if isinstance(evaluator, AugmentedLLM):
-            self.evaluator = evaluator
+            self.evaluator_llm = evaluator
         elif isinstance(evaluator, Agent):
             if not llm_factory:
                 raise ValueError(
                     "llm_factory is required when using an Agent evaluator"
                 )
 
-            self.evaluator = llm_factory(agent=evaluator)
+            self.evaluator_llm = llm_factory(agent=evaluator)
         elif isinstance(evaluator, str):
             # If a string is passed as the evaluator, we use it as the evaluation criteria
             # and create an evaluator agent with that instruction
@@ -127,7 +133,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                     "llm_factory is required when using a string evaluator"
                 )
 
-            self.evaluator = llm_factory(
+            self.evaluator_llm = llm_factory(
                 agent=Agent(name="Evaluator", instruction=evaluator)
             )
         else:
@@ -151,23 +157,30 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
     ) -> List[MessageT]:
         """Generate an optimized response through evaluation-guided refinement"""
         refinement_count = 0
+        response = None
         best_response = None
         best_rating = QualityRating.POOR
         self.refinement_history = []
 
         # Initial generation
-        response = await self.optimizer.generate(
-            message=message,
-            use_history=use_history,
-            max_iterations=max_iterations,
-            model=model,
-            stop_sequences=stop_sequences,
-            max_tokens=max_tokens,
-            parallel_tool_calls=parallel_tool_calls,
-        )
+        async with contextlib.AsyncExitStack() as stack:
+            if isinstance(self.optimizer, Agent):
+                await stack.enter_async_context(self.optimizer)
+            response = await self.optimizer_llm.generate(
+                message=message,
+                use_history=use_history,
+                max_iterations=max_iterations,
+                model=model,
+                stop_sequences=stop_sequences,
+                max_tokens=max_tokens,
+                parallel_tool_calls=parallel_tool_calls,
+            )
+
         best_response = response
 
         while refinement_count < self.max_refinements:
+            logger.debug("Optimizer result:", data=response)
+
             # Evaluate current response
             eval_prompt = self._build_eval_prompt(
                 original_request=str(message),
@@ -177,12 +190,17 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                 iteration=refinement_count,
             )
 
-            evaluation_result = await self.evaluator.generate_structured(
-                message=eval_prompt,
-                response_model=EvaluationResult,
-                model=model,
-                max_tokens=max_tokens,
-            )
+            evaluation_result = None
+            async with contextlib.AsyncExitStack() as stack:
+                if isinstance(self.evaluator, Agent):
+                    await stack.enter_async_context(self.evaluator)
+
+                evaluation_result = await self.evaluator_llm.generate_structured(
+                    message=eval_prompt,
+                    response_model=EvaluationResult,
+                    model=model,
+                    max_tokens=max_tokens,
+                )
 
             # Track iteration
             self.refinement_history.append(
@@ -193,16 +211,30 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                 }
             )
 
+            logger.debug("Evaluator result:", data=evaluation_result)
+
             # Track best response (using enum ordering)
             if evaluation_result.rating.value > best_rating.value:
                 best_rating = evaluation_result.rating
                 best_response = response
+                logger.debug(
+                    "New best response:",
+                    data={"rating": best_rating, "response": best_response},
+                )
 
             # Check if we've reached acceptable quality
             if (
                 evaluation_result.rating.value >= self.min_rating.value
                 or not evaluation_result.needs_improvement
             ):
+                logger.debug(
+                    f"Acceptable quality {evaluation_result.rating.value} reached",
+                    data={
+                        "rating": evaluation_result.rating.value,
+                        "needs_improvement": evaluation_result.needs_improvement,
+                        "min_rating": self.min_rating.value,
+                    },
+                )
                 break
 
             # Generate refined response
@@ -215,15 +247,19 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                 iteration=refinement_count,
             )
 
-            response = await self.optimizer.generate(
-                message=refinement_prompt,
-                use_history=use_history,
-                max_iterations=max_iterations,
-                model=model,
-                stop_sequences=stop_sequences,
-                max_tokens=max_tokens,
-                parallel_tool_calls=parallel_tool_calls,
-            )
+            async with contextlib.AsyncExitStack() as stack:
+                if isinstance(self.optimizer, Agent):
+                    await stack.enter_async_context(self.optimizer)
+
+                response = await self.optimizer_llm.generate(
+                    message=refinement_prompt,
+                    use_history=use_history,
+                    max_iterations=max_iterations,
+                    model=model,
+                    stop_sequences=stop_sequences,
+                    max_tokens=max_tokens,
+                    parallel_tool_calls=parallel_tool_calls,
+                )
 
             refinement_count += 1
 
@@ -249,7 +285,8 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             max_tokens=max_tokens,
             parallel_tool_calls=parallel_tool_calls,
         )
-        return str(response[0]) if isinstance(response, list) else str(response)
+
+        return "\n".join(self.optimizer_llm.message_str(r) for r in response)
 
     async def generate_structured(
         self,

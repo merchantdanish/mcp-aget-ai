@@ -1,3 +1,4 @@
+import contextlib
 from typing import Callable, Dict, List, Type
 
 from mcp_agent.agents.agent import Agent
@@ -43,14 +44,12 @@ class FanIn:
         """
 
         self.executor = executor or AsyncioExecutor()
-        self.llm_factory = llm_factory or (
-            lambda agent: AugmentedLLM[MessageParamT, MessageT](agent=agent)
-        )
+        self.llm_factory = llm_factory
+        self.aggregator_agent = aggregator_agent
 
-        if isinstance(aggregator_agent, AugmentedLLM):
-            self.aggregator_agent = aggregator_agent
-        else:
-            self.aggregator_agent = self.llm_factory(agent=aggregator_agent)
+        if not isinstance(self.aggregator_agent, AugmentedLLM):
+            if not self.llm_factory:
+                raise ValueError("llm_factory is required when using an Agent")
 
     async def generate(
         self,
@@ -70,15 +69,23 @@ class FanIn:
             str | MessageParamT | List[MessageParamT]
         ) = await self.aggregate_messages(messages)
 
-        return await self.aggregator_agent.generate(
-            message=message,
-            use_history=use_history,
-            max_iterations=max_iterations,
-            model=model,
-            stop_sequences=stop_sequences,
-            max_tokens=max_tokens,
-            parallel_tool_calls=parallel_tool_calls,
-        )
+        async with contextlib.AsyncExitStack() as stack:
+            if isinstance(self.aggregator_agent, AugmentedLLM):
+                llm = self.aggregator_agent
+            else:
+                # Enter agent context
+                ctx_agent = await stack.enter_async_context(self.aggregator_agent)
+                llm = await ctx_agent.attach_llm(self.llm_factory)
+
+            return await llm.generate(
+                message=message,
+                use_history=use_history,
+                max_iterations=max_iterations,
+                model=model,
+                stop_sequences=stop_sequences,
+                max_tokens=max_tokens,
+                parallel_tool_calls=parallel_tool_calls,
+            )
 
     async def generate_str(
         self,
@@ -100,15 +107,23 @@ class FanIn:
             str | MessageParamT | List[MessageParamT]
         ) = await self.aggregate_messages(messages)
 
-        return await self.aggregator_agent.generate_str(
-            message=message,
-            use_history=use_history,
-            max_iterations=max_iterations,
-            model=model,
-            stop_sequences=stop_sequences,
-            max_tokens=max_tokens,
-            parallel_tool_calls=parallel_tool_calls,
-        )
+        async with contextlib.AsyncExitStack() as stack:
+            if isinstance(self.aggregator_agent, AugmentedLLM):
+                llm = self.aggregator_agent
+            else:
+                # Enter agent context
+                ctx_agent = await stack.enter_async_context(self.aggregator_agent)
+                llm = await ctx_agent.attach_llm(self.llm_factory)
+
+            return await llm.generate_str(
+                message=message,
+                use_history=use_history,
+                max_iterations=max_iterations,
+                model=model,
+                stop_sequences=stop_sequences,
+                max_tokens=max_tokens,
+                parallel_tool_calls=parallel_tool_calls,
+            )
 
     async def generate_structured(
         self,
@@ -131,16 +146,24 @@ class FanIn:
             str | MessageParamT | List[MessageParamT]
         ) = await self.aggregate_messages(messages)
 
-        return await self.aggregator_agent.generate_structured(
-            message=message,
-            response_model=response_model,
-            use_history=use_history,
-            max_iterations=max_iterations,
-            model=model,
-            stop_sequences=stop_sequences,
-            max_tokens=max_tokens,
-            parallel_tool_calls=parallel_tool_calls,
-        )
+        async with contextlib.AsyncExitStack() as stack:
+            if isinstance(self.aggregator_agent, AugmentedLLM):
+                llm = self.aggregator_agent
+            else:
+                # Enter agent context
+                ctx_agent = await stack.enter_async_context(self.aggregator_agent)
+                llm = await ctx_agent.attach_llm(self.llm_factory)
+
+            return await llm.generate_structured(
+                message=message,
+                response_model=response_model,
+                use_history=use_history,
+                max_iterations=max_iterations,
+                model=model,
+                stop_sequences=stop_sequences,
+                max_tokens=max_tokens,
+                parallel_tool_calls=parallel_tool_calls,
+            )
 
     async def aggregate_messages(
         self, messages: FanInInput

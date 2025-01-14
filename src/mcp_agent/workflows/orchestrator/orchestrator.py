@@ -275,10 +275,12 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 if not agent:
                     # TODO: saqadri - should we fail the entire workflow in this case?
                     raise ValueError(f"No agent found matching {task.agent}")
-
-                # Enter agent context
-                ctx_agent = await stack.enter_async_context(agent)
-                llm = await ctx_agent.attach_llm(self.llm_factory)
+                elif isinstance(agent, AugmentedLLM):
+                    llm = agent
+                else:
+                    # Enter agent context
+                    ctx_agent = await stack.enter_async_context(agent)
+                    llm = await ctx_agent.attach_llm(self.llm_factory)
 
                 task_description = TASK_PROMPT_TEMPLATE.format(
                     objective=previous_result.objective,

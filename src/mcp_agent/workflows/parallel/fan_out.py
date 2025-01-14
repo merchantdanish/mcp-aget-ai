@@ -1,3 +1,4 @@
+import contextlib
 import functools
 from typing import Any, Callable, Coroutine, Dict, List, Type
 
@@ -31,27 +32,24 @@ class FanOut:
     ):
         """
         Initialize the FanOut with a list of agents, functions, or LLMs.
-        If agents are provided, they will be wrapped in an AugmentedLLM using llm_factory if not already done s.
+        If agents are provided, they will be wrapped in an AugmentedLLM using llm_factory if not already done so.
         If functions are provided, they will be invoked in parallel directly.
         """
 
         self.executor = executor or AsyncioExecutor()
-        self.agents: List[AugmentedLLM[MessageParamT, MessageT]] = []
-        self.llm_factory = llm_factory or (
-            lambda agent: AugmentedLLM[MessageParamT, MessageT](agent=agent)
-        )
-        for agent in agents or []:
-            if isinstance(agent, AugmentedLLM):
-                self.agents.append(agent)
-            else:
-                self.agents.append(self.llm_factory(agent=agent))
-
+        self.llm_factory = llm_factory
+        self.agents = agents or []
         self.functions: List[Callable[[MessageParamT], MessageT]] = functions or []
 
         if not self.agents and not self.functions:
             raise ValueError(
                 "At least one agent or function must be provided for fan-out to work"
             )
+
+        if not self.llm_factory:
+            for agent in self.agents:
+                if not isinstance(agent, AugmentedLLM):
+                    raise ValueError("llm_factory is required when using an Agent")
 
     async def generate(
         self,
@@ -71,29 +69,39 @@ class FanOut:
             Callable[..., List[MessageT]] | Coroutine[Any, Any, List[MessageT]]
         ] = []
         task_names: List[str] = []
+        task_results = []
 
-        # Create bound methods for each agent's generate function
-        for agent in self.agents:
-            tasks.append(
-                agent.generate(
-                    message=message,
-                    use_history=use_history,
-                    max_iterations=max_iterations,
-                    model=model,
-                    stop_sequences=stop_sequences,
-                    max_tokens=max_tokens,
-                    parallel_tool_calls=parallel_tool_calls,
+        async with contextlib.AsyncExitStack() as stack:
+            for agent in self.agents:
+                if isinstance(agent, AugmentedLLM):
+                    llm = agent
+                else:
+                    # Enter agent context
+                    ctx_agent = await stack.enter_async_context(agent)
+                    llm = await ctx_agent.attach_llm(self.llm_factory)
+
+                tasks.append(
+                    llm.generate(
+                        message=message,
+                        use_history=use_history,
+                        max_iterations=max_iterations,
+                        model=model,
+                        stop_sequences=stop_sequences,
+                        max_tokens=max_tokens,
+                        parallel_tool_calls=parallel_tool_calls,
+                    )
                 )
-            )
-            task_names.append(agent.name)
+                task_names.append(agent.name)
 
-        # Create bound methods for regular functions
-        for function in self.functions:
-            tasks.append(function(message))
-            task_names.append(function.__name__ or id(function))
+            # Create bound methods for regular functions
+            for function in self.functions:
+                tasks.append(functools.partial(function, message))
+                task_names.append(function.__name__ or id(function))
 
-        logger.debug("Running fan-out tasks:", data=task_names)
-        task_results = await self.executor.execute(*tasks)
+            # Wait for all tasks to complete
+            logger.debug("Running fan-out tasks:", data=task_names)
+            task_results = await self.executor.execute(*tasks)
+
         logger.debug(
             "Fan-out tasks completed:", data=dict(zip(task_names, task_results))
         )
@@ -119,29 +127,37 @@ class FanOut:
 
         tasks: List[Callable[..., str] | Coroutine[Any, Any, str]] = []
         task_names: List[str] = []
+        task_results = []
 
-        # Create bound methods for each agent's generate function
-        for agent in self.agents:
-            bound_generate = functools.partial(
-                agent.generate_str,
-                message=message,
-                use_history=use_history,
-                max_iterations=max_iterations,
-                model=model,
-                stop_sequences=stop_sequences,
-                max_tokens=max_tokens,
-                parallel_tool_calls=parallel_tool_calls,
-            )
-            tasks.append(bound_generate)
-            task_names.append(agent.name)
+        async with contextlib.AsyncExitStack() as stack:
+            for agent in self.agents:
+                if isinstance(agent, AugmentedLLM):
+                    llm = agent
+                else:
+                    # Enter agent context
+                    ctx_agent = await stack.enter_async_context(agent)
+                    llm = await ctx_agent.attach_llm(self.llm_factory)
 
-        # Create bound methods for regular functions
-        for function in self.functions:
-            bound_function = functools.partial(fn_result_to_string, function, message)
-            tasks.append(bound_function)
-            task_names.append(function.__name__ or id(function))
+                tasks.append(
+                    llm.generate_str(
+                        message=message,
+                        use_history=use_history,
+                        max_iterations=max_iterations,
+                        model=model,
+                        stop_sequences=stop_sequences,
+                        max_tokens=max_tokens,
+                        parallel_tool_calls=parallel_tool_calls,
+                    )
+                )
+                task_names.append(agent.name)
 
-        task_results = await self.executor.execute(*tasks)
+            # Create bound methods for regular functions
+            for function in self.functions:
+                tasks.append(functools.partial(fn_result_to_string, function, message))
+                task_names.append(function.__name__ or id(function))
+
+            task_results = await self.executor.execute(*tasks)
+
         return dict(zip(task_names, task_results))
 
     async def generate_structured(
@@ -161,28 +177,36 @@ class FanOut:
         """
         tasks = []
         task_names = []
+        task_results = []
 
-        # Create bound methods for each agent's generate function
-        for agent in self.agents:
-            bound_generate = functools.partial(
-                agent.generate_structured,
-                message=message,
-                response_model=response_model,
-                use_history=use_history,
-                max_iterations=max_iterations,
-                model=model,
-                stop_sequences=stop_sequences,
-                max_tokens=max_tokens,
-                parallel_tool_calls=parallel_tool_calls,
-            )
-            tasks.append(bound_generate)
-            task_names.append(agent.name)
+        async with contextlib.AsyncExitStack() as stack:
+            for agent in self.agents:
+                if isinstance(agent, AugmentedLLM):
+                    llm = agent
+                else:
+                    # Enter agent context
+                    ctx_agent = await stack.enter_async_context(agent)
+                    llm = await ctx_agent.attach_llm(self.llm_factory)
 
-        # Create bound methods for regular functions
-        for function in self.functions:
-            bound_function = functools.partial(function, message)
-            tasks.append(bound_function)
-            task_names.append(function.__name__ or id(function))
+                tasks.append(
+                    llm.generate_structured(
+                        message=message,
+                        response_model=response_model,
+                        use_history=use_history,
+                        max_iterations=max_iterations,
+                        model=model,
+                        stop_sequences=stop_sequences,
+                        max_tokens=max_tokens,
+                        parallel_tool_calls=parallel_tool_calls,
+                    )
+                )
+                task_names.append(agent.name)
 
-        task_results = await self.executor.execute(*tasks)
+            # Create bound methods for regular functions
+            for function in self.functions:
+                tasks.append(functools.partial(function, message))
+                task_names.append(function.__name__ or id(function))
+
+            task_results = await self.executor.execute(*tasks)
+
         return dict(zip(task_names, task_results))

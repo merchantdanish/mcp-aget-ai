@@ -52,6 +52,9 @@ class MCPAggregator(BaseModel):
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
     async def __aenter__(self):
+        if self.initialized:
+            return self
+
         # Keep a connection manager to manage persistent connections for this aggregator
         if self.connection_persistence:
             ctx = get_current_context()
@@ -97,6 +100,7 @@ class MCPAggregator(BaseModel):
         if self.connection_persistence:
             try:
                 await self._persistent_connection_manager.disconnect_all()
+                self.initialized = False
             finally:
                 await self._persistent_connection_manager.__aexit__(None, None, None)
 
