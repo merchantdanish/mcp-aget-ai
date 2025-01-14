@@ -247,15 +247,12 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         )
 
         # Extract structured data from natural language
-        executor_result = await self.executor.execute(
-            client.chat.completions.create,
+        structured_response = client.chat.completions.create(
             model=model,
             response_model=response_model,
             messages=[{"role": "user", "content": response}],
             max_tokens=max_tokens,
         )
-
-        structured_response = executor_result[0]
 
         return structured_response
 
