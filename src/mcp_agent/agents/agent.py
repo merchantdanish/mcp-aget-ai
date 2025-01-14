@@ -1,6 +1,6 @@
-from typing import Callable, Dict, List, TypeVar
+from typing import Callable, Dict, List, Optional, TypeVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, AnyUrl
 from mcp.server.fastmcp.tools import Tool as FastTool
 from mcp.types import (
     CallToolResult,
@@ -13,6 +13,9 @@ from mcp.types import (
 
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
+from mcp_agent.logging.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Define a TypeVar for AugmentedLLM and its subclasses
 LLM = TypeVar("LLM", bound=AugmentedLLM)
@@ -23,7 +26,7 @@ class AgentResource(EmbeddedResource):
     A resource that returns an agent. Meant for use with tool calls that want to return an Agent for further processing.
     """
 
-    agent: "Agent"
+    agent: Optional["Agent"] = None
 
 
 class AgentFunctionResultResource(EmbeddedResource):
@@ -49,10 +52,11 @@ class Agent(MCPAggregator):
         name: str,
         instruction: str | Callable[[Dict], str] = "You are a helpful agent.",
         server_names: list[str] = None,
+        connection_persistence: bool = True,
     ):
         super().__init__(
             server_names=server_names or [],
-            connection_persistence=True,
+            connection_persistence=connection_persistence,
             name=name,
             instruction=instruction,
         )
@@ -89,16 +93,25 @@ class Agent(MCPAggregator):
 
 
 def create_agent_resource(agent: "Agent") -> AgentResource:
-    return AgentResource(agent=agent, resource=TextResourceContents(text=agent.name))
+    return AgentResource(
+        type="resource",
+        agent=agent,
+        resource=TextResourceContents(
+            text=f"You are now Agent '{agent.name}'. Please review the messages and continue execution",
+            uri=AnyUrl("http://this.is.a.fake.url"),
+        ),
+    )
 
 
 def create_agent_function_result_resource(
     result: "AgentFunctionResult",
 ) -> AgentFunctionResultResource:
     return AgentFunctionResultResource(
+        type="resource",
         result=result,
         resource=TextResourceContents(
-            text=result.value or result.agent.name or "AgentFunctionResult"
+            text=result.value or result.agent.name or "AgentFunctionResult",
+            uri=AnyUrl("http://this.is.a.fake.url"),
         ),
     )
 
@@ -140,7 +153,14 @@ class SwarmAgent(Agent):
         functions: List["AgentFunctionCallable"] = None,
         parallel_tool_calls: bool = True,
     ):
-        super().__init__(name=name, instruction=instruction, server_names=server_names)
+        super().__init__(
+            name=name,
+            instruction=instruction,
+            server_names=server_names,
+            # TODO: saqadri - figure out if Swarm can maintain connection persistence
+            # It's difficult because we don't know when the agent will be done with its task
+            connection_persistence=False,
+        )
         self.functions = functions
         self.parallel_tool_calls = parallel_tool_calls
 
@@ -148,12 +168,18 @@ class SwarmAgent(Agent):
         self._function_tool_map: Dict[str, FastTool] = {}
 
     async def initialize(self):
+        if self.initialized:
+            return
+
         await super().initialize()
         for function in self.functions:
             tool: FastTool = FastTool.from_function(function)
             self._function_tool_map[tool.name] = tool
 
     async def list_tools(self) -> ListToolsResult:
+        if not self.initialized:
+            await self.initialize()
+
         result = await super().list_tools()
         for tool in self._function_tool_map.values():
             result.tools.append(
@@ -169,11 +195,16 @@ class SwarmAgent(Agent):
     async def call_tool(
         self, name: str, arguments: dict | None = None
     ) -> CallToolResult:
+        if not self.initialized:
+            await self.initialize()
+
         if name in self._function_tool_map:
             tool = self._function_tool_map[name]
             result = await tool.run(arguments)
 
-            if isinstance(result, Agent):
+            logger.debug(f"Function tool {name} result:", data=result)
+
+            if isinstance(result, Agent) or isinstance(result, SwarmAgent):
                 resource = create_agent_resource(result)
                 return CallToolResult(content=[resource])
             elif isinstance(result, AgentFunctionResult):
@@ -181,12 +212,16 @@ class SwarmAgent(Agent):
                 return CallToolResult(content=[resource])
             elif isinstance(result, str):
                 # TODO: saqadri - this is likely meant for returning context variables
-                return CallToolResult(content=[TextContent(text=result)])
+                return CallToolResult(content=[TextContent(type="text", text=result)])
             elif isinstance(result, dict):
-                return CallToolResult(content=[TextContent(text=str(result))])
+                return CallToolResult(
+                    content=[TextContent(type="text", text=str(result))]
+                )
             else:
-                print(f"Unknown result type: {result}, returning as text.")
-                return CallToolResult(content=[TextContent(text=str(result))])
+                logger.warning(f"Unknown result type: {result}, returning as text.")
+                return CallToolResult(
+                    content=[TextContent(type="text", text=str(result))]
+                )
 
         return await super().call_tool(name, arguments)
 

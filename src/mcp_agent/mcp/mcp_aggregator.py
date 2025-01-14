@@ -97,7 +97,7 @@ class MCPAggregator(BaseModel):
         """
         Close all persistent connections when the aggregator is deleted.
         """
-        if self.connection_persistence:
+        if self.connection_persistence and self._persistent_connection_manager:
             try:
                 await self._persistent_connection_manager.disconnect_all()
                 self.initialized = False

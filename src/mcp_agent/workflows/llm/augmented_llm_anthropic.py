@@ -95,19 +95,21 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         responses: List[Message] = []
 
         for i in range(max_iterations):
+            arguments = {
+                "model": model,
+                "max_tokens": max_tokens,
+                "messages": messages,
+                "system": self.instruction or None,
+                "stop_sequences": stop_sequences,
+                "tools": available_tools,
+            }
             logger.debug(
                 f"Iteration {i}: Calling {model} with messages:",
                 data=messages,
             )
 
             executor_result = await self.executor.execute(
-                anthropic.messages.create,
-                model=model,
-                max_tokens=max_tokens,
-                messages=messages,
-                system=self.instruction or None,
-                stop_sequences=stop_sequences,
-                tools=available_tools,
+                anthropic.messages.create, **arguments
             )
 
             response = executor_result[0]

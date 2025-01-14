@@ -228,9 +228,11 @@ class AugmentedLLM(Generic[MessageParamT, MessageT]):
                 if not preprocess:
                     return CallToolResult(
                         isError=True,
-                        content=TextContent(
-                            text=f"Error: Tool '{request.params.name}' was not allowed to run."
-                        ),
+                        content=[
+                            TextContent(
+                                text=f"Error: Tool '{request.params.name}' was not allowed to run."
+                            )
+                        ],
                     )
             else:
                 request = preprocess
@@ -250,9 +252,12 @@ class AugmentedLLM(Generic[MessageParamT, MessageT]):
         except Exception as e:
             return CallToolResult(
                 isError=True,
-                content=TextContent(
-                    text=f"Error executing tool '{request.name}': {str(e)}"
-                ),
+                content=[
+                    TextContent(
+                        type="text",
+                        text=f"Error executing tool '{request.params.name}': {str(e)}",
+                    )
+                ],
             )
 
     def message_param_str(self, message: MessageParamT) -> str:
