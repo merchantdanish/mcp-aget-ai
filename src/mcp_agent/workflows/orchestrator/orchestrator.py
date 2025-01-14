@@ -1,4 +1,4 @@
-import functools
+import contextlib
 from typing import Any, Callable, Coroutine, List, Literal, Type
 
 from mcp_agent.agents.agent import Agent
@@ -14,11 +14,9 @@ from mcp_agent.mcp_server_registry import ServerRegistry
 from mcp_agent.workflows.orchestrator.orchestrator_models import (
     format_plan_result,
     format_step_result,
-    AgentTask,
     NextStep,
     Plan,
     PlanResult,
-    ServerTask,
     Step,
     StepResult,
     TaskWithResult,
@@ -27,9 +25,11 @@ from mcp_agent.workflows.orchestrator.orchestrator_prompts import (
     FULL_PLAN_PROMPT_TEMPLATE,
     ITERATIVE_PLAN_PROMPT_TEMPLATE,
     SYNTHESIZE_PLAN_PROMPT_TEMPLATE,
-    SYNTHESIZE_STEP_PROMPT_TEMPLATE,
     TASK_PROMPT_TEMPLATE,
 )
+from mcp_agent.logging.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
@@ -53,7 +53,6 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         self,
         llm_factory: Callable[[Agent], AugmentedLLM[MessageParamT, MessageT]],
         planner: AugmentedLLM | None = None,
-        available_servers: List[str] | None = None,
         available_agents: List[Agent | AugmentedLLM] | None = None,
         executor: Executor | None = None,
         plan_type: Literal["full", "iterative"] = "full",
@@ -64,7 +63,6 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             llm_factory: Factory function to create an LLM for a given agent
             planner: LLM to use for planning steps (if not provided, a default planner will be used)
             plan_type: "full" planning generates the full plan first, then executes. "iterative" plans the next step, and loops until success.
-            available_servers: List of server names available to tasks executed by this orchestrator
             available_agents: List of agents available to tasks executed by this orchestrator
             executor: Executor to use for parallel task execution (defaults to asyncio)
         """
@@ -84,12 +82,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         )
 
         self.plan_type: Literal["full", "iterative"] = plan_type
-        self.server_names = available_servers or []
         self.server_registry = server_registry or get_current_context().server_registry
-        self.server_metadata = {
-            server_name: self.server_registry.get_server_config(server_name)
-            for server_name in self.server_names
-        }
         self.agents = {agent.name: agent for agent in available_agents or []}
 
     async def generate(
@@ -99,7 +92,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         max_iterations: int = 10,
         model: str = None,
         stop_sequences: List[str] = None,
-        max_tokens: int = 2048,
+        max_tokens: int = 16384,
         parallel_tool_calls: bool = True,
     ) -> List[MessageT]:
         """Request an LLM generation, which may run multiple iterations, and return the result"""
@@ -124,11 +117,11 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
     async def generate_str(
         self,
         message: str | MessageParamT | List[MessageParamT],
-        use_history: bool = True,
+        use_history: bool = False,
         max_iterations: int = 10,
         model: str = None,
         stop_sequences: List[str] = None,
-        max_tokens: int = 2048,
+        max_tokens: int = 16384,
         parallel_tool_calls: bool = True,
     ) -> str:
         """Request an LLM generation and return the string representation of the result"""
@@ -148,11 +141,11 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         self,
         message: str | MessageParamT | List[MessageParamT],
         response_model: Type[ModelT],
-        use_history: bool = True,
+        use_history: bool = False,
         max_iterations: int = 10,
         model: str = None,
         stop_sequences: List[str] = None,
-        max_tokens: int = 2048,
+        max_tokens: int = 16384,
         parallel_tool_calls: bool = True,
     ) -> ModelT:
         """Request a structured LLM generation and return the result as a Pydantic model."""
@@ -192,24 +185,26 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         max_iterations: int = 30,
         model: str = None,
         stop_sequences: List[str] = None,
-        max_tokens: int = 2048,
+        max_tokens: int = 16384,
     ) -> PlanResult:
         """Execute task with result chaining between steps"""
         iterations = 0
 
-        plan_result = PlanResult(objective=objective, steps=[])
+        plan_result = PlanResult(objective=objective, step_results=[])
 
         while iterations < max_iterations:
             if self.plan_type == "iterative":
                 # Get next plan/step
                 next_step = await self._get_next_step(
-                    objective=objective, plan_result=plan_result
+                    objective=objective, plan_result=plan_result, model=model
                 )
+                logger.debug(f"Iteration {iterations}: Iterative plan:", data=next_step)
                 plan = Plan(steps=[next_step], is_complete=next_step.is_complete)
             elif self.plan_type == "full":
                 plan = await self._get_full_plan(
                     objective=objective, plan_result=plan_result
                 )
+                logger.debug(f"Iteration {iterations}: Full Plan:", data=plan)
             else:
                 raise ValueError(f"Invalid plan type {self.plan_type}")
 
@@ -247,6 +242,9 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
 
                 plan_result.add_step_result(step_result)
 
+            logger.debug(
+                f"Iteration {iterations}: Intermediate plan result:", data=plan_result
+            )
             iterations += 1
 
         raise RuntimeError(f"Task failed to complete in {max_iterations} iterations")
@@ -258,42 +256,48 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         max_iterations: int = 10,
         model: str = None,
         stop_sequences: List[str] = None,
-        max_tokens: int = 2048,
+        max_tokens: int = 16384,
     ) -> StepResult:
         """Execute a step's subtasks in parallel and synthesize results"""
         step_result = StepResult(step=step, task_results=[])
 
         # Format previous results
-        context = (
-            format_plan_result(previous_result)
-            if previous_result
-            else "No results so far"
-        )
+        context = format_plan_result(previous_result)
 
         # Execute subtasks in parallel
         futures: List[Coroutine[Any, Any, str]] = []
-        for task in step.tasks:
-            llm = self._get_llm_for_subtask(task)
+        results = []
 
-            task_description = TASK_PROMPT_TEMPLATE.format(
-                objective=previous_result.objective,
-                task=task.description,
-                context=context,
-            )
+        async with contextlib.AsyncExitStack() as stack:
+            # Set up all the tasks with their agents and LLMs
+            for task in step.tasks:
+                agent = self.agents.get(task.agent)
+                if not agent:
+                    # TODO: saqadri - should we fail the entire workflow in this case?
+                    raise ValueError(f"No agent found matching {task.agent}")
 
-            generate_str_bound = functools.partial(
-                llm.generate_str,
-                message=task_description,
-                max_iterations=max_iterations,
-                model=model,
-                stop_sequences=stop_sequences,
-                max_tokens=max_tokens,
-            )
+                # Enter agent context
+                ctx_agent = await stack.enter_async_context(agent)
+                llm = await ctx_agent.attach_llm(self.llm_factory)
 
-            futures.append(generate_str_bound)
+                task_description = TASK_PROMPT_TEMPLATE.format(
+                    objective=previous_result.objective,
+                    task=task.description,
+                    context=context,
+                )
 
-        # Wait for all tasks to complete
-        results = await self.executor.execute(*futures)
+                futures.append(
+                    llm.generate_str(
+                        message=task_description,
+                        max_iterations=max_iterations,
+                        model=model,
+                        stop_sequences=stop_sequences,
+                        max_tokens=max_tokens,
+                    )
+                )
+
+            # Wait for all tasks to complete
+            results = await self.executor.execute(*futures)
 
         # Store task results
         for task, result in zip(step.tasks, results):
@@ -302,43 +306,29 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             )
 
         # Synthesize overall step result
-        synthesis_prompt = SYNTHESIZE_STEP_PROMPT_TEMPLATE.format(
-            step_result=format_step_result(step_result)
-        )
-        step_result.result = await self.planner.generate_str(
-            message=synthesis_prompt,
-            max_iterations=1,
-            model=model,
-            stop_sequences=stop_sequences,
-            max_tokens=max_tokens,
-        )
+        # TODO: saqadri - instead of running through an LLM,
+        # we set the step result to the formatted results of the subtasks
+        # From empirical evidence, running it through an LLM at this step can
+        # lead to compounding errors since some information gets lost in the synthesis
+        # synthesis_prompt = SYNTHESIZE_STEP_PROMPT_TEMPLATE.format(
+        #     step_result=format_step_result(step_result)
+        # )
+        # synthesizer_llm = self.llm_factory(
+        #     agent=Agent(
+        #         name="Synthesizer",
+        #         instruction="Your job is to concatenate the results of parallel tasks into a single result.",
+        #     )
+        # )
+        # step_result.result = await synthesizer_llm.generate_str(
+        #     message=synthesis_prompt,
+        #     max_iterations=1,
+        #     model=model,
+        #     stop_sequences=stop_sequences,
+        #     max_tokens=max_tokens,
+        # )
+        step_result.result = format_step_result(step_result)
 
         return step_result
-
-    def _get_llm_for_subtask(self, task: ServerTask | AgentTask) -> AugmentedLLM:
-        """Create appropriately configured LLM for a task"""
-        if isinstance(task, ServerTask):
-            # For server tasks, create LLM with access to specified servers
-            return self.llm_factory(
-                agent=Agent(
-                    name=f"Task: {task.description}",
-                    server_names=task.servers,
-                    instruction=task.description,
-                )
-            )
-        elif isinstance(task, AgentTask):
-            # For agent tasks, find the agent and create LLM
-            agent = self.agents.get(task.agent)
-            if not agent:
-                # TODO: saqadri - this should be handled so we don't crash the orchestrator
-                raise ValueError(f"No agent found matching {task.agent}")
-            elif isinstance(agent, AugmentedLLM):
-                return agent
-            else:
-                return self.llm_factory(agent=agent)
-        else:
-            # TODO: saqadri - this should be handled so we don't crash the orchestrator
-            raise ValueError(f"Unknown task type: {type(task)}")
 
     async def _get_full_plan(
         self,
@@ -347,32 +337,24 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         max_iterations: int = 30,
         model: str = None,
         stop_sequences: List[str] = None,
-        max_tokens: int = 2048,
+        max_tokens: int = 16384,
     ) -> Plan:
         """Generate full plan considering previous results"""
 
-        servers = "\n".join(
-            [
-                f"{idx}. {self._format_server_info(server)}"
-                for idx, server in enumerate(self.server_names, 1)
-            ]
-        )
-
         agents = "\n".join(
             [
-                f"{idx}. {self._format_server_info(server)}"
-                for idx, server in enumerate(self.server_names, 1)
+                f"{idx}. {self._format_agent_info(agent)}"
+                for idx, agent in enumerate(self.agents, 1)
             ]
         )
 
         prompt = FULL_PLAN_PROMPT_TEMPLATE.format(
             objective=objective,
             plan_result=format_plan_result(plan_result),
-            servers=servers,
             agents=agents,
         )
 
-        return await self.planner.generate_structured(
+        plan = await self.planner.generate_structured(
             message=prompt,
             response_model=Plan,
             max_iterations=max_iterations,
@@ -381,36 +363,35 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             stop_sequences=stop_sequences,
         )
 
-    async def _get_next_step(self, objective: str, plan_result: PlanResult) -> NextStep:
-        """Generate just the next needed step"""
+        return plan
 
-        servers = "\n".join(
-            [
-                f"{idx}. {self._format_server_info(server)}"
-                for idx, server in enumerate(self.server_names, 1)
-            ]
-        )
+    async def _get_next_step(
+        self, objective: str, plan_result: PlanResult, model: str = None
+    ) -> NextStep:
+        """Generate just the next needed step"""
 
         agents = "\n".join(
             [
-                f"{idx}. {self._format_server_info(server)}"
-                for idx, server in enumerate(self.server_names, 1)
+                f"{idx}. {self._format_agent_info(agent)}"
+                for idx, agent in enumerate(self.agents, 1)
             ]
         )
 
         prompt = ITERATIVE_PLAN_PROMPT_TEMPLATE.format(
             objective=objective,
             plan_result=format_plan_result(plan_result),
-            servers=servers,
             agents=agents,
         )
 
-        next_step = await self.planner.generate_structured(prompt, NextStep)
+        next_step = await self.planner.generate_structured(
+            message=prompt,
+            response_model=NextStep,
+        )
         return next_step
 
     def _format_server_info(self, server_name: str) -> str:
         """Format server information for display to planners"""
-        server_config = self.server_metadata.get(server_name)
+        server_config = self.server_registry.get_server_config(server_name)
         server_str = f"Server Name: {server_name}"
         if not server_config:
             return server_str

@@ -272,14 +272,13 @@ class OpenAIAugmentedLLM(
         )
 
         # Extract structured data from natural language
-        executor_result = await self.executor.execute(
-            client.chat.completions.create,
-            model=model or "gpt-4o-mini",
+        structured_response = client.chat.completions.create(
+            model=model or "gpt-4o",
             response_model=response_model,
-            messages=[{"role": "user", "content": response}],
+            messages=[
+                {"role": "user", "content": response},
+            ],
         )
-
-        structured_response = executor_result[0]
 
         return structured_response
 
