@@ -1,7 +1,7 @@
 import asyncio
 import os
 
-from mcp_agent.agents.agent import SwarmAgent
+from mcp_agent.workflows.swarm.swarm import SwarmAgent
 from mcp_agent.workflows.swarm.swarm_anthropic import AnthropicSwarm
 from mcp_agent.context import get_current_context
 from mcp_agent.logging.logger import get_logger
