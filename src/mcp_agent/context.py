@@ -4,6 +4,7 @@ A central context object to store global state that is shared across the applica
 
 import asyncio
 import concurrent.futures
+from typing import Any, Optional, TypeVar, overload, TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 from mcp import ServerSession
@@ -21,6 +22,16 @@ from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.logging.transport import create_transport
 from mcp_agent.mcp_server_registry import ServerRegistry
 
+if TYPE_CHECKING:
+    # from mcp_agent.executor.executor import Executor
+    from mcp_agent.executor.workflow_signal import SignalWaitCallback
+    from mcp_agent.human_input.types import HumanInputCallback
+    # from mcp_agent.human_input.handler import HumanInputHandler
+else:
+    # Runtime placeholders for the types
+    HumanInputCallback = Any
+    SignalWaitCallback = Any
+
 
 class Context(BaseModel):
     """
@@ -29,11 +40,17 @@ class Context(BaseModel):
     """
 
     config: Settings | None = None
+    # executor: Optional["Executor"] = None
+    human_input_handler: Optional[HumanInputCallback] = None
+    signal_notification: Optional[SignalWaitCallback] = None
     upstream_session: ServerSession | None = None  # TODO: saqadri - figure this out
     server_registry: ServerRegistry | None = None
     tracer: trace.Tracer | None = None
 
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,  # Tell Pydantic to defer type evaluation
+    )
 
 
 async def configure_otel(config: Settings):
@@ -189,3 +206,44 @@ async def aget_current_config():
     """
     context = await aget_current_context()
     return context.config or get_settings()
+
+
+T = TypeVar("T")
+
+
+@overload
+def update_current_context(field: str, value: T) -> T: ...
+
+
+@overload
+def update_current_context(**updates: Any) -> Context: ...
+
+
+def update_current_context(
+    field: str | None = None, value: Any = None, **updates: Any
+) -> Any:
+    """
+    Update the global context, preserving types when updating a single field.
+
+    Can be used in two ways:
+    1. update_current_context("field_name", value)  # Returns the value with its type
+    2. update_current_context(field_name=value)     # Returns the updated Context
+    """
+    global _global_context
+    context = get_current_context()
+    current_data = context.model_dump()
+
+    # Handle single field update with type preservation
+    if field is not None:
+        updates = {field: value}
+
+    # Update the current data with new values
+    current_data.update(updates)
+
+    _global_context = Context(**current_data)
+
+    # Return the value for single field updates to preserve its type
+    if field is not None:
+        return value
+
+    return _global_context

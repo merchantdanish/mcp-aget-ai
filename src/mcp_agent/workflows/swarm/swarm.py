@@ -14,6 +14,8 @@ from mcp.types import (
 )
 
 from mcp_agent.agents.agent import Agent
+from mcp_agent.executor.executor import Executor
+from mcp_agent.human_input.types import HumanInputCallback
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -81,6 +83,8 @@ class SwarmAgent(Agent):
         server_names: list[str] = None,
         functions: List["AgentFunctionCallable"] = None,
         parallel_tool_calls: bool = True,
+        human_input_callback: HumanInputCallback = None,
+        executor: Executor | None = None,
     ):
         super().__init__(
             name=name,
@@ -89,6 +93,8 @@ class SwarmAgent(Agent):
             # TODO: saqadri - figure out if Swarm can maintain connection persistence
             # It's difficult because we don't know when the agent will be done with its task
             connection_persistence=False,
+            human_input_callback=human_input_callback,
+            executor=executor,
         )
         self.functions = functions
         self.parallel_tool_calls = parallel_tool_calls

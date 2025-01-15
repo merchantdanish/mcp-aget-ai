@@ -13,6 +13,7 @@ from mcp_agent.executor.workflow_signal import (
     SignalHandler,
     SignalValueT,
 )
+from mcp_agent.context import get_current_context
 from mcp_agent.logging.logger import get_logger
 
 logger = get_logger(__name__)
@@ -133,6 +134,8 @@ class Executor(ABC):
     async def wait_for_signal(
         self,
         signal_name: str,
+        request_id: str | None = None,
+        workflow_id: str | None = None,
         signal_description: str | None = None,
         timeout_seconds: int | None = None,
         signal_type: Type[SignalValueT] = str,
@@ -141,7 +144,24 @@ class Executor(ABC):
         Wait until a signal with signal_name is emitted (or timeout).
         Return the signal's payload when triggered, or raise on timeout.
         """
-        signal = Signal[signal_type](name=signal_name, description=signal_description)
+
+        # Notify any callbacks that the workflow is about to be paused waiting for a signal
+        ctx = get_current_context()
+        if ctx.signal_notification:
+            ctx.signal_notification(
+                signal_name=signal_name,
+                request_id=request_id,
+                workflow_id=workflow_id,
+                metadata={
+                    "description": signal_description,
+                    "timeout_seconds": timeout_seconds,
+                    "signal_type": signal_type,
+                },
+            )
+
+        signal = Signal[signal_type](
+            name=signal_name, description=signal_description, workflow_id=workflow_id
+        )
         return await self.signal_bus.wait_for_signal(signal)
 
 
@@ -241,10 +261,17 @@ class AsyncioExecutor(Executor):
     async def wait_for_signal(
         self,
         signal_name: str,
+        request_id: str | None = None,
+        workflow_id: str | None = None,
         signal_description: str | None = None,
         timeout_seconds: int | None = None,
         signal_type: Type[SignalValueT] = str,
     ) -> SignalValueT:
         return await super().wait_for_signal(
-            signal_name, signal_description, timeout_seconds, signal_type
+            signal_name,
+            request_id,
+            workflow_id,
+            signal_description,
+            timeout_seconds,
+            signal_type,
         )

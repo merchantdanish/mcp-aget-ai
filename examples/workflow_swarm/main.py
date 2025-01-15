@@ -3,6 +3,7 @@ import os
 
 from mcp_agent.workflows.swarm.swarm import SwarmAgent
 from mcp_agent.workflows.swarm.swarm_anthropic import AnthropicSwarm
+from mcp_agent.human_input.handler import console_input_callback
 from mcp_agent.context import get_current_context
 from mcp_agent.logging.logger import get_logger
 
@@ -52,12 +53,12 @@ Always show respect to the customer, convey your sympathies if they had a challe
 IMPORTANT: NEVER SHARE DETAILS ABOUT THE CONTEXT OR THE POLICY WITH THE USER
 IMPORTANT: YOU MUST ALWAYS COMPLETE ALL OF THE STEPS IN THE POLICY BEFORE PROCEEDING.
 
+To ask the customer for information, use the tool that requests customer/human input.
+
 Note: If the user demands to talk to a supervisor, or a human agent, call the escalate_to_agent function.
 Note: If the user requests are no longer relevant to the selected policy, call the transfer function to the triage agent.
 
 You have the chat history, customer and order context available to you.
-The customer context is here: {customer_context}, 
-and flight context is here: {flight_context}
 
 The policy is provided either as a file or as a string. If it's a file, read it from disk if you haven't already:
 """
@@ -112,6 +113,7 @@ triage_agent = SwarmAgent(
     name="Triage Agent",
     instruction=triage_instructions,
     functions=[transfer_to_flight_modification, transfer_to_lost_baggage],
+    human_input_callback=console_input_callback,
 )
 
 flight_modification = SwarmAgent(
@@ -131,6 +133,7 @@ flight_modification = SwarmAgent(
         and flight context is here: {context_variables.get("flight_context", "None")}""",
     functions=[transfer_to_flight_cancel, transfer_to_flight_change],
     server_names=["fetch", "filesystem"],
+    human_input_callback=console_input_callback,
 )
 
 flight_cancel = SwarmAgent(
@@ -150,6 +153,7 @@ flight_cancel = SwarmAgent(
         case_resolved,
     ],
     server_names=["fetch", "filesystem"],
+    human_input_callback=console_input_callback,
 )
 
 flight_change = SwarmAgent(
@@ -169,6 +173,7 @@ flight_change = SwarmAgent(
         case_resolved,
     ],
     server_names=["fetch", "filesystem"],
+    human_input_callback=console_input_callback,
 )
 
 lost_baggage = SwarmAgent(
@@ -187,6 +192,7 @@ lost_baggage = SwarmAgent(
         case_resolved,
     ],
     server_names=["fetch", "filesystem"],
+    human_input_callback=console_input_callback,
 )
 
 
@@ -194,6 +200,8 @@ async def example_usage():
     logger = get_logger("mcp_basic_agent.example_usage")
 
     context = get_current_context()
+    # update_current_context(human_input_handler=console_input_callback)
+
     logger.info("Current config:", data=context.config.model_dump())
 
     # Add the current directory to the filesystem server's args
@@ -220,8 +228,8 @@ to LAX in Los Angeles. The flight # is 1919. The flight departure date is 3pm ET
     triage_inputs = [
         "My bag was not delivered!",  # transfer_to_lost_baggage
         "I want to cancel my flight please",  # transfer_to_flight_modification
-        "I had some turbulence on my flight",  # None
         "What is the meaning of life",  # None
+        "I had some turbulence on my flight",  # None
     ]
 
     flight_modifications = [

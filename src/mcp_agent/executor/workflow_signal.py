@@ -14,7 +14,7 @@ class Signal(BaseModel, Generic[SignalValueT]):
     """Represents a signal that can be sent to a workflow."""
 
     name: str
-    description: str = "Workflow Signal"
+    description: str | None = "Workflow Signal"
     payload: SignalValueT | None = None
     metadata: Dict[str, Any] | None = None
     workflow_id: str | None = None
@@ -302,3 +302,24 @@ class LocalSignalStore:
                 raise
         else:
             return await future
+
+
+class SignalWaitCallback(Protocol):
+    """Protocol for callbacks that are triggered when a workflow pauses waiting for a given signal."""
+
+    async def __call__(
+        self,
+        signal_name: str,
+        request_id: str | None = None,
+        workflow_id: str | None = None,
+        metadata: Dict[str, Any] | None = None,
+    ) -> None:
+        """
+        Receive a notification that a workflow is pausing on a signal.
+
+        Args:
+            signal_name: The name of the signal the workflow is pausing on.
+            workflow_id: The ID of the workflow that is pausing (if using a workflow engine).
+            metadata: Additional metadata about the signal.
+        """
+        ...
