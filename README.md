@@ -30,7 +30,7 @@ pip install mcp-agent
 ### Quickstart
 
 The [`examples`](/examples) directory has a number of example applications to get started with.
-To run an example, clone this repo, update `mcp_agent.secrets.yaml` with your API keys, and then:
+To run an example, clone this repo, update, then copy `mcp_agent.secrets.yaml.example` to `mcp_agent.secrets.yaml` and update with your API keys, and then:
 
 ```bash
 uv run scripts/example.py run mcp_basic_agent # Replace with 'mcp_basic_agent' with any folder name under examples/
