@@ -1,7 +1,7 @@
 [project]
 name = "mcp-agent"
-version = "0.0.1"
-description = "Agent framework for Model Context Protocol (MCP) built on temporal"
+version = "0.0.2"
+description = "Agent framework for Model Context Protocol (MCP)"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [

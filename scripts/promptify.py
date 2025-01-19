@@ -148,6 +148,11 @@ def package_project(
     gitignore_patterns: List[str],
 ) -> None:
     """Package project files into a single markdown file."""
+    # Normalize all patterns first
+    include_patterns = [normalize_pattern(p) for p in include_patterns]
+    ignore_patterns = [normalize_pattern(p) for p in ignore_patterns]
+    gitignore_patterns = [normalize_pattern(p) for p in gitignore_patterns]
+
     with open(output_file, "w", encoding="utf-8") as f:
         # Write header
         f.write(f"# Project: {path.name}\n\n")
