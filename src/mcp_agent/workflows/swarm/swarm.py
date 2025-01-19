@@ -2,12 +2,10 @@ from typing import Callable, Dict, Generic, List, Optional
 from collections import defaultdict
 
 from pydantic import AnyUrl, BaseModel, ConfigDict
-from mcp.server.fastmcp.tools import Tool as FastTool
 from mcp.types import (
     CallToolRequest,
     EmbeddedResource,
     CallToolResult,
-    ListToolsResult,
     TextContent,
     TextResourceContents,
     Tool,
@@ -90,42 +88,14 @@ class SwarmAgent(Agent):
             name=name,
             instruction=instruction,
             server_names=server_names,
+            functions=functions,
             # TODO: saqadri - figure out if Swarm can maintain connection persistence
             # It's difficult because we don't know when the agent will be done with its task
             connection_persistence=False,
             human_input_callback=human_input_callback,
             executor=executor,
         )
-        self.functions = functions
         self.parallel_tool_calls = parallel_tool_calls
-
-        # Map function names to tools
-        self._function_tool_map: Dict[str, FastTool] = {}
-
-    async def initialize(self):
-        if self.initialized:
-            return
-
-        await super().initialize()
-        for function in self.functions:
-            tool: FastTool = FastTool.from_function(function)
-            self._function_tool_map[tool.name] = tool
-
-    async def list_tools(self) -> ListToolsResult:
-        if not self.initialized:
-            await self.initialize()
-
-        result = await super().list_tools()
-        for tool in self._function_tool_map.values():
-            result.tools.append(
-                Tool(
-                    name=tool.name,
-                    description=tool.description,
-                    inputSchema=tool.parameters,
-                )
-            )
-
-        return result
 
     async def call_tool(
         self, name: str, arguments: dict | None = None
