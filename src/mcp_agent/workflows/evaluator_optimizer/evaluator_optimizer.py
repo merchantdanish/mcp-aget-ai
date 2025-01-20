@@ -1,6 +1,6 @@
 import contextlib
 from enum import Enum
-from typing import Callable, List, Type
+from typing import Callable, List, Optional, Type, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from mcp_agent.workflows.llm.augmented_llm import (
@@ -10,8 +10,10 @@ from mcp_agent.workflows.llm.augmented_llm import (
     ModelT,
 )
 from mcp_agent.agents.agent import Agent
-from mcp_agent.executor.executor import Executor
 from mcp_agent.logging.logger import get_logger
+
+if TYPE_CHECKING:
+    from mcp_agent.context import Context
 
 logger = get_logger(__name__)
 
@@ -68,7 +70,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         min_rating: QualityRating = QualityRating.GOOD,
         max_refinements: int = 3,
         llm_factory: Callable[[Agent], AugmentedLLM] | None = None,
-        executor: Executor | None = None,
+        context: Optional["Context"] = None,
     ):
         """
         Initialize the evaluator-optimizer workflow.
@@ -83,9 +85,8 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             min_rating: Minimum acceptable quality rating
             max_refinements: Maximum refinement iterations
             llm_factory: Optional factory to create LLMs from agents
-            executor: Optional executor for parallel operations
         """
-        super().__init__(executor=executor)
+        super().__init__(context=context)
 
         # Set up the optimizer
         self.name = optimizer.name

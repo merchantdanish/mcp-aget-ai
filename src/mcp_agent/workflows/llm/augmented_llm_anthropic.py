@@ -16,7 +16,6 @@ from mcp.types import (
 )
 
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM, ModelT
-from mcp_agent.context import get_current_config
 from mcp_agent.logging.logger import get_logger
 
 logger = get_logger(__name__)
@@ -67,7 +66,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         The default implementation uses Claude as the LLM.
         Override this method to use a different LLM.
         """
-        config = get_current_config()
+        config = self.context.config
         anthropic = Anthropic(api_key=config.anthropic.api_key)
 
         messages: List[MessageParam] = []
@@ -245,7 +244,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
         # Next we pass the text through instructor to extract structured data
         client = instructor.from_anthropic(
-            Anthropic(api_key=get_current_config().anthropic.api_key),
+            Anthropic(api_key=self.context.config.anthropic.api_key),
         )
 
         # Extract structured data from natural language

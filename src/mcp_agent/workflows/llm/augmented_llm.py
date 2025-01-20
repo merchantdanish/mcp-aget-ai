@@ -6,11 +6,14 @@ from mcp.types import (
     TextContent,
 )
 
-from mcp_agent.executor.executor import Executor, AsyncioExecutor
+from mcp_agent.context_dependent import ContextDependent
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator
+
 
 if TYPE_CHECKING:
     from mcp_agent.agents.agent import Agent
+    from mcp_agent.context import Context
+
 
 MessageParamT = TypeVar("MessageParamT")
 """A type representing an input message to an LLM."""
@@ -107,7 +110,7 @@ class AugmentedLLMProtocol(Protocol, Generic[MessageParamT, MessageT]):
         """Request a structured LLM generation and return the result as a Pydantic model."""
 
 
-class AugmentedLLM(Generic[MessageParamT, MessageT]):
+class AugmentedLLM(ContextDependent, Generic[MessageParamT, MessageT]):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
     such as retrieval, tools, and memory provided from a collection of MCP servers.
@@ -132,14 +135,16 @@ class AugmentedLLM(Generic[MessageParamT, MessageT]):
         instruction: str | None = None,
         name: str | None = None,
         agent: Optional["Agent"] = None,
-        executor: Executor | None = None,
+        context: Optional["Context"] = None,
+        **kwargs,
     ):
         """
         Initialize the LLM with a list of server names and an instruction.
         If a name is provided, it will be used to identify the LLM.
         If an agent is provided, all other properties are optional
         """
-        self.executor = executor or AsyncioExecutor()
+        super().__init__(context=context, **kwargs)
+        self.executor = self.context.executor
         self.aggregator = (
             agent if agent is not None else MCPAggregator(server_names or [])
         )

@@ -5,7 +5,7 @@ Transports for the Logger module for MCP Agent, including:
 """
 
 import asyncio
-
+from abc import ABC, abstractmethod
 from typing import Dict, List, Protocol
 
 import aiohttp
@@ -15,7 +15,7 @@ from rich.json import JSON
 from rich.text import Text
 
 from mcp_agent.config import LoggerSettings
-from mcp_agent.logging.events import Event
+from mcp_agent.logging.events import Event, EventFilter
 from mcp_agent.logging.json_serializer import JSONSerializer
 from mcp_agent.logging.listeners import EventListener, LifecycleAwareListener
 
@@ -35,18 +35,36 @@ class EventTransport(Protocol):
         ...
 
 
-class NoOpTransport(EventTransport):
+class FilteredEventTransport(EventTransport, ABC):
+    """
+    Event transport that filters events based on a filter before sending.
+    """
+
+    def __init__(self, event_filter: EventFilter | None = None):
+        self.filter = event_filter
+
+    async def send_event(self, event: Event):
+        if not self.filter or self.filter.matches(event):
+            await self.send_matched_event(event)
+
+    @abstractmethod
+    async def send_matched_event(self, event: Event):
+        """Send an event to the external system."""
+
+
+class NoOpTransport(FilteredEventTransport):
     """Default transport that does nothing (purely local)."""
 
-    async def send_event(self, event):
+    async def send_matched_event(self, event):
         """Do nothing."""
         pass
 
 
-class ConsoleTransport(EventTransport):
+class ConsoleTransport(FilteredEventTransport):
     """Simple transport that prints events to console."""
 
-    def __init__(self):
+    def __init__(self, event_filter: EventFilter | None = None):
+        super().__init__(event_filter=event_filter)
         self.console = Console()
         self.log_level_styles: Dict[str, str] = {
             "info": "bold green",
@@ -56,7 +74,7 @@ class ConsoleTransport(EventTransport):
         }
         self._serializer = JSONSerializer()
 
-    async def send_event(self, event: Event):
+    async def send_matched_event(self, event: Event):
         # Map log levels to styles
         style = self.log_level_styles.get(event.type, "white")
 
@@ -79,7 +97,7 @@ class ConsoleTransport(EventTransport):
             self.console.print(JSON.from_data(serialized_data))
 
 
-class HTTPTransport(EventTransport):
+class HTTPTransport(FilteredEventTransport):
     """
     Sends events to an HTTP endpoint in batches.
     Useful for sending to remote logging services like Elasticsearch, etc.
@@ -91,7 +109,9 @@ class HTTPTransport(EventTransport):
         headers: Dict[str, str] = None,
         batch_size: int = 100,
         timeout: float = 5.0,
+        event_filter: EventFilter | None = None,
     ):
+        super().__init__(event_filter=event_filter)
         self.endpoint = endpoint
         self.headers = headers or {}
         self.batch_size = batch_size
@@ -117,7 +137,7 @@ class HTTPTransport(EventTransport):
             await self._session.close()
             self._session = None
 
-    async def send_event(self, event: Event):
+    async def send_matched_event(self, event: Event):
         """Add event to batch, flush if batch is full."""
         async with self.lock:
             self.batch.append(event)
@@ -178,6 +198,13 @@ class AsyncEventBus:
         self._running = False
         self._stop_event = asyncio.Event()
 
+        # Store the loop we're created on
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
+
     @classmethod
     def get(cls, transport: EventTransport | None = None) -> "AsyncEventBus":
         """Get the singleton instance of the event bus."""
@@ -212,32 +239,47 @@ class AsyncEventBus:
         self._running = False
         self._stop_event.set()
 
-        # Wait for queue to be processed
+        # Try to process remaining items with a timeout
         if not self._queue.empty():
             try:
-                await self._queue.join()
-            except Exception:
-                pass
+                # Give some time for remaining items to be processed
+                await asyncio.wait_for(self._queue.join(), timeout=5.0)
+            except asyncio.TimeoutError:
+                # If we timeout, drain the queue to prevent deadlock
+                while not self._queue.empty():
+                    try:
+                        self._queue.get_nowait()
+                        self._queue.task_done()
+                    except asyncio.QueueEmpty:
+                        break
+            except Exception as e:
+                print(f"Error during queue cleanup: {e}")
 
-        # Cancel and wait for task
-        if self._task:
+        # Cancel and wait for task with timeout
+        if self._task and not self._task.done():
             self._task.cancel()
             try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
+                # Wait for task to complete with timeout
+                await asyncio.wait_for(self._task, timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass  # Task was cancelled or timed out
+            except Exception as e:
+                print(f"Error cancelling process task: {e}")
+            finally:
+                self._task = None
 
         # Stop each lifecycle-aware listener
         for listener in self.listeners.values():
             if isinstance(listener, LifecycleAwareListener):
-                await listener.stop()
+                try:
+                    await asyncio.wait_for(listener.stop(), timeout=3.0)
+                except asyncio.TimeoutError:
+                    print(f"Timeout stopping listener: {listener}")
+                except Exception as e:
+                    print(f"Error stopping listener: {e}")
 
     async def emit(self, event: Event):
         """Emit an event to all listeners and transport."""
-        if not self._running:
-            return
-
         # Inject current tracing info if available
         span = trace.get_current_span()
         if span.is_recording():
@@ -311,12 +353,14 @@ class AsyncEventBus:
                 break
 
 
-def create_transport(settings: LoggerSettings) -> EventTransport:
+def create_transport(
+    settings: LoggerSettings, event_filter: EventFilter | None = None
+) -> EventTransport:
     """Create event transport based on settings."""
     if settings.type == "none":
-        return NoOpTransport()
+        return NoOpTransport(event_filter=event_filter)
     elif settings.type == "console":
-        return ConsoleTransport()
+        return ConsoleTransport(event_filter=event_filter)
     elif settings.type == "http":
         if not settings.http_endpoint:
             raise ValueError("HTTP endpoint required for HTTP transport")
@@ -325,6 +369,7 @@ def create_transport(settings: LoggerSettings) -> EventTransport:
             headers=settings.http_headers,
             batch_size=settings.batch_size,
             timeout=settings.http_timeout,
+            event_filter=event_filter,
         )
     else:
         raise ValueError(f"Unsupported transport type: {settings.type}")

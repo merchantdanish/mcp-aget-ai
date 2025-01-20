@@ -1,16 +1,22 @@
 import contextlib
-from typing import Any, Callable, Coroutine, List, Literal, Type
+from typing import (
+    Any,
+    Callable,
+    Coroutine,
+    List,
+    Literal,
+    Optional,
+    Type,
+    TYPE_CHECKING,
+)
 
 from mcp_agent.agents.agent import Agent
-from mcp_agent.context import get_current_context
-from mcp_agent.executor.executor import Executor
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
     MessageT,
     ModelT,
 )
-from mcp_agent.mcp_server_registry import ServerRegistry
 from mcp_agent.workflows.orchestrator.orchestrator_models import (
     format_plan_result,
     format_step_result,
@@ -28,6 +34,9 @@ from mcp_agent.workflows.orchestrator.orchestrator_prompts import (
     TASK_PROMPT_TEMPLATE,
 )
 from mcp_agent.logging.logger import get_logger
+
+if TYPE_CHECKING:
+    from mcp_agent.context import Context
 
 logger = get_logger(__name__)
 
@@ -54,9 +63,9 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         llm_factory: Callable[[Agent], AugmentedLLM[MessageParamT, MessageT]],
         planner: AugmentedLLM | None = None,
         available_agents: List[Agent | AugmentedLLM] | None = None,
-        executor: Executor | None = None,
         plan_type: Literal["full", "iterative"] = "full",
-        server_registry: ServerRegistry | None = None,
+        context: Optional["Context"] = None,
+        **kwargs,
     ):
         """
         Args:
@@ -64,9 +73,9 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             planner: LLM to use for planning steps (if not provided, a default planner will be used)
             plan_type: "full" planning generates the full plan first, then executes. "iterative" plans the next step, and loops until success.
             available_agents: List of agents available to tasks executed by this orchestrator
-            executor: Executor to use for parallel task execution (defaults to asyncio)
+            context: Application context
         """
-        super().__init__(executor=executor)
+        super().__init__(context=context, **kwargs)
 
         self.llm_factory = llm_factory
 
@@ -82,7 +91,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         )
 
         self.plan_type: Literal["full", "iterative"] = plan_type
-        self.server_registry = server_registry or get_current_context().server_registry
+        self.server_registry = self.context.server_registry
         self.agents = {agent.name: agent for agent in available_agents or []}
 
     async def generate(

@@ -1,9 +1,9 @@
 import contextlib
 import functools
-from typing import Any, Callable, Coroutine, Dict, List, Type
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Type, TYPE_CHECKING
 
 from mcp_agent.agents.agent import Agent
-from mcp_agent.executor.executor import Executor, AsyncioExecutor
+from mcp_agent.context_dependent import ContextDependent
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -12,10 +12,13 @@ from mcp_agent.workflows.llm.augmented_llm import (
 )
 from mcp_agent.logging.logger import get_logger
 
+if TYPE_CHECKING:
+    from mcp_agent.context import Context
+
 logger = get_logger(__name__)
 
 
-class FanOut:
+class FanOut(ContextDependent):
     """
     Distribute work to multiple parallel tasks.
 
@@ -28,15 +31,16 @@ class FanOut:
         agents: List[Agent | AugmentedLLM[MessageParamT, MessageT]] | None = None,
         functions: List[Callable[[MessageParamT], List[MessageT]]] | None = None,
         llm_factory: Callable[[Agent], AugmentedLLM[MessageParamT, MessageT]] = None,
-        executor: Executor | None = None,
+        context: Optional["Context"] = None,
+        **kwargs,
     ):
         """
         Initialize the FanOut with a list of agents, functions, or LLMs.
         If agents are provided, they will be wrapped in an AugmentedLLM using llm_factory if not already done so.
         If functions are provided, they will be invoked in parallel directly.
         """
-
-        self.executor = executor or AsyncioExecutor()
+        super().__init__(context=context, **kwargs)
+        self.executor = self.context.executor
         self.llm_factory = llm_factory
         self.agents = agents or []
         self.functions: List[Callable[[MessageParamT], MessageT]] = functions or []

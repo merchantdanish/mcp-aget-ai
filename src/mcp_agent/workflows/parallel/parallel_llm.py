@@ -1,7 +1,6 @@
-from typing import Any, Callable, List, Type
+from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING
 
 from mcp_agent.agents.agent import Agent
-from mcp_agent.executor.executor import Executor
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -10,6 +9,9 @@ from mcp_agent.workflows.llm.augmented_llm import (
 )
 from mcp_agent.workflows.parallel.fan_in import FanInInput, FanIn
 from mcp_agent.workflows.parallel.fan_out import FanOut
+
+if TYPE_CHECKING:
+    from mcp_agent.context import Context
 
 
 class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
@@ -47,14 +49,15 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
         fan_out_agents: List[Agent | AugmentedLLM] | None = None,
         fan_out_functions: List[Callable] | None = None,
         llm_factory: Callable[[Agent], AugmentedLLM] = None,
-        executor: Executor | None = None,
+        context: Optional["Context"] = None,
+        **kwargs,
     ):
         """
         Initialize the LLM with a list of server names and an instruction.
         If a name is provided, it will be used to identify the LLM.
         If an agent is provided, all other properties are optional
         """
-        super().__init__(executor=executor)
+        super().__init__(context=context, **kwargs)
 
         self.llm_factory = llm_factory
         self.fan_in_agent = fan_in_agent
@@ -72,14 +75,14 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
             self.fan_in = FanIn(
                 aggregator_agent=fan_in_agent,
                 llm_factory=llm_factory,
-                executor=executor,
+                context=context,
             )
 
         self.fan_out = FanOut(
             agents=fan_out_agents,
             functions=fan_out_functions,
             llm_factory=llm_factory,
-            executor=executor,
+            context=context,
         )
 
     async def generate(

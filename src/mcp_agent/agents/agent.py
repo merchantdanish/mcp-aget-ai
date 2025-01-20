@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from typing import Callable, Dict, List, TypeVar
+from typing import Callable, Dict, List, Optional, TypeVar, TYPE_CHECKING
 
 from mcp.server.fastmcp.tools import Tool as FastTool
 from mcp.types import (
@@ -10,7 +10,6 @@ from mcp.types import (
     Tool,
 )
 
-from mcp_agent.executor.executor import Executor, AsyncioExecutor
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator
 from mcp_agent.human_input.types import (
     HumanInputCallback,
@@ -19,8 +18,10 @@ from mcp_agent.human_input.types import (
     HUMAN_INPUT_SIGNAL_NAME,
 )
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
-from mcp_agent.context import get_current_context
 from mcp_agent.logging.logger import get_logger
+
+if TYPE_CHECKING:
+    from mcp_agent.context import Context
 
 logger = get_logger(__name__)
 
@@ -36,9 +37,6 @@ class Agent(MCPAggregator):
     Each agent should have a purpose defined by its instruction.
     """
 
-    name: str
-    instruction: str | Callable[[Dict], str]
-
     def __init__(
         self,
         name: str,
@@ -47,25 +45,28 @@ class Agent(MCPAggregator):
         functions: List[Callable] = None,
         connection_persistence: bool = True,
         human_input_callback: HumanInputCallback = None,
-        executor: Executor | None = None,
+        context: Optional["Context"] = None,
+        **kwargs,
     ):
         super().__init__(
+            context=context,
             server_names=server_names or [],
             connection_persistence=connection_persistence,
-            name=name,
-            instruction=instruction,
+            **kwargs,
         )
 
-        self.functions = functions
+        self.name = name
+        self.instruction = instruction
+        self.functions = functions or []
+        self.executor = self.context.executor
+
         # Map function names to tools
         self._function_tool_map: Dict[str, FastTool] = {}
 
-        self.executor = executor or AsyncioExecutor()
         self.human_input_callback: HumanInputCallback | None = human_input_callback
         if not human_input_callback:
-            ctx = get_current_context()
-            if ctx.human_input_handler:
-                self.human_input_callback = ctx.human_input_handler
+            if self.context.human_input_handler:
+                self.human_input_callback = self.context.human_input_handler
 
     async def initialize(self):
         """

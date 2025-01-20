@@ -24,7 +24,6 @@ from mcp.types import (
 )
 
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM, ModelT
-from mcp_agent.context import get_current_config
 from mcp_agent.logging.logger import get_logger
 
 logger = get_logger(__name__)
@@ -68,7 +67,7 @@ class OpenAIAugmentedLLM(
         The default implementation uses OpenAI's ChatCompletion as the LLM.
         Override this method to use a different LLM.
         """
-        config = get_current_config()
+        config = self.context.config
         openai_client = OpenAI(api_key=config.openai.api_key)
         messages: List[ChatCompletionMessageParam] = []
 
@@ -267,7 +266,7 @@ class OpenAIAugmentedLLM(
 
         # Next we pass the text through instructor to extract structured data
         client = instructor.from_openai(
-            OpenAI(api_key=get_current_config().openai.api_key),
+            OpenAI(api_key=self.context.config.openai.api_key),
             mode=instructor.Mode.TOOLS_STRICT,
         )
 
