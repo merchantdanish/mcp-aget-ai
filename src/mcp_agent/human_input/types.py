@@ -1,3 +1,4 @@
+from abc import abstractmethod
 from typing import Any, AsyncIterator, Protocol
 from pydantic import BaseModel
 
@@ -42,6 +43,7 @@ class HumanInputResponse(BaseModel):
 class HumanInputCallback(Protocol):
     """Protocol for callbacks that handle human input requests."""
 
+    @abstractmethod
     async def __call__(
         self, request: HumanInputRequest
     ) -> AsyncIterator[HumanInputResponse]:
@@ -55,4 +57,3 @@ class HumanInputCallback(Protocol):
             AsyncIterator yielding responses as they come in
             TODO: saqadri - Keep it simple and just return HumanInputResponse?
         """
-        ...
