@@ -3,7 +3,7 @@ $schema: ../../schema/mcp-agent.config.schema.json
 execution_engine: asyncio
 logger:
   type: console
-  level: debug
+  level: info
   batch_size: 100
   flush_interval: 2
   max_queue_size: 2048
@@ -13,16 +13,17 @@ logger:
 
 mcp:
   servers:
-    fetch:
-      command: "uvx"
-      args: ["mcp-server-fetch"]
-    filesystem:
-      command: "npx"
+    curl:
+      command: "node"
       args:
         [
-          "-y",
-          "@modelcontextprotocol/server-filesystem"
-          # this agent will automatically add this folder to the server-filesystem arguments
+          "C:\\Program Files\\nodejs\\node_modules\\@mcp-get-community\\server-curl\\dist\\index.js",
+        ]
+    filesystem:
+      command: "node"
+      args:
+        [
+          "C:\\Program Files\\nodejs\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js",
         ]
 
 openai:
