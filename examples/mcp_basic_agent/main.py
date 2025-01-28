@@ -9,9 +9,9 @@ from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 
 async def example_usage():
+    context = get_current_context()
     logger = get_logger("mcp_basic_agent.example_usage")
 
-    context = get_current_context()
     logger.info("Current config:", data=context.config.model_dump())
 
     # Add the current directory to the filesystem server's args
@@ -38,18 +38,18 @@ async def example_usage():
         logger.info(f"Result: {result}")
 
         # Let's switch the same agent to a different LLM
-        llm = await finder_agent.attach_llm(AnthropicAugmentedLLM)
+        # llm = await finder_agent.attach_llm(AnthropicAugmentedLLM)
 
-        result = await llm.generate_str(
-            message="Print the first 2 paragraphs of https://www.anthropic.com/research/building-effective-agents",
-        )
-        logger.info(f"Result: {result}")
+        # result = await llm.generate_str(
+        #     message="Print the first 2 paragraphs of https://www.anthropic.com/research/building-effective-agents",
+        # )
+        # logger.info(f"Result: {result}")
 
         # Multi-turn conversations
-        result = await llm.generate_str(
-            message="Summarize those paragraphs in a 128 character tweet",
-        )
-        logger.info(f"Result: {result}")
+        # result = await llm.generate_str(
+        #     message="Summarize those paragraphs in a 128 character tweet",
+        # )
+        # logger.info(f"Result: {result}")
 
 
 if __name__ == "__main__":
