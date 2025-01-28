@@ -21,9 +21,8 @@ mcp:
       args:
         [
           "-y",
-          "@modelcontextprotocol/server-filesystem",
-          "/Users/saqadri/Desktop",
-          "/Users/saqadri/Downloads",
+          "@modelcontextprotocol/server-filesystem"
+          # this agent will automatically add this folder to the server-filesystem arguments
         ]
 
 openai:
