@@ -19,13 +19,13 @@ from typing import (
     TYPE_CHECKING,
 )
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, ValidationError
 from temporalio import activity, workflow, exceptions
 from temporalio.client import Client as TemporalClient
 from temporalio.worker import Worker
 
 from mcp_agent.config import TemporalSettings
-from mcp_agent.executor.executor import Executor, ExecutorConfig, R
+from mcp_agent.executor.executor import Executor, ExecutorConfig, ExecutionState, R
 from mcp_agent.executor.workflow_signal import (
     BaseSignalHandler,
     Signal,
@@ -403,3 +403,67 @@ class TemporalExecutor(Executor):
             )
 
         await self._worker.run()
+
+    async def get_state(self, workflow_id, key) -> ExecutionState:
+        # TODO: saqadri - ensure this is performant enough to query temporal
+        # server for the state every time.
+        await self.ensure_client()
+
+        try:
+            handle = self.client.get_workflow_handle(workflow_id)
+            # Query the workflow's state
+            state_dict: Dict[str, Any] = await handle.query("get_state")
+            if not state_dict:
+                # TODO: saqadri - validate
+                return None
+
+            workflow_state = ExecutionState(**state_dict)
+            if not key:
+                # Return global workflow state if no key is specified
+                return workflow_state
+
+            if state_dict.get(key):
+                return getattr(workflow_state, key)
+            else:
+                # TODO: saqadri - If the state doesn't have the key, then return None?
+                return None
+        except Exception:
+            # TODO: saqadri - Handle case where workflow doesn't exist or other errors
+            return None
+
+    async def set_state(self, workflow_id: str, key, state) -> bool:
+        """Save state for any workflow by ID"""
+        await self.ensure_client()
+        handle = self.client.get_workflow_handle(workflow_id)
+        # Signal the workflow to update its state for the key
+        await handle.signal("update_state", key, state.model_dump())
+
+    @staticmethod
+    def add_state_management(workflow_cls):
+        """Decorator to add state management to a workflow class"""
+
+        # Add state property
+        workflow_cls._workflow_state = None
+
+        # Add query method
+        @workflow.query
+        def get_state(self) -> Dict[str, Any]:
+            if self._workflow_state:
+                return self._workflow_state.model_dump()
+            return {}
+
+        # Add signal method
+        @workflow.signal
+        async def update_state(self, key: str, state: Dict[str, Any]):
+            if not self._workflow_state:
+                self._workflow_state = ExecutionState()
+
+            try:
+                execution_state = ExecutionState(**state)
+                setattr(self._workflow_state, key, execution_state)
+            except ValidationError as e:
+                raise ValueError(f"Invalid state value for field '{key}': {e}")
+
+        workflow_cls.get_state = get_state
+        workflow_cls.update_state = update_state
+        return workflow_cls

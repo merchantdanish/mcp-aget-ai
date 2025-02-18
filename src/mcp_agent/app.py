@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional, Type, TypeVar, Callable
 from datetime import timedelta
 import asyncio
 from contextlib import asynccontextmanager
+from pydantic import BaseModel, ConfigDict
 
 from mcp import ServerSession
 
@@ -14,6 +15,26 @@ from mcp_agent.human_input.handler import console_input_callback
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 
 R = TypeVar("R")
+
+
+class MCPAppState(BaseModel):
+    """
+    Dataclass for serializable state for MCPApp.
+    """
+
+    name: str
+    """App name."""
+
+    config: Settings
+    """Config settings."""
+
+    context: Context
+    """Application context."""
+
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,  # Tell Pydantic to defer type evaluation
+    )
 
 
 class MCPApp:
@@ -55,7 +76,7 @@ class MCPApp:
             human_input_callback: Callback for handling human input
             signal_notification: Callback for getting notified on workflow signals/events.
             upstream_session: Optional upstream session if the MCPApp is running as a server to an MCP client.
-            initialize_model_selector: Initializes the built-in ModelSelector to help with model selection. Defaults to False.
+            model_selector: The ModelSelector to use for model selection. Defaults to the built-in version.
         """
         self.name = name
 
@@ -70,6 +91,8 @@ class MCPApp:
         self._logger = None
         self._context: Optional[Context] = None
         self._initialized = False
+
+    # def init(self, state: MCPAppState):
 
     @property
     def context(self) -> Context:

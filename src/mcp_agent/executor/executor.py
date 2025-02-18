@@ -11,12 +11,13 @@ from typing import (
     Dict,
     List,
     Optional,
+    Protocol,
     Type,
     TypeVar,
     TYPE_CHECKING,
 )
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from mcp_agent.context_dependent import ContextDependent
 from mcp_agent.executor.workflow_signal import (
@@ -46,7 +47,30 @@ class ExecutorConfig(BaseModel):
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
-class Executor(ABC, ContextDependent):
+class ExecutionState(BaseModel):
+    """State tracking for durable execution."""
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
+class ExecutionStateProtocol(Protocol):
+    """
+    Manage workflow state in a durable manner
+    """
+
+    async def get_state(self, workflow_id: str, key: str | None) -> ExecutionState:
+        """
+        Retrieve the workflow state from the state store given a key.
+        If the key isn't specified, the global state is returned.
+        """
+
+    async def set_state(
+        self, workflow_id: str, key: str, state: ExecutionState
+    ) -> bool:
+        """Save the state in the state store at the key."""
+
+
+class Executor(ABC, ExecutionStateProtocol, ContextDependent):
     """Abstract base class for different execution backends"""
 
     def __init__(
@@ -198,6 +222,9 @@ class AsyncioExecutor(Executor):
                 self.config.max_concurrent_activities
             )
 
+        self._global_execution_state: Dict[str, ExecutionState] = {}
+        self._state_lock: asyncio.Lock = asyncio.Lock()
+
     async def _execute_task(
         self, task: Callable[..., R] | Coroutine[Any, Any, R], **kwargs: Any
     ) -> R | BaseException:
@@ -291,3 +318,51 @@ class AsyncioExecutor(Executor):
             timeout_seconds,
             signal_type,
         )
+
+    async def get_state(self, workflow_id, key) -> ExecutionState:
+        if not workflow_id:
+            raise ValueError(
+                "get_state request requires workflow_id to be specified. None provided."
+            )
+
+        workflow_state: ExecutionState
+        async with self._state_lock:
+            workflow_state = self._global_execution_state.get(workflow_id)
+            if not workflow_state:
+                workflow_state = ExecutionState()
+                self._global_execution_state[workflow_id] = workflow_state
+
+        if not key:
+            # Return the full workflow state if no key is specified
+            return workflow_state
+
+        try:
+            state = getattr(workflow_state, key)
+            if not isinstance(state, ExecutionState):
+                raise ValueError(
+                    f"Object retrieved from state field '{key}' is not an ExecutionState type"
+                )
+            return state
+        except AttributeError:
+            raise KeyError(f"Field '{key}' not found in ExecutionState")
+
+    async def set_state(self, workflow_id, key, state) -> bool:
+        if not workflow_id:
+            raise ValueError(
+                "set_state request requires workflow_id to be specified. None provided."
+            )
+
+        workflow_state: ExecutionState
+        async with self._state_lock:
+            workflow_state = self._global_execution_state.get(workflow_id)
+            if not workflow_state:
+                workflow_state = ExecutionState()
+                self._global_execution_state[workflow_id] = workflow_state
+
+        try:
+            setattr(workflow_state, key, state)
+            return True
+        except ValidationError as e:
+            raise ValueError(f"Invalid state value for field '{key}': {e}")
+
+        return False

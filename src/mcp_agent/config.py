@@ -103,6 +103,14 @@ class TemporalSettings(BaseModel):
     api_key: str | None = None
 
 
+class StreamlitSettings(BaseModel):
+    """
+    Streamlit settings for the MCP Agent application.
+    """
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
 class UsageTelemetrySettings(BaseModel):
     """
     Settings for usage telemetry in the MCP Agent application.
@@ -186,11 +194,14 @@ class Settings(BaseSettings):
     mcp: MCPSettings | None = MCPSettings()
     """MCP config, such as MCP servers"""
 
-    execution_engine: Literal["asyncio", "temporal"] = "asyncio"
+    execution_engine: Literal["asyncio", "temporal", "streamlit"] = "asyncio"
     """Execution engine for the MCP Agent application"""
 
     temporal: TemporalSettings | None = None
     """Settings for Temporal workflow orchestration"""
+
+    streamlit: StreamlitSettings | None = None
+    """Settings for Streamlit workflow execution"""
 
     anthropic: AnthropicSettings | None = None
     """Settings for using Anthropic models in the MCP Agent application"""
