@@ -1,0 +1,43 @@
+execution_engine: asyncio
+logger:
+  type: console
+  level: debug
+  batch_size: 100
+  flush_interval: 2
+  max_queue_size: 2048
+  http_endpoint:
+  http_headers:
+  http_timeout: 5
+
+mcp:
+  servers:
+    gmail:
+      command: "/opt/homebrew/bin/uv"
+      args:
+        [
+          "--directory",
+          "/Users/jerronlim/Desktop/projects/mcp-agent-jerron/flagship/scheduling-assistant/servers",
+          "run",
+          "gmail.py",
+          "--creds-file-path",
+          "/Users/jerronlim/Desktop/projects/mcp-agent-jerron/flagship/scheduling-assistant/creds/client_creds.json",
+          "--token-path",
+          "/Users/jerronlim/Desktop/projects/mcp-agent-jerron/flagship/scheduling-assistant/creds/gmail_app_tokens.json",
+        ]
+    calendar:
+      command: "/opt/homebrew/bin/uv"
+      args:
+        [
+          "--directory",
+          "/Users/jerronlim/Desktop/projects/mcp-agent-jerron/flagship/scheduling-assistant/servers",
+          "run",
+          "google_calendar.py",
+          "--creds-file-path",
+          "/Users/jerronlim/Desktop/projects/mcp-agent-jerron/flagship/scheduling-assistant/creds/client_creds.json",
+          "--token-path",
+          "/Users/jerronlim/Desktop/projects/mcp-agent-jerron/flagship/scheduling-assistant/creds/calendar_app_tokens.json",
+        ]
+
+openai:
+  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
+  default_model: gpt-4o

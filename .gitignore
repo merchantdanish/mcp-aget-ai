@@ -155,7 +155,7 @@ dmypy.json
 cython_debug/
 
 # Make sure secrets files aren't added
-examples/**/*.secrets.yaml
+**/*.secrets.yaml
 
 # but make sure example files are
 !examples/**/*.secrets.yaml.example
@@ -169,3 +169,6 @@ examples/**/*.secrets.yaml
 
 # File generated from promptify script (to create an LLM-friendly prompt for the repo)
 project_contents.md
+
+# flagship related
+flagship/scheduling-assistant/creds/*
