@@ -282,9 +282,6 @@ def get_logger(namespace: str, session_id: str | None = None) -> Logger:
         # Create a new logger if one doesn't exist
         if namespace not in _loggers:
             _loggers[namespace] = Logger(namespace, session_id)
-        # If we have a session_id and the existing logger doesn't, update it
-        elif session_id is not None and _loggers[namespace].session_id is None:
-            _loggers[namespace].session_id = session_id
         return _loggers[namespace]
 
 

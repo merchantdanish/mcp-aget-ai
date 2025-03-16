@@ -4,7 +4,6 @@ A central context object to store global state that is shared across the applica
 
 import asyncio
 import concurrent.futures
-import uuid
 from typing import Any, Optional, Union, TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
@@ -189,8 +188,7 @@ async def initialize_context(
     context.config = config
     context.server_registry = ServerRegistry(config=config)
 
-    # Use the provided session ID or generate a new one
-    context.session_id = session_id or str(uuid.uuid4())
+    context.session_id = session_id
 
     # Configure logging and telemetry
     await configure_otel(config)
