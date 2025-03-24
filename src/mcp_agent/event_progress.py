@@ -60,6 +60,7 @@ def convert_log_event(event: Event) -> Optional[ProgressEvent]:
         return None
 
     # Build target string based on the event type
+    # Progress display is currently [time] [event] --- [target] [details]
     namespace = event.namespace
     agent_name = event_data.get("agent_name")
     target = agent_name if agent_name is not None else "unknown"
