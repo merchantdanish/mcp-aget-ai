@@ -2,7 +2,6 @@
 Manages the lifecycle of multiple MCP server connections.
 """
 
-import asyncio
 from datetime import timedelta
 from typing import (
     AsyncGenerator,
@@ -12,6 +11,7 @@ from typing import (
     TYPE_CHECKING,
 )
 
+import anyio
 from anyio import Event, create_task_group, Lock
 from anyio.abc import TaskGroup
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
@@ -224,7 +224,7 @@ class MCPConnectionManager(ContextDependent):
 
             # TODO: saqadri (FA1) - Is this needed?
             # Add a small delay to allow for clean shutdown
-            await asyncio.sleep(0.5)
+            await anyio.sleep(0.5)
 
             # Then close the task group if it's active
             if self._tg_active:

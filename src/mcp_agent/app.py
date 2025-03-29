@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional, Type, TypeVar, Callable
 from datetime import timedelta
 import asyncio
+import sys
 import uuid
 from contextlib import asynccontextmanager
 
@@ -71,6 +72,15 @@ class MCPApp:
         self._logger = None
         self._context: Optional[Context] = None
         self._initialized = False
+
+        try:
+            # Set event loop policy for Windows
+            if sys.platform == "win32":
+                import asyncio
+
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        finally:
+            pass
 
     @property
     def context(self) -> Context:

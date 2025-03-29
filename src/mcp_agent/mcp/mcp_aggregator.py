@@ -427,13 +427,36 @@ class MCPAggregator(ContextDependent):
         if not self.initialized:
             await self.load_servers()
 
-        server_name, local_tool_name = self._parse_capability_name(name, "tool")
-        if server_name is None or local_tool_name is None:
-            logger.error(f"Error: Tool '{name}' not found")
-            return CallToolResult(
-                isError=True,
-                content=[TextContent(type="text", text=f"Tool '{name}' not found")],
-            )
+        server_name: str = None
+        local_tool_name: str = None
+
+        if SEP in name:  # Namespaced tool name
+            parts = name.split(SEP)
+
+            for i in range(len(parts) - 1, 0, -1):
+                potential_server_name = SEP.join(parts[:i])
+                if potential_server_name in self.server_names:
+                    server_name = potential_server_name
+                    local_tool_name = SEP.join(parts[i:])
+                    break
+
+            if server_name is None:
+                server_name, local_tool_name = name.split(SEP, 1)
+        else:
+            # Assume un-namespaced, loop through all servers to find the tool. First match wins.
+            for _, tools in self._server_to_tool_map.items():
+                for namespaced_tool in tools:
+                    if namespaced_tool.tool.name == name:
+                        server_name = namespaced_tool.server_name
+                        local_tool_name = name
+                        break
+
+            if server_name is None or local_tool_name is None:
+                logger.error(f"Error: Tool '{name}' not found")
+                return CallToolResult(
+                    isError=True,
+                    content=[TextContent(type="text", text=f"Tool '{name}' not found")],
+                )
 
         logger.info(
             "Requesting tool call",

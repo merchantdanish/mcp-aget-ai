@@ -3,12 +3,15 @@ Custom implementation of stdio_client that handles stderr through rich console.
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import TextIO
 
+import shutil
 import subprocess
+import sys
+
 import anyio
 import anyio.lowlevel
-from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from anyio.streams.text import TextReceiveStream
 from mcp.client.stdio import StdioServerParameters, get_default_environment
 import mcp.types as types
@@ -25,25 +28,32 @@ async def stdio_client_with_rich_stderr(
     Client transport for stdio: this will connect to a server by spawning a
     process and communicating with it over stdin/stdout.
     """
-    read_stream: MemoryObjectReceiveStream[types.JSONRPCMessage | Exception]
-    read_stream_writer: MemoryObjectSendStream[types.JSONRPCMessage | Exception]
-
-    write_stream: MemoryObjectSendStream[types.JSONRPCMessage]
-    write_stream_reader: MemoryObjectReceiveStream[types.JSONRPCMessage]
-
     read_stream_writer, read_stream = anyio.create_memory_object_stream(0)
     write_stream, write_stream_reader = anyio.create_memory_object_stream(0)
 
-    process = await anyio.open_process(
-        [server.command, *server.args],
+    command = _get_executable_command(server.command)
+
+    # Open process with stderr piped for capture
+    process = await _create_platform_compatible_process(
+        command=command,
+        args=server.args,
         env=(
             {**get_default_environment(), **server.env}
             if server.env is not None
             else get_default_environment()
         ),
-        stderr=errlog,
+        errlog=errlog,
         cwd=server.cwd,
     )
+
+    if process.pid:
+        logger.debug(f"Started process '{command}' with PID: {process.pid}")
+
+    if process.returncode is not None:
+        logger.debug(f"return code (early){process.returncode}")
+        raise RuntimeError(
+            f"Process terminated immediately with code {process.returncode}"
+        )
 
     async def stdout_reader():
         assert process.stdout, "Opened process is missing stdout"
@@ -69,6 +79,8 @@ async def stdio_client_with_rich_stderr(
                         await read_stream_writer.send(message)
         except anyio.ClosedResourceError:
             await anyio.lowlevel.checkpoint()
+        except Exception as e:
+            logger.error(f"Error in stdout_reader: {e}")
 
     async def stderr_reader():
         assert process.stderr, "Opened process is missing stderr"
@@ -101,14 +113,15 @@ async def stdio_client_with_rich_stderr(
             async with write_stream_reader:
                 async for message in write_stream_reader:
                     json = message.model_dump_json(by_alias=True, exclude_none=True)
-                    await process.stdin.send(
-                        (json + "\n").encode(
-                            encoding=server.encoding,
-                            errors=server.encoding_error_handler,
-                        )
+                    data = (json + "\n").encode(
+                        encoding=server.encoding, errors=server.encoding_error_handler
                     )
+
+                    await process.stdin.send(data)
         except anyio.ClosedResourceError:
             await anyio.lowlevel.checkpoint()
+        except Exception as e:
+            logger.error(f"Error in stdin_writer: {e}")
 
     async with (
         anyio.create_task_group() as tg,
@@ -117,47 +130,97 @@ async def stdio_client_with_rich_stderr(
         tg.start_soon(stdout_reader)
         tg.start_soon(stdin_writer)
         tg.start_soon(stderr_reader)
-        yield read_stream, write_stream
+        try:
+            yield read_stream, write_stream
+        finally:
+            # Clean up process
+            logger.debug(
+                f"Terminating process (PID: {process.pid if hasattr(process, 'pid') else 'unknown'})"
+            )
+            try:
+                process.terminate()
+                if sys.platform == "win32":
+                    try:
+                        with anyio.fail_after(2.0):
+                            await process.wait()
+                    except TimeoutError:
+                        # Force kill if it doesn't terminate
+                        process.kill()
+            except Exception as e:
+                logger.warning(
+                    f"Error terminating process (PID: {process.pid if hasattr(process, 'pid') else 'unknown'}): {e}"
+                )
 
 
-# TODO: saqadri (FA1) - See if the following is sufficient.
-# @asynccontextmanager
-# async def stdio_client_with_rich_stderr(
-#     server: StdioServerParameters, errlog: TextIO = sys.stderr
-# ):
-#     """
-#     A wrapper around the original stdio_client that captures stderr and routes it through our logger.
+def _get_executable_command(command: str) -> str:
+    """
+    Get the correct executable command normalized for the current platform.
 
-#     This implementation creates a custom wrapped errlog that forwards messages to our rich logger
-#     while still using the original stdio_client function.
+    Args:
+        command: Base command (e.g., 'uvx', 'npx')
 
-#     Args:
-#         server: The server parameters for the stdio connection
-#         errlog: Fallback error log (if rich logging fails)
-#     """
-#     # Instead of creating a full TextIO implementation, wrap the existing errlog
-#     original_write = errlog.write
+    Returns:
+        str: Platform-appropriate command
+    """
 
-#     def rich_logger_write(text):
-#         """Intercepts write calls to the errlog and logs them through our rich logger"""
-#         print("rich_logger_write: HERE: ", text)
-#         if text and text.strip():
-#             try:
-#                 logger.event("info", "mcpserver.stderr", text.rstrip(), None, {})
-#             except Exception as e:
-#                 logger.error(f"Error handling stderr output: {e}")
-#                 # Fall back to original behavior
+    try:
+        if sys.platform != "win32":
+            return command
+        else:
+            # For Windows, we need more sophisticated path resolution
+            # First check if command exists in PATH as-is
+            command_path = shutil.which(command)
+            if command_path:
+                return command_path
 
-#         # Always call the original write method to maintain original behavior
-#         return original_write(text)
+            # Check for Windows-specific extensions
+            for ext in [".cmd", ".bat", ".exe", ".ps1"]:
+                ext_version = f"{command}{ext}"
+                ext_path = shutil.which(ext_version)
+                if ext_path:
+                    return ext_path
 
-#     # Replace the write method temporarily
-#     errlog.write = rich_logger_write
+            # For regular commands or if we couldn't find special versions
+            return command
+    except Exception:
+        return command
 
-#     try:
-#         # Use the original stdio_client with our wrapped errlog
-#         async with stdio_client(server, errlog=errlog) as (read_stream, write_stream):
-#             yield read_stream, write_stream
-#     finally:
-#         # Restore the original write method
-#         errlog.write = original_write
+
+async def _create_platform_compatible_process(
+    command: str,
+    args: list[str],
+    env: dict[str, str] | None = None,
+    errlog: int | TextIO = subprocess.PIPE,
+    cwd: Path | str | None = None,
+):
+    """
+    Creates a subprocess in a platform-compatible way.
+    Returns a process handle.
+    """
+
+    process = None
+
+    if sys.platform == "win32":
+        try:
+            process = await anyio.open_process(
+                [command, *args],
+                env=env,
+                # Ensure we don't create console windows for each process
+                creationflags=subprocess.CREATE_NO_WINDOW  # type: ignore
+                if hasattr(subprocess, "CREATE_NO_WINDOW")
+                else 0,
+                stderr=errlog,
+                cwd=cwd,
+            )
+
+            return process
+        except Exception:
+            # Don't raise, let's try to create the process using the default method
+            process = None
+
+    # Default method for creating the process
+    process = await anyio.open_process(
+        [command, *args], env=env, stderr=errlog, cwd=cwd
+    )
+
+    return process
