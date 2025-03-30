@@ -290,9 +290,9 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         model = await self.select_model(params)
 
         # Extract structured data from natural language
-        structured_response = client.converse(
+        structured_response = client.chat.completions.create(
             modelId=model,
-            messages=[{"role": "user", "content": response}],
+            messages=[{"role": "user", "content": [{"text": response}]}],
             response_model=response_model,
         )
 
