@@ -432,8 +432,7 @@ def bedrock_content_to_mcp_content(
     for block in content:
         if block.get("text"):
             mcp_content.append(TextContent(type="text", text=content["text"]))
-
-        if block.get("image"):
+        elif block.get("image"):
             mcp_content.append(
                 ImageContent(
                     type="image",
@@ -441,8 +440,7 @@ def bedrock_content_to_mcp_content(
                     mimeType=content["image"]["format"],
                 )
             )
-
-        if block.get("toolUse"):
+        elif block.get("toolUse"):
             # Best effort to convert a tool use to text (since there's no ToolUseContent)
             mcp_content.append(
                 TextContent(
@@ -450,8 +448,7 @@ def bedrock_content_to_mcp_content(
                     text=str(content["toolUse"]),
                 )
             )
-
-        if block.get("document"):
+        elif block.get("document"):
             mcp_content.append(
                 EmbeddedResource(
                     type="document",
