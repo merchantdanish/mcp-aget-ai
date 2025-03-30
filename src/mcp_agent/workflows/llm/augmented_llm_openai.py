@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Iterable, List, Type
 
 from openai import OpenAI
@@ -197,8 +198,10 @@ class OpenAIAugmentedLLM(
             message = choice.message
             responses.append(message)
 
+            sanitized_name = re.sub(r"[^a-zA-Z0-9_-]", "_", self.name)
+
             converted_message = self.convert_message_to_message_param(
-                message, name=self.name
+                message, name=sanitized_name
             )
             messages.append(converted_message)
 
