@@ -33,7 +33,6 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
     such as retrieval, tools, and memory provided from a collection of MCP servers.
-    This implementation uses OpenAI's ChatCompletion as the LLM.
     """
 
     def __init__(self, *args, **kwargs):
