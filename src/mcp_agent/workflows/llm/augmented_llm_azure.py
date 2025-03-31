@@ -222,8 +222,12 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ChatResponseMessage]):
 
         for response in responses:
             if response.content:
-                final_text.append(response.content)
-            if hasattr(response, "tool_calls") and response.tool_calls:
+                if response.role == "tool":
+                    # TODO: Identify tool name
+                    final_text.append(f"[Tool result: {response.content}]")
+                else:
+                    final_text.append(response.content)
+            if response.role == "assistant" and response.tool_calls:
                 for tool_call in response.tool_calls:
                     if tool_call.function.arguments:
                         final_text.append(
