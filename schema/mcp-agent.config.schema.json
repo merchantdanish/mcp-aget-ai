@@ -477,6 +477,18 @@
           ],
           "default": null,
           "title": "Azure Endpoint"
+        },
+        "api_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "API Version"
         }
       },
       "required": [
