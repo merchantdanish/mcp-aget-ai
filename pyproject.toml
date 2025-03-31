@@ -28,7 +28,6 @@ dependencies = [
     "scikit-learn>=1.6.0",
     "prompt-toolkit>=3.0.50",
     "aiohttp>=3.11.13",
-    "azure-ai-inference>=1.0.0b9",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +44,9 @@ bedrock = [
 ]
 openai = [
     "openai>=1.58.1",
+]
+azure = [
+    "azure-ai-inference>=1.0.0b9",
 ]
 cohere = [
     "cohere>=5.13.4",

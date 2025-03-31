@@ -895,7 +895,6 @@ version = "0.0.14"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
-    { name = "azure-ai-inference" },
     { name = "fastapi" },
     { name = "instructor" },
     { name = "mcp" },
@@ -919,6 +918,8 @@ anthropic = [
 bedrock = [
     { name = "boto3" },
     { name = "boto3-stubs", extra = ["bedrock-runtime"] },
+azure = [
+    { name = "azure-ai-inference" },
 ]
 cohere = [
     { name = "cohere" },
@@ -946,9 +947,9 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.11.13" },
     { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.48.0" },
-    { name = "azure-ai-inference", specifier = ">=1.0.0b9" },
     { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.37.23" },
     { name = "boto3-stubs", extras = ["bedrock-runtime"], marker = "extra == 'bedrock'", specifier = ">=1.37.23" },
+    { name = "azure-ai-inference", marker = "extra == 'azure'", specifier = ">=1.0.0b9" },
     { name = "cohere", marker = "extra == 'cohere'", specifier = ">=5.13.4" },
     { name = "fastapi", specifier = ">=0.115.6" },
     { name = "instructor", specifier = ">=1.7.7" },
@@ -967,7 +968,7 @@ requires-dist = [
     { name = "temporalio", marker = "extra == 'temporal'", specifier = ">=1.8.0" },
     { name = "typer", specifier = ">=0.15.1" },
 ]
-provides-extras = ["temporal", "anthropic", "bedrock", "openai", "cohere"]
+provides-extras = ["temporal", "anthropic", "openai", "bedrock", "azure", "cohere"]
 
 [package.metadata.requires-dev]
 dev = [
