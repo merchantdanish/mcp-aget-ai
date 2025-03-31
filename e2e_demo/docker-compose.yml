@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # Redis registry for server tracking
+  registry:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - registry_data:/data
+    networks:
+      - mcp_network
+
+  # Cloud authentication service
+  cloud-auth:
+    build:
+      context: ../mcp-agent/src/mcp_agent/cloud/auth
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - AUTH_SECRET_KEY=demo_secret_key_do_not_use_in_production_5467890
+      - REDIS_URL=redis://registry:6379/0
+    depends_on:
+      - registry
+    networks:
+      - mcp_network
+
+  # STDIO-based filesystem MCP server
+  filesystem-server:
+    build:
+      context: ../mcp-agent/src/mcp_agent/cloud/deployment
+      dockerfile: Dockerfile.stdio
+    environment:
+      - SERVER_NAME=filesystem
+      - SERVER_COMMAND=npx
+      - SERVER_ARGS=-y @modelcontextprotocol/server-filesystem /data
+      - AUTH_SERVICE_URL=http://cloud-auth:8000
+    volumes:
+      - ./data:/data
+    ports:
+      - "8001:8000"
+    depends_on:
+      - cloud-auth
+    networks:
+      - mcp_network
+
+  # Networked fetch MCP server with authentication
+  fetch-server:
+    build:
+      context: ../mcp-agent/src/mcp_agent/cloud/deployment
+      dockerfile: Dockerfile.networked
+    environment:
+      - SERVER_TYPE=fetch
+      - AUTH_SERVICE_URL=http://cloud-auth:8000
+    ports:
+      - "8002:8000"
+    depends_on:
+      - cloud-auth
+    networks:
+      - mcp_network
+
+  # MCP application using both servers
+  mcp-app:
+    build:
+      context: ./mcp-app
+      dockerfile: Dockerfile
+    environment:
+      - FILESYSTEM_SERVER_URL=http://filesystem-server:8000
+      - FETCH_SERVER_URL=http://fetch-server:8000
+      - AUTH_SERVICE_URL=http://cloud-auth:8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    depends_on:
+      - filesystem-server
+      - fetch-server
+    networks:
+      - mcp_network
+    volumes:
+      - ./mcp-app/output:/app/output
+
+networks:
+  mcp_network:
+    driver: bridge
+
+volumes:
+  registry_data:

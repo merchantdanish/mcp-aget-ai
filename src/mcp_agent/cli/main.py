@@ -1,11 +1,13 @@
 import typer
 from mcp_agent.cli.terminal import Application
 from mcp_agent.cli.commands import config
+from mcp_agent.cli.commands import deploy
 
 app = typer.Typer()
 
 # Subcommands
 app.add_typer(config.app, name="config")
+app.add_typer(deploy.app, name="deploy")
 
 # Shared application context
 application = Application()

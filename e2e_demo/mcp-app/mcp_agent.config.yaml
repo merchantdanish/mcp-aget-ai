@@ -1,0 +1,32 @@
+$schema: ../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  type: file
+  level: debug
+  batch_size: 100
+  flush_interval: 2
+  max_queue_size: 2048
+
+mcp:
+  servers:
+    filesystem:
+      url: ${FILESYSTEM_SERVER_URL}
+      auth:
+        provider_type: oauth
+        client_id: "mcp-app-client"
+        client_secret: "mcp-app-secret"
+    fetch:
+      url: ${FETCH_SERVER_URL}
+      auth:
+        provider_type: oauth
+        client_id: "mcp-app-client"
+        client_secret: "mcp-app-secret"
+
+openai:
+  api_key: ${OPENAI_API_KEY}
+  default_model: gpt-4o-mini
+  
+anthropic:
+  api_key: ${ANTHROPIC_API_KEY}
+  default_model: claude-3-haiku-20240307

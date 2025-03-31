@@ -1,0 +1,23 @@
+FROM node:18-slim
+
+# Create non-root user for security
+RUN useradd -m -s /bin/bash mcp-user
+
+# Create app directory and set permissions
+WORKDIR /app
+
+# Install dependencies
+RUN npm init -y && \
+    npm install express cors body-parser
+
+# Create server.js file
+COPY server.js .
+
+# Set server type environment variable
+ENV SERVER_TYPE="${SERVER_TYPE}"
+
+# Drop privileges to non-root user
+USER mcp-user
+
+EXPOSE 8000
+CMD ["node", "server.js"]

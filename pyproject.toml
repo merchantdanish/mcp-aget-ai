@@ -28,6 +28,7 @@ dependencies = [
     "scikit-learn>=1.6.0",
     "prompt-toolkit>=3.0.50",
     "aiohttp>=3.11.13",
+    "docker>=7.1.0",
 ]
 
 [project.optional-dependencies]
