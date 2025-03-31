@@ -28,8 +28,6 @@ dependencies = [
     "scikit-learn>=1.6.0",
     "prompt-toolkit>=3.0.50",
     "aiohttp>=3.11.13",
-    "boto3>=1.37.23",
-    "boto3-stubs[bedrock-runtime]>=1.37.23",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +37,10 @@ temporal = [
 anthropic = [
     "anthropic>=0.48.0",
     "instructor[anthropic]>=1.7.2",
+]
+bedrock = [
+    "boto3>=1.37.23",
+    "boto3-stubs[bedrock-runtime]>=1.37.23",
 ]
 openai = [
     "openai>=1.58.1",

@@ -1,6 +1,6 @@
 # MCP Bedrock Agent Example - "Finder" Agent
 
-This example demonstrates how to create and run a basic "Finder" Agent using AWS Bedrock and the MCP (Model Control Plane) system. The Agent has access to the `fetch` MCP server, enabling it to retrieve information from URLs.
+This example demonstrates how to create and run a basic "Finder" Agent using AWS Bedrock and MCP. The Agent has access to the `fetch` MCP server, enabling it to retrieve information from URLs.
 
 ## Setup
 
