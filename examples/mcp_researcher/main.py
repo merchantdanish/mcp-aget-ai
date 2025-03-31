@@ -19,8 +19,8 @@ async def example_usage():
         folder_path.mkdir(exist_ok=True)
 
         context = agent_app.context
-        logger = agent_app.logger
 
+        # Overwrite the config because full path to agent folder needs to be passed
         context.config.mcp.servers["interpreter"].args = [
           "run",
           "-i",
