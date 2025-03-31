@@ -243,16 +243,18 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ChatResponseMessage]):
         request_params: RequestParams | None = None,
     ) -> ModelT:
         json_schema = response_model.model_json_schema()
+
+        request_params = request_params or RequestParams()
+        metadata = request_params.metadata or {}
+        metadata["response_format"] = JsonSchemaFormat(
+            name=response_model.__name__,
+            description=response_model.__doc__,
+            schema=json_schema,
+        )
+        request_params.metadata = metadata
+
         structured_response = await self.generate_str(
-            message=message,
-            request_params={
-                **(request_params or {}),
-                "response_format": JsonSchemaFormat(
-                    name=response_model.__name__,
-                    description=response_model.__doc__,
-                    schema=json_schema,
-                ),
-            },
+            message=message, request_params=request_params
         )
         return structured_response
 
