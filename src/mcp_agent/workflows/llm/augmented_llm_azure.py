@@ -76,7 +76,9 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ChatResponseMessage]):
             self.azure_client = ChatCompletionsClient(
                 endpoint=self.context.config.azure.endpoint,
                 credential=AzureKeyCredential(self.context.config.azure.api_key),
-                api_version=self.context.config.azure.api_version,
+                **self.context.config.azure.model_dump(
+                    exclude={"endpoint", "credential"}
+                ),
             )
         else:
             self.logger.error(

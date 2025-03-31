@@ -19,6 +19,4 @@ mcp:
 azure:
   # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
   # default model: "gpt-4o-mini"
-  # default api_version: "2024-05-01-preview"
   default_model: got-4o-mini
-  api_version: 2025-01-01-preview

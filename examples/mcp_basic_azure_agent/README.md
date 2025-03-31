@@ -8,8 +8,11 @@ Check out the [Azure Python SDK docs](https://learn.microsoft.com/en-us/python/a
 
 - `endpoint`
 - `api_key`
-- `api_version` (optional)
 
+Optionally, for structured outputs, you might need to include `api_version` as '2025-01-01-preview'.
+
+
+Attach these values in `mcp_agent.secrets.yaml` or `mcp_agent.config.yaml`
 
 ## Running the Agent
 

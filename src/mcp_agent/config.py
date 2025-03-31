@@ -146,8 +146,6 @@ class AzureSettings(BaseModel):
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
-    api_version: str = "2024-05-01-preview"  # Latest GA release currently
-
 
 class TemporalSettings(BaseModel):
     """
