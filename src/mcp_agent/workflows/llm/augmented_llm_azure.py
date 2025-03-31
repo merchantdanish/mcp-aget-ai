@@ -220,7 +220,14 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ChatResponseMessage]):
         final_text: list[str] = []
 
         for response in responses:
-            final_text.append(response.content)
+            if response.content:
+                final_text.append(response.content)
+            if hasattr(response, "tool_calls") and response.tool_calls:
+                for tool_call in response.tool_calls:
+                    if tool_call.function.arguments:
+                        final_text.append(
+                            f"[Calling tool {tool_call.function.name} with args {tool_call.function.arguments}]"
+                        )
 
         return "\n".join(final_text)
 
