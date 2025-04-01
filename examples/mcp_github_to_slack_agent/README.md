@@ -26,6 +26,28 @@ This application creates an MCP Agent that monitors GitHub pull requests and sub
 - Access to a GitHub repository
 - Access to a Slack workspace
 
+### Getting a Slack Bot Token and Team ID
+
+1. Head to [Slack API apps](https://api.slack.com/apps)
+
+2. Create a **New App**
+
+3. Click on the option to **Create from scratch**
+
+4. In the app view, go to **OAuth & Permissions** on the left-hand navigation
+
+5. Copy the **Bot User OAuth Token**
+   
+6. *[Optional] In OAuth & Permissions, add chat:write, users:read, im:history, chat:write.public to the Bot Token Scopes*
+
+7. For **Team ID**, go to the browser and log into your workspace.
+   
+8. In the browser, take the **TEAM ID** from the url: `https://app.slack.com/client/TEAM_ID`
+
+9. Add the **OAuth Token** and the **Team ID** to your `mcp_agent.secrets.yaml` file
+
+10. *[Optional] Make sure to launch and install your Slack bot to your workspace. And, invite the new bot to the channel you want to interact with.*
+
 ### Installation
 
 1. Install dependencies:
