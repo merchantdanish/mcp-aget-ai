@@ -65,7 +65,7 @@ async def github_to_slack(github_owner: str, github_repo: str, slack_channel: st
 
                 # Execute the workflow
                 print("Executing GitHub to Slack workflow...")
-                result = await llm.generate_str(prompt)
+                await llm.generate_str(prompt)
                 
                 print("Workflow completed successfully!")
 
