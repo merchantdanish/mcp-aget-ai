@@ -1,5 +1,5 @@
 import json
-from typing import Iterable, List, Type
+from typing import Iterable, List, Type, Union
 
 from pydantic import BaseModel
 
@@ -15,6 +15,7 @@ from anthropic.types import (
     ToolParam,
     ToolResultBlockParam,
     ToolUseBlockParam,
+    Base64ImageSourceParam,
 )
 from mcp.types import (
     CallToolRequestParams,
@@ -211,6 +212,38 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                             request=tool_call_request, tool_call_id=tool_use_id
                         )
 
+                        # Convert mcp CallToolResult content to anthropic ToolResultBlockParam content
+                        tool_result_content: list[
+                            Union[TextBlockParam, ImageBlockParam]
+                        ] = []
+                        for content_block in result.content:
+                            if isinstance(content_block, TextContent):
+                                tool_result_content.append(
+                                    TextBlockParam(text=content_block.text)
+                                )
+                            elif isinstance(content_block, ImageContent):
+                                tool_result_content.append(
+                                    ImageBlockParam(
+                                        source=Base64ImageSourceParam(
+                                            data=content_block.data,
+                                            media_type=content_block.mimeType,
+                                        )
+                                    )
+                                )
+                            elif isinstance(content_block, EmbeddedResource):
+                                if isinstance(
+                                    content_block.resource, TextResourceContents
+                                ):
+                                    return TextBlockParam(
+                                        type="text", text=content_block.resource.text
+                                    )
+                                else:
+                                    # Best effort to convert since this is not supported by anthropic ToolResultBlockParam.
+                                    return TextBlockParam(
+                                        type="text",
+                                        text=f"{content_block.resource.mimeType}:{content_block.resource.blob}",
+                                    )
+
                         messages.append(
                             MessageParam(
                                 role="user",
@@ -218,7 +251,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                                     ToolResultBlockParam(
                                         type="tool_result",
                                         tool_use_id=tool_use_id,
-                                        content=result.content,
+                                        content=tool_result_content,
                                         is_error=result.isError,
                                     )
                                 ],
