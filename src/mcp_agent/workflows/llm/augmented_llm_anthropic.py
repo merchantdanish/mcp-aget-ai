@@ -219,15 +219,17 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                         for content_block in result.content:
                             if isinstance(content_block, TextContent):
                                 tool_result_content.append(
-                                    TextBlockParam(text=content_block.text)
+                                    TextBlockParam(type="text", text=content_block.text)
                                 )
                             elif isinstance(content_block, ImageContent):
                                 tool_result_content.append(
                                     ImageBlockParam(
+                                        type="image",
                                         source=Base64ImageSourceParam(
+                                            type="base64",
                                             data=content_block.data,
                                             media_type=content_block.mimeType,
-                                        )
+                                        ),
                                     )
                                 )
                             elif isinstance(content_block, EmbeddedResource):
