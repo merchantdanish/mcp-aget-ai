@@ -21,8 +21,8 @@ This application creates an MCP Agent that monitors GitHub pull requests and sub
 
 - Python 3.10 or higher
 - MCP Agent framework
-- GitHub MCP Server
-- Slack MCP Server
+- [GitHub MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/github)
+- [Slack MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/slack)
 - Access to a GitHub repository
 - Access to a Slack workspace
 
