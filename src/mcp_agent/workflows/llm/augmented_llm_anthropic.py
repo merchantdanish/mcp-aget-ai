@@ -16,6 +16,10 @@ from anthropic.types import (
     ToolResultBlockParam,
     ToolUseBlockParam,
     Base64ImageSourceParam,
+    PlainTextSourceParam,
+    Base64PDFSourceParam,
+    ThinkingBlockParam,
+    RedactedThinkingBlockParam,
 )
 from mcp.types import (
     CallToolRequestParams,
@@ -39,6 +43,22 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
 )
 from mcp_agent.logging.logger import get_logger
+
+MessageParamContent = Union[
+    str,
+    Iterable[
+        Union[
+            TextBlockParam,
+            ImageBlockParam,
+            ToolUseBlockParam,
+            ToolResultBlockParam,
+            DocumentBlockParam,
+            ThinkingBlockParam,
+            RedactedThinkingBlockParam,
+            ContentBlock,
+        ]
+    ],
+]
 
 
 class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
@@ -212,39 +232,15 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                             request=tool_call_request, tool_call_id=tool_use_id
                         )
 
-                        # Convert mcp CallToolResult content to anthropic ToolResultBlockParam content
                         tool_result_content: list[
                             Union[TextBlockParam, ImageBlockParam]
                         ] = []
                         for content_block in result.content:
-                            if isinstance(content_block, TextContent):
-                                tool_result_content.append(
-                                    TextBlockParam(type="text", text=content_block.text)
-                                )
-                            elif isinstance(content_block, ImageContent):
-                                tool_result_content.append(
-                                    ImageBlockParam(
-                                        type="image",
-                                        source=Base64ImageSourceParam(
-                                            type="base64",
-                                            data=content_block.data,
-                                            media_type=content_block.mimeType,
-                                        ),
-                                    )
-                                )
-                            elif isinstance(content_block, EmbeddedResource):
-                                if isinstance(
-                                    content_block.resource, TextResourceContents
-                                ):
-                                    return TextBlockParam(
-                                        type="text", text=content_block.resource.text
-                                    )
-                                else:
-                                    # Best effort to convert since this is not supported by anthropic ToolResultBlockParam.
-                                    return TextBlockParam(
-                                        type="text",
-                                        text=f"{content_block.resource.mimeType}:{content_block.resource.blob}",
-                                    )
+                            converted_content = mcp_content_to_anthropic_content(
+                                content_block, for_message_param=True
+                            )
+                            if converted_content["type"] in ["text", "image"]:
+                                tool_result_content.append(converted_content)
 
                         messages.append(
                             MessageParam(
@@ -441,7 +437,9 @@ class AnthropicMCPTypeConverter(ProviderToMCPConverter[MessageParam, Message]):
         extras = param.model_dump(exclude={"role", "content"})
         return MessageParam(
             role=param.role,
-            content=[mcp_content_to_anthropic_content(param.content)],
+            content=[
+                mcp_content_to_anthropic_content(param.content, for_message_param=True)
+            ],
             **extras,
         )
 
@@ -470,22 +468,75 @@ class AnthropicMCPTypeConverter(ProviderToMCPConverter[MessageParam, Message]):
 
 def mcp_content_to_anthropic_content(
     content: TextContent | ImageContent | EmbeddedResource,
-) -> ContentBlock:
-    if isinstance(content, TextContent):
-        return TextBlock(type=content.type, text=content.text)
-    elif isinstance(content, ImageContent):
-        # Best effort to convert an image to text (since there's no ImageBlock)
-        return TextBlock(type="text", text=f"{content.mimeType}:{content.data}")
-    elif isinstance(content, EmbeddedResource):
-        if isinstance(content.resource, TextResourceContents):
-            return TextBlock(type="text", text=content.resource.text)
-        else:  # BlobResourceContents
-            return TextBlock(
-                type="text", text=f"{content.resource.mimeType}:{content.resource.blob}"
+    for_message_param: bool = False,
+) -> ContentBlock | MessageParamContent:
+    """
+    Converts MCP content types into Anthropic-compatible content blocks.
+
+    Args:
+        content (TextContent | ImageContent | EmbeddedResource): The MCP content to convert.
+        for_message_param (bool, optional): If True, returns Anthropic message param content types.
+                                    If False, returns Anthropic response message content types.
+                                    Defaults to False.
+
+    Returns:
+        ContentBlock: The converted content block in Anthropic format.
+    """
+    if for_message_param:
+        if isinstance(content, TextContent):
+            return TextBlockParam(type="text", text=content.text)
+        elif isinstance(content, ImageContent):
+            return ImageBlockParam(
+                type="image",
+                source=Base64ImageSourceParam(
+                    type="base64",
+                    data=content.data,
+                    media_type=content.mimeType,
+                ),
             )
+        elif isinstance(content, EmbeddedResource):
+            if isinstance(content.resource, TextResourceContents):
+                return TextBlockParam(type="text", text=content.resource.text)
+            else:
+                if content.resource.mimeType == "text/plain":
+                    source = PlainTextSourceParam(
+                        type="text",
+                        data=content.resource.blob,
+                        mimeType=content.resource.mimeType,
+                    )
+                elif content.resource.mimeType == "application/pdf":
+                    source = Base64PDFSourceParam(
+                        type="base64",
+                        data=content.resource.blob,
+                        mimeType=content.resource.mimeType,
+                    )
+                else:
+                    # Best effort to convert
+                    return TextBlockParam(
+                        type="text",
+                        text=f"{content.resource.mimeType}:{content.resource.blob}",
+                    )
+                return DocumentBlockParam(
+                    type="document",
+                    source=source,
+                )
     else:
-        # Last effort to convert the content to a string
-        return TextBlock(type="text", text=str(content))
+        if isinstance(content, TextContent):
+            return TextBlock(type=content.type, text=content.text)
+        elif isinstance(content, ImageContent):
+            # Best effort to convert an image to text (since there's no ImageBlock)
+            return TextBlock(type="text", text=f"{content.mimeType}:{content.data}")
+        elif isinstance(content, EmbeddedResource):
+            if isinstance(content.resource, TextResourceContents):
+                return TextBlock(type="text", text=content.resource.text)
+            else:  # BlobResourceContents
+                return TextBlock(
+                    type="text",
+                    text=f"{content.resource.mimeType}:{content.resource.blob}",
+                )
+        else:
+            # Last effort to convert the content to a string
+            return TextBlock(type="text", text=str(content))
 
 
 def anthropic_content_to_mcp_content(
