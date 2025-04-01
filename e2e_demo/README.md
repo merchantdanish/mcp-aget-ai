@@ -1,36 +1,16 @@
 # MCP Agent Cloud End-to-End Demo
 
-This demo showcases a complete MCP Agent Cloud deployment with authenticated MCP servers and an example application that uses them. The demo structure is set up and ready to run in an environment with Docker and Docker Compose.
+This demo showcases a complete MCP Agent Cloud deployment with authenticated MCP servers and example applications that use them. The demo demonstrates the core functionality of MCP Agent Cloud in a containerized environment.
 
 ## What's Included
 
-The demo contains all the necessary components for a full end-to-end demonstration of MCP Agent Cloud:
+The demo contains all the necessary components for a full end-to-end demonstration:
 
-1. **Cloud Authentication Service**: OAuth 2.0 authentication for MCP servers (from cloud/auth)
-2. **STDIO-based Filesystem Server**: Filesystem access via the MCP protocol (from cloud/deployment)
-3. **Networked Fetch Server**: Web content fetching via the MCP protocol (from cloud/deployment)
+1. **Cloud Authentication Service**: OAuth 2.0 authentication for MCP servers
+2. **STDIO-based Filesystem Server**: Filesystem access via the MCP protocol
+3. **Networked Fetch Server**: Web content fetching via the MCP protocol
 4. **MCP Application**: Example using both servers with different LLMs and workflow patterns
-5. **Command-Line Interface**: Tool for managing the demo environment
-
-## Directory Structure
-
-```
-e2e_demo/
-├── DEMO.md                # Step-by-step instructions for running the demo
-├── README.md              # This overview file
-├── data/                  # Data directory mounted to the filesystem server
-│   └── mcp_info.md        # Example data file with MCP information
-├── docker-compose.yml     # Docker Compose configuration for all services
-├── mcp-app/               # Example MCP application
-│   ├── Dockerfile         # Container configuration for the application
-│   ├── main.py            # Main application code using MCP Agent
-│   ├── mcp_agent.config.yaml  # MCP Agent configuration
-│   ├── output/            # Output directory for application results
-│   │   ├── mcp_research.md       # Sample research output
-│   │   └── parallel_workflow_result.md  # Sample parallel workflow output
-│   └── requirements.txt   # Python dependencies
-└── mcp-cloud-cli.py       # CLI tool for managing the demo
-```
+5. **Setup Script**: Unified tool for setting up and managing the demo environment
 
 ## Prerequisites
 
@@ -43,31 +23,78 @@ To run this demo, you will need:
 
 ## Running the Demo
 
-Detailed step-by-step instructions for running the demo are provided in the `DEMO.md` file. Here's a quick overview:
+### Step 1: Set Up Environment Variables
 
-1. Set environment variables for API keys:
-   ```bash
-   export OPENAI_API_KEY="your-openai-api-key"
-   export ANTHROPIC_API_KEY="your-anthropic-api-key"
-   ```
+Set your API keys as environment variables:
 
-2. Build and deploy all components:
-   ```bash
-   chmod +x mcp-cloud-cli.py
-   ./mcp-cloud-cli.py build all
-   ./mcp-cloud-cli.py deploy all
-   ```
+```bash
+export OPENAI_API_KEY="your-openai-api-key"
+export ANTHROPIC_API_KEY="your-anthropic-api-key"
+```
 
-3. Check the status and logs:
-   ```bash
-   ./mcp-cloud-cli.py status
-   ./mcp-cloud-cli.py logs app
-   ```
+### Step 2: Run the Setup Script
 
-4. When finished, stop all components:
-   ```bash
-   ./mcp-cloud-cli.py stop all
-   ```
+Make the setup script executable and run it:
+
+```bash
+chmod +x setup.sh
+./setup.sh start
+```
+
+This script will:
+- Verify your API keys
+- Create necessary directories
+- Start the registry service
+- Deploy the authentication service
+- Deploy the filesystem and fetch MCP servers
+- Deploy the MCP application
+- Run health checks to ensure all services are running
+
+### Step 3: Monitor the Demo
+
+You can view the logs of any component:
+
+```bash
+# View logs for the MCP application
+./setup.sh logs app
+
+# View logs for the auth service
+./setup.sh logs auth
+
+# View logs for the filesystem server
+./setup.sh logs filesystem
+
+# View logs for the fetch server
+./setup.sh logs fetch
+
+# View all logs
+./setup.sh logs all
+```
+
+### Step 4: Check the Results
+
+When the application completes, view the output files:
+
+```bash
+# List all output files
+ls -la mcp-app/output/
+
+# View the research results
+cat mcp-app/output/mcp_research.md
+
+# View the parallel workflow results
+cat mcp-app/output/parallel_workflow_result.md
+```
+
+### Step 5: Reset When Done
+
+When you're finished with the demo:
+
+```bash
+./setup.sh reset
+```
+
+This will stop all services and clear output files.
 
 ## What to Expect
 
@@ -108,19 +135,25 @@ The components are organized as Docker containers that communicate with each oth
 - **docker-compose.yml**: Defines all the services and their connections
 - **mcp-app/main.py**: Shows how to register with the auth service and use MCP servers
 - **mcp-app/mcp_agent.config.yaml**: Configured to use the deployed servers with auth
-- **mcp-cloud-cli.py**: CLI tool for managing the demo environment
-
-## Cloud Module Integration
-
-This demo uses the following components from the MCP Agent Cloud modules:
-
-- **cloud/auth**: Authentication service with OAuth support
-- **cloud/deployment**: Containerization for both STDIO and networked servers
-- **cloud/deployment/adapters**: STDIO-to-HTTP adapter for filesystem server
+- **setup.sh**: Unified script for managing the demo environment
 
 ## Troubleshooting
 
-- If Docker isn't available, you can review the code and configuration to understand the architecture
-- If services fail to start, check the logs for each service
-- If authentication fails, ensure the auth service is running and accessible
-- For any issues with the demo, review the detailed steps in DEMO.md
+If you encounter issues:
+
+- **Build Errors**: Check Dockerfile configurations and ensure all required files exist
+- **Connection Errors**: Verify container network settings in docker-compose.yml
+- **Authentication Errors**: Check auth service logs with `./setup.sh logs auth`
+- **Missing API Keys**: Verify environment variables are set correctly
+- **Health Check Failures**: Run `./setup.sh healthcheck` to verify service status
+
+You can also run `./setup.sh reset` and then `./setup.sh start` to restart the entire demo from scratch.
+
+## Next Steps
+
+After running this demo, explore:
+
+1. Creating your own MCP servers using `mcp-agent deploy server`
+2. Deploying your own MCPApps using `mcp-agent deploy app`
+3. Modifying the existing MCP application to use different workflow patterns
+4. Integrating with your own MCP-compatible services
