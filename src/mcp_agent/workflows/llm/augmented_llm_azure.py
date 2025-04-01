@@ -1,5 +1,5 @@
 import json
-from typing import Iterable, List, Type, Union
+from typing import Iterable, List, Optional, Type, Union
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import (
     ChatResponseMessage,
@@ -46,7 +46,18 @@ MessageParam = Union[
 ]
 
 
-class AzureAugmentedLLM(AugmentedLLM[MessageParam, ChatResponseMessage]):
+class ResponseMessage(ChatResponseMessage):
+    """
+    A subclass of ChatResponseMessage that makes 'content' to be optional.
+
+    This accommodates cases where the assistant response includes tool calls
+    without a textual message, in which 'content' may be None.
+    """
+
+    content: Optional[str]
+
+
+class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
     such as retrieval, tools, and memory provided from a collection of MCP servers.
@@ -105,7 +116,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ChatResponseMessage]):
         Override this method to use a different LLM.
         """
         messages: list[MessageParam] = []
-        responses: list[ChatResponseMessage] = []
+        responses: list[ResponseMessage] = []
 
         params = self.get_request_params(request_params)
 
@@ -229,7 +240,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ChatResponseMessage]):
                     final_text.append(f"[Tool result: {response.content}]")
                 else:
                     final_text.append(response.content)
-            if response.role == "assistant" and response.tool_calls:
+            if hasattr(response, "tool_calls") and response.tool_calls:
                 for tool_call in response.tool_calls:
                     if tool_call.function.arguments:
                         final_text.append(
@@ -262,7 +273,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ChatResponseMessage]):
 
     @classmethod
     def convert_message_to_message_param(
-        cls, message: ChatResponseMessage, **kwargs
+        cls, message: ResponseMessage, **kwargs
     ) -> AssistantMessage:
         """Convert a response object to an input parameter object to allow LLM calls to be chained."""
         assistant_message = AssistantMessage(
@@ -330,27 +341,33 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ChatResponseMessage]):
         else:
             return str(message)
 
-    def message_str(self, message: ChatResponseMessage) -> str:
+    def message_str(self, message: ResponseMessage) -> str:
         """Convert an output message to a string representation."""
-        return message.content
+        if message.content:
+            return message.content
+        return str(message)
 
 
-class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ChatResponseMessage]):
+class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ResponseMessage]):
     """
     Convert between Azure and MCP types.
     """
 
     @classmethod
-    def from_mcp_message_result(cls, result: MCPMessageResult) -> ChatResponseMessage:
+    def from_mcp_message_result(cls, result: MCPMessageResult) -> ResponseMessage:
         if result.role != "assistant":
             raise ValueError(
                 f"Expected role to be 'assistant' but got '{result.role}' instead."
             )
-
-        return AssistantMessage(content=result.content.text or str(result.content))
+        if isinstance(result.content, TextContent):
+            return AssistantMessage(content=result.content.text)
+        else:
+            return AssistantMessage(
+                content=f"{result.content.mimeType}:{result.content.data}"
+            )
 
     @classmethod
-    def to_mcp_message_result(cls, result: ChatResponseMessage) -> MCPMessageResult:
+    def to_mcp_message_result(cls, result: ResponseMessage) -> MCPMessageResult:
         return MCPMessageResult(
             role=result.role,
             content=TextContent(type="text", text=result.content),
