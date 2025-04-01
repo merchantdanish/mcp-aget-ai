@@ -918,6 +918,7 @@ anthropic = [
 bedrock = [
     { name = "boto3" },
     { name = "boto3-stubs", extra = ["bedrock-runtime"] },
+]
 azure = [
     { name = "azure-ai-inference" },
 ]
