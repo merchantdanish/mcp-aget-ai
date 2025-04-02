@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Type, TypeVar, Callable
+from typing import Any, Dict, Optional, Type, TypeVar, Callable, Tuple, TYPE_CHECKING
 from datetime import timedelta
 import asyncio
 import sys
@@ -14,6 +14,11 @@ from mcp_agent.executor.workflow_signal import SignalWaitCallback
 from mcp_agent.human_input.types import HumanInputCallback
 from mcp_agent.human_input.handler import console_input_callback
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
+
+if TYPE_CHECKING:
+    from mcp_agent.agents.agent_config import AgentConfig
 
 R = TypeVar("R")
 
@@ -69,6 +74,9 @@ class MCPApp:
         self._model_selector = model_selector
 
         self._workflows: Dict[str, Type] = {}  # id to workflow class
+        self._agent_configs: Dict[
+            str, "AgentConfig"
+        ] = {}  # name to agent configuration
         self._logger = None
         self._context: Optional[Context] = None
         self._initialized = False
@@ -328,3 +336,87 @@ class MCPApp:
         Check if a function is marked as a workflow task.
         This gets set for functions that are decorated with @workflow_task."""
         return bool(getattr(func, "is_workflow_task", False))
+
+    @property
+    def agent_configs(self) -> Dict[str, "AgentConfig"]:
+        """Get the dictionary of registered agent configurations."""
+        return self._agent_configs
+
+    def register_agent_config(self, config: "AgentConfig") -> "AgentConfig":
+        """
+        Register an agent configuration with the application.
+
+        Args:
+            config: The agent configuration to register
+
+        Returns:
+            The registered configuration
+        """
+        self._agent_configs[config.name] = config
+        return config
+
+    async def create_agent(self, name: str) -> Tuple[Agent, Optional[AugmentedLLM]]:
+        """
+        Create an agent from a registered configuration.
+
+        This method can create both basic agents with LLMs and complex workflow patterns,
+        depending on the agent configuration.
+
+        Args:
+            name: The name of the registered agent configuration
+
+        Returns:
+            Tuple of (agent instance, LLM or workflow instance)
+
+        Raises:
+            ValueError: If no agent configuration with that name exists
+        """
+
+        if name not in self._agent_configs:
+            raise ValueError(f"No agent configuration named '{name}' is registered")
+
+        config = self._agent_configs[name]
+
+        # Create the basic agent
+        agent = config.create_agent(context=self._context)
+        await agent.initialize()
+
+        # Determine what kind of workflow/LLM to create
+        workflow_type = config.get_workflow_type()
+
+        if workflow_type is None and config.llm_config is not None:
+            # Basic agent with an LLM
+            llm_instance = await config.llm_config.create_llm()
+            llm = await agent.attach_llm(lambda: llm_instance)
+            return agent, llm
+
+        elif workflow_type == "parallel":
+            # Create a Parallel workflow
+            from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
+
+            # Get referenced agents
+            fan_in_agent, _ = await self.create_agent(
+                config.parallel_config.fan_in_agent
+            )
+            fan_out_agents = []
+            for agent_name in config.parallel_config.fan_out_agents:
+                fan_out_agent, _ = await self.create_agent(agent_name)
+                fan_out_agents.append(fan_out_agent)
+
+            # Get LLM factory
+            llm_factory = config.llm_config.factory if config.llm_config else None
+
+            # Create the workflow
+            parallel = ParallelLLM(
+                fan_in_agent=fan_in_agent,
+                fan_out_agents=fan_out_agents,
+                llm_factory=llm_factory,
+                **config.parallel_config.extra_params,
+            )
+
+            return agent, parallel
+
+        # Handle other workflow types here... (simplified for now)
+
+        # Default case - just return the agent without an LLM
+        return agent, None

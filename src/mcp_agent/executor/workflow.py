@@ -72,11 +72,34 @@ class Workflow(ABC, Generic[T]):
         self.name = name or self.__class__.__name__
         self.init_kwargs = kwargs
         self._logger = get_logger(f"workflow.{self.name}")
+        self._initialized = False
 
         # A simple workflow state object
         # If under Temporal, storing it as a field on this class
         # means it can be replayed automatically
         self.state = WorkflowState(metadata=metadata or {})
+
+    @classmethod
+    async def create(
+        cls, executor: Executor, name: str | None = None, **kwargs: Any
+    ) -> "Workflow":
+        """
+        Factory method to create and initialize a workflow instance.
+
+        This default implementation creates a workflow instance and calls initialize().
+        Subclasses can override this method for custom initialization logic.
+
+        Args:
+            executor: The executor to use for this workflow
+            name: Optional name for the workflow (defaults to class name)
+            **kwargs: Additional parameters to pass to the workflow constructor
+
+        Returns:
+            An initialized workflow instance
+        """
+        workflow = cls(executor=executor, name=name, **kwargs)
+        await workflow.initialize()
+        return workflow
 
     @abstractmethod
     async def run(self, *args: Any, **kwargs: Any) -> "WorkflowResult[T]":
@@ -112,18 +135,37 @@ class Workflow(ABC, Generic[T]):
 
     async def initialize(self):
         """
-        Optional initialization method that will be called before run.
+        Initialization method that will be called before run.
         Override this to set up any resources needed by the workflow.
+
+        This checks the _initialized flag to prevent double initialization.
         """
+        if self._initialized:
+            self._logger.debug(f"Workflow {self.name} already initialized, skipping")
+            return
+
         self.state.status = "initializing"
         self._logger.debug(f"Initializing workflow {self.name}")
+        self._initialized = True
+        self.state.updated_at = datetime.utcnow().timestamp()
 
     async def cleanup(self):
         """
-        Optional cleanup method that will be called after run.
+        Cleanup method that will be called after run.
         Override this to clean up any resources used by the workflow.
+
+        This checks the _initialized flag to ensure cleanup is only done on initialized workflows.
         """
+        if not self._initialized:
+            self._logger.debug(
+                f"Workflow {self.name} not initialized, skipping cleanup"
+            )
+            return
+
         self._logger.debug(f"Cleaning up workflow {self.name}")
+        self._initialized = False
+        self.state.status = "cleaned_up"
+        self.state.updated_at = datetime.utcnow().timestamp()
 
     async def __aenter__(self):
         """Support for async context manager pattern."""

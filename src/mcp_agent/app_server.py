@@ -21,6 +21,7 @@ from mcp_agent.app_server_types import (
     create_model_from_schema,
 )
 from mcp_agent.agents.agent import Agent
+from mcp_agent.agents.agent_config import AgentConfig
 from mcp_agent.config import MCPServerSettings
 from mcp_agent.context_dependent import ContextDependent
 from mcp_agent.executor.workflow import Workflow
@@ -45,6 +46,13 @@ class ServerContext(ContextDependent):
         for workflow_id, workflow_cls in self.context.app.workflows.items():
             self.register_workflow(workflow_id, workflow_cls)
 
+        # Register existing agent configurations from the app
+        for name, config in self.context.app._agent_configs.items():
+            logger.info(f"Registered agent config: {name}")
+            # Use the same tools for agent configs as for agent instances
+            # When the tools are called, we'll create the agent as needed
+            create_agent_specific_tools(self.mcp, self, config)
+
     def register_workflow(self, workflow_id: str, workflow_cls: Type[Workflow]):
         """Register a workflow class."""
         if workflow_id not in self.context.app.workflows:
@@ -53,15 +61,82 @@ class ServerContext(ContextDependent):
             create_workflow_specific_tools(self.mcp, workflow_id, workflow_cls)
 
     def register_agent(self, agent: Agent):
-        """Register an agent instance."""
+        """
+        Register an agent instance and create tools for it.
+        This is used for runtime agent instances.
+
+        Args:
+            agent: The agent instance to register
+
+        Returns:
+            The registered agent (may be an existing instance if already registered)
+        """
         if agent.name not in self.active_agents:
             self.active_agents[agent.name] = agent
             # Create tools for this agent
-            create_agent_specific_tools(self.mcp, agent.name, agent)
+            create_agent_specific_tools(self.mcp, self, agent)
             return agent
         return self.active_agents[
             agent.name
         ]  # Return existing agent if already registered
+
+    async def get_or_create_agent(self, name: str) -> Agent:
+        """
+        Get an existing agent or create it from a registered configuration.
+        Handles creation of both basic agents and workflow-based agents.
+
+        Args:
+            name: The name of the agent or agent configuration
+
+        Returns:
+            The agent instance (existing or newly created)
+
+        Raises:
+            ToolError: If no agent or configuration with that name exists
+        """
+        # Check if the agent is already active
+        if name in self.active_agents:
+            return self.active_agents[name]
+
+        # Check if there's a configuration for this agent
+        if name in self.context.app._agent_configs:
+            try:
+                # Use the app's create_agent method which handles workflow setup and LLM attachment
+                agent, _ = await self.context.app.create_agent(name)
+
+                # Register the agent with the server context
+                self.register_agent(agent)
+
+                return agent
+            except Exception as e:
+                logger.error(f"Error creating agent {name}: {str(e)}")
+                raise ToolError(f"Failed to create agent {name}: {str(e)}")
+
+        # Neither active nor configured
+        raise ToolError(
+            f"Agent not found: {name}. No active agent or configuration with this name exists."
+        )
+
+    async def create_agent_from_config(self, name: str) -> Agent:
+        """
+        Create and register an agent from a registered configuration in the MCPApp.
+        This is a convenience method that delegates to get_or_create_agent.
+
+        Args:
+            name: The name of the agent configuration
+
+        Returns:
+            The created and initialized agent
+
+        Raises:
+            ValueError: If no agent configuration with that name exists
+        """
+        # Validate that this is actually a configuration, not an instance
+        if name not in self.context.app._agent_configs:
+            raise ValueError(f"No agent configuration named '{name}' is registered")
+
+        # Use the common get_or_create_agent method
+        return await self.get_or_create_agent(name)
 
 
 def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
@@ -137,12 +212,17 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         List all available agents with their detailed information.
 
         Returns information about each agent including their name, instruction,
-        and the MCP servers they have access to. This helps with understanding
-        what each agent is designed to do before calling it.
+        the MCP servers they have access to, and if it uses a workflow pattern.
+        This helps with understanding what each agent is designed to do before calling it.
+
+        The list includes both active agent instances and agent configurations
+        that can be instantiated on-demand.
         """
         server_context: ServerContext = ctx.request_context.lifespan_context
         server_registry = server_context.context.server_registry
         result = {}
+
+        # Add active agents
         for name, agent in server_context.active_agents.items():
             # Format instruction - handle callable instructions
             instruction = agent.instruction
@@ -162,7 +242,69 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
                     f"agents/{name}/generate_str",
                     f"agents/{name}/generate_structured",
                 ],
+                "type": "instance",
             }
+
+        # Add agent configurations from the app (if not already active)
+        for name, config in server_context.context.app._agent_configs.items():
+            if name not in result:  # Skip if already added as active agent
+                # Format instruction - handle callable instructions
+                instruction = config.instruction
+                if callable(instruction):
+                    instruction = instruction({})
+
+                servers = _get_server_descriptions(server_registry, config.server_names)
+
+                # Get workflow type and additional info
+                workflow_type = config.get_workflow_type()
+                workflow_config = config.get_workflow_config()
+
+                # Build detailed agent info
+                agent_info = {
+                    "name": name,
+                    "instruction": instruction,
+                    "servers": servers,
+                    "capabilities": ["generate", "generate_str", "generate_structured"],
+                    "tool_endpoints": [
+                        f"agents/{name}/generate",
+                        f"agents/{name}/generate_str",
+                        f"agents/{name}/generate_structured",
+                    ],
+                    "type": "config",
+                }
+
+                # Add workflow information if present
+                if workflow_type:
+                    agent_info["workflow_type"] = workflow_type
+                    if workflow_config:
+                        # Include key details from the workflow config
+                        # but exclude sensitive or callable fields
+                        try:
+                            config_dict = workflow_config.model_dump()
+                            # Remove any callable fields
+                            config_dict = {
+                                k: v
+                                for k, v in config_dict.items()
+                                if not callable(v) and k != "extra_params"
+                            }
+                            agent_info["workflow_config"] = config_dict
+                        except Exception as e:
+                            logger.warning("Error getting workflow info: %s", str(e))
+
+                # Add LLM configuration if present
+                if config.llm_config:
+                    try:
+                        llm_info = {
+                            "type": config.llm_config.factory.__name__
+                            if hasattr(config.llm_config.factory, "__name__")
+                            else "custom",
+                            "model": config.llm_config.model,
+                        }
+                        agent_info["llm_config"] = llm_info
+                    except Exception as e:
+                        logger.warning("Error getting LLM info: %s", str(e))
+
+                result[name] = agent_info
 
         return result
 
@@ -461,22 +603,42 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         if workflow_name not in app.workflows:
             raise ValueError(f"Workflow '{workflow_name}' not found.")
 
-        # Create a workflow instance
+        # Get the workflow class
         workflow_cls = app.workflows[workflow_name]
-        workflow = workflow_cls(executor=app.executor, name=workflow_name)
 
-        # Generate a unique ID for this workflow instance
-        workflow_id = str(uuid.uuid4())
+        # Create and initialize the workflow instance using the factory method
+        try:
+            # Separate constructor args from run args if provided
+            run_args = args or {}
+            constructor_args = (
+                run_args.pop("constructor_args", {})
+                if isinstance(run_args, dict)
+                else {}
+            )
 
-        # Store the workflow instance
-        server_config.active_workflows[workflow_id] = workflow
+            # Create workflow instance
+            workflow = await workflow_cls.create(
+                executor=app.executor, name=workflow_name, **constructor_args
+            )
 
-        # Run the workflow in a separate task
-        args = args or {}
-        run_task = asyncio.create_task(workflow.run(**args))
+            # Generate a unique ID for this workflow instance
+            workflow_id = str(uuid.uuid4())
 
-        # Store the task to check status later
-        server_config.active_workflows[workflow_id + "_task"] = run_task
+            # Store the workflow instance
+            server_config.active_workflows[workflow_id] = workflow
+
+            # Run the workflow in a separate task with cleanup handling
+            run_task = asyncio.create_task(
+                _run_workflow_and_cleanup(
+                    workflow, run_args, workflow_id, server_config
+                )
+            )
+
+            # Store the task to check status later
+            server_config.active_workflows[workflow_id + "_task"] = run_task
+        except Exception as e:
+            logger.error(f"Error creating workflow {workflow_name}: {str(e)}")
+            raise ValueError(f"Error creating workflow: {str(e)}")
 
         # Return information about the workflow
         return {
@@ -793,26 +955,46 @@ def create_agent_tools(mcp: FastMCP, server_context: ServerContext):
 
 
 def create_agent_specific_tools(
-    mcp: FastMCP, server_context: ServerContext, agent: Agent
+    mcp: FastMCP, server_context: ServerContext, agent_or_config: Agent | AgentConfig
 ):
-    """Create specific tools for a given agent."""
+    """
+    Create specific tools for a given agent instance or configuration.
+
+    Args:
+        mcp: The FastMCP server
+        server_context: The server context
+        agent_or_config: Either an Agent instance or an AgentConfig
+    """
+    # Extract common properties based on whether we have an Agent or AgentConfig
+    if isinstance(agent_or_config, Agent):
+        name = agent_or_config.name
+        instruction = agent_or_config.instruction
+        server_names = agent_or_config.server_names
+        workflow_type = None
+    else:  # AgentConfig
+        name = agent_or_config.name
+        instruction = agent_or_config.instruction
+        server_names = agent_or_config.server_names
+        workflow_type = agent_or_config.get_workflow_type()
 
     # Format instruction - handle callable instructions
-    instruction = agent.instruction
     if callable(instruction):
         instruction = instruction({})
 
     server_registry = server_context.context.server_registry
 
+    # Add workflow info to description if present
+    workflow_info = f" using {workflow_type} workflow" if workflow_type else ""
+
     # Add generate* tools for this agent
     @mcp.tool(
-        name=f"agents/{agent.name}/generate",
+        name=f"agents/{name}/generate",
         description=f"""
-    Run the '{agent.name}' agent using the given message.
+    Run the '{name}' agent{workflow_info} using the given message.
     This is similar to generating an LLM completion.
 
     Agent Description: {instruction}
-    Connected Servers: {_get_server_descriptions_as_string(server_registry, agent.server_names)}
+    Connected Servers: {_get_server_descriptions_as_string(server_registry, server_names)}
 
     Args:
         message: The prompt to send to the agent.
@@ -827,17 +1009,17 @@ def create_agent_specific_tools(
         message: str | MCPMessageParam | List[MCPMessageParam],
         request_params: RequestParams | None = None,
     ) -> List[MCPMessageResult]:
-        return await _agent_generate(ctx, agent.name, message, request_params)
+        return await _agent_generate(ctx, name, message, request_params)
 
     @mcp.tool(
-        name=f"agents/{agent.name}/generate_str",
+        name=f"agents/{name}/generate_str",
         description=f"""
-    Run the '{agent.name}' agent using the given message and return the response as a string.
-    Use agents/{agent.name}/generate for results in the original format, and
-    use agents/{agent.name}/generate_structured for results conforming to a specific schema.
+    Run the '{name}' agent{workflow_info} using the given message and return the response as a string.
+    Use agents/{name}/generate for results in the original format, and
+    use agents/{name}/generate_structured for results conforming to a specific schema.
 
     Agent Description: {instruction}
-    Connected Servers: {_get_server_descriptions_as_string(server_registry, agent.server_names)}
+    Connected Servers: {_get_server_descriptions_as_string(server_registry, server_names)}
 
     Args:
         message: The prompt to send to the agent.
@@ -852,19 +1034,19 @@ def create_agent_specific_tools(
         message: str | MCPMessageParam | List[MCPMessageParam],
         request_params: RequestParams | None = None,
     ) -> str:
-        return await _agent_generate_str(ctx, agent.name, message, request_params)
+        return await _agent_generate_str(ctx, name, message, request_params)
 
     # Add structured generation tool for this agent
     @mcp.tool(
-        name=f"agents/{agent.name}/generate_structured",
+        name=f"agents/{name}/generate_structured",
         description=f"""
-    Run the '{agent.name}' agent using the given message and return a response that matches the given schema.
+    Run the '{name}' agent{workflow_info} using the given message and return a response that matches the given schema.
 
-    Use agents/{agent.name}/generate for results in the original format, and
-    use agents/{agent.name}/generate_str for string result.
+    Use agents/{name}/generate for results in the original format, and
+    use agents/{name}/generate_str for string result.
 
     Agent Description: {instruction}
-    Connected Servers: {_get_server_descriptions_as_string(server_registry, agent.server_names)}
+    Connected Servers: {_get_server_descriptions_as_string(server_registry, server_names)}
 
     Args:
         message: The prompt to send to the agent.
@@ -912,7 +1094,7 @@ def create_agent_specific_tools(
         request_params: RequestParams | None = None,
     ) -> Dict[str, Any]:
         return await _agent_generate_structured(
-            ctx, agent.name, message, response_schema, request_params
+            ctx, name, message, response_schema, request_params
         )
 
 
@@ -970,21 +1152,39 @@ def create_workflow_specific_tools(mcp: FastMCP, workflow_id: str, workflow_cls:
         if workflow_id not in app.workflows:
             raise ValueError(f"Workflow '{workflow_id}' not found.")
 
-        # Create workflow instance
-        workflow = workflow_cls(executor=app.executor, name=workflow_id)
+        # Create workflow instance using the factory method
+        try:
+            # Separate constructor args from run args if provided
+            run_args = args or {}
+            constructor_args = (
+                run_args.pop("constructor_args", {})
+                if isinstance(run_args, dict)
+                else {}
+            )
 
-        # Generate workflow instance ID
-        instance_id = str(uuid.uuid4())
+            # Create and initialize workflow
+            workflow = await workflow_cls.create(
+                executor=app.executor, name=workflow_id, **constructor_args
+            )
 
-        # Store workflow instance
-        server_config.active_workflows[instance_id] = workflow
+            # Generate workflow instance ID
+            instance_id = str(uuid.uuid4())
 
-        # Run workflow in separate task
-        run_args = args or {}
-        run_task = asyncio.create_task(workflow.run(**run_args))
+            # Store workflow instance
+            server_config.active_workflows[instance_id] = workflow
 
-        # Store task
-        server_config.active_workflows[instance_id + "_task"] = run_task
+            # Run workflow in separate task with cleanup handling
+            run_task = asyncio.create_task(
+                _run_workflow_and_cleanup(
+                    workflow, run_args, instance_id, server_config
+                )
+            )
+
+            # Store task
+            server_config.active_workflows[instance_id + "_task"] = run_task
+        except Exception as e:
+            logger.error(f"Error creating workflow {workflow_id}: {str(e)}")
+            raise ValueError(f"Error creating workflow: {str(e)}")
 
         # Return information about the workflow
         return {
@@ -1307,13 +1507,14 @@ async def _agent_generate(
     """
     server_context: ServerContext = ctx.request_context.lifespan_context
 
-    if agent_name not in server_context.active_agents:
-        raise ToolError(f"Agent not found: {agent_name}. Make sure the agent ")
+    # Get or create the agent - this will automatically create agent from config if needed
+    try:
+        agent = await server_context.get_or_create_agent(agent_name)
+    except ToolError as e:
+        raise e
 
-    agent = server_context.active_agents[agent_name]
-    if not agent:
-        raise ToolError(f"Agent not found: {agent_name}")
-    elif not agent.llm:
+    # Check if the agent has an LLM attached
+    if not agent.llm:
         raise ToolError(
             f"Agent {agent_name} does not have an LLM attached. Make sure to call the attach_llm method where the agent is created."
         )
@@ -1327,7 +1528,7 @@ async def _agent_generate(
     else:
         input_message = agent.llm.from_mcp_message_param(message)
 
-    # Check if the agent is already initialized
+    # Use the agent as a context manager to ensure proper initialization/cleanup
     async with agent:
         result = await agent.llm.generate(
             message=input_message, request_params=request_params
@@ -1356,13 +1557,14 @@ async def _agent_generate_str(
     """
     server_context: ServerContext = ctx.request_context.lifespan_context
 
-    if agent_name not in server_context.active_agents:
-        raise ToolError(f"Agent not found: {agent_name}. Make sure the agent ")
+    # Get or create the agent - this will automatically create agent from config if needed
+    try:
+        agent = await server_context.get_or_create_agent(agent_name)
+    except ToolError as e:
+        raise e
 
-    agent = server_context.active_agents[agent_name]
-    if not agent:
-        raise ToolError(f"Agent not found: {agent_name}")
-    elif not agent.llm:
+    # Check if the agent has an LLM attached
+    if not agent.llm:
         raise ToolError(
             f"Agent {agent_name} does not have an LLM attached. Make sure to call the attach_llm method where the agent is created."
         )
@@ -1376,7 +1578,7 @@ async def _agent_generate_str(
     else:
         input_message = agent.llm.from_mcp_message_param(message)
 
-    # Check if the agent is already initialized
+    # Use the agent as a context manager to ensure proper initialization/cleanup
     async with agent:
         result = await agent.llm.generate_str(
             message=input_message, request_params=request_params
@@ -1435,13 +1637,14 @@ async def _agent_generate_structured(
     """
     server_context: ServerContext = ctx.request_context.lifespan_context
 
-    if agent_name not in server_context.active_agents:
-        raise ToolError(f"Agent not found: {agent_name}. Make sure the agent ")
+    # Get or create the agent - this will automatically create agent from config if needed
+    try:
+        agent = await server_context.get_or_create_agent(agent_name)
+    except ToolError as e:
+        raise e
 
-    agent = server_context.active_agents[agent_name]
-    if not agent:
-        raise ToolError(f"Agent not found: {agent_name}")
-    elif not agent.llm:
+    # Check if the agent has an LLM attached
+    if not agent.llm:
         raise ToolError(
             f"Agent {agent_name} does not have an LLM attached. Make sure to call the attach_llm method where the agent is created."
         )
@@ -1455,9 +1658,10 @@ async def _agent_generate_structured(
     else:
         input_message = agent.llm.from_mcp_message_param(message)
 
+    # Create a Pydantic model from the schema
     response_model = create_model_from_schema(response_schema)
 
-    # Check if the agent is already initialized
+    # Use the agent as a context manager to ensure proper initialization/cleanup
     async with agent:
         result = await agent.llm.generate_structured(
             message=input_message,
@@ -1466,3 +1670,35 @@ async def _agent_generate_structured(
         )
         # Convert to dictionary for JSON serialization
         return result.model_dump(mode="json")
+
+
+async def _run_workflow_and_cleanup(workflow, run_args, instance_id, server_context):
+    """
+    Run a workflow and ensure proper cleanup regardless of outcome.
+
+    Args:
+        workflow: The workflow instance to run
+        run_args: Arguments to pass to the workflow's run method
+        instance_id: The unique ID for this workflow instance
+        server_context: The server context for managing active workflows
+
+    Returns:
+        The result from the workflow's run method
+    """
+    try:
+        # Run the workflow
+        result = await workflow.run(**run_args)
+        return result
+    except Exception as e:
+        # Log and propagate exceptions
+        logger.error(f"Error in workflow {workflow.name} (ID: {instance_id}): {str(e)}")
+        raise
+    finally:
+        try:
+            # Always attempt to clean up the workflow
+            await workflow.cleanup()
+        except Exception as cleanup_error:
+            # Log but don't fail if cleanup fails
+            logger.error(
+                f"Error cleaning up workflow {workflow.name} (ID: {instance_id}): {str(cleanup_error)}"
+            )

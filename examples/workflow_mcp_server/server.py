@@ -1,13 +1,33 @@
+"""
+Workflow MCP Server Example
+
+This example demonstrates three approaches to creating agents and workflows:
+1. Traditional workflow-based approach with manual agent creation
+2. Programmatic agent configuration using AgentConfig
+3. Declarative agent configuration using FastMCPApp decorators
+"""
+
 import asyncio
 import os
+import logging
 from typing import Dict, Any, Optional
-from mcp.server.helpers.stdio import stdio_server
 
-from mcp_agent.app import MCPApp
+from mcp_agent.fast_app import FastMCPApp
 from mcp_agent.app_server import create_mcp_server_for_app
 from mcp_agent.agents.agent import Agent
+from mcp_agent.agents.agent_config import (
+    AgentConfig,
+    AugmentedLLMConfig,
+    ParallelWorkflowConfig,
+)
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
+from mcp_agent.executor.executor import Executor
+
+# Initialize logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class DataProcessorWorkflow(Workflow[str]):
@@ -15,6 +35,30 @@ class DataProcessorWorkflow(Workflow[str]):
     A workflow that processes data using multiple agents, each specialized for a different task.
     This workflow demonstrates how to use multiple agents to process data in a sequence.
     """
+
+    @classmethod
+    async def create(
+        cls, executor: Executor, name: str | None = None, **kwargs: Any
+    ) -> "DataProcessorWorkflow":
+        """
+        Factory method to create and initialize the DataProcessorWorkflow.
+        Demonstrates how to override the default create method for specialized initialization.
+
+        Args:
+            executor: The executor to use
+            name: Optional workflow name
+            **kwargs: Additional parameters for customization
+
+        Returns:
+            An initialized DataProcessorWorkflow instance
+        """
+        # Create the workflow instance
+        workflow = cls(executor=executor, name=name or "data_processor", **kwargs)
+
+        # Initialize it (which will set up agents, etc.)
+        await workflow.initialize()
+
+        return workflow
 
     async def initialize(self):
         await super().initialize()
@@ -51,9 +95,9 @@ class DataProcessorWorkflow(Workflow[str]):
 
     async def cleanup(self):
         # Clean up resources
-        await self.finder_agent.cleanup()
-        await self.analyzer_agent.cleanup()
-        await self.formatter_agent.cleanup()
+        await self.finder_agent.shutdown()
+        await self.analyzer_agent.shutdown()
+        await self.formatter_agent.shutdown()
         await super().cleanup()
 
     async def run(
@@ -122,7 +166,9 @@ class DataProcessorWorkflow(Workflow[str]):
                 "output_format": format_instruction,
                 "workflow_completed": True,
             },
-            start_time=self.state.metadata.get("start_time"),
+            start_time=self.state.metadata.get(
+                "start_time"
+            ),  # TODO: saqadri (MAC) - fix
             end_time=self.state.updated_at,
         )
 
@@ -133,6 +179,9 @@ class SummarizationWorkflow(Workflow[Dict[str, Any]]):
     """
     A workflow that summarizes text content with customizable parameters.
     This workflow demonstrates how to create a simple summarization pipeline.
+
+    This workflow uses the default create() implementation from the base Workflow class,
+    showing that it's not necessary to override create() in every workflow.
     """
 
     async def initialize(self):
@@ -152,7 +201,7 @@ class SummarizationWorkflow(Workflow[Dict[str, Any]]):
         self.summarizer_llm = await self.summarizer_agent.attach_llm(OpenAIAugmentedLLM)
 
     async def cleanup(self):
-        await self.summarizer_agent.cleanup()
+        await self.summarizer_agent.shutdown()
         await super().cleanup()
 
     async def run(
@@ -223,19 +272,151 @@ class SummarizationWorkflow(Workflow[Dict[str, Any]]):
         return result
 
 
-# Initialize the app
-app = MCPApp(name="workflow_mcp_server")
+# Create a single FastMCPApp instance (which extends MCPApp)
+app = FastMCPApp(name="workflow_mcp_server")
+
+# -------------------------------------------------------------------------
+# Approach 1: Traditional workflow registration with @app.workflow decorator
+# -------------------------------------------------------------------------
 
 
 # Register workflows with the app
 @app.workflow
 class DataProcessorWorkflowRegistered(DataProcessorWorkflow):
+    """Data processing workflow registered with the app."""
+
     pass
 
 
 @app.workflow
 class SummarizationWorkflowRegistered(SummarizationWorkflow):
+    """Summarization workflow registered with the app."""
+
     pass
+
+
+# -------------------------------------------------------------------------
+# Approach 2: Programmatic agent configuration with AgentConfig
+# -------------------------------------------------------------------------
+
+# Create a basic agent configuration
+research_agent_config = AgentConfig(
+    name="researcher",
+    instruction="You are a helpful research assistant that finds information and presents it clearly.",
+    server_names=["fetch", "filesystem"],
+    llm_config=AugmentedLLMConfig(
+        factory=OpenAIAugmentedLLM,
+        model="gpt-4o",
+        temperature=0.7,
+        provider_params={"max_tokens": 2000},
+    ),
+)
+
+# Create component agents for a parallel workflow
+programmatic_summarizer_config = AgentConfig(
+    name="programmatic_summarizer",
+    instruction="You are specialized in summarizing information clearly and concisely.",
+    server_names=["fetch"],
+    llm_config=AugmentedLLMConfig(
+        factory=AnthropicAugmentedLLM, model="claude-3-sonnet-20240229"
+    ),
+)
+
+programmatic_fact_checker_config = AgentConfig(
+    name="programmatic_fact_checker",
+    instruction="You verify facts and identify potential inaccuracies in information.",
+    server_names=["fetch", "filesystem"],
+    llm_config=AugmentedLLMConfig(factory=OpenAIAugmentedLLM, model="gpt-4o"),
+)
+
+programmatic_editor_config = AgentConfig(
+    name="programmatic_editor",
+    instruction="You refine and improve text, focusing on clarity and readability.",
+    server_names=[],
+    llm_config=AugmentedLLMConfig(factory=OpenAIAugmentedLLM, model="gpt-4o"),
+)
+
+# Create a parallel workflow configuration
+programmatic_research_team_config = AgentConfig(
+    name="programmatic_research_team",
+    instruction="You are a research team that produces high-quality, accurate content.",
+    server_names=["fetch", "filesystem"],
+    llm_config=AugmentedLLMConfig(
+        factory=AnthropicAugmentedLLM, model="claude-3-opus-20240229"
+    ),
+    parallel_config=ParallelWorkflowConfig(
+        fan_in_agent="programmatic_editor",
+        fan_out_agents=["programmatic_summarizer", "programmatic_fact_checker"],
+        concurrent=True,
+    ),
+)
+
+# Register the configurations with the app using programmatic method
+app.register_agent_config(research_agent_config)
+app.register_agent_config(programmatic_summarizer_config)
+app.register_agent_config(programmatic_fact_checker_config)
+app.register_agent_config(programmatic_editor_config)
+app.register_agent_config(programmatic_research_team_config)
+
+# -------------------------------------------------------------------------
+# Approach 3: Declarative agent configuration with FastMCPApp decorators
+# -------------------------------------------------------------------------
+
+
+# Basic agent with OpenAI LLM
+@app.agent(
+    "assistant",
+    "You are a helpful assistant that answers questions concisely.",
+    server_names=["calculator"],
+)
+def assistant_config(config):
+    # Configure the LLM to use
+    config.llm_config = AugmentedLLMConfig(
+        factory=OpenAIAugmentedLLM, model="gpt-4o", temperature=0.7
+    )
+    return config
+
+
+# Component agents for router workflow
+@app.agent(
+    "mathematician",
+    "You solve mathematical problems with precision.",
+    server_names=["calculator"],
+)
+def mathematician_config(config):
+    config.llm_config = AugmentedLLMConfig(factory=OpenAIAugmentedLLM, model="gpt-4o")
+    return config
+
+
+@app.agent(
+    "programmer",
+    "You write and debug code in various programming languages.",
+    server_names=["filesystem"],
+)
+def programmer_config(config):
+    config.llm_config = AugmentedLLMConfig(factory=OpenAIAugmentedLLM, model="gpt-4o")
+    return config
+
+
+@app.agent("writer", "You write creative and engaging content.", server_names=[])
+def writer_config(config):
+    config.llm_config = AugmentedLLMConfig(
+        factory=AnthropicAugmentedLLM, model="claude-3-sonnet-20240229"
+    )
+    return config
+
+
+# Router workflow using the decorator syntax
+@app.router(
+    "specialist_router",
+    "You route requests to the appropriate specialist.",
+    agent_names=["mathematician", "programmer", "writer"],
+)
+def router_config(config):
+    config.llm_config = AugmentedLLMConfig(factory=OpenAIAugmentedLLM, model="gpt-4o")
+    # Configure top_k for the router
+    config.router_config.top_k = 1
+    return config
 
 
 async def main():
@@ -244,14 +425,26 @@ async def main():
 
     # Add the current directory to the filesystem server's args if needed
     context = app.context
-    context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
+    if "filesystem" in context.config.mcp.servers:
+        context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
 
-    # Create the MCP server
+    # Log registered workflows and agent configurations
+    logger.info(f"Creating MCP server for {app.name}")
+
+    logger.info("Registered workflows:")
+    for workflow_id in app.workflows:
+        logger.info(f"  - {workflow_id}")
+
+    logger.info("Registered agent configurations:")
+    for name, config in app.agent_configs.items():
+        workflow_type = config.get_workflow_type() or "basic"
+        logger.info(f"  - {name} ({workflow_type})")
+
+    # Create the MCP server that exposes both workflows and agent configurations
     mcp_server = create_mcp_server_for_app(app)
 
     # Run the server
-    async with stdio_server() as (read_stream, write_stream):
-        await mcp_server.run(read_stream, write_stream)
+    await mcp_server.run_stdio_async()
 
 
 if __name__ == "__main__":
