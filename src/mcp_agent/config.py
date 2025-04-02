@@ -331,52 +331,44 @@ def get_settings(config_path: str | None = None) -> Settings:
         return _settings
 
     import yaml  # pylint: disable=C0415
+    from .console import console
 
     merged_settings = {}
 
+    # Determine the config file to use
     if config_path:
         config_file = Path(config_path)
-        if config_file.exists():
-            # Load explicit config file
-            with open(config_file, "r", encoding="utf-8") as f:
-                yaml_settings = yaml.safe_load(f) or {}
-                merged_settings = yaml_settings
+        if not config_file.exists():
+            console.error(f"Config file not found: {config_path}")
+            raise FileNotFoundError(f"Config file not found: {config_path}")
+    else:
+        config_file = Settings.find_config()
 
-            # Check for secrets in the same directory with both naming formats
-            config_dir = config_file.parent
-            for secrets_filename in [
-                "mcp-agent.secrets.yaml",
-                "mcp_agent.secrets.yaml",
-            ]:
-                secrets_file = config_dir / secrets_filename
-                if secrets_file.exists():
-                    with open(secrets_file, "r", encoding="utf-8") as f:
-                        yaml_secrets = yaml.safe_load(f) or {}
-                        merged_settings = deep_merge(merged_settings, yaml_secrets)
-
-                    # Found everything, return the settings
-                    _settings = Settings(**merged_settings)
-                    return _settings
-
-    # Fall back to the discovery approach
-    config_file = (
-        Settings.find_config()
-        if not config_path or not Path(config_path).exists()
-        else Path(config_path)
-    )
+    # If we found a config file, load it
     if config_file and config_file.exists():
-        # We only need to load the config file if we haven't already
-        if not merged_settings:
-            with open(config_file, "r", encoding="utf-8") as f:
-                yaml_settings = yaml.safe_load(f) or {}
-                merged_settings = yaml_settings
+        with open(config_file, "r", encoding="utf-8") as f:
+            yaml_settings = yaml.safe_load(f) or {}
+            merged_settings = yaml_settings
 
-        # Try to find secrets through the discovery method
-        secrets_file = Settings.find_secrets()
-        if secrets_file and secrets_file.exists():
-            with open(secrets_file, "r", encoding="utf-8") as f:
-                yaml_secrets = yaml.safe_load(f) or {}
-                merged_settings = deep_merge(merged_settings, yaml_secrets)
+        # Try to find secrets in the same directory as the config file
+        config_dir = config_file.parent
+        secrets_found = False
+        for secrets_filename in ["mcp-agent.secrets.yaml", "mcp_agent.secrets.yaml"]:
+            secrets_file = config_dir / secrets_filename
+            if secrets_file.exists():
+                with open(secrets_file, "r", encoding="utf-8") as f:
+                    yaml_secrets = yaml.safe_load(f) or {}
+                    merged_settings = deep_merge(merged_settings, yaml_secrets)
+                secrets_found = True
+                break
+
+        # If no secrets were found in the config directory, fall back to discovery
+        if not secrets_found and not config_path:
+            secrets_file = Settings.find_secrets()
+            if secrets_file and secrets_file.exists():
+                with open(secrets_file, "r", encoding="utf-8") as f:
+                    yaml_secrets = yaml.safe_load(f) or {}
+                    merged_settings = deep_merge(merged_settings, yaml_secrets)
 
         _settings = Settings(**merged_settings)
         return _settings
