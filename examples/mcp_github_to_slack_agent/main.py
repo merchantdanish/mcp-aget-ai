@@ -73,10 +73,6 @@ async def github_to_slack(github_owner: str, github_repo: str, slack_channel: st
                 # Clean up the agent
                 await github_to_slack_agent.close()
 
-    # Ensure logging is properly shutdown
-    await LoggingConfig.shutdown()
-
-
 def parse_args():
     parser = argparse.ArgumentParser(description="GitHub to Slack PR Summary Tool")
     parser.add_argument("--owner", required=True, help="GitHub repository owner")
