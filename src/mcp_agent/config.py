@@ -331,7 +331,7 @@ def get_settings(config_path: str | None = None) -> Settings:
         return _settings
 
     import yaml  # pylint: disable=C0415
-    from .console import console
+    from .console import error_console
 
     merged_settings = {}
 
@@ -339,7 +339,7 @@ def get_settings(config_path: str | None = None) -> Settings:
     if config_path:
         config_file = Path(config_path)
         if not config_file.exists():
-            console.error(f"Config file not found: {config_path}")
+            error_console.print(f"Config file not found: {config_path}")
             raise FileNotFoundError(f"Config file not found: {config_path}")
     else:
         config_file = Settings.find_config()
