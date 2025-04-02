@@ -61,6 +61,7 @@ class Agent(MCPAggregator):
         self.functions = functions or []
         self.executor = self.context.executor
         self.logger = get_logger(f"{__name__}.{name}")
+        self.llm: AugmentedLLM | None = None
 
         # Map function names to tools
         self._function_tool_map: Dict[str, FastTool] = {}
@@ -95,7 +96,8 @@ class Agent(MCPAggregator):
         Returns:
             An instance of AugmentedLLM or one of its subclasses.
         """
-        return llm_factory(agent=self)
+        self.llm = llm_factory(agent=self)
+        return self.llm
 
     async def shutdown(self):
         """

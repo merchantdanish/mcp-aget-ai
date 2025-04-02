@@ -1,0 +1,29 @@
+execution_engine: asyncio
+logger:
+  transports: [console]
+  level: debug
+  path: "logs/mcp-agent.jsonl"
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+      description: "Fetch content at URLs from the world wide web"
+    filesystem:
+      command: "npx"
+      args:
+        [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          # Current directory will be added by the code
+        ]
+      description: "Read and write files on the filesystem"
+    workflow_server:
+      command: "uv"
+      args: ["run", "server.py"]
+      description: "Local workflow server exposing data processing and summarization workflows"
+
+openai:
+  default_model: gpt-4o
+  # Secrets are loaded from mcp_agent.secrets.yaml

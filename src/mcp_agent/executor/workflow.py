@@ -11,6 +11,7 @@ from typing import (
 from pydantic import BaseModel, ConfigDict, Field
 
 from mcp_agent.executor.executor import Executor
+from mcp_agent.logging.logger import get_logger
 
 T = TypeVar("T")
 
@@ -47,6 +48,10 @@ class Workflow(ABC, Generic[T]):
     """
     Base class for user-defined workflows.
     Handles execution and state management.
+
+    Workflows represent user-defined application logic modules that can use Agents and AugmentedLLMs.
+    Typically, workflows are registered with an MCPApp and can be exposed as MCP tools via app_server.py.
+
     Some key notes:
         - To enable the executor engine to recognize and orchestrate the workflow,
             - the class MUST be decorated with @workflow.
@@ -66,24 +71,32 @@ class Workflow(ABC, Generic[T]):
         self.executor = executor
         self.name = name or self.__class__.__name__
         self.init_kwargs = kwargs
-        # TODO: handle logging
-        # self._logger = logging.getLogger(self.name)
+        self._logger = get_logger(f"workflow.{self.name}")
 
         # A simple workflow state object
         # If under Temporal, storing it as a field on this class
         # means it can be replayed automatically
-        self.state = WorkflowState(name=name, metadata=metadata or {})
+        self.state = WorkflowState(metadata=metadata or {})
 
     @abstractmethod
     async def run(self, *args: Any, **kwargs: Any) -> "WorkflowResult[T]":
         """
         Main workflow implementation. Must be overridden by subclasses.
+
+        This is where the user-defined application logic goes. Typically, this involves:
+        1. Setting up Agents and attaching LLMs to them
+        2. Executing operations using the Agents and their LLMs
+        3. Processing results and returning them
+
+        Returns:
+            WorkflowResult containing the output of the workflow
         """
 
     async def update_state(self, **kwargs):
         """Syntactic sugar to update workflow state."""
         for key, value in kwargs.items():
-            self.state[key] = value
+            if hasattr(self.state, "__getitem__"):
+                self.state[key] = value
             setattr(self.state, key, value)
 
         self.state.updated_at = datetime.utcnow().timestamp()
@@ -96,6 +109,30 @@ class Workflow(ABC, Generic[T]):
         return await self.executor.wait_for_signal(
             "human_input", description=description
         )
+
+    async def initialize(self):
+        """
+        Optional initialization method that will be called before run.
+        Override this to set up any resources needed by the workflow.
+        """
+        self.state.status = "initializing"
+        self._logger.debug(f"Initializing workflow {self.name}")
+
+    async def cleanup(self):
+        """
+        Optional cleanup method that will be called after run.
+        Override this to clean up any resources used by the workflow.
+        """
+        self._logger.debug(f"Cleaning up workflow {self.name}")
+
+    async def __aenter__(self):
+        """Support for async context manager pattern."""
+        await self.initialize()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Support for async context manager pattern."""
+        await self.cleanup()
 
 
 # ############################

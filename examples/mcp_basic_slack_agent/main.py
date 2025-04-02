@@ -7,6 +7,7 @@ from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 app = MCPApp(name="mcp_basic_agent")
 
+
 async def example_usage():
     async with app.run() as agent_app:
         logger = agent_app.logger

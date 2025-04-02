@@ -148,6 +148,9 @@ class MCPApp:
         self._context.upstream_session = self._upstream_session
         self._context.model_selector = self._model_selector
 
+        # Store a reference to this app instance in the context for easier access
+        self._context.app = self
+
         self._initialized = True
         self.logger.info(
             "MCPAgent initialized",
