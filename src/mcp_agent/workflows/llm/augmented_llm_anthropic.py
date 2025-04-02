@@ -41,6 +41,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     MCPMessageResult,
     ProviderToMCPConverter,
     RequestParams,
+    CallToolResult,
 )
 from mcp_agent.logging.logger import get_logger
 
@@ -232,29 +233,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                             request=tool_call_request, tool_call_id=tool_use_id
                         )
 
-                        tool_result_content: list[
-                            Union[TextBlockParam, ImageBlockParam]
-                        ] = []
-                        for content_block in result.content:
-                            converted_content = mcp_content_to_anthropic_content(
-                                content_block, for_message_param=True
-                            )
-                            if converted_content["type"] in ["text", "image"]:
-                                tool_result_content.append(converted_content)
+                        message = self.from_mcp_tool_result(result, tool_use_id)
 
-                        messages.append(
-                            MessageParam(
-                                role="user",
-                                content=[
-                                    ToolResultBlockParam(
-                                        type="tool_result",
-                                        tool_use_id=tool_use_id,
-                                        content=tool_result_content,
-                                        is_error=result.isError,
-                                    )
-                                ],
-                            )
-                        )
+                        messages.append(message)
 
         if params.use_history:
             self.history.set(messages)
@@ -463,6 +444,39 @@ class AnthropicMCPTypeConverter(ProviderToMCPConverter[MessageParam, Message]):
             role=param.role,
             content=mcp_content,
             **typed_dict_extras(param, ["role", "content"]),
+        )
+
+    @classmethod
+    def from_mcp_tool_result(
+        cls, result: CallToolResult, tool_use_id: str
+    ) -> MessageParam:
+        """Convert mcp tool result to user MessageParam"""
+        tool_result_block_content: list[TextBlockParam | ImageBlockParam] = []
+
+        for content in result.content:
+            converted_content = mcp_content_to_anthropic_content(
+                content, for_message_param=True
+            )
+            if converted_content["type"] in ["text", "image"]:
+                tool_result_block_content.append(converted_content)
+
+        if not tool_result_block_content:
+            # If no valid content, return as error
+            tool_result_block_content = [
+                TextBlockParam(type="text", text="No result returned")
+            ]
+            result.isError = True
+
+        return MessageParam(
+            role="user",
+            content=[
+                ToolResultBlockParam(
+                    type="tool_result",
+                    tool_use_id=tool_use_id,
+                    content=tool_result_block_content,
+                    is_error=result.isError,
+                )
+            ],
         )
 
 
