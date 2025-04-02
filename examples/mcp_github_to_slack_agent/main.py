@@ -5,7 +5,6 @@ from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
-from mcp_agent.logging.logger import LoggingConfig
 from rich import print
 
 app = MCPApp(name="github_to_slack")
