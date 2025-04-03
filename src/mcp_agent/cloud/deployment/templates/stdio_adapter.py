@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import os
+import signal
 import sys
 from typing import Optional, Tuple, Dict, Any, List
 
@@ -69,14 +70,23 @@ class StdioProcess:
         
         while True:
             try:
-                line = await self.process.stderr.readline()
+                # Use asyncio.wait_for to prevent blocking indefinitely
+                line = await asyncio.wait_for(self.process.stderr.readline(), timeout=10.0)
                 if not line:
                     logger.info("STDIO process stderr closed")
                     break
                 
-                # Log stderr
+                # Log stderr (limit size to prevent excessive logging)
                 stderr_line = line.decode('utf-8', errors='replace').rstrip()
+                if len(stderr_line) > 1000:
+                    stderr_line = stderr_line[:997] + "..."
                 logger.info(f"[STDIO Server stderr] {stderr_line}")
+            except asyncio.TimeoutError:
+                # If we timeout, check if process is still running
+                if self.process.returncode is not None:
+                    logger.info("STDIO process has terminated, stopping stderr reader")
+                    break
+                logger.debug("Timeout waiting for stderr output, process still running")
             except Exception as e:
                 logger.error(f"Error reading stderr: {e}")
                 break
@@ -150,25 +160,44 @@ class StdioProcess:
         if self.process is not None:
             # Close stdin
             if self.process.stdin:
-                self.process.stdin.close()
+                try:
+                    self.process.stdin.close()
+                except Exception as e:
+                    logger.error(f"Error closing stdin: {e}")
             
             # Terminate process
             try:
                 self.process.terminate()
-                await asyncio.wait_for(self.process.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
-                logger.warning("Process did not terminate, killing")
-                self.process.kill()
+                try:
+                    await asyncio.wait_for(self.process.wait(), timeout=5.0)
+                    logger.info("Process terminated gracefully")
+                except asyncio.TimeoutError:
+                    logger.warning("Process did not terminate within timeout, killing")
+                    self.process.kill()
+                    try:
+                        # Wait for kill to take effect
+                        await asyncio.wait_for(self.process.wait(), timeout=2.0)
+                        logger.info("Process killed")
+                    except asyncio.TimeoutError:
+                        logger.error("Process couldn't be killed, might be zombie")
+                    except Exception as e:
+                        logger.error(f"Error waiting for killed process: {e}")
+            except ProcessLookupError:
+                logger.info("Process already terminated")
             except Exception as e:
-                logger.error(f"Error stopping process: {e}")
+                logger.error(f"Error terminating process: {e}")
         
         # Cancel stderr reader task
         if self.stderr_reader_task is not None:
             self.stderr_reader_task.cancel()
             try:
-                await self.stderr_reader_task
+                await asyncio.wait_for(self.stderr_reader_task, timeout=2.0)
+            except asyncio.TimeoutError:
+                logger.warning("Timed out waiting for stderr reader task to cancel")
             except asyncio.CancelledError:
-                pass
+                logger.debug("Stderr reader task cancelled successfully")
+            except Exception as e:
+                logger.error(f"Error cancelling stderr reader task: {e}")
         
         logger.info("STDIO process stopped")
 
@@ -366,12 +395,38 @@ def parse_command(command_str: str) -> List[str]:
         raise ValueError(f"Invalid JSON in command: {e}")
 
 
+def handle_signal(signum, frame):
+    """
+    Handle termination signals for graceful shutdown.
+    
+    Args:
+        signum: Signal number
+        frame: Current stack frame
+    """
+    signal_name = {
+        signal.SIGINT: "SIGINT",
+        signal.SIGTERM: "SIGTERM"
+    }.get(signum, f"signal {signum}")
+    
+    logger.info(f"Received {signal_name}, initiating graceful shutdown...")
+    # System exit will trigger cleanup in the main function
+    sys.exit(0)
+
+
 def main():
     """
     Main entry point for the adapter.
     
     Reads configuration from environment variables and starts the adapter.
     """
+    # Setup signal handlers for graceful shutdown
+    try:
+        signal.signal(signal.SIGINT, handle_signal)
+        signal.signal(signal.SIGTERM, handle_signal)
+        logger.debug("Signal handlers registered for graceful shutdown")
+    except Exception as e:
+        logger.warning(f"Failed to set up signal handlers: {e}")
+    
     # Read configuration from environment variables
     port_str = os.environ.get("PORT")
     server_command_str = os.environ.get("SERVER_COMMAND")

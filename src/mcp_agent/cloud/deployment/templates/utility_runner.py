@@ -66,22 +66,39 @@ def main():
         logger.critical(f"Invalid SERVER_COMMAND: {e}")
         return 1
     
+    # Validate transport type first
+    transport_type = transport_type.lower()
+    if transport_type not in ["stdio", "sse"]:
+        logger.critical(f"Unsupported transport type: {transport_type}. Must be either 'stdio' or 'sse'")
+        return 1
+    
     # Handle different transport types
-    if transport_type.lower() == "stdio":
+    if transport_type == "stdio":
         # Run STDIO adapter
         logger.info("Starting STDIO adapter")
         
-        # Use execvpe to replace the current process with the adapter
-        # This way, the adapter gets all of our environment variables
-        adapter_command = [sys.executable, "stdio_adapter.py"]
+        # Use absolute path to adapter script for reliability
+        adapter_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stdio_adapter.py")
+        if not os.path.exists(adapter_path):
+            # Fall back to relative path if absolute path doesn't exist
+            adapter_path = "stdio_adapter.py"
+            logger.warning(f"Using relative path to adapter: {adapter_path}")
+        
+        adapter_command = [sys.executable, adapter_path]
         
         try:
             logger.info(f"Executing: {' '.join(adapter_command)}")
             os.execvpe(adapter_command[0], adapter_command, os.environ)
+        except FileNotFoundError:
+            logger.critical(f"Failed to find adapter script at: {adapter_path}")
+            return 1
+        except PermissionError:
+            logger.critical(f"Permission denied when executing: {adapter_path}")
+            return 1
         except Exception as e:
             logger.critical(f"Failed to start STDIO adapter: {e}")
             return 1
-    elif transport_type.lower() == "sse":
+    elif transport_type == "sse":
         # Run native server command
         logger.info(f"Starting native server: {' '.join(server_command)}")
         
@@ -89,12 +106,15 @@ def main():
             # Use execvpe to replace the current process with the server
             # This way, the server gets all of our environment variables
             os.execvpe(server_command[0], server_command, os.environ)
+        except FileNotFoundError:
+            logger.critical(f"Failed to find server command: {server_command[0]}")
+            return 1
+        except PermissionError:
+            logger.critical(f"Permission denied when executing: {server_command[0]}")
+            return 1
         except Exception as e:
             logger.critical(f"Failed to start server: {e}")
             return 1
-    else:
-        logger.critical(f"Unknown transport type: {transport_type}")
-        return 1
     
     # This should never be reached due to execvpe
     return 0

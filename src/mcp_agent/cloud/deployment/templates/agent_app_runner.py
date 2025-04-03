@@ -8,6 +8,7 @@ instance from the entrypoint and serves it as an MCP Server.
 import importlib
 import logging
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -23,12 +24,38 @@ logging.basicConfig(
 logger = logging.getLogger("agent_app_runner")
 
 
+def handle_signal(signum, frame):
+    """
+    Handle termination signals for graceful shutdown.
+    
+    Args:
+        signum: Signal number
+        frame: Current stack frame
+    """
+    signal_name = {
+        signal.SIGINT: "SIGINT",
+        signal.SIGTERM: "SIGTERM"
+    }.get(signum, f"signal {signum}")
+    
+    logger.info(f"Received {signal_name}, initiating graceful shutdown...")
+    # System exit will trigger cleanup in the main function
+    sys.exit(0)
+
+
 def main():
     """
     Main entry point for the Agent App runner.
     
     Loads the MCPApp instance from the entrypoint and serves it as an MCP Server.
     """
+    # Setup signal handlers for graceful shutdown
+    try:
+        signal.signal(signal.SIGINT, handle_signal)
+        signal.signal(signal.SIGTERM, handle_signal)
+        logger.debug("Signal handlers registered for graceful shutdown")
+    except Exception as e:
+        logger.warning(f"Failed to set up signal handlers: {e}")
+    
     # Import MCP Agent components
     try:
         from mcp_agent.app import MCPApp
@@ -54,7 +81,24 @@ def main():
         logger.critical(f"Invalid PORT: {port_str}")
         return 1
     
-    logger.info(f"Configuration: ENTRYPOINT={entrypoint}, PORT={port}, HTTP_PATH_PREFIX={http_path_prefix}")
+    logger.info(f"Configuration: ENTRYPOINT={entrypoint}, PORT={port}, HTTP_PATH_PREFIX={http_path_prefix}, API_KEY={'present' if api_key else 'not set'}")
+    
+    # Log dependency environment variables (without exposing sensitive values)
+    dependency_prefixes = ['FILESYSTEM_', 'FETCH_', 'OPENAI_']
+    dependencies = []
+    for key, value in os.environ.items():
+        for prefix in dependency_prefixes:
+            if key.startswith(prefix):
+                if key.endswith('_API_KEY'):
+                    # Log presence of API keys without exposing them
+                    dependencies.append(f"{key}={'present' if value else 'not set'}")
+                else:
+                    dependencies.append(f"{key}={value}")
+    
+    if dependencies:
+        logger.info(f"Found dependencies: {', '.join(dependencies)}")
+    else:
+        logger.warning("No recognized dependencies found in environment variables")
     
     # Add current directory to Python path
     sys.path.insert(0, str(Path.cwd()))
