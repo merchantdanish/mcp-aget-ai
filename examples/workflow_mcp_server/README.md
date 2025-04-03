@@ -57,9 +57,9 @@ All three approaches can use `app_server.py` to expose the agents and workflows 
 
 ## Code Structure
 
-- `server.py`: Defines the workflows and creates the MCP server
-- `client.py`: Connects to the server and runs the workflows
-- `mcp_agent.config.yaml`: Configuration for MCP servers and other settings
+- `basic_agent_server.py`: Defines the BasicAgentWorkflow and creates an MCP server
+- `client.py`: Connects to the server and runs the workflow
+- `mcp_agent.config.yaml`: Configuration for MCP servers
 - `mcp_agent.secrets.yaml`: Secret API keys (not included in repository)
 
 ## Understanding the Code
@@ -69,10 +69,17 @@ All three approaches can use `app_server.py` to expose the agents and workflows 
 Workflows are defined by subclassing the `Workflow` base class and implementing:
 
 - The `run` method containing the main workflow logic
-- `initialize` and `cleanup` methods for setup and teardown
-- Optionally a custom `create` class method for specialized instantiation
+- Optional:`initialize` and `cleanup` methods for setup and teardown
+- Optional: a custom `create` class method for specialized instantiation
+
+Workflows are registered with the MCPApp using the `@app.workflow` decorator:
+
+Example:
 
 ```python
+app = MCPApp(name="workflow_mcp_server")
+
+@app.workflow
 class DataProcessorWorkflow(Workflow[str]):
     @classmethod
     async def create(cls, executor: Executor, name: str | None = None, **kwargs: Any) -> "DataProcessorWorkflow":
@@ -91,21 +98,6 @@ class DataProcessorWorkflow(Workflow[str]):
         # Clean up resources
 ```
 
-The base `Workflow` class provides a default implementation of `create()` that handles basic initialization, but workflows can override this for specialized setup. Our example shows both approaches:
-
-1. `DataProcessorWorkflow` overrides the `create()` method to implement custom initialization
-2. `SummarizationWorkflow` uses the default implementation from the base class
-
-Workflows are registered with the MCPApp using the `@app.workflow` decorator:
-
-```python
-app = MCPApp(name="workflow_mcp_server")
-
-@app.workflow
-class DataProcessorWorkflowRegistered(DataProcessorWorkflow):
-    pass
-```
-
 ### Approach 2: Programmatic Agent Configuration
 
 Agent configurations can be created programmatically using Pydantic models:
@@ -118,8 +110,6 @@ research_agent_config = AgentConfig(
     server_names=["fetch", "filesystem"],
     llm_config=AugmentedLLMConfig(
         factory=OpenAIAugmentedLLM,
-        model="gpt-4o",
-        temperature=0.7
     )
 )
 
@@ -130,7 +120,6 @@ research_team_config = AgentConfig(
     parallel_config=ParallelWorkflowConfig(
         fan_in_agent="editor",
         fan_out_agents=["summarizer", "fact_checker"],
-        concurrent=True
     )
 )
 
@@ -152,8 +141,6 @@ fast_app = FastMCPApp(name="fast_workflow_mcp_server")
 def assistant_config(config):
     config.llm_config = AugmentedLLMConfig(
         factory=OpenAIAugmentedLLM,
-        model="gpt-4o",
-        temperature=0.7
     )
     return config
 
@@ -162,8 +149,7 @@ def assistant_config(config):
                agent_names=["mathematician", "programmer", "writer"])
 def router_config(config):
     config.llm_config = AugmentedLLMConfig(
-        factory=OpenAIAugmentedLLM,
-        model="gpt-4o"
+        factory=OpenAIAugmentedLLM
     )
     config.router_config.top_k = 1
     return config
@@ -177,7 +163,7 @@ The MCP server automatically exposes both workflows and agent configurations as 
 
 - Running a workflow: `workflows/{workflow_id}/run`
 - Checking status: `workflows/{workflow_id}/get_status`
-- Controlling workflow execution: `workflows/{workflow_id}/pause`, `workflows/{workflow_id}/resume`, `workflows/{workflow_id}/cancel`
+- Controlling workflow execution: `workflows/resume`, `workflows/cancel`
 
 **Agent tools**:
 
