@@ -81,16 +81,6 @@ class WorkflowRegistry:
         """
         return self._workflows.get(workflow_id)
 
-    async def pause_workflow(self, workflow_id: str) -> bool:
-        workflow = self.get_workflow(workflow_id)
-        if not workflow:
-            self._logger.error(
-                f"Cannot pause workflow {workflow_id}: workflow not found"
-            )
-            return False
-
-        return await workflow.pause()
-
     async def resume_workflow(
         self,
         workflow_id: str,
@@ -264,13 +254,29 @@ class Workflow(ABC, Generic[T], ContextDependent):
             WorkflowResult containing the output of the workflow
         """
 
+    async def _cancel_task(self):
+        """
+        Wait for a cancel signal and cancel the workflow task.
+        """
+        signal = await self.executor.wait_for_signal(
+            "cancel",
+            workflow_id=self._workflow_id,
+            signal_description="Waiting for cancel signal",
+        )
+
+        self._logger.info(f"Cancel signal received for workflow {self._workflow_id}")
+        self.update_status("cancelling")
+
+        # The run task will be cancelled in the run_async method
+        return signal
+
     async def run_async(self, *args: Any, **kwargs: Any) -> str:
         """
         Run the workflow asynchronously and return a workflow ID.
 
         This creates an async task that will be executed through the executor
         and returns immediately with a workflow ID that can be used to
-        check status, pause, resume, or cancel.
+        check status, resume, or cancel.
 
         TODO: saqadri - (MAC) - This needs to be updated to use
         the executor for proper workflow orchestration. For example, asyncio vs. Temporal.
@@ -299,64 +305,34 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 # Run the workflow through the executor with pause/cancel monitoring
                 self.update_status("running")
 
-                # Create a coroutine for the run method
-                run_coro = self.run(*args, **kwargs)
+                run_task = asyncio.create_task(self.run(*args, **kwargs))
+                cancel_task = asyncio.create_task(self._cancel_task())
 
-                # Create a task to monitor
-                run_task = asyncio.create_task(run_coro)
-
-                # Monitor and handle pause/cancel signals while the task runs
-                while not run_task.done():
-                    # Check for signals
-                    signal_bus = self.executor.signal_bus
-                    has_cancel = await signal_bus.has_signal(
-                        "cancel", workflow_id=self._workflow_id
-                    )
-                    has_pause = await signal_bus.has_signal(
-                        "pause", workflow_id=self._workflow_id
+                # Simply wait for either the run task or cancel task to complete
+                try:
+                    # Wait for either task to complete, whichever happens first
+                    done, _ = await asyncio.wait(
+                        [run_task, cancel_task], return_when=asyncio.FIRST_COMPLETED
                     )
 
-                    # Handle cancel signal (highest priority)
-                    if has_cancel and self.state.status != "cancelling":
-                        self._logger.info(
-                            f"Cancel signal received for workflow {self._workflow_id}"
-                        )
-                        self.update_status("cancelling")
+                    # Check which task completed
+                    if cancel_task in done:
+                        # Cancel signal received, cancel the run task
                         run_task.cancel()
-                        break
+                        self.update_status("cancelled")
+                        raise CancelledError("Workflow was cancelled")
+                    elif run_task in done:
+                        # Run task completed, cancel the cancel task
+                        cancel_task.cancel()
+                        # Get the result (or propagate any exception)
+                        result = await run_task
+                        self.update_status("completed")
+                        return result
 
-                    # Handle pause signal
-                    if has_pause and self.state.status != "paused":
-                        self._logger.info(
-                            f"Pause signal received for workflow {self._workflow_id}"
-                        )
-                        self.update_status("paused")
+                except Exception as e:
+                    self._logger.error(f"Error waiting for tasks: {e}")
+                    raise
 
-                        # Wait for resume signal
-                        await self.executor.wait_for_signal(
-                            "resume",
-                            workflow_id=self._workflow_id,
-                            signal_description="Waiting for resume signal",
-                        )
-
-                        # Resumed
-                        self._logger.info(
-                            f"Resume signal received for workflow {self._workflow_id}"
-                        )
-                        self.update_status("running")
-
-                    # Wait a bit or until the task completes
-                    try:
-                        done, _ = await asyncio.wait([run_task], timeout=0.5)
-                        if run_task in done:
-                            break
-                    except Exception as e:
-                        self._logger.error(f"Error waiting for task: {e}")
-
-                # Get the result (or exception)
-                result = await run_task
-                self.update_status("completed")
-                return result
             except CancelledError:
                 # Handle cancellation gracefully
                 self._logger.info(
@@ -398,34 +374,11 @@ class Workflow(ABC, Generic[T], ContextDependent):
 
         return self._workflow_id
 
-    async def pause(self) -> bool:
-        """
-        Pause the workflow by sending a pause signal.
-
-        Returns:
-            bool: True if the pause signal was sent successfully, False otherwise
-        """
-        if not self._workflow_id:
-            self._logger.error("Cannot pause workflow with no ID")
-            return False
-
-        try:
-            await self.executor.signal("pause", workflow_id=self._workflow_id)
-            self._logger.info(f"Pause signal sent to workflow {self._workflow_id}")
-            # Note: We don't update status to paused here - it will be updated
-            # in the run_async method when the workflow actually pauses
-            return True
-        except Exception as e:
-            self._logger.error(
-                f"Error sending pause signal to workflow {self._workflow_id}: {e}"
-            )
-            return False
-
     async def resume(
         self, signal_name: str | None = "resume", payload: str | None = None
     ) -> bool:
         """
-        Resume a paused workflow, optionally providing input data.
+        Send a resume signal to the workflow.
 
         Args:
             signal_name: The name of the signal to send (default: "resume")
@@ -446,8 +399,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
             self._logger.info(
                 f"{signal_name} signal sent to workflow {self._workflow_id}"
             )
-            # Note: We don't update status to running here - it will be updated
-            # when the workflow actually resumes in run_async
+            self.update_status("running")
             return True
         except Exception as e:
             self._logger.error(

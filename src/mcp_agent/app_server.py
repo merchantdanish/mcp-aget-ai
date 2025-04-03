@@ -357,7 +357,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
             result[workflow_name] = {
                 "name": workflow_name,
                 "description": workflow_cls.__doc__ or run_fn_tool.description,
-                "capabilities": ["run", "pause", "resume", "cancel", "get_status"],
+                "capabilities": ["run", "resume", "cancel", "get_status"],
                 "tool_endpoints": endpoints,
                 "run_parameters": run_fn_tool.parameters,
             }
@@ -398,7 +398,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
 
         Returns:
             The workflow ID of the started workflow run, which can be passed to
-            workflows/get_status, workflows/pause, workflows/resume, and workflows/cancel.
+            workflows/get_status, workflows/resume, and workflows/cancel.
         """
         return await _workflow_run(ctx, workflow_name, run_parameters)
 
@@ -418,35 +418,6 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
             A dictionary with comprehensive information about the workflow status.
         """
         return _workflow_status(ctx, workflow_id)
-
-    @mcp.tool(name="workflows/pause")
-    async def pause_workflow(
-        ctx: MCPContext,
-        workflow_id: str,
-    ) -> bool:
-        """
-        Pause a running workflow.
-
-        Args:
-            workflow_id: The ID of the workflow to pause,
-                received from workflows/run or workflows/runs/list.
-
-        Returns:
-            True if the workflow was paused, False otherwise.
-        """
-        server_context: ServerContext = ctx.request_context.lifespan_context
-        workflow_registry = server_context.context.workflow_registry
-
-        if not workflow_registry:
-            raise ToolError("Workflow registry not found for MCPApp Server.")
-
-        # Get the workflow instance from the registry
-        workflow = workflow_registry.get_workflow(workflow_id)
-        if not workflow:
-            raise ValueError(f"Workflow with ID '{workflow_id}' not found.")
-
-        # Pause the workflow directly
-        return await workflow.pause()
 
     @mcp.tool(name="workflows/resume")
     async def resume_workflow(
