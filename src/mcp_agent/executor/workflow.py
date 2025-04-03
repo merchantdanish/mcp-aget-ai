@@ -357,10 +357,6 @@ class Workflow(ABC, Generic[T], ContextDependent):
                         f"Error cleaning up workflow {self.name} (ID: {self._workflow_id}): {str(cleanup_error)}"
                     )
 
-                # Unregister from the workflow registry (if available)
-                if self.context and self.context.workflow_registry:
-                    self.context.workflow_registry.unregister(self._workflow_id)
-
         # TODO: saqadri (MAC) - figure out how to do this for different executors.
         # For Temporal, we would replace this with workflow.start() which also doesn't block
         self._run_task = asyncio.create_task(_execute_workflow())
@@ -437,6 +433,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
         status = {
             "id": self._workflow_id,
             "name": self.name,
+            "status": self.state.status,
             "running": self._run_task is not None and not self._run_task.done()
             if self._run_task
             else False,
@@ -521,8 +518,6 @@ class Workflow(ABC, Generic[T], ContextDependent):
 
         self._logger.debug(f"Cleaning up workflow {self.name}")
         self._initialized = False
-        self.state.status = "cleaned_up"
-        self.state.updated_at = datetime.now(timezone.utc).timestamp()
 
     async def __aenter__(self):
         """Support for async context manager pattern."""
