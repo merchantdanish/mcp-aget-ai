@@ -224,14 +224,15 @@ class MCPApp:
             If Temporal is available & we use a TemporalExecutor,
             this decorator will wrap with temporal_workflow.defn.
         """
-        decorator_registry = self.context.decorator_registry
-        execution_engine = self.engine
-        workflow_defn_decorator = decorator_registry.get_workflow_defn_decorator(
-            execution_engine
-        )
+        # TODO: saqadri (MAC) - fix this for Temporal support
+        # decorator_registry = self.context.decorator_registry
+        # execution_engine = self.engine
+        # workflow_defn_decorator = decorator_registry.get_workflow_defn_decorator(
+        #     execution_engine
+        # )
 
-        if workflow_defn_decorator:
-            return workflow_defn_decorator(cls, *args, **kwargs)
+        # if workflow_defn_decorator:
+        #     return workflow_defn_decorator(cls, *args, **kwargs)
 
         cls._app = self
         self._workflows[workflow_id or cls.__name__] = cls

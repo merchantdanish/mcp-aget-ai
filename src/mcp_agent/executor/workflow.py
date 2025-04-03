@@ -6,7 +6,6 @@ from typing import (
     Generic,
     Optional,
     TypeVar,
-    Union,
     List,
     TYPE_CHECKING,
 )
@@ -161,7 +160,7 @@ class WorkflowState(BaseModel):
 
 
 class WorkflowResult(BaseModel, Generic[T]):
-    value: Union[T, None] = None
+    value: Optional[T] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     start_time: float | None = None
     end_time: float | None = None

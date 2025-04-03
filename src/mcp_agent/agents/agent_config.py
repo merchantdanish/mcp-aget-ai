@@ -17,7 +17,6 @@ from typing import (
 from pydantic import BaseModel, Field, ConfigDict
 
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM, RequestParams
-from mcp_agent.human_input.types import HumanInputCallback
 
 if TYPE_CHECKING:
     from mcp_agent.agents.agent import Agent
@@ -46,7 +45,7 @@ class AugmentedLLMConfig(BaseModel, Generic[LLM]):
     # Request parameters used in generate calls
     default_request_params: Optional[RequestParams] = None
 
-    model_config = ConfigDict(extra=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
     async def create_llm(self) -> LLM:
         """
@@ -64,25 +63,6 @@ class AugmentedLLMConfig(BaseModel, Generic[LLM]):
 
         # Create the LLM instance
         return self.factory(**params)
-
-
-class BasicAgentConfig(BaseModel):
-    """
-    Configuration for a basic agent with an LLM.
-    This contains all the parameters needed to create a standard Agent
-    without any complex workflow pattern.
-    """
-
-    name: str
-    instruction: Union[str, Callable[[Dict], str]] = "You are a helpful agent."
-    server_names: List[str] = Field(default_factory=list)
-    functions: List[Callable] = Field(default_factory=list)
-    connection_persistence: bool = True
-    human_input_callback: Optional[HumanInputCallback] = None
-    llm_config: Optional[AugmentedLLMConfig] = None
-    extra_kwargs: Dict[str, Any] = Field(default_factory=dict)
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class ParallelLLMConfig(BaseModel):
@@ -134,7 +114,8 @@ class AgentConfig(BaseModel):
     server_names: List[str] = Field(default_factory=list)
     functions: List[Callable] = Field(default_factory=list)
     connection_persistence: bool = True
-    human_input_callback: Optional[HumanInputCallback] = None
+    # TODO: saqadri (MAC) - Add a way to specify a custom human input callback
+    # human_input_callback: Optional[HumanInputCallback] = None
 
     # LLM config for either basic agent or workflow LLM factory
     llm_config: Optional[AugmentedLLMConfig] = None

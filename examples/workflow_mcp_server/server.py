@@ -168,9 +168,9 @@ class DataProcessorWorkflow(Workflow[str]):
                 "output_format": format_instruction,
                 "workflow_completed": True,
             },
-            start_time=self.state.metadata.get(
-                "start_time"
-            ),  # TODO: saqadri (MAC) - fix
+            start_time=self.state.metadata["start_time"]
+            if "start_time" in self.state.metadata
+            else None,  # Handle missing "start_time" gracefully
             end_time=self.state.updated_at,
         )
 

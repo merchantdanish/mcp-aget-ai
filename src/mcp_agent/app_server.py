@@ -68,8 +68,8 @@ class ServerContext(ContextDependent):
 
     def register_workflow(self, workflow_name: str, workflow_cls: Type[Workflow]):
         """Register a workflow class."""
-        if workflow_name not in self.context.app.workflows:
-            self.context.app.workflows[workflow_name] = workflow_cls
+        if workflow_name not in self.context.workflows:
+            self.workflows[workflow_name] = workflow_cls
             # Create tools for this workflow
             create_workflow_specific_tools(self.mcp, workflow_name, workflow_cls)
 
@@ -111,7 +111,7 @@ class ServerContext(ContextDependent):
             return self.active_agents[name]
 
         # Check if there's a configuration for this agent
-        agent_config = self.context.app._agent_configs.get(name)
+        agent_config = self.agent_configs.get(name)
         if agent_config:
             try:
                 agent = await create_agent(name=agent_config.name, context=self.context)
@@ -125,6 +125,26 @@ class ServerContext(ContextDependent):
         raise ToolError(
             f"Agent not found: {name}. No active agent or configuration with this name exists."
         )
+
+    @property
+    def app(self) -> MCPApp:
+        """Get the MCPApp instance associated with this server context."""
+        return self.context.app
+
+    @property
+    def workflows(self) -> Dict[str, Type[Workflow]]:
+        """Get the workflows registered in this server context."""
+        return self.app.workflows
+
+    @property
+    def workflow_registry(self) -> WorkflowRegistry:
+        """Get the workflow registry for this server context."""
+        return self.context.workflow_registry
+
+    @property
+    def agent_configs(self) -> Dict[str, AgentConfig]:
+        """Get the agent configurations for this server context."""
+        return self.app._agent_configs
 
 
 def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
@@ -344,7 +364,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         server_context: ServerContext = ctx.request_context.lifespan_context
 
         result = {}
-        for workflow_name, workflow_cls in server_context.context.app.workflows.items():
+        for workflow_name, workflow_cls in server_context.workflows.items():
             # Get workflow documentation
             run_fn_tool = FastTool.from_function(workflow_cls.run)
 
@@ -379,7 +399,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         server_context: ServerContext = ctx.request_context.lifespan_context
 
         # Get all workflow statuses from the registry
-        workflow_statuses = server_context.context.workflow_registry.list_workflows()
+        workflow_statuses = server_context.workflow_registry.list_workflows()
         return workflow_statuses
 
     @mcp.tool(name="workflows/run")
@@ -443,7 +463,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
             True if the workflow was resumed, False otherwise.
         """
         server_context: ServerContext = ctx.request_context.lifespan_context
-        workflow_registry = server_context.context.workflow_registry
+        workflow_registry = server_context.workflow_registry
 
         if not workflow_registry:
             raise ToolError("Workflow registry not found for MCPApp Server.")
@@ -468,7 +488,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
             True if the workflow was cancelled, False otherwise.
         """
         server_context: ServerContext = ctx.request_context.lifespan_context
-        workflow_registry = server_context.context.workflow_registry
+        workflow_registry = server_context.workflow_registry
 
         # Get the workflow instance from the registry
         workflow = workflow_registry.get_workflow(workflow_id)
@@ -498,7 +518,7 @@ def create_agent_tools(mcp: FastMCP, server_context: ServerContext):
     for _, agent in server_context.active_agents.items():
         create_agent_specific_tools(mcp, server_context, agent)
 
-    for _, agent_config in server_context.app._agent_configs.items():
+    for _, agent_config in server_context.agent_configs.items():
         agent = server_context.get_or_create_agent(agent_config.name)
 
 
@@ -655,7 +675,7 @@ def create_workflow_tools(mcp: FastMCP, server_context: ServerContext):
         logger.warning("Server config not available for creating workflow tools")
         return
 
-    for workflow_name, workflow_cls in server_context.context.app.workflows.items():
+    for workflow_name, workflow_cls in server_context.workflows.items():
         create_workflow_specific_tools(mcp, workflow_name, workflow_cls)
 
 
@@ -874,18 +894,19 @@ async def _workflow_run(
     run_parameters: Dict[str, Any] | None = None,
 ) -> str:
     server_context: ServerContext = ctx.request_context.lifespan_context
-    app = server_context.context.app
 
-    if workflow_name not in app.workflows:
+    if workflow_name not in server_context.workflows:
         raise ToolError(f"Workflow '{workflow_name}' not found.")
 
     # Get the workflow class
-    workflow_cls = app.workflows[workflow_name]
+    workflow_cls = server_context.workflows[workflow_name]
 
     # Create and initialize the workflow instance using the factory method
     try:
         # Create workflow instance
-        workflow = await workflow_cls.create(name=workflow_name, context=app.context)
+        workflow = await workflow_cls.create(
+            name=workflow_name, context=server_context.context
+        )
 
         run_parameters = run_parameters or {}
 
@@ -902,7 +923,7 @@ def _workflow_status(
     ctx: MCPContext, workflow_id: str, workflow_name: str | None = None
 ) -> Dict[str, Any]:
     server_context: ServerContext = ctx.request_context.lifespan_context
-    workflow_registry = server_context.context.workflow_registry
+    workflow_registry = server_context.workflow_registry
 
     if not workflow_registry:
         raise ToolError("Workflow registry not found for MCPApp Server.")
