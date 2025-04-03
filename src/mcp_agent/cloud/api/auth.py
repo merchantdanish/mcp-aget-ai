@@ -57,7 +57,7 @@ class MasterApiKeyAuthenticator:
         """
         # If no API key is configured, allow all requests (but log a warning)
         if not self.api_key:
-            logger.warning("No API key configured, allowing unauthenticated request")
+            logger.critical("No API key configured, allowing unauthenticated request. This is INSECURE and should only be used for development.")
             return True
         
         # Get the API key from the request header

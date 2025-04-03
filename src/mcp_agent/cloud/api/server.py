@@ -56,7 +56,7 @@ def create_app() -> web.Application:
         # Initialize the deployments API
         deployments_api = DeploymentsAPI(registry, container_service)
         
-        # Initialize the authenticator
+        # Initialize the authenticator to load key from environment
         authenticator = MasterApiKeyAuthenticator()
         
         # Create the web application
@@ -104,6 +104,7 @@ async def check_docker() -> bool:
         return False
 
 
+
 def main():
     """
     Main entry point for the API server.
@@ -115,6 +116,16 @@ def main():
     
     # Log startup
     logger.info("Starting MCP Agent Cloud API server")
+    
+    # Load environment variables from .env file
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+        logger.info("Environment variables loaded from .env file")
+    except ImportError:
+        logger.warning("python-dotenv not installed. Skipping .env file loading.")
+    except Exception as e:
+        logger.error(f"Error loading .env file: {e}")
     
     # Check Docker availability
     loop = asyncio.get_event_loop()

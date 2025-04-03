@@ -362,9 +362,10 @@ class DeploymentsAPI:
             # Create response data (don't include api_key)
             response_data = []
             for deployment in deployments:
-                data = deployment.model_dump()
-                data.pop("api_key", None)  # Remove API key
-                response_data.append(data)
+                if deployment:  # Add a check to ensure deployment is not None
+                    data = deployment.model_dump()
+                    data.pop("api_key", None)  # Remove API key
+                    response_data.append(data)
             
             return web.json_response(response_data)
         except Exception as e:

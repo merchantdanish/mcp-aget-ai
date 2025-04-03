@@ -97,7 +97,12 @@ class JsonServerRegistry:
         """
         try:
             with open(self.registry_path, 'r') as f:
-                return json.load(f)
+                data = json.load(f)
+                # Ensure we always return a dictionary
+                if not isinstance(data, dict):
+                    logger.warning(f"Registry data is not a dictionary, got {type(data).__name__}. Creating new registry.")
+                    return {}
+                return data
         except json.JSONDecodeError as e:
             logger.error(f"Failed to decode registry JSON: {e}")
             # Return empty registry on decode error
