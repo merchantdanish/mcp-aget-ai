@@ -30,6 +30,10 @@ class WorkflowRegistry:
     """
     Registry for tracking workflow instances.
     Provides a central place to register, look up, and manage workflow instances.
+
+    TODO: saqadri (MAC) - How does this work with proper workflow orchestration?
+    For example, when using Temporal, this registry should interface with the
+    workflow service to manage workflow instances.
     """
 
     def __init__(self):
@@ -77,28 +81,7 @@ class WorkflowRegistry:
         """
         return self._workflows.get(workflow_id)
 
-    def get_task(self, workflow_id: str) -> Optional["asyncio.Task"]:
-        """
-        Get the task for a workflow instance by ID.
-
-        Args:
-            workflow_id: The unique ID for the workflow
-
-        Returns:
-            The asyncio task, or None if not found
-        """
-        return self._tasks.get(workflow_id)
-
     async def pause_workflow(self, workflow_id: str) -> bool:
-        """
-        Pause a workflow by ID.
-
-        Args:
-            workflow_id: The unique ID of the workflow to pause
-
-        Returns:
-            True if the workflow was paused successfully, False otherwise
-        """
         workflow = self.get_workflow(workflow_id)
         if not workflow:
             self._logger.error(
@@ -109,18 +92,11 @@ class WorkflowRegistry:
         return await workflow.pause()
 
     async def resume_workflow(
-        self, workflow_id: str, input_data: Optional[str] = None
+        self,
+        workflow_id: str,
+        signal_name: str | None = "resume",
+        payload: str | None = None,
     ) -> bool:
-        """
-        Resume a workflow by ID.
-
-        Args:
-            workflow_id: The unique ID of the workflow to resume
-            input_data: Optional data to provide to the workflow
-
-        Returns:
-            True if the workflow was resumed successfully, False otherwise
-        """
         workflow = self.get_workflow(workflow_id)
         if not workflow:
             self._logger.error(
@@ -128,18 +104,9 @@ class WorkflowRegistry:
             )
             return False
 
-        return await workflow.resume(input_data)
+        return await workflow.resume(signal_name, payload)
 
     async def cancel_workflow(self, workflow_id: str) -> bool:
-        """
-        Cancel a workflow by ID.
-
-        Args:
-            workflow_id: The unique ID of the workflow to cancel
-
-        Returns:
-            True if the workflow was cancelled successfully, False otherwise
-        """
         workflow = self.get_workflow(workflow_id)
         if not workflow:
             self._logger.error(
@@ -187,6 +154,7 @@ class WorkflowState(BaseModel):
     This can hold fields that should persist across tasks.
     """
 
+    # TODO: saqadri - (MAC) - This should be a proper status enum
     status: str = "initialized"
     metadata: Dict[str, Any] = Field(default_factory=dict)
     updated_at: float | None = None
@@ -198,7 +166,7 @@ class WorkflowState(BaseModel):
         self.error = {
             "type": type(error).__name__,
             "message": str(error),
-            "timestamp": datetime.utcnow().timestamp(),
+            "timestamp": datetime.now(timezone.utc).timestamp(),
         }
 
 
@@ -218,9 +186,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
     Typically, workflows are registered with an MCPApp and can be exposed as MCP tools via app_server.py.
 
     Some key notes:
-        - To enable the executor engine to recognize and orchestrate the workflow,
-            - the class MUST be decorated with @app.workflow.
-
+        - The class MUST be decorated with @app.workflow.
         - Persistent state: Provides a simple `state` object for storing data across tasks.
         - Lifecycle management: Provides run_async, pause, resume, cancel, and get_status methods.
     """
@@ -236,7 +202,6 @@ class Workflow(ABC, Generic[T], ContextDependent):
         ContextDependent.__init__(self, context=context)
 
         self.name = name or self.__class__.__name__
-        self.init_kwargs = kwargs
         self._logger = get_logger(f"workflow.{self.name}")
         self._initialized = False
         self._workflow_id = None
@@ -307,6 +272,10 @@ class Workflow(ABC, Generic[T], ContextDependent):
         and returns immediately with a workflow ID that can be used to
         check status, pause, resume, or cancel.
 
+        TODO: saqadri - (MAC) - This needs to be updated to use
+        the executor for proper workflow orchestration. For example, asyncio vs. Temporal.
+        Current implementation only works with asyncio.
+
         Args:
             *args: Positional arguments to pass to the run method
             **kwargs: Keyword arguments to pass to the run method
@@ -348,7 +317,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                     )
 
                     # Handle cancel signal (highest priority)
-                    if has_cancel:
+                    if has_cancel and self.state.status != "cancelling":
                         self._logger.info(
                             f"Cancel signal received for workflow {self._workflow_id}"
                         )
@@ -417,8 +386,6 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 if self.context and self.context.workflow_registry:
                     self.context.workflow_registry.unregister(self._workflow_id)
 
-        # Create a task that doesn't block
-        # This approach supports both asyncio and future Temporal integration
         # TODO: saqadri (MAC) - figure out how to do this for different executors.
         # For Temporal, we would replace this with workflow.start() which also doesn't block
         self._run_task = asyncio.create_task(_execute_workflow())
@@ -504,25 +471,6 @@ class Workflow(ABC, Generic[T], ContextDependent):
             # when the workflow checks for cancellation
             self._logger.info(f"Sending cancel signal to workflow {self._workflow_id}")
             await self.executor.signal("cancel", workflow_id=self._workflow_id)
-
-            # Then forcibly cancel the task if we have one and it's still running
-            # This ensures cancellation even if the workflow doesn't check for signals
-            if self._run_task and not self._run_task.done():
-                self._logger.info(
-                    f"Forcibly cancelling task for workflow {self._workflow_id}"
-                )
-                self._run_task.cancel()
-
-            # Update the workflow state
-            self.update_status("cancelled")
-
-            # Clean up the workflow
-            await self.cleanup()
-
-            # Unregister from the workflow registry
-            if self.context and self.context.workflow_registry:
-                self.context.workflow_registry.unregister(self._workflow_id)
-
             return True
         except Exception as e:
             self._logger.error(f"Error cancelling workflow {self._workflow_id}: {e}")
@@ -589,16 +537,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 self.state[key] = value
             setattr(self.state, key, value)
 
-        self.state.updated_at = datetime.utcnow().timestamp()
-
-    async def wait_for_input(self, description: str = "Provide input") -> str:
-        """
-        Convenience method for human input. Uses `human_input` signal
-        so we can unify local (console input) and Temporal signals.
-        """
-        return await self.executor.wait_for_signal(
-            "human_input", description=description
-        )
+        self.state.updated_at = datetime.now(timezone.utc).timestamp()
 
     async def initialize(self):
         """
@@ -614,7 +553,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
         self.state.status = "initializing"
         self._logger.debug(f"Initializing workflow {self.name}")
         self._initialized = True
-        self.state.updated_at = datetime.utcnow().timestamp()
+        self.state.updated_at = datetime.now(timezone.utc).timestamp()
 
     async def cleanup(self):
         """
@@ -632,7 +571,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
         self._logger.debug(f"Cleaning up workflow {self.name}")
         self._initialized = False
         self.state.status = "cleaned_up"
-        self.state.updated_at = datetime.utcnow().timestamp()
+        self.state.updated_at = datetime.now(timezone.utc).timestamp()
 
     async def __aenter__(self):
         """Support for async context manager pattern."""
