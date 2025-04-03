@@ -113,10 +113,10 @@ async def main():
                 await asyncio.sleep(5)
 
                 # TODO: UNCOMMENT ME to try out cancellation:
-                await server.call_tool(
-                    "workflows/cancel",
-                    arguments={"workflow_id": workflow_id},
-                )
+                # await server.call_tool(
+                #     "workflows/cancel",
+                #     arguments={"workflow_id": workflow_id},
+                # )
 
 
 def _tool_result_to_json(tool_result: CallToolResult):
