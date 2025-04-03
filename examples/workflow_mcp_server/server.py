@@ -10,7 +10,10 @@ This example demonstrates three approaches to creating agents and workflows:
 import asyncio
 import os
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mcp_agent.context import Context
 
 from mcp_agent.fast_app import FastMCPApp
 from mcp_agent.app_server import create_mcp_server_for_app
@@ -18,12 +21,11 @@ from mcp_agent.agents.agent import Agent
 from mcp_agent.agents.agent_config import (
     AgentConfig,
     AugmentedLLMConfig,
-    ParallelWorkflowConfig,
+    ParallelLLMConfig,
 )
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
-from mcp_agent.executor.executor import Executor
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -38,22 +40,22 @@ class DataProcessorWorkflow(Workflow[str]):
 
     @classmethod
     async def create(
-        cls, executor: Executor, name: str | None = None, **kwargs: Any
+        cls, name: str | None = None, context: Optional["Context"] = None, **kwargs: Any
     ) -> "DataProcessorWorkflow":
         """
         Factory method to create and initialize the DataProcessorWorkflow.
         Demonstrates how to override the default create method for specialized initialization.
 
         Args:
-            executor: The executor to use
             name: Optional workflow name
+            context: Optional context to use (will use global context if not provided)
             **kwargs: Additional parameters for customization
 
         Returns:
             An initialized DataProcessorWorkflow instance
         """
         # Create the workflow instance
-        workflow = cls(executor=executor, name=name or "data_processor", **kwargs)
+        workflow = cls(name=name or "data_processor", context=context, **kwargs)
 
         # Initialize it (which will set up agents, etc.)
         await workflow.initialize()
@@ -344,7 +346,7 @@ programmatic_research_team_config = AgentConfig(
     llm_config=AugmentedLLMConfig(
         factory=AnthropicAugmentedLLM, model="claude-3-opus-20240229"
     ),
-    parallel_config=ParallelWorkflowConfig(
+    parallel_config=ParallelLLMConfig(
         fan_in_agent="programmatic_editor",
         fan_out_agents=["programmatic_summarizer", "programmatic_fact_checker"],
         concurrent=True,
@@ -437,7 +439,7 @@ async def main():
 
     logger.info("Registered agent configurations:")
     for name, config in app.agent_configs.items():
-        workflow_type = config.get_workflow_type() or "basic"
+        workflow_type = config.get_agent_type() or "basic"
         logger.info(f"  - {name} ({workflow_type})")
 
     # Create the MCP server that exposes both workflows and agent configurations

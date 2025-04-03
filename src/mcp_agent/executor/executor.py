@@ -139,12 +139,22 @@ class Executor(ABC, ContextDependent):
         signal_name: str,
         payload: SignalValueT = None,
         signal_description: str | None = None,
+        workflow_id: str | None = None,
     ) -> None:
         """
         Emit a signal.
+
+        Args:
+            signal_name: The name of the signal to emit
+            payload: Optional data to include with the signal
+            signal_description: Optional human-readable description
+            workflow_id: Optional workflow ID to target the signal to
         """
         signal = Signal[SignalValueT](
-            name=signal_name, payload=payload, description=signal_description
+            name=signal_name,
+            payload=payload,
+            description=signal_description,
+            workflow_id=workflow_id,
         )
         await self.signal_bus.signal(signal)
 
@@ -224,7 +234,7 @@ class AsyncioExecutor(Executor):
 
                     return result
             except Exception as e:
-                # TODO: saqadri - adding logging or other error handling here
+                logger.error(f"Error executing task: {e}")
                 return e
 
         if self._activity_semaphore:
@@ -238,10 +248,26 @@ class AsyncioExecutor(Executor):
         *tasks: Callable[..., R] | Coroutine[Any, Any, R],
         **kwargs: Any,
     ) -> List[R | BaseException]:
+        """
+        Execute a list of tasks and return their results.
+
+        Args:
+            *tasks: The tasks to execute
+            **kwargs: Additional arguments to pass to the tasks
+
+        Returns:
+            A list of results or exceptions
+        """
         # TODO: saqadri - validate if async with self.execution_context() is needed here
         async with self.execution_context():
             return await asyncio.gather(
-                *(self._execute_task(task, **kwargs) for task in tasks),
+                *(
+                    self._execute_task(
+                        task,
+                        **kwargs,
+                    )
+                    for task in tasks
+                ),
                 return_exceptions=True,
             )
 
@@ -250,11 +276,26 @@ class AsyncioExecutor(Executor):
         *tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
         **kwargs: Any,
     ) -> AsyncIterator[R | BaseException]:
+        """
+        Execute tasks and yield results as they complete.
+
+        Args:
+            *tasks: The tasks to execute
+            **kwargs: Additional arguments to pass to the tasks
+
+        Yields:
+            Results or exceptions as tasks complete
+        """
         # TODO: saqadri - validate if async with self.execution_context() is needed here
         async with self.execution_context():
             # Create futures for all tasks
             futures = [
-                asyncio.create_task(self._execute_task(task, **kwargs))
+                asyncio.create_task(
+                    self._execute_task(
+                        task,
+                        **kwargs,
+                    )
+                )
                 for task in tasks
             ]
             pending = set(futures)
@@ -271,8 +312,9 @@ class AsyncioExecutor(Executor):
         signal_name: str,
         payload: SignalValueT = None,
         signal_description: str | None = None,
+        workflow_id: str | None = None,
     ) -> None:
-        await super().signal(signal_name, payload, signal_description)
+        await super().signal(signal_name, payload, signal_description, workflow_id)
 
     async def wait_for_signal(
         self,

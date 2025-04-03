@@ -2,20 +2,17 @@
 FastMCPApp - Extended MCPApp with declarative agent and workflow configuration.
 """
 
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List
 
 from mcp_agent.app import MCPApp
-from mcp_agent.agents.agent import Agent
 from mcp_agent.agents.agent_config import (
     AgentConfig,
     AugmentedLLMConfig,
-    ParallelWorkflowConfig,
-    OrchestratorWorkflowConfig,
-    RouterWorkflowConfig,
-    EvaluatorOptimizerWorkflowConfig,
-    SwarmWorkflowConfig,
+    ParallelLLMConfig,
+    OrchestratorLLMConfig,
+    RouterConfig,
+    EvaluatorOptimizerConfig,
 )
-from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 
 
 class FastMCPApp(MCPApp):
@@ -110,7 +107,7 @@ class FastMCPApp(MCPApp):
             config = AgentConfig(
                 name=name,
                 instruction=instruction,
-                parallel_config=ParallelWorkflowConfig(
+                parallel_config=ParallelLLMConfig(
                     fan_in_agent=fan_in, fan_out_agents=fan_out
                 ),
             )
@@ -161,7 +158,7 @@ class FastMCPApp(MCPApp):
             config = AgentConfig(
                 name=name,
                 instruction=instruction,
-                orchestrator_config=OrchestratorWorkflowConfig(
+                orchestrator_config=OrchestratorLLMConfig(
                     available_agents=available_agents
                 ),
             )
@@ -210,7 +207,7 @@ class FastMCPApp(MCPApp):
             config = AgentConfig(
                 name=name,
                 instruction=instruction,
-                router_config=RouterWorkflowConfig(
+                router_config=RouterConfig(
                     agent_names=agent_names, router_type=router_type
                 ),
             )
@@ -259,7 +256,7 @@ class FastMCPApp(MCPApp):
             config = AgentConfig(
                 name=name,
                 instruction=instruction,
-                evaluator_optimizer_config=EvaluatorOptimizerWorkflowConfig(
+                evaluator_optimizer_config=EvaluatorOptimizerConfig(
                     evaluator_agent=evaluator, optimizer_agent=optimizer
                 ),
             )
@@ -272,261 +269,3 @@ class FastMCPApp(MCPApp):
             return config
 
         return decorator
-
-    def swarm(
-        self,
-        name: str,
-        instruction: str,
-        agents: List[str],
-        llm_factory: Callable = None,
-        **kwargs,
-    ):
-        """
-        Decorator to define a swarm workflow agent.
-
-        Example:
-            @app.swarm("team", "A collaborative team of agents",
-                     agents=["leader", "researcher", "writer"])
-            def team_config(config):
-                config.swarm_config.context_variables = {"priority": "accuracy"}
-                return config
-
-        Args:
-            name: The name of the workflow agent
-            instruction: The agent's instruction/system prompt
-            agents: List of agent names in the swarm
-            llm_factory: Optional LLM factory for the workflow
-            **kwargs: Additional parameters
-
-        Returns:
-            Decorator function that registers the swarm workflow configuration
-        """
-
-        def decorator(config_fn):
-            config = AgentConfig(
-                name=name,
-                instruction=instruction,
-                swarm_config=SwarmWorkflowConfig(agents=agents),
-            )
-
-            if llm_factory:
-                config.llm_config = AugmentedLLMConfig(factory=llm_factory)
-
-            config = config_fn(config)
-            self._agent_configs[name] = config
-            return config
-
-        return decorator
-
-    async def create_agent(self, name: str) -> Tuple[Agent, Optional[AugmentedLLM]]:
-        """
-        Create an agent with its configured workflow.
-
-        Args:
-            name: The name of the registered agent configuration
-
-        Returns:
-            Tuple of (agent instance, augmented LLM or workflow instance)
-
-        Raises:
-            ValueError: If no agent configuration with the given name exists
-        """
-        if name not in self._agent_configs:
-            raise ValueError(f"No agent configuration named '{name}' is registered")
-
-        config = self._agent_configs[name]
-
-        # Create and initialize the basic agent
-        agent = config.create_agent(context=self._context)
-        await agent.initialize()
-
-        # Handle different workflow types with type-safe configs
-        workflow_type = config.get_workflow_type()
-
-        if workflow_type is None and config.llm_config is not None:
-            # Basic agent with simple LLM
-            llm_instance = await config.llm_config.create_llm()
-            llm = await agent.attach_llm(lambda: llm_instance)
-            return agent, llm
-
-        elif workflow_type == "parallel":
-            # Create a Parallel workflow with type-safe config
-            parallel_config = config.parallel_config
-            from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
-
-            # Get referenced agents
-            fan_in_agent, _ = await self.create_agent(parallel_config.fan_in_agent)
-            fan_out_agents = []
-            for agent_name in parallel_config.fan_out_agents:
-                fan_out_agent, _ = await self.create_agent(agent_name)
-                fan_out_agents.append(fan_out_agent)
-
-            # Get LLM factory
-            llm_factory = config.llm_config.factory if config.llm_config else None
-
-            # Create parallel workflow
-            parallel = ParallelLLM(
-                fan_in_agent=fan_in_agent,
-                fan_out_agents=fan_out_agents,
-                llm_factory=llm_factory,
-                concurrent=parallel_config.concurrent,
-                synchronize_fan_out_models=parallel_config.synchronize_fan_out_models,
-                **parallel_config.extra_params,
-            )
-
-            return agent, parallel
-
-        elif workflow_type == "orchestrator":
-            # Create an Orchestrator workflow with type-safe config
-            orchestrator_config = config.orchestrator_config
-            from mcp_agent.workflows.orchestrator.orchestrator import Orchestrator
-
-            # Get referenced agents
-            available_agents = []
-            for agent_name in orchestrator_config.available_agents:
-                available_agent, _ = await self.create_agent(agent_name)
-                available_agents.append(available_agent)
-
-            # Get the LLM factory
-            llm_factory = config.llm_config.factory if config.llm_config else None
-
-            # Optional planner agent
-            planner = None
-            if orchestrator_config.planner_agent:
-                planner, _ = await self.create_agent(orchestrator_config.planner_agent)
-
-            # Create the orchestrator
-            orchestrator = Orchestrator(
-                llm_factory=llm_factory,
-                available_agents=available_agents,
-                planner=planner,
-                max_iterations=orchestrator_config.max_iterations,
-                **orchestrator_config.extra_params,
-            )
-
-            return agent, orchestrator
-
-        elif workflow_type == "router":
-            # Create a Router workflow with type-safe config
-            router_config = config.router_config
-
-            # Get referenced agents
-            agents = []
-            for agent_name in router_config.agent_names:
-                agent_inst, _ = await self.create_agent(agent_name)
-                agents.append(agent_inst)
-
-            # Determine which router implementation to use
-            if router_config.router_type == "llm":
-                from mcp_agent.workflows.router.router_llm import LLMRouter
-
-                # Get LLM factory
-                llm_factory = config.llm_config.factory if config.llm_config else None
-                llm_instance = None
-                if llm_factory:
-                    llm_instance = await config.llm_config.create_llm()
-
-                # Create the router
-                router = LLMRouter(
-                    llm=llm_instance, agents=agents, **router_config.extra_params
-                )
-
-            else:  # embedding router
-                # Create the router (implementation depends on embedding model)
-                if router_config.embedding_model == "cohere":
-                    from mcp_agent.workflows.router.router_embedding_cohere import (
-                        CohereEmbeddingRouter,
-                    )
-
-                    router = CohereEmbeddingRouter(
-                        agents=agents, **router_config.extra_params
-                    )
-                else:
-                    from mcp_agent.workflows.router.router_embedding_openai import (
-                        OpenAIEmbeddingRouter,
-                    )
-
-                    router = OpenAIEmbeddingRouter(
-                        agents=agents, **router_config.extra_params
-                    )
-
-            return agent, router
-
-        elif workflow_type == "evaluator_optimizer":
-            # Create an Evaluator-Optimizer workflow with type-safe config
-            eo_config = config.evaluator_optimizer_config
-            from mcp_agent.workflows.evaluator_optimizer.evaluator_optimizer import (
-                EvaluatorOptimizerLLM,
-                QualityRating,
-            )
-
-            # Get referenced agents
-            evaluator_agent, _ = await self.create_agent(eo_config.evaluator_agent)
-            optimizer_agent, _ = await self.create_agent(eo_config.optimizer_agent)
-
-            # Get LLM factory
-            llm_factory = config.llm_config.factory if config.llm_config else None
-
-            # Parse min_rating string to enum
-            min_rating = QualityRating.GOOD  # Default
-            try:
-                min_rating = QualityRating[eo_config.min_rating.upper()]
-            except (KeyError, AttributeError):
-                pass
-
-            # Create the evaluator-optimizer
-            eo = EvaluatorOptimizerLLM(
-                evaluator=evaluator_agent,
-                optimizer=optimizer_agent,
-                llm_factory=llm_factory,
-                min_rating=min_rating,
-                max_iterations=eo_config.max_iterations,
-                **eo_config.extra_params,
-            )
-
-            return agent, eo
-
-        elif workflow_type == "swarm":
-            # Create a Swarm workflow with type-safe config
-            swarm_config = config.swarm_config
-
-            # Choose the swarm implementation based on LLM factory
-            llm_factory = config.llm_config.factory if config.llm_config else None
-
-            if not llm_factory:
-                raise ValueError("A LLM factory is required for Swarm workflow")
-
-            # Get the factory class name to determine which Swarm implementation to use
-            factory_class_name = llm_factory.__name__
-
-            if "Anthropic" in factory_class_name:
-                from mcp_agent.workflows.swarm.swarm_anthropic import AnthropicSwarm
-
-                # Get the primary agent
-                primary_agent, _ = await self.create_agent(swarm_config.agents[0])
-
-                # Create the swarm
-                swarm = AnthropicSwarm(
-                    agent=primary_agent,
-                    context_variables=swarm_config.context_variables,
-                    **swarm_config.extra_params,
-                )
-            else:
-                # Default to OpenAI swarm
-                from mcp_agent.workflows.swarm.swarm_openai import OpenAISwarm
-
-                # Get the primary agent
-                primary_agent, _ = await self.create_agent(swarm_config.agents[0])
-
-                # Create the swarm
-                swarm = OpenAISwarm(
-                    agent=primary_agent,
-                    context_variables=swarm_config.context_variables,
-                    **swarm_config.extra_params,
-                )
-
-            return agent, swarm
-
-        else:
-            # No workflow or LLM config, just return the basic agent
-            return agent, None

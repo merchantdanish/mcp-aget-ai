@@ -1,18 +1,16 @@
 """
-MCPAgentServer - Exposes mcp-agent workflows and agents as MCP tools.
+MCPAgentServer - Exposes MCPApp as MCP server, and
+mcp-agent workflows and agents as MCP tools.
 """
 
-import asyncio
-import inspect
-import uuid
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Literal, Optional, Type
+from typing import Any, Dict, List, Type, TYPE_CHECKING
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
-from mcp.shared.session import BaseSession
-from mcp.types import ToolListChangedNotification
+from mcp.server.fastmcp.tools import Tool as FastTool
 
 from mcp_agent.app import MCPApp
 from mcp_agent.app_server_types import (
@@ -21,14 +19,16 @@ from mcp_agent.app_server_types import (
     create_model_from_schema,
 )
 from mcp_agent.agents.agent import Agent
-from mcp_agent.agents.agent_config import AgentConfig
+from mcp_agent.agents.agent_config import AgentConfig, create_agent
 from mcp_agent.config import MCPServerSettings
 from mcp_agent.context_dependent import ContextDependent
-from mcp_agent.executor.workflow import Workflow
-from mcp_agent.executor.workflow_signal import Signal
+from mcp_agent.executor.workflow import Workflow, WorkflowRegistry
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp_server_registry import ServerRegistry
 from mcp_agent.workflows.llm.augmented_llm import MessageParamT, RequestParams
+
+if TYPE_CHECKING:
+    from mcp_agent.context import Context
 
 logger = get_logger(__name__)
 
@@ -36,29 +36,42 @@ logger = get_logger(__name__)
 class ServerContext(ContextDependent):
     """Context object for the MCP App server."""
 
-    def __init__(self, mcp: FastMCP, context=None, **kwargs):
+    def __init__(self, mcp: FastMCP, context: "Context", **kwargs):
         super().__init__(context=context, **kwargs)
         self.mcp = mcp
-        self.active_workflows: Dict[str, Any] = {}
         self.active_agents: Dict[str, Agent] = {}
 
-        # Register existing workflows from the app
-        for workflow_id, workflow_cls in self.context.app.workflows.items():
-            self.register_workflow(workflow_id, workflow_cls)
+        # Initialize workflow registry if not already present
+        if not self.context.workflow_registry:
+            self.context.workflow_registry = WorkflowRegistry()
 
-        # Register existing agent configurations from the app
-        for name, config in self.context.app._agent_configs.items():
-            logger.info(f"Registered agent config: {name}")
-            # Use the same tools for agent configs as for agent instances
-            # When the tools are called, we'll create the agent as needed
-            create_agent_specific_tools(self.mcp, self, config)
+        # TODO: saqadri (MAC) - This shouldn't be needed here because
+        # in app_specific_lifespan we'll call create_agent_specific_tools
+        # and create_workflow_specific_tools respectively.
+        # # Register existing workflows from the app
+        # # Use the MCPApp's workflow registry as the source of truth for available workflows
+        # logger.info(f"Registering {len(self.context.app.workflows)} workflows")
+        # for workflow_name, workflow_cls in self.context.app.workflows.items():
+        #     logger.info(f"Registering workflow: {workflow_name}")
+        #     self.register_workflow(workflow_name, workflow_cls)
 
-    def register_workflow(self, workflow_id: str, workflow_cls: Type[Workflow]):
+        # # Register existing agent configurations from the app
+        # for name, config in self.context.app._agent_configs.items():
+        #     logger.info(f"Registered agent config: {name}")
+        #     # Use the same tools for agent configs as for agent instances
+        #     # When the tools are called, we'll create the agent as needed
+        #     create_agent_specific_tools(self.mcp, self, config)
+
+        # TODO: saqadri (MAC) - Do we need to notify the client that tools list changed?
+        # Since this is at initialization time, we may not need to
+        # (depends on when the server reports that it's intialized/ready)
+
+    def register_workflow(self, workflow_name: str, workflow_cls: Type[Workflow]):
         """Register a workflow class."""
-        if workflow_id not in self.context.app.workflows:
-            self.context.app.workflows[workflow_id] = workflow_cls
+        if workflow_name not in self.context.app.workflows:
+            self.context.app.workflows[workflow_name] = workflow_cls
             # Create tools for this workflow
-            create_workflow_specific_tools(self.mcp, workflow_id, workflow_cls)
+            create_workflow_specific_tools(self.mcp, workflow_name, workflow_cls)
 
     def register_agent(self, agent: Agent):
         """
@@ -82,14 +95,13 @@ class ServerContext(ContextDependent):
 
     async def get_or_create_agent(self, name: str) -> Agent:
         """
-        Get an existing agent or create it from a registered configuration.
-        Handles creation of both basic agents and workflow-based agents.
+        Get an existing Agent or create it from a registered AgentConfig.
 
         Args:
-            name: The name of the agent or agent configuration
+            name: The name of the Agent/AgentConfig.
 
         Returns:
-            The agent instance (existing or newly created)
+            The Agent instance (existing or newly created)
 
         Raises:
             ToolError: If no agent or configuration with that name exists
@@ -99,44 +111,20 @@ class ServerContext(ContextDependent):
             return self.active_agents[name]
 
         # Check if there's a configuration for this agent
-        if name in self.context.app._agent_configs:
+        agent_config = self.context.app._agent_configs.get(name)
+        if agent_config:
             try:
-                # Use the app's create_agent method which handles workflow setup and LLM attachment
-                agent, _ = await self.context.app.create_agent(name)
-
-                # Register the agent with the server context
+                agent = await create_agent(name=agent_config.name, context=self.context)
                 self.register_agent(agent)
-
                 return agent
             except Exception as e:
                 logger.error(f"Error creating agent {name}: {str(e)}")
-                raise ToolError(f"Failed to create agent {name}: {str(e)}")
+                raise ToolError(f"Failed to create agent {name}: {str(e)}") from e
 
         # Neither active nor configured
         raise ToolError(
             f"Agent not found: {name}. No active agent or configuration with this name exists."
         )
-
-    async def create_agent_from_config(self, name: str) -> Agent:
-        """
-        Create and register an agent from a registered configuration in the MCPApp.
-        This is a convenience method that delegates to get_or_create_agent.
-
-        Args:
-            name: The name of the agent configuration
-
-        Returns:
-            The created and initialized agent
-
-        Raises:
-            ValueError: If no agent configuration with that name exists
-        """
-        # Validate that this is actually a configuration, not an instance
-        if name not in self.context.app._agent_configs:
-            raise ValueError(f"No agent configuration named '{name}' is registered")
-
-        # Use the common get_or_create_agent method
-        return await self.get_or_create_agent(name)
 
 
 def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
@@ -173,13 +161,12 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
     # Create FastMCP server with the app's name
     mcp = FastMCP(
         name=app.name or "mcp_agent_server",
-        # TODO: saqadri (MAC) - create a much more detailed description based on all the available agents and workflows,
+        # TODO: saqadri (MAC) - create a much more detailed description
+        # based on all the available agents and workflows,
         # or use the MCPApp's description if available.
-        instructions=f"MCP server exposing {app.name} workflows and agents",
+        instructions=f"MCP server exposing {app.name} workflows and agents. Description: {app.description}",
         lifespan=app_specific_lifespan,
     )
-
-    # region Server Tools
 
     @mcp.tool(name="servers/list")
     def list_servers(ctx: MCPContext) -> List[MCPServerSettings]:
@@ -212,11 +199,8 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         List all available agents with their detailed information.
 
         Returns information about each agent including their name, instruction,
-        the MCP servers they have access to, and if it uses a workflow pattern.
+        the MCP servers they have access to.
         This helps with understanding what each agent is designed to do before calling it.
-
-        The list includes both active agent instances and agent configurations
-        that can be instantiated on-demand.
         """
         server_context: ServerContext = ctx.request_context.lifespan_context
         server_registry = server_context.context.server_registry
@@ -242,140 +226,9 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
                     f"agents/{name}/generate_str",
                     f"agents/{name}/generate_structured",
                 ],
-                "type": "instance",
             }
 
-        # Add agent configurations from the app (if not already active)
-        for name, config in server_context.context.app._agent_configs.items():
-            if name not in result:  # Skip if already added as active agent
-                # Format instruction - handle callable instructions
-                instruction = config.instruction
-                if callable(instruction):
-                    instruction = instruction({})
-
-                servers = _get_server_descriptions(server_registry, config.server_names)
-
-                # Get workflow type and additional info
-                workflow_type = config.get_workflow_type()
-                workflow_config = config.get_workflow_config()
-
-                # Build detailed agent info
-                agent_info = {
-                    "name": name,
-                    "instruction": instruction,
-                    "servers": servers,
-                    "capabilities": ["generate", "generate_str", "generate_structured"],
-                    "tool_endpoints": [
-                        f"agents/{name}/generate",
-                        f"agents/{name}/generate_str",
-                        f"agents/{name}/generate_structured",
-                    ],
-                    "type": "config",
-                }
-
-                # Add workflow information if present
-                if workflow_type:
-                    agent_info["workflow_type"] = workflow_type
-                    if workflow_config:
-                        # Include key details from the workflow config
-                        # but exclude sensitive or callable fields
-                        try:
-                            config_dict = workflow_config.model_dump()
-                            # Remove any callable fields
-                            config_dict = {
-                                k: v
-                                for k, v in config_dict.items()
-                                if not callable(v) and k != "extra_params"
-                            }
-                            agent_info["workflow_config"] = config_dict
-                        except Exception as e:
-                            logger.warning("Error getting workflow info: %s", str(e))
-
-                # Add LLM configuration if present
-                if config.llm_config:
-                    try:
-                        llm_info = {
-                            "type": config.llm_config.factory.__name__
-                            if hasattr(config.llm_config.factory, "__name__")
-                            else "custom",
-                            "model": config.llm_config.model,
-                        }
-                        agent_info["llm_config"] = llm_info
-                    except Exception as e:
-                        logger.warning("Error getting LLM info: %s", str(e))
-
-                result[name] = agent_info
-
         return result
-
-    @mcp.tool(name="agents/create")
-    async def create_agent(
-        ctx: MCPContext,
-        name: str,
-        instruction: str,
-        server_names: List[str],
-        llm: Literal["openai", "anthropic"] = "openai",
-    ) -> Dict[str, Any]:
-        """
-        Create a new agent with given name, instruction and list of MCP servers it is allowed to access.
-
-        Args:
-            name: The name of the agent to create. It must be a unique name not already in agents/list.
-            instruction: Instructions for the agent (i.e. system prompt).
-            server_names: List of MCP server names the agent should be able to access.
-                These MUST be one of the names retrieved using servers/list tool endpoint.
-
-        Returns:
-            Detailed information about the created agent.
-        """
-        server_context: ServerContext = ctx.request_context.lifespan_context
-
-        agent = Agent(
-            name=name,
-            instruction=instruction,
-            server_names=server_names,
-            context=server_context.context,
-        )
-
-        # TODO: saqadri (MAC) - Add better support for multiple LLMs.
-        if llm == "openai":
-            from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM  # pylint: disable=C0415
-
-            await agent.attach_llm(OpenAIAugmentedLLM)
-        elif llm == "anthropic":
-            from mcp_agent.workflows.llm.augmented_llm_anthropic import (  # pylint: disable=C0415
-                AnthropicAugmentedLLM,
-            )
-
-            await agent.attach_llm(AnthropicAugmentedLLM)
-        else:
-            raise ToolError(
-                f"Unsupported LLM type: {llm}. Only 'openai' and 'anthropic' are presently supported."
-            )
-
-        await agent.initialize()
-        server_context.register_agent(agent)
-
-        # Notify that tools have changed
-        session: BaseSession = ctx.session
-        session.send_notification(
-            ToolListChangedNotification(method="notifications/tools/list_changed")
-        )
-
-        server_registry = server_context.context.server_registry
-        servers = _get_server_descriptions(server_registry, agent.server_names)
-
-        # Return detailed agent info
-        return {
-            "name": name,
-            "instruction": instruction,
-            "servers": servers,
-            "capabilities": ["generate", "generate_str", "generate_structured"],
-            "tool_endpoints": [
-                f"agents/{name}/generate",
-                f"agents/{name}/generate_structured",
-            ],
-        }
 
     @mcp.tool(name="agents/generate")
     async def agent_generate(
@@ -389,9 +242,10 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         This is similar to generating an LLM completion.
 
         Args:
-            agent_name: Name of the agent to use. This must be one of the names retrieved using agents/list tool endpoint.
+            agent_name: Name of the agent to use.
+                This must be one of the names retrieved using agents/list tool endpoint.
             message: The prompt to send to the agent.
-            request_params: Optional parameters for the request, such as max_tokens and model/model preferences.
+            request_params: Optional parameters to configure the LLM generation.
 
         Returns:
             The generated response from the agent.
@@ -411,9 +265,10 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         use agents/generate_structured for results conforming to a specific schema.
 
         Args:
-            agent_name: Name of the agent to use. This must be one of the names retrieved using agents/list tool endpoint.
+            agent_name: Name of the agent to use.
+                This must be one of the names retrieved using agents/list tool endpoint.
             message: The prompt to send to the agent.
-            request_params: Optional parameters for the request, such as max_tokens and model/model preferences.
+            request_params: Optional parameters to configure the LLM generation.
 
         Returns:
             The generated response from the agent.
@@ -432,11 +287,12 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         Generate a structured response from an agent that matches the given schema.
 
         Args:
-            agent_name: Name of the agent to use. This must be one of the names retrieved using agents/list tool endpoint.
+            agent_name: Name of the agent to use.
+                This must be one of the names retrieved using agents/list tool endpoint.
             message: The prompt to send to the agent.
             response_schema: The JSON schema that defines the shape to generate the response in.
                 This schema can be generated using type.schema_json() for a Pydantic model.
-            request_params: Optional parameters for the request, such as max_tokens and model/model preferences.
+            request_params: Optional parameters to configure the LLM generation.
 
         Returns:
             A dictionary representation of the structured response.
@@ -481,179 +337,70 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
     @mcp.tool(name="workflows/list")
     def list_workflows(ctx: MCPContext) -> Dict[str, Dict[str, Any]]:
         """
-        List all available workflows exposed with their detailed information.
-
-        Returns information about each workflow including name, description, and parameters.
+        List all available workflow types with their detailed information.
+        Returns information about each workflow type including name, description, and parameters.
         This helps in making an informed decision about which workflow to run.
         """
-        server_config: ServerContext = ctx.request_context.lifespan_context
+        server_context: ServerContext = ctx.request_context.lifespan_context
 
         result = {}
-        for workflow_id, workflow_cls in server_config.context.app.workflows.items():
+        for workflow_name, workflow_cls in server_context.context.app.workflows.items():
             # Get workflow documentation
-            doc = workflow_cls.__doc__ or "No description available"
+            run_fn_tool = FastTool.from_function(workflow_cls.run)
 
-            # Get workflow run method parameters using inspection
-            parameters = {}
-            if hasattr(workflow_cls, "run"):
-                sig = inspect.signature(workflow_cls.run)
-                for param_name, param in sig.parameters.items():
-                    if param_name != "self":
-                        param_info = {
-                            "type": str(param.annotation)
-                            .replace("<class '", "")
-                            .replace("'>", ""),
-                            "required": param.default == inspect.Parameter.empty,
-                        }
-                        if param.default != inspect.Parameter.empty:
-                            param_info["default"] = param.default
-                        parameters[param_name] = param_info
+            # Define common endpoints for all workflows
+            endpoints = [
+                f"workflows/{workflow_name}/run",
+                f"workflows/{workflow_name}/get_status",
+            ]
 
-            result[workflow_id] = {
-                "name": workflow_id,
-                "description": doc.strip(),
-                "parameters": parameters,
+            result[workflow_name] = {
+                "name": workflow_name,
+                "description": workflow_cls.__doc__ or run_fn_tool.description,
                 "capabilities": ["run", "pause", "resume", "cancel", "get_status"],
-                "tool_endpoints": [
-                    f"workflows/{workflow_id}/run",
-                    f"workflows/{workflow_id}/get_status",
-                    f"workflows/{workflow_id}/pause",
-                    f"workflows/{workflow_id}/resume",
-                    f"workflows/{workflow_id}/cancel",
-                ],
+                "tool_endpoints": endpoints,
+                "run_parameters": run_fn_tool.parameters,
             }
 
         return result
 
-    @mcp.tool(name="workflows/list_running")
-    def list_running_workflows(ctx: MCPContext) -> Dict[str, Dict[str, Any]]:
+    @mcp.tool(name="workflows/runs/list")
+    def list_workflow_runs(ctx: MCPContext) -> List[Dict[str, Any]]:
         """
-        List all running workflow instances with their detailed status information.
+        List all workflow instances (runs) with their detailed status information.
 
+        This returns information about actual workflow instances (runs), not workflow types.
         For each running workflow, returns its ID, name, current state, and available operations.
         This helps in identifying and managing active workflow instances.
 
         Returns:
-            A dictionary mapping workflow IDs to their detailed status information.
+            A dictionary mapping workflow instance IDs to their detailed status information.
         """
-        server_config: ServerContext = ctx.request_context.lifespan_context
+        server_context: ServerContext = ctx.request_context.lifespan_context
 
-        result = {}
-        for workflow_id, workflow in server_config.active_workflows.items():
-            # Skip task entries
-            if workflow_id.endswith("_task"):
-                continue
-
-            task = server_config.active_workflows.get(workflow_id + "_task")
-
-            # Get workflow information
-            workflow_info = {
-                "id": workflow_id,
-                "name": workflow.name,
-                "running": task is not None and not task.done() if task else False,
-                "state": workflow.state.model_dump()
-                if hasattr(workflow, "state")
-                else {},
-                "tool_endpoints": [
-                    f"workflows/{workflow.name}/get_status",
-                    f"workflows/{workflow.name}/pause",
-                    f"workflows/{workflow.name}/resume",
-                    f"workflows/{workflow.name}/cancel",
-                ],
-            }
-
-            if task and task.done():
-                try:
-                    task_result = task.result()
-                    workflow_info["result"] = (
-                        task_result.model_dump()
-                        if hasattr(task_result, "model_dump")
-                        else str(task_result)
-                    )
-                    workflow_info["completed"] = True
-                    workflow_info["error"] = None
-                except Exception as e:
-                    workflow_info["result"] = None
-                    workflow_info["completed"] = False
-                    workflow_info["error"] = str(e)
-
-            result[workflow_id] = workflow_info
-
-        return result
+        # Get all workflow statuses from the registry
+        workflow_statuses = server_context.context.workflow_registry.list_workflows()
+        return workflow_statuses
 
     @mcp.tool(name="workflows/run")
     async def run_workflow(
         ctx: MCPContext,
         workflow_name: str,
-        args: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        run_parameters: Dict[str, Any] | None = None,
+    ) -> str:
         """
         Run a workflow with the given name.
 
         Args:
             workflow_name: The name of the workflow to run.
-            args: Optional arguments to pass to the workflow.
+            run_parameters: Arguments to pass to the workflow run.
+                workflows/list method will return the run_parameters schema for each workflow.
 
         Returns:
-            Information about the running workflow including its ID and metadata.
+            The workflow ID of the started workflow run, which can be passed to
+            workflows/get_status, workflows/pause, workflows/resume, and workflows/cancel.
         """
-        server_config: ServerContext = ctx.request_context.lifespan_context
-        app = server_config.context.app
-
-        if workflow_name not in app.workflows:
-            raise ValueError(f"Workflow '{workflow_name}' not found.")
-
-        # Get the workflow class
-        workflow_cls = app.workflows[workflow_name]
-
-        # Create and initialize the workflow instance using the factory method
-        try:
-            # Separate constructor args from run args if provided
-            run_args = args or {}
-            constructor_args = (
-                run_args.pop("constructor_args", {})
-                if isinstance(run_args, dict)
-                else {}
-            )
-
-            # Create workflow instance
-            workflow = await workflow_cls.create(
-                executor=app.executor, name=workflow_name, **constructor_args
-            )
-
-            # Generate a unique ID for this workflow instance
-            workflow_id = str(uuid.uuid4())
-
-            # Store the workflow instance
-            server_config.active_workflows[workflow_id] = workflow
-
-            # Run the workflow in a separate task with cleanup handling
-            run_task = asyncio.create_task(
-                _run_workflow_and_cleanup(
-                    workflow, run_args, workflow_id, server_config
-                )
-            )
-
-            # Store the task to check status later
-            server_config.active_workflows[workflow_id + "_task"] = run_task
-        except Exception as e:
-            logger.error(f"Error creating workflow {workflow_name}: {str(e)}")
-            raise ValueError(f"Error creating workflow: {str(e)}")
-
-        # Return information about the workflow
-        return {
-            "workflow_id": workflow_id,
-            "workflow_name": workflow_name,
-            "status": "running",
-            "args": args,
-            "tool_endpoints": [
-                f"workflows/{workflow_name}/get_status",
-                f"workflows/{workflow_name}/pause",
-                f"workflows/{workflow_name}/resume",
-                f"workflows/{workflow_name}/cancel",
-            ],
-            "message": f"Workflow {workflow_name} started with ID {workflow_id}. Use the returned workflow_id with other workflow tools.",
-        }
+        return await _workflow_run(ctx, workflow_name, run_parameters)
 
     @mcp.tool(name="workflows/get_status")
     def get_workflow_status(ctx: MCPContext, workflow_id: str) -> Dict[str, Any]:
@@ -664,120 +411,79 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         whether it's running or completed, and any results or errors encountered.
 
         Args:
-            workflow_id: The ID of the workflow to check.
+            workflow_id: The ID of the workflow to check,
+                received from workflows/run or workflows/runs/list.
 
         Returns:
             A dictionary with comprehensive information about the workflow status.
         """
-        server_config: ServerContext = ctx.request_context.lifespan_context
-
-        if workflow_id not in server_config.active_workflows:
-            raise ValueError(f"Workflow with ID '{workflow_id}' not found.")
-
-        workflow = server_config.active_workflows[workflow_id]
-        task = server_config.active_workflows.get(workflow_id + "_task")
-
-        status = {
-            "id": workflow_id,
-            "name": workflow.name,
-            "running": task is not None and not task.done() if task else False,
-            "state": workflow.state.model_dump() if hasattr(workflow, "state") else {},
-            "available_actions": ["pause", "resume", "cancel"]
-            if task and not task.done()
-            else [],
-            "tool_endpoints": [
-                f"workflows/{workflow.name}/get_status",
-            ],
-        }
-
-        # Add appropriate action endpoints based on status
-        if task and not task.done():
-            status["tool_endpoints"].extend(
-                [
-                    f"workflows/{workflow.name}/pause",
-                    f"workflows/{workflow.name}/resume",
-                    f"workflows/{workflow.name}/cancel",
-                ]
-            )
-
-        if task and task.done():
-            try:
-                result = task.result()
-
-                # Convert result to a useful format
-                if hasattr(result, "model_dump"):
-                    result_data = result.model_dump()
-                elif hasattr(result, "__dict__"):
-                    result_data = result.__dict__
-                else:
-                    result_data = str(result)
-
-                status["result"] = result_data
-                status["completed"] = True
-                status["error"] = None
-            except Exception as e:
-                status["result"] = None
-                status["completed"] = False
-                status["error"] = str(e)
-                status["exception_type"] = type(e).__name__
-
-        return status
+        return _workflow_status(ctx, workflow_id)
 
     @mcp.tool(name="workflows/pause")
-    async def pause_workflow(ctx: MCPContext, workflow_id: str) -> bool:
+    async def pause_workflow(
+        ctx: MCPContext,
+        workflow_id: str,
+    ) -> bool:
         """
         Pause a running workflow.
 
         Args:
-            workflow_id: The ID of the workflow to pause.
+            workflow_id: The ID of the workflow to pause,
+                received from workflows/run or workflows/runs/list.
 
         Returns:
             True if the workflow was paused, False otherwise.
         """
-        server_config: ServerContext = ctx.request_context.lifespan_context
+        server_context: ServerContext = ctx.request_context.lifespan_context
+        workflow_registry = server_context.context.workflow_registry
 
-        if workflow_id not in server_config.active_workflows:
+        if not workflow_registry:
+            raise ToolError("Workflow registry not found for MCPApp Server.")
+
+        # Get the workflow instance from the registry
+        workflow = workflow_registry.get_workflow(workflow_id)
+        if not workflow:
             raise ValueError(f"Workflow with ID '{workflow_id}' not found.")
 
-        _workflow = server_config.active_workflows[workflow_id]
-
-        # Signal the workflow to pause
-        try:
-            await server_config.context.app.executor.signal(
-                "pause", workflow_id=workflow_id
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Error pausing workflow {workflow_id}: {e}")
-            return False
+        # Pause the workflow directly
+        return await workflow.pause()
 
     @mcp.tool(name="workflows/resume")
     async def resume_workflow(
-        ctx: MCPContext, workflow_id: str, input_data: Optional[str] = None
+        ctx: MCPContext,
+        workflow_id: str,
+        signal_name: str | None = "resume",
+        payload: str | None = None,
     ) -> bool:
         """
         Resume a paused workflow.
 
         Args:
-            workflow_id: The ID of the workflow to resume.
-            input_data: Optional input data to provide to the workflow.
+            workflow_id: The ID of the workflow to resume,
+                received from workflows/run or workflows/runs/list.
+            signal_name: Optional name of the signal to send to resume the workflow.
+                This will default to "resume", but can be a custom signal name
+                if the workflow was paused on a specific signal.
+            payload: Optional payload to provide the workflow upon resumption.
+                For example, if a workflow is waiting for human input,
+                this can be the human input.
 
         Returns:
             True if the workflow was resumed, False otherwise.
         """
-        server_config: ServerContext = ctx.request_context.lifespan_context
+        server_context: ServerContext = ctx.request_context.lifespan_context
+        workflow_registry = server_context.context.workflow_registry
 
-        if workflow_id not in server_config.active_workflows:
-            raise ValueError(f"Workflow with ID '{workflow_id}' not found.")
+        if not workflow_registry:
+            raise ToolError("Workflow registry not found for MCPApp Server.")
 
-        # Signal the workflow to resume
-        try:
-            signal = Signal(name="resume", workflow_id=workflow_id, payload=input_data)
-            await server_config.context.app.executor.signal_bus.signal(signal)
-            return True
-        except Exception as e:
-            logger.error(f"Error resuming workflow {workflow_id}: {e}")
-            return False
+        # Get the workflow instance from the registry
+        workflow = workflow_registry.get_workflow(workflow_id)
+        if not workflow:
+            raise ToolError(f"Workflow with ID '{workflow_id}' not found.")
+
+        # Resume the workflow directly
+        return await workflow.resume(signal_name, payload)
 
     @mcp.tool(name="workflows/cancel")
     async def cancel_workflow(ctx: MCPContext, workflow_id: str) -> bool:
@@ -790,148 +496,16 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         Returns:
             True if the workflow was cancelled, False otherwise.
         """
-        server_config: ServerContext = ctx.request_context.lifespan_context
+        server_context: ServerContext = ctx.request_context.lifespan_context
+        workflow_registry = server_context.context.workflow_registry
 
-        if workflow_id not in server_config.active_workflows:
+        # Get the workflow instance from the registry
+        workflow = workflow_registry.get_workflow(workflow_id)
+        if not workflow:
             raise ValueError(f"Workflow with ID '{workflow_id}' not found.")
 
-        task = server_config.active_workflows.get(workflow_id + "_task")
-
-        if task and not task.done():
-            # Cancel the task
-            task.cancel()
-
-            # Signal the workflow to cancel
-            try:
-                await server_config.context.app.executor.signal(
-                    "cancel", workflow_id=workflow_id
-                )
-
-                # Remove from active workflows
-                server_config.active_workflows.pop(workflow_id, None)
-                server_config.active_workflows.pop(workflow_id + "_task", None)
-
-                return True
-            except Exception as e:
-                logger.error(f"Error cancelling workflow {workflow_id}: {e}")
-                return False
-
-        return False
-
-    @mcp.tool(name="workflow_signal/wait_for_signal")
-    async def wait_for_signal(
-        ctx: MCPContext,
-        signal_name: str,
-        workflow_id: str = None,
-        description: str = None,
-        timeout_seconds: int = None,
-    ) -> Dict[str, Any]:
-        """
-        Provides information about a signal that a workflow is waiting for.
-
-        This tool doesn't actually make the workflow wait (that's handled internally),
-        but it provides information about what signal is being waited for and how to
-        respond to it.
-
-        Args:
-            signal_name: The name of the signal to wait for.
-            workflow_id: Optional workflow ID to associate with the signal.
-            description: Optional description of what the signal is for.
-            timeout_seconds: Optional timeout in seconds.
-
-        Returns:
-            Information about the signal and how to respond to it.
-        """
-        _server_context: ServerContext = ctx.request_context.lifespan_context
-
-        # Inform about how to send the signal
-        return {
-            "signal_name": signal_name,
-            "workflow_id": workflow_id,
-            "description": description or f"Waiting for signal '{signal_name}'",
-            "status": "waiting_for_signal",
-            "timeout_seconds": timeout_seconds,
-            "instructions": "To respond to this signal, use the workflow_signal/send tool with the same signal_name and workflow_id.",
-            "related_tools": ["workflow_signal/send"],
-        }
-
-    @mcp.tool(name="workflow_signal/send")
-    async def send_signal(
-        ctx: MCPContext,
-        signal_name: str,
-        workflow_id: str = None,
-        payload: Any = None,
-    ) -> Dict[str, bool]:
-        """
-        Send a signal to a workflow.
-
-        This can be used to respond to a workflow that is waiting for input or
-        to send a signal to control workflow execution.
-
-        Args:
-            signal_name: The name of the signal to send.
-            workflow_id: Optional workflow ID to associate with the signal.
-            payload: Optional data to include with the signal.
-
-        Returns:
-            Confirmation that the signal was sent.
-        """
-        server_config: ServerContext = ctx.request_context.lifespan_context
-        executor = server_config.context.app.executor
-
-        # Create and send the signal
-        signal = Signal(name=signal_name, workflow_id=workflow_id, payload=payload)
-
-        try:
-            await executor.signal_bus.signal(signal)
-            return {
-                "success": True,
-                "message": f"Signal '{signal_name}' sent successfully",
-            }
-        except Exception as e:
-            logger.error(f"Error sending signal {signal_name}: {e}")
-            return {"success": False, "message": f"Error sending signal: {str(e)}"}
-
-    @mcp.tool(name="workflows/wait_for_input")
-    async def workflow_wait_for_input(
-        ctx: MCPContext, workflow_id: str, description: str = "Provide input"
-    ) -> Dict[str, Any]:
-        """
-        Get information about a workflow that is waiting for human input.
-
-        This tool helps coordinate when a workflow is waiting for human input by
-        providing clear instructions on how to provide that input.
-
-        Args:
-            workflow_id: The ID of the workflow.
-            description: Description of what input is needed.
-
-        Returns:
-            Instructions on how to provide input to the waiting workflow.
-        """
-        server_config: ServerContext = ctx.request_context.lifespan_context
-
-        if workflow_id not in server_config.active_workflows:
-            raise ValueError(f"Workflow with ID '{workflow_id}' not found.")
-
-        workflow = server_config.active_workflows[workflow_id]
-
-        # Provide more helpful information about how to send the input
-        return {
-            "workflow_id": workflow_id,
-            "workflow_name": workflow.name,
-            "description": description,
-            "status": "waiting_for_input",
-            "instructions": "To provide input, use workflows/resume with the workflow_id and input_data parameters.",
-            "example": {
-                "tool": "workflows/resume",
-                "args": {
-                    "workflow_id": workflow_id,
-                    "input_data": "Example input data",
-                },
-            },
-            "tool_endpoints": [f"workflows/{workflow.name}/resume"],
-        }
+        # Cancel the workflow directly
+        return await workflow.cancel()
 
     # endregion
 
@@ -953,9 +527,12 @@ def create_agent_tools(mcp: FastMCP, server_context: ServerContext):
     for _, agent in server_context.active_agents.items():
         create_agent_specific_tools(mcp, server_context, agent)
 
+    for _, agent_config in server_context.app._agent_configs.items():
+        agent = server_context.get_or_create_agent(agent_config.name)
+
 
 def create_agent_specific_tools(
-    mcp: FastMCP, server_context: ServerContext, agent_or_config: Agent | AgentConfig
+    mcp: FastMCP, server_context: ServerContext, agent: Agent | AgentConfig
 ):
     """
     Create specific tools for a given agent instance or configuration.
@@ -966,16 +543,14 @@ def create_agent_specific_tools(
         agent_or_config: Either an Agent instance or an AgentConfig
     """
     # Extract common properties based on whether we have an Agent or AgentConfig
-    if isinstance(agent_or_config, Agent):
-        name = agent_or_config.name
-        instruction = agent_or_config.instruction
-        server_names = agent_or_config.server_names
-        workflow_type = None
+    if isinstance(agent, Agent):
+        name = agent.name
+        instruction = agent.instruction
+        server_names = agent.server_names
     else:  # AgentConfig
-        name = agent_or_config.name
-        instruction = agent_or_config.instruction
-        server_names = agent_or_config.server_names
-        workflow_type = agent_or_config.get_workflow_type()
+        name = agent.name
+        instruction = agent.instruction
+        server_names = agent.server_names
 
     # Format instruction - handle callable instructions
     if callable(instruction):
@@ -983,14 +558,11 @@ def create_agent_specific_tools(
 
     server_registry = server_context.context.server_registry
 
-    # Add workflow info to description if present
-    workflow_info = f" using {workflow_type} workflow" if workflow_type else ""
-
     # Add generate* tools for this agent
     @mcp.tool(
         name=f"agents/{name}/generate",
         description=f"""
-    Run the '{name}' agent{workflow_info} using the given message.
+    Run the '{name}' agent using the given message.
     This is similar to generating an LLM completion.
 
     Agent Description: {instruction}
@@ -1014,7 +586,7 @@ def create_agent_specific_tools(
     @mcp.tool(
         name=f"agents/{name}/generate_str",
         description=f"""
-    Run the '{name}' agent{workflow_info} using the given message and return the response as a string.
+    Run the '{name}' agent using the given message and return the response as a string.
     Use agents/{name}/generate for results in the original format, and
     use agents/{name}/generate_structured for results conforming to a specific schema.
 
@@ -1040,7 +612,7 @@ def create_agent_specific_tools(
     @mcp.tool(
         name=f"agents/{name}/generate_structured",
         description=f"""
-    Run the '{name}' agent{workflow_info} using the given message and return a response that matches the given schema.
+    Run the '{name}' agent using the given message and return a response that matches the given schema.
 
     Use agents/{name}/generate for results in the original format, and
     use agents/{name}/generate_str for string result.
@@ -1103,346 +675,58 @@ def create_agent_specific_tools(
 # region per-Workflow Tools
 
 
-def create_workflow_tools(mcp: FastMCP, server_config: ServerContext):
+def create_workflow_tools(mcp: FastMCP, server_context: ServerContext):
     """
     Create workflow-specific tools for registered workflows.
     This is called at server start to register specific endpoints for each workflow.
     """
-    if not server_config:
+    if not server_context:
         logger.warning("Server config not available for creating workflow tools")
         return
 
-    for workflow_id, workflow_cls in server_config.context.app.workflows.items():
-        create_workflow_specific_tools(mcp, workflow_id, workflow_cls)
+    for workflow_name, workflow_cls in server_context.context.app.workflows.items():
+        create_workflow_specific_tools(mcp, workflow_name, workflow_cls)
 
 
-def create_workflow_specific_tools(mcp: FastMCP, workflow_id: str, workflow_cls: Type):
+def create_workflow_specific_tools(
+    mcp: FastMCP, workflow_name: str, workflow_cls: Type["Workflow"]
+):
     """Create specific tools for a given workflow."""
 
-    # Get workflow documentation
-    doc = workflow_cls.__doc__ or "No description available"
-    doc = doc.strip()
+    run_fn_tool = FastTool.from_function(workflow_cls.run)
+    run_fn_tool_params = json.dumps(run_fn_tool.parameters, indent=2)
 
-    # Get workflow run method parameters using inspection
-    parameters = {}
-    if hasattr(workflow_cls, "run"):
-        sig = inspect.signature(workflow_cls.run)
-        for param_name, param in sig.parameters.items():
-            if param_name != "self":
-                param_info = {
-                    "type": str(param.annotation)
-                    .replace("<class '", "")
-                    .replace("'>", ""),
-                    "required": param.default == inspect.Parameter.empty,
-                }
-                if param.default != inspect.Parameter.empty:
-                    param_info["default"] = param.default
-                parameters[param_name] = param_info
+    @mcp.tool(
+        name=f"workflows/{workflow_name}/run",
+        description=f"""
+        Run the '{workflow_name}' workflow and get a workflow ID back.
+        Workflow Description: {workflow_cls.__doc__}
 
-    # Create a run tool for this workflow
-    @mcp.tool(name=f"workflows/{workflow_id}/run")
-    async def workflow_specific_run(
+        {run_fn_tool.description}
+
+        Args:
+            run_parameters: Dictionary of parameters for the workflow run.
+            The schema for these parameters is as follows:
+            {run_fn_tool_params}
+        """,
+    )
+    async def run(
         ctx: MCPContext,
-        args: Optional[Dict[str, Any]] = None,
+        run_parameters: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
-        """Run the workflow with the given arguments."""
-        server_config: ServerContext = ctx.request_context.lifespan_context
-        app = server_config.context.app
+        return await _workflow_run(ctx, workflow_name, run_parameters)
 
-        if workflow_id not in app.workflows:
-            raise ValueError(f"Workflow '{workflow_id}' not found.")
-
-        # Create workflow instance using the factory method
-        try:
-            # Separate constructor args from run args if provided
-            run_args = args or {}
-            constructor_args = (
-                run_args.pop("constructor_args", {})
-                if isinstance(run_args, dict)
-                else {}
-            )
-
-            # Create and initialize workflow
-            workflow = await workflow_cls.create(
-                executor=app.executor, name=workflow_id, **constructor_args
-            )
-
-            # Generate workflow instance ID
-            instance_id = str(uuid.uuid4())
-
-            # Store workflow instance
-            server_config.active_workflows[instance_id] = workflow
-
-            # Run workflow in separate task with cleanup handling
-            run_task = asyncio.create_task(
-                _run_workflow_and_cleanup(
-                    workflow, run_args, instance_id, server_config
-                )
-            )
-
-            # Store task
-            server_config.active_workflows[instance_id + "_task"] = run_task
-        except Exception as e:
-            logger.error(f"Error creating workflow {workflow_id}: {str(e)}")
-            raise ValueError(f"Error creating workflow: {str(e)}")
-
-        # Return information about the workflow
-        return {
-            "workflow_id": instance_id,
-            "workflow_name": workflow_id,
-            "status": "running",
-            "args": args,
-            "tool_endpoints": [
-                f"workflows/{workflow_id}/get_status",
-                f"workflows/{workflow_id}/pause",
-                f"workflows/{workflow_id}/resume",
-                f"workflows/{workflow_id}/cancel",
-            ],
-            "message": f"Workflow {workflow_id} started with ID {instance_id}. Use the returned workflow_id with other workflow tools.",
-        }
-
-    # Format parameter documentation
-    param_docs = []
-    for param_name, param_info in parameters.items():
-        default_info = (
-            f" (default: {param_info.get('default', 'required')})"
-            if not param_info.get("required", True)
-            else ""
-        )
-        param_docs.append(
-            f"- {param_name}: {param_info.get('type', 'Any')}{default_info}"
-        )
-
-    param_doc_str = "\n".join(param_docs) if param_docs else "- No parameters required"
-
-    # Update the docstring
-    workflow_specific_run.__doc__ = f"""
-    Run the {workflow_id} workflow.
-    
-    Description: {doc}
-    
-    Parameters:
-    {param_doc_str}
-    
-    Args:
-        args: Dictionary containing the parameters for the workflow.
+    @mcp.tool(
+        name=f"workflows/{workflow_name}/get_status",
+        description=f"""
+        Get the status of a running {workflow_name} workflow.
         
-    Returns:
-        Information about the running workflow including its ID and metadata.
-    """
-
-    # Create a status tool for this workflow
-    @mcp.tool(name=f"workflows/{workflow_id}/get_status")
-    def workflow_specific_status(
-        ctx: MCPContext, workflow_instance_id: str
-    ) -> Dict[str, Any]:
-        """Get the status of a running workflow instance."""
-        server_config: ServerContext = ctx.request_context.lifespan_context
-
-        if workflow_instance_id not in server_config.active_workflows:
-            raise ValueError(f"Workflow instance '{workflow_instance_id}' not found.")
-
-        workflow = server_config.active_workflows[workflow_instance_id]
-        if workflow_id != workflow.name:
-            raise ValueError(
-                f"Workflow instance '{workflow_instance_id}' is not a {workflow_id} workflow."
-            )
-
-        task = server_config.active_workflows.get(workflow_instance_id + "_task")
-
-        status = {
-            "id": workflow_instance_id,
-            "name": workflow.name,
-            "running": task is not None and not task.done() if task else False,
-            "state": workflow.state.model_dump() if hasattr(workflow, "state") else {},
-            "available_actions": ["pause", "resume", "cancel"]
-            if task and not task.done()
-            else [],
-            "tool_endpoints": [
-                f"workflows/{workflow_id}/get_status",
-            ],
-        }
-
-        # Add appropriate action endpoints based on status
-        if task and not task.done():
-            status["tool_endpoints"].extend(
-                [
-                    f"workflows/{workflow_id}/pause",
-                    f"workflows/{workflow_id}/resume",
-                    f"workflows/{workflow_id}/cancel",
-                ]
-            )
-
-        if task and task.done():
-            try:
-                result = task.result()
-
-                # Convert result to a useful format
-                if hasattr(result, "model_dump"):
-                    result_data = result.model_dump()
-                elif hasattr(result, "__dict__"):
-                    result_data = result.__dict__
-                else:
-                    result_data = str(result)
-
-                status["result"] = result_data
-                status["completed"] = True
-                status["error"] = None
-            except Exception as e:
-                status["result"] = None
-                status["completed"] = False
-                status["error"] = str(e)
-                status["exception_type"] = type(e).__name__
-
-        return status
-
-    # Update the docstring
-    workflow_specific_status.__doc__ = f"""
-    Get the status of a running {workflow_id} workflow instance.
-    
-    Description: {doc}
-    
-    Args:
-        workflow_instance_id: The ID of the workflow instance to check.
-        
-    Returns:
-        A dictionary with detailed information about the workflow status.
-    """
-
-    # Create a pause tool for this workflow
-    @mcp.tool(name=f"workflows/{workflow_id}/pause")
-    async def workflow_specific_pause(
-        ctx: MCPContext, workflow_instance_id: str
-    ) -> bool:
-        """Pause a running workflow instance."""
-        server_config: ServerContext = ctx.request_context.lifespan_context
-
-        if workflow_instance_id not in server_config.active_workflows:
-            raise ValueError(f"Workflow instance '{workflow_instance_id}' not found.")
-
-        workflow = server_config.active_workflows[workflow_instance_id]
-        if workflow_id != workflow.name:
-            raise ValueError(
-                f"Workflow instance '{workflow_instance_id}' is not a {workflow_id} workflow."
-            )
-
-        # Signal workflow to pause
-        try:
-            await server_config.context.app.executor.signal(
-                "pause", workflow_id=workflow_instance_id
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Error pausing workflow {workflow_instance_id}: {e}")
-            return False
-
-    # Update the docstring
-    workflow_specific_pause.__doc__ = f"""
-    Pause a running {workflow_id} workflow instance.
-    
-    Description: {doc}
-    
-    Args:
-        workflow_instance_id: The ID of the workflow instance to pause.
-        
-    Returns:
-        True if the workflow was paused, False otherwise.
-    """
-
-    # Create a resume tool for this workflow
-    @mcp.tool(name=f"workflows/{workflow_id}/resume")
-    async def workflow_specific_resume(
-        ctx: MCPContext, workflow_instance_id: str, input_data: Optional[str] = None
-    ) -> bool:
-        """Resume a paused workflow instance."""
-        server_config: ServerContext = ctx.request_context.lifespan_context
-
-        if workflow_instance_id not in server_config.active_workflows:
-            raise ValueError(f"Workflow instance '{workflow_instance_id}' not found.")
-
-        workflow = server_config.active_workflows[workflow_instance_id]
-        if workflow_id != workflow.name:
-            raise ValueError(
-                f"Workflow instance '{workflow_instance_id}' is not a {workflow_id} workflow."
-            )
-
-        # Signal workflow to resume
-        try:
-            signal = Signal(
-                name="resume", workflow_id=workflow_instance_id, payload=input_data
-            )
-            await server_config.context.app.executor.signal_bus.signal(signal)
-            return True
-        except Exception as e:
-            logger.error(f"Error resuming workflow {workflow_instance_id}: {e}")
-            return False
-
-    # Update the docstring
-    workflow_specific_resume.__doc__ = f"""
-    Resume a paused {workflow_id} workflow instance.
-    
-    Description: {doc}
-    
-    Args:
-        workflow_instance_id: The ID of the workflow instance to resume.
-        input_data: Optional input data to provide to the workflow.
-        
-    Returns:
-        True if the workflow was resumed, False otherwise.
-    """
-
-    # Create a cancel tool for this workflow
-    @mcp.tool(name=f"workflows/{workflow_id}/cancel")
-    async def workflow_specific_cancel(
-        ctx: MCPContext, workflow_instance_id: str
-    ) -> bool:
-        """Cancel a running workflow instance."""
-        server_config: ServerContext = ctx.request_context.lifespan_context
-
-        if workflow_instance_id not in server_config.active_workflows:
-            raise ValueError(f"Workflow instance '{workflow_instance_id}' not found.")
-
-        workflow = server_config.active_workflows[workflow_instance_id]
-        if workflow_id != workflow.name:
-            raise ValueError(
-                f"Workflow instance '{workflow_instance_id}' is not a {workflow_id} workflow."
-            )
-
-        task = server_config.active_workflows.get(workflow_instance_id + "_task")
-
-        if task and not task.done():
-            # Cancel task
-            task.cancel()
-
-            # Signal workflow to cancel
-            try:
-                await server_config.context.app.executor.signal(
-                    "cancel", workflow_id=workflow_instance_id
-                )
-
-                # Remove from active workflows
-                server_config.active_workflows.pop(workflow_instance_id, None)
-                server_config.active_workflows.pop(workflow_instance_id + "_task", None)
-
-                return True
-            except Exception as e:
-                logger.error(f"Error cancelling workflow {workflow_instance_id}: {e}")
-                return False
-
-        return False
-
-    # Update the docstring
-    workflow_specific_cancel.__doc__ = f"""
-    Cancel a running {workflow_id} workflow instance.
-    
-    Description: {doc}
-    
-    Args:
-        workflow_instance_id: The ID of the workflow instance to cancel.
-        
-    Returns:
-        True if the workflow was cancelled, False otherwise.
-    """
+        Args:
+            workflow_id: The ID of the running workflow, received from workflows/{workflow_name}/run.
+        """,
+    )
+    def get_status(ctx: MCPContext, workflow_id: str) -> Dict[str, Any]:
+        return _workflow_status(ctx, workflow_id, workflow_name)
 
 
 # endregion
@@ -1454,7 +738,7 @@ def _get_server_descriptions(
     servers: List[dict[str, str]] = []
     if server_registry:
         for server_name in server_names:
-            config = server_registry.get_server_config(server_name)
+            config = server_registry.get_server_context(server_name)
             if config:
                 servers.append(
                     {
@@ -1487,24 +771,15 @@ def _get_server_descriptions_as_string(
     return "\n".join(server_strings)
 
 
+# region Agent Utils
+
+
 async def _agent_generate(
     ctx: MCPContext,
     agent_name: str,
     message: str | MCPMessageParam | List[MCPMessageParam],
     request_params: RequestParams | None = None,
 ) -> List[MCPMessageResult]:
-    """
-    Run an agent using the given message.
-    This is similar to generating an LLM completion.
-
-    Args:
-        agent_name: Name of the agent to use. This must be one of the names retrieved using agents/list tool endpoint.
-        message: The prompt to send to the agent.
-        request_params: Optional parameters for the request, such as max_tokens and model/model preferences.
-
-    Returns:
-        The generated response from the agent.
-    """
     server_context: ServerContext = ctx.request_context.lifespan_context
 
     # Get or create the agent - this will automatically create agent from config if needed
@@ -1542,19 +817,6 @@ async def _agent_generate_str(
     message: str | MCPMessageParam | List[MCPMessageParam],
     request_params: RequestParams | None = None,
 ) -> str:
-    """
-    Run an agent using the given message and return the response as a string.
-    Use agents/generate for results in the original format, and
-    use agents/generate_structured for results conforming to a specific schema.
-
-    Args:
-        agent_name: Name of the agent to use. This must be one of the names retrieved using agents/list tool endpoint.
-        message: The prompt to send to the agent.
-        request_params: Optional parameters for the request, such as max_tokens and model/model preferences.
-
-    Returns:
-        The generated response from the agent.
-    """
     server_context: ServerContext = ctx.request_context.lifespan_context
 
     # Get or create the agent - this will automatically create agent from config if needed
@@ -1593,48 +855,6 @@ async def _agent_generate_structured(
     response_schema: Dict[str, Any],
     request_params: RequestParams | None = None,
 ) -> Dict[str, Any]:
-    """
-    Generate a structured response from an agent that matches the given schema.
-
-    Args:
-        agent_name: Name of the agent to use. This must be one of the names retrieved using agents/list tool endpoint.
-        message: The prompt to send to the agent.
-        response_schema: The JSON schema that defines the shape to generate the response in.
-            This schema can be generated using type.schema_json() for a Pydantic model.
-        request_params: Optional parameters for the request, such as max_tokens and model/model preferences.
-
-    Returns:
-        A dictionary representation of the structured response.
-
-    Example:
-        response_schema:
-        {
-            "title": "UserProfile",
-            "type": "object",
-            "properties": {
-                "name": {
-                    "title": "Name",
-                    "type": "string"
-                },
-                "age": {
-                    "title": "Age",
-                    "type": "integer",
-                    "minimum": 0
-                },
-                "email": {
-                    "title": "Email",
-                    "type": "string",
-                    "format": "email",
-                    "pattern": "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$"
-                }
-            },
-            "required": [
-                "name",
-                "age",
-                "email"
-            ]
-        }
-    """
     server_context: ServerContext = ctx.request_context.lifespan_context
 
     # Get or create the agent - this will automatically create agent from config if needed
@@ -1672,33 +892,64 @@ async def _agent_generate_structured(
         return result.model_dump(mode="json")
 
 
-async def _run_workflow_and_cleanup(workflow, run_args, instance_id, server_context):
-    """
-    Run a workflow and ensure proper cleanup regardless of outcome.
+# endregion
 
-    Args:
-        workflow: The workflow instance to run
-        run_args: Arguments to pass to the workflow's run method
-        instance_id: The unique ID for this workflow instance
-        server_context: The server context for managing active workflows
+# region Workflow Utils
 
-    Returns:
-        The result from the workflow's run method
-    """
+
+async def _workflow_run(
+    ctx: MCPContext,
+    workflow_name: str,
+    run_parameters: Dict[str, Any] | None = None,
+) -> str:
+    server_context: ServerContext = ctx.request_context.lifespan_context
+    app = server_context.context.app
+
+    if workflow_name not in app.workflows:
+        raise ToolError(f"Workflow '{workflow_name}' not found.")
+
+    # Get the workflow class
+    workflow_cls = app.workflows[workflow_name]
+
+    # Create and initialize the workflow instance using the factory method
     try:
-        # Run the workflow
-        result = await workflow.run(**run_args)
-        return result
+        # Create workflow instance
+        workflow = await workflow_cls.create(name=workflow_name, context=app.context)
+
+        run_parameters = run_parameters or {}
+
+        # Run the workflow asynchronously and get its ID
+        workflow_id = await workflow.run_async(**run_parameters)
+        return workflow_id
+
     except Exception as e:
-        # Log and propagate exceptions
-        logger.error(f"Error in workflow {workflow.name} (ID: {instance_id}): {str(e)}")
-        raise
-    finally:
-        try:
-            # Always attempt to clean up the workflow
-            await workflow.cleanup()
-        except Exception as cleanup_error:
-            # Log but don't fail if cleanup fails
-            logger.error(
-                f"Error cleaning up workflow {workflow.name} (ID: {instance_id}): {str(cleanup_error)}"
-            )
+        logger.error(f"Error creating workflow {workflow_name}: {str(e)}")
+        raise ToolError(f"Error creating workflow {workflow_name}: {str(e)}") from e
+
+
+def _workflow_status(
+    ctx: MCPContext, workflow_id: str, workflow_name: str | None = None
+) -> Dict[str, Any]:
+    server_context: ServerContext = ctx.request_context.lifespan_context
+    workflow_registry = server_context.context.workflow_registry
+
+    if not workflow_registry:
+        raise ToolError("Workflow registry not found for MCPApp Server.")
+
+    # Get the workflow instance from the registry
+    workflow = workflow_registry.get_workflow(workflow_id)
+    if not workflow:
+        raise ToolError(f"Workflow with ID '{workflow_id}' not found.")
+
+    if workflow_name and workflow.name != workflow_name:
+        raise ToolError(
+            f"Workflow with ID '{workflow_id}' is not a {workflow_name} workflow."
+        )
+
+    # Get the status directly from the workflow instance
+    status = workflow.get_status()
+
+    return status
+
+
+# endregion

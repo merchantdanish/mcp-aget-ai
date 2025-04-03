@@ -40,11 +40,13 @@ from mcp_agent.logging.logger import get_logger
 if TYPE_CHECKING:
     from mcp_agent.human_input.types import HumanInputCallback
     from mcp_agent.executor.workflow_signal import SignalWaitCallback
+    from mcp_agent.executor.workflow import WorkflowRegistry
     from mcp_agent.app import MCPApp
 else:
     # Runtime placeholders for the types
     HumanInputCallback = Any
     SignalWaitCallback = Any
+    WorkflowRegistry = Any
     MCPApp = Any
 
 logger = get_logger(__name__)
@@ -69,6 +71,7 @@ class Context(BaseModel):
     server_registry: Optional[ServerRegistry] = None
     task_registry: Optional[ActivityRegistry] = None
     decorator_registry: Optional[DecoratorRegistry] = None
+    workflow_registry: Optional["WorkflowRegistry"] = None
 
     tracer: Optional[trace.Tracer] = None
 
@@ -190,6 +193,11 @@ async def initialize_context(
     context = Context()
     context.config = config
     context.server_registry = ServerRegistry(config=config)
+
+    # Import here to avoid circular imports
+    from mcp_agent.executor.workflow import WorkflowRegistry
+
+    context.workflow_registry = WorkflowRegistry()
 
     context.session_id = session_id
 

@@ -84,7 +84,9 @@ class Agent(MCPAggregator):
             tool: FastTool = FastTool.from_function(function)
             self._function_tool_map[tool.name] = tool
 
-    async def attach_llm(self, llm_factory: Callable[..., LLM]) -> LLM:
+    async def attach_llm(
+        self, llm_factory: Callable[..., LLM] | None = None, llm: LLM | None = None
+    ) -> LLM:
         """
         Create an LLM instance for the agent.
 
@@ -92,11 +94,19 @@ class Agent(MCPAggregator):
             llm_factory: A callable that constructs an AugmentedLLM or its subclass.
                         The factory should accept keyword arguments matching the
                         AugmentedLLM constructor parameters.
+            llm: An instance of AugmentedLLM or its subclass. If provided, this will be used
+                instead of creating a new instance.
 
         Returns:
             An instance of AugmentedLLM or one of its subclasses.
         """
-        self.llm = llm_factory(agent=self)
+        if llm:
+            self.llm = llm
+        elif llm_factory:
+            self.llm = llm_factory(agent=self)
+        else:
+            raise ValueError("Either llm_factory or llm must be provided")
+
         return self.llm
 
     async def shutdown(self):
