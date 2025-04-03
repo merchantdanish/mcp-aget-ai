@@ -331,7 +331,6 @@ def get_settings(config_path: str | None = None) -> Settings:
         return _settings
 
     import yaml  # pylint: disable=C0415
-    from .console import error_console
 
     merged_settings = {}
 
@@ -339,7 +338,6 @@ def get_settings(config_path: str | None = None) -> Settings:
     if config_path:
         config_file = Path(config_path)
         if not config_file.exists():
-            error_console.print(f"Config file not found: {config_path}")
             raise FileNotFoundError(f"Config file not found: {config_path}")
     else:
         config_file = Settings.find_config()
@@ -363,7 +361,7 @@ def get_settings(config_path: str | None = None) -> Settings:
                 break
 
         # If no secrets were found in the config directory, fall back to discovery
-        if not secrets_found and not config_path:
+        if not secrets_found:
             secrets_file = Settings.find_secrets()
             if secrets_file and secrets_file.exists():
                 with open(secrets_file, "r", encoding="utf-8") as f:
