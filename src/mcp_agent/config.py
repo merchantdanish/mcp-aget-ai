@@ -78,8 +78,7 @@ class MCPServerSettings(BaseModel):
     env: Dict[str, str] | None = None
     """Environment variables to pass to the server process."""
 
-    env: Dict[str, str] | None = None
-    """Environment variables to pass to the server process."""
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class MCPSettings(BaseModel):

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Type, TypeVar, Callable
+from typing import Any, Dict, Optional, Type, TypeVar, Callable, TYPE_CHECKING
 from datetime import timedelta
 import asyncio
 import sys
@@ -14,6 +14,10 @@ from mcp_agent.executor.workflow_signal import SignalWaitCallback
 from mcp_agent.human_input.types import HumanInputCallback
 from mcp_agent.human_input.handler import console_input_callback
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
+
+if TYPE_CHECKING:
+    from mcp_agent.agents.agent_config import AgentConfig
+    from mcp_agent.executor.workflow import Workflow
 
 R = TypeVar("R")
 
@@ -42,6 +46,7 @@ class MCPApp:
     def __init__(
         self,
         name: str = "mcp_application",
+        description: str | None = None,
         settings: Optional[Settings] | str = None,
         human_input_callback: Optional[HumanInputCallback] = console_input_callback,
         signal_notification: Optional[SignalWaitCallback] = None,
@@ -52,14 +57,17 @@ class MCPApp:
         Initialize the application with a name and optional settings.
         Args:
             name: Name of the application
+            description: Description of the application. If you expose the MCPApp as an MCP server,
+                provide a detailed description, since it will be used as the server's description.
             settings: Application configuration - If unspecified, the settings are loaded from mcp_agent.config.yaml.
                 If this is a string, it is treated as the path to the config file to load.
             human_input_callback: Callback for handling human input
             signal_notification: Callback for getting notified on workflow signals/events.
-            upstream_session: Optional upstream session if the MCPApp is running as a server to an MCP client.
+            upstream_session: Upstream session if the MCPApp is running as a server to an MCP client.
             initialize_model_selector: Initializes the built-in ModelSelector to help with model selection. Defaults to False.
         """
         self.name = name
+        self.description = description or "MCP Agent Application"
 
         # We use these to initialize the context in initialize()
         self._config_or_path = settings
@@ -68,7 +76,10 @@ class MCPApp:
         self._upstream_session = upstream_session
         self._model_selector = model_selector
 
-        self._workflows: Dict[str, Type] = {}  # id to workflow class
+        self._workflows: Dict[str, Type["Workflow"]] = {}  # id to workflow class
+        self._agent_configs: Dict[
+            str, "AgentConfig"
+        ] = {}  # name to agent configuration
         self._logger = None
         self._context: Optional[Context] = None
         self._initialized = False
@@ -148,6 +159,9 @@ class MCPApp:
         self._context.upstream_session = self._upstream_session
         self._context.model_selector = self._model_selector
 
+        # Store a reference to this app instance in the context for easier access
+        self._context.app = self
+
         self._initialized = True
         self.logger.info(
             "MCPAgent initialized",
@@ -210,14 +224,15 @@ class MCPApp:
             If Temporal is available & we use a TemporalExecutor,
             this decorator will wrap with temporal_workflow.defn.
         """
-        decorator_registry = self.context.decorator_registry
-        execution_engine = self.engine
-        workflow_defn_decorator = decorator_registry.get_workflow_defn_decorator(
-            execution_engine
-        )
+        # TODO: saqadri (MAC) - fix this for Temporal support
+        # decorator_registry = self.context.decorator_registry
+        # execution_engine = self.engine
+        # workflow_defn_decorator = decorator_registry.get_workflow_defn_decorator(
+        #     execution_engine
+        # )
 
-        if workflow_defn_decorator:
-            return workflow_defn_decorator(cls, *args, **kwargs)
+        # if workflow_defn_decorator:
+        #     return workflow_defn_decorator(cls, *args, **kwargs)
 
         cls._app = self
         self._workflows[workflow_id or cls.__name__] = cls
@@ -325,3 +340,21 @@ class MCPApp:
         Check if a function is marked as a workflow task.
         This gets set for functions that are decorated with @workflow_task."""
         return bool(getattr(func, "is_workflow_task", False))
+
+    @property
+    def agent_configs(self) -> Dict[str, "AgentConfig"]:
+        """Get the dictionary of registered agent configurations."""
+        return self._agent_configs
+
+    def register_agent_config(self, config: "AgentConfig") -> "AgentConfig":
+        """
+        Register an agent configuration with the application.
+
+        Args:
+            config: The agent configuration to register
+
+        Returns:
+            The registered configuration
+        """
+        self._agent_configs[config.name] = config
+        return config
