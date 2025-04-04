@@ -1,5 +1,5 @@
-from typing import List, Type
-from boto3 import client
+from typing import TYPE_CHECKING, List, Type
+from boto3 import Session
 from mcp.types import (
     CallToolRequestParams,
     CallToolRequest,
@@ -20,13 +20,20 @@ from mcp_agent.workflows.llm.augmented_llm import (
 )
 from mcp_agent.logging.logger import get_logger
 
-from mypy_boto3_bedrock_runtime.type_defs import (
-    MessageOutputTypeDef,
-    ConverseRequestTypeDef,
-    MessageUnionTypeDef,
-    ContentBlockUnionTypeDef,
-    ToolConfigurationTypeDef,
-)
+if TYPE_CHECKING:
+    from mypy_boto3_bedrock_runtime.type_defs import (
+        MessageOutputTypeDef,
+        ConverseRequestTypeDef,
+        MessageUnionTypeDef,
+        ContentBlockUnionTypeDef,
+        ToolConfigurationTypeDef,
+    )
+else:
+    MessageOutputTypeDef = object
+    ConverseRequestTypeDef = object
+    MessageUnionTypeDef = object
+    ContentBlockUnionTypeDef = object
+    ToolConfigurationTypeDef = object
 
 
 class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]):
@@ -55,7 +62,8 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
                 default_model = self.context.config.bedrock.default_model
 
         if self.context.config.bedrock:
-            self.bedrock_client = client(
+            session = Session(profile_name=self.context.config.bedrock.profile)
+            self.bedrock_client = session.client(
                 "bedrock-runtime",
                 aws_access_key_id=self.context.config.bedrock.aws_access_key_id,
                 aws_secret_access_key=self.context.config.bedrock.aws_secret_access_key,
@@ -63,7 +71,8 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
                 region_name=self.context.config.bedrock.aws_region,
             )
         else:
-            self.bedrock_client = client("bedrock-runtime")
+            session = Session()
+            self.bedrock_client = session.client("bedrock-runtime")
 
         self.default_request_params = self.default_request_params or RequestParams(
             model=default_model,
