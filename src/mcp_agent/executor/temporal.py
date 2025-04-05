@@ -368,38 +368,65 @@ class TemporalExecutor(Executor):
 
         return self.client
 
+    async def start_workflow(
+        self,
+        workflow_id: str,
+        input: any,
+    ):
+        await self.ensure_client()
+        workflow = self.context.workflow_registry.get_workflow(workflow_id)
+        handle = await self.client.start_workflow(
+            workflow,
+            input,
+            id=workflow_id,
+            task_queue=self.config.task_queue,
+        )
+        return handle
+
     async def start_worker(self):
         """
         Start a worker in this process, auto-registering all tasks
-        from the global registry. Also picks up any classes decorated
-        with @workflow_defn as recognized workflows.
+        from the global registry and all workflows registered with the executor.
         """
         await self.ensure_client()
 
         if self._worker is None:
-            # We'll collect the activities from the global registry
-            # and optionally wrap them with `activity.defn` if we want
-            # (Not strictly required if your code calls `execute_activity("name")` by name)
+            # Collect activities from the global registry
             activity_registry = self.context.task_registry
             activities = []
             for name in activity_registry.list_activities():
                 activities.append(activity_registry.get_activity(name))
 
-            # Now we attempt to discover any classes that are recognized as workflows
-            # But in this simple example, we rely on the user specifying them or
-            # we might do a dynamic scan.
-            # For demonstration, we'll just assume the user is only using
-            # the workflow classes they decorate with `@workflow_defn`.
-            # We'll rely on them passing the classes or scanning your code.
+            # Collect workflows from the registered workflows
+            workflows = self.context.workflow_registry.list_workflows()
+
+            # Configure workflow sandbox to handle restrictions
+            from temporalio.worker.workflow_sandbox import (
+                SandboxedWorkflowRunner,
+                SandboxRestrictions,
+            )
+
+            # Create a sandbox with necessary passthrough modules
+            workflow_runner = SandboxedWorkflowRunner(
+                restrictions=SandboxRestrictions.default.with_passthrough_modules(
+                    "mcp_agent.executor.workflow",  # Ensure workflow base classes are accessible
+                    "mcp_agent.context_dependent",  # Allow context-dependent functionality
+                    "mcp_agent.workflows.llm",  # Allow LLM-related modules
+                    "mcp_agent.agents",  # Allow agent-related modules
+                    "mcp.server",
+                    "datetime",
+                )
+            )
 
             self._worker = Worker(
                 client=self.client,
                 task_queue=self.config.task_queue,
                 activities=activities,
-                workflows=[],  # We'll auto-load by Python scanning or let the user specify
+                workflows=workflows,
+                workflow_runner=workflow_runner,
             )
             print(
-                f"Starting Temporal Worker on task queue '{self.config.task_queue}' with {len(activities)} activities."
+                f"Starting Temporal Worker on task queue '{self.config.task_queue}' with {len(activities)} activities and {len(workflows)} workflows."
             )
 
         await self._worker.run()

@@ -1,3 +1,4 @@
+import functools
 from typing import Any, Dict, Optional, Type, TypeVar, Callable, TYPE_CHECKING
 from datetime import timedelta
 import asyncio
@@ -77,6 +78,8 @@ class MCPApp:
         self._model_selector = model_selector
 
         self._workflows: Dict[str, Type["Workflow"]] = {}  # id to workflow class
+        self._pending_workflows: Dict[str, tuple[Type, tuple, dict]] = {}
+        self._pending_workflow_run_methods: Dict[str, tuple] = {}
         self._agent_configs: Dict[
             str, "AgentConfig"
         ] = {}  # name to agent configuration
@@ -162,6 +165,59 @@ class MCPApp:
         # Store a reference to this app instance in the context for easier access
         self._context.app = self
 
+        # Initialise pending workflow run
+        if self.context and self.context.executor:
+            decorator_registry = self._context.decorator_registry
+            engine_type = self._context.executor.execution_engine
+
+            workflow_run_decorator = decorator_registry.get_workflow_run_decorator(
+                engine_type
+            )
+
+            if workflow_run_decorator:
+                for function_id, (
+                    fn,
+                    fn_kwargs,
+                ) in self._pending_workflow_run_methods.items():
+                    # Find which workflow class this method belongs to
+                    module_class_name, method_name = function_id.rsplit(".", 1)
+                    module_name, class_name = module_class_name.rsplit(".", 1)
+
+                    # Look through workflows to find the matching class
+                    for workflow_cls in self._workflows.values():
+                        if (
+                            workflow_cls.__module__ == module_name
+                            and workflow_cls.__name__ == class_name
+                        ):
+                            # Decorate the method and store on the class
+                            decorated_method = workflow_run_decorator(fn, **fn_kwargs)
+                            setattr(
+                                workflow_cls,
+                                f"_decorated_{method_name}",
+                                decorated_method,
+                            )
+                            break
+
+        # Initialise pending workflows
+        for workflow_id, (cls, args, kwargs) in self._pending_workflows.items():
+            if self.context and self.context.executor:
+                decorator_registry = self.context.decorator_registry
+                engine_type = self.context.executor.execution_engine
+
+                workflow_defn_decorator = (
+                    decorator_registry.get_workflow_defn_decorator(engine_type)
+                )
+
+                # Apply the engine-specific decorator if available
+                if workflow_defn_decorator:
+                    self._workflows[workflow_id] = workflow_defn_decorator(
+                        cls, *args, **kwargs
+                    )
+
+                # Register with the executor if it's a TemporalExecutor
+                if engine_type == "temporal":
+                    self.context.workflow_registry.register(workflow_id, cls)
+
         self._initialized = True
         self.logger.info(
             "MCPAgent initialized",
@@ -224,23 +280,15 @@ class MCPApp:
             If Temporal is available & we use a TemporalExecutor,
             this decorator will wrap with temporal_workflow.defn.
         """
-        # TODO: saqadri (MAC) - fix this for Temporal support
-        # decorator_registry = self.context.decorator_registry
-        # execution_engine = self.engine
-        # workflow_defn_decorator = decorator_registry.get_workflow_defn_decorator(
-        #     execution_engine
-        # )
-
-        # if workflow_defn_decorator:
-        #     return workflow_defn_decorator(cls, *args, **kwargs)
-
         cls._app = self
-        self._workflows[workflow_id or cls.__name__] = cls
 
-        # Default no-op
+        workflow_id = workflow_id or cls.__name__
+        self._pending_workflows[workflow_id] = (cls, args, kwargs)
+        self._workflows[workflow_id] = cls
+
         return cls
 
-    def workflow_run(self, fn: Callable[..., R]) -> Callable[..., R]:
+    def workflow_run(self, fn: Callable[..., R], **kwargs) -> Callable[..., R]:
         """
         Decorator for a workflow's main 'run' method.
         Different executors can use this to customize behavior for workflow execution.
@@ -248,20 +296,30 @@ class MCPApp:
         Example:
             If Temporal is in use, this gets converted to @workflow.run.
         """
+        # Generate a unique ID for this function
+        function_id = f"{fn.__module__}.{fn.__qualname__}"
 
-        decorator_registry = self.context.decorator_registry
-        execution_engine = self.engine
-        workflow_run_decorator = decorator_registry.get_workflow_run_decorator(
-            execution_engine
-        )
+        # Store the function and its kwargs for later decoration
+        self._pending_workflow_run_methods[function_id] = (fn, kwargs)
 
-        if workflow_run_decorator:
-            return workflow_run_decorator(fn)
+        # Return a wrapper that checks if we're initialized or defers to original function
+        @functools.wraps(fn)
+        async def wrapper(*args, **kwargs):
+            # Get the class from the first argument (self)
+            if args and hasattr(args[0], "__class__"):
+                workflow_cls = args[0].__class__
+                method_name = fn.__name__
 
-        # Default no-op
-        def wrapper(*args, **kwargs):
-            # no-op wrapper
-            return fn(*args, **kwargs)
+                # Check if this class has the decorated method
+                decorated_method = getattr(
+                    workflow_cls, f"_decorated_{method_name}", None
+                )
+                if decorated_method:
+                    # Use the decorated method if available
+                    return await decorated_method(*args, **kwargs)
+
+            # Otherwise just call the original function
+            return await fn(*args, **kwargs)
 
         return wrapper
 
