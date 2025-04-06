@@ -399,7 +399,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         server_context: ServerContext = ctx.request_context.lifespan_context
 
         # Get all workflow statuses from the registry
-        workflow_statuses = server_context.workflow_registry.list_workflows()
+        workflow_statuses = server_context.workflow_registry.list_workflow_statuses()
         return workflow_statuses
 
     @mcp.tool(name="workflows/run")

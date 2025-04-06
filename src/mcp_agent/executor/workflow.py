@@ -121,7 +121,7 @@ class WorkflowRegistry:
 
         return workflow.get_status()
 
-    def list_workflows(self) -> List[Dict[str, Any]]:
+    def list_workflow_statuses(self) -> List[Dict[str, Any]]:
         """
         List all registered workflow instances with their status.
 
@@ -135,6 +135,19 @@ class WorkflowRegistry:
             result.append(status)
 
         return result
+
+    def list_workflows(self) -> list["Workflow"]:
+        """
+        List all registered workflow instances.
+
+        Returns:
+            A list of workflow instances
+        """
+        workflows = []
+
+        for workflow_id, workflow in self._workflows.items():
+            workflows.append(workflow)
+        return workflows
 
 
 class WorkflowState(BaseModel):
