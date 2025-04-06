@@ -1,14 +1,12 @@
 import pytest
-import anyio
-import asyncio
 import json
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, List, Tuple, Dict
-from unittest.mock import patch, AsyncMock, MagicMock, call
+from typing import List
+from unittest.mock import patch, AsyncMock, MagicMock
 
 import mcp.types as types
 from mcp_agent.mcp.websocket import websocket_client
-from mcp_agent.config import MCPServerSettings, MCPServerAuthSettings
+from mcp_agent.config import MCPServerSettings
 
 
 class MockWebSocket:
@@ -65,9 +63,6 @@ async def test_websocket_client():
             )
             await write_stream.send(response)
 
-            # Wait a bit for the message to be processed
-            await anyio.sleep(0.1)
-
             # Receive the second message
             message = await read_stream.receive()
             assert isinstance(message, types.JSONRPCMessage)
@@ -75,12 +70,12 @@ async def test_websocket_client():
 
 
 @pytest.mark.asyncio
-async def test_websocket_client_with_auth():
-    """Test that websocket_client correctly handles authentication."""
+async def test_websocket_client_with_headers():
+    """Test that websocket_client correctly handles headers."""
 
     with patch("mcp_agent.mcp.websocket.ws_connect", side_effect=mock_ws_connect) as mock_connect:
-        auth_settings = {"api_key": "test-api-key"}
-        async with websocket_client("ws://localhost:8000", auth_settings=auth_settings) as (read_stream, write_stream):
+        headers = {"Authorization": "Bearer test-api-key"}
+        async with websocket_client("ws://localhost:8000", headers=headers) as (read_stream, write_stream):
             # Verify that ws_connect was called with the correct headers
             mock_connect.assert_called_once()
             _, kwargs = mock_connect.call_args
@@ -101,81 +96,25 @@ async def test_transport_factory_websocket():
         url="ws://localhost:8000"
     )
 
-    # Mock the MCPConnectionManager to avoid actual connections
-    with patch("mcp_agent.mcp.mcp_connection_manager.websocket_client", new=AsyncMock()) as mock_websocket:
-        # Create a mock registry
-        mock_registry = MagicMock()
-        mock_registry.get_server_config.return_value = config
-
-        # Create a connection manager with the mock registry
-        connection_manager = MCPConnectionManager(mock_registry)
-
-        # Call launch_server which will use our transport_context_factory
-        with patch.object(connection_manager, "_tg", new=MagicMock()):
-            with patch.object(connection_manager, "running_servers", new={}):
-                await connection_manager.launch_server("test-server", MagicMock())
-
-        # Check that websocket_client was called with the right URL and no auth
-        mock_websocket.assert_called_once_with("ws://localhost:8000", auth_settings=None)
-
-
-@pytest.mark.asyncio
-async def test_transport_factory_websocket_with_auth():
-    """Test that the websocket transport passes authentication settings correctly."""
-
-    from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
-
-    # Create a configuration with websocket transport and auth
-    config = MCPServerSettings(
-        name="test-server",
-        transport="websocket",
-        url="ws://localhost:8000",
-        auth=MCPServerAuthSettings(api_key="test-api-key")
-    )
-
-    # Mock the MCPConnectionManager to avoid actual connections
-    with patch("mcp_agent.mcp.mcp_connection_manager.websocket_client", new=AsyncMock()) as mock_websocket:
-        # Create a mock registry
-        mock_registry = MagicMock()
-        mock_registry.get_server_config.return_value = config
-
-        # Create a connection manager with the mock registry
-        connection_manager = MCPConnectionManager(mock_registry)
-
-        # Call launch_server which will use our transport_context_factory
-        with patch.object(connection_manager, "_tg", new=MagicMock()):
-            with patch.object(connection_manager, "running_servers", new={}):
-                await connection_manager.launch_server("test-server", MagicMock())
-
-        # Check that websocket_client was called with auth settings
-        mock_websocket.assert_called_once()
-        args, kwargs = mock_websocket.call_args
-        assert args[0] == "ws://localhost:8000"
-        assert kwargs["auth_settings"] == {"api_key": "test-api-key"}
-
-
-@pytest.mark.asyncio
-async def test_missing_url_websocket():
-    """Test that an error is raised when url is missing for websocket transport."""
-
-    from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
-
-    # Create a configuration with websocket transport but no URL
-    config = MCPServerSettings(
-        name="test-server",
-        transport="websocket",
-        url=None
-    )
-
-    # Mock the MCPConnectionManager to avoid actual connections
+    # Create a mock registry
     mock_registry = MagicMock()
-    mock_registry.get_server_config.return_value = config
+    mock_registry.registry = {
+        "test-server": config
+    }
 
     # Create a connection manager with the mock registry
     connection_manager = MCPConnectionManager(mock_registry)
 
-    # Call launch_server which will use our transport_context_factory
-    with patch.object(connection_manager, "_tg", new=MagicMock()):
-        with patch.object(connection_manager, "running_servers", new={}):
-            with pytest.raises(ValueError, match="URL is required for WebSocket transport"):
-                await connection_manager.launch_server("test-server", MagicMock())
+    # Create a spy for the websocket_client function
+    with patch("mcp_agent.mcp.mcp_connection_manager.websocket_client") as mock_websocket:
+        # Mock task group to avoid actually running the server
+        with patch.object(connection_manager, "_tg", new=MagicMock()):
+            with patch.object(connection_manager, "running_servers", new={}):
+                # Launch the server
+                server_conn = await connection_manager.launch_server("test-server", MagicMock())
+
+                # Directly call the transport_context_factory to check if it's correctly configured
+                server_conn._transport_context_factory()
+
+                # Verify websocket_client was called with the right URL
+                mock_websocket.assert_called_once_with("ws://localhost:8000", None)

@@ -88,3 +88,6 @@ mcp-agent = [ # TODO: should this be mcp_agent?
     "resources/examples/**/*.csv",
     "resources/examples/**/mount-point/*.csv"
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
