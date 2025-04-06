@@ -20,7 +20,7 @@ from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 # Settings can either be specified programmatically,
 # or loaded from mcp_agent.config.yaml/mcp_agent.secrets.yaml
-app = MCPApp(name="mcp_websockets")  # settings=settings)
+app = MCPApp(name="mcp_sse_with_auth")  # settings=settings)
 
 
 async def example_usage():
@@ -31,23 +31,23 @@ async def example_usage():
         logger.info("Current config:", data=context.config.model_dump())
 
         agent = Agent(
-            name="github-agent",
-            instruction="""You are an agent whose job is to interact with the Github
-            repository for the user.
+            name="slack-agent",
+            instruction="""You are an agent whose job is to interact with the Slack workspace
+            for the user.
             """,
-            server_names=["smithery-github"],
+            server_names=["slack"],
         )
 
         async with agent:
-            logger.info("github-agent: Connected to server, calling list_tools...")
+            logger.info("slack-agent: Connected to server, calling list_tools...")
             result = await agent.list_tools()
             logger.info("Tools available:", data=result.model_dump())
 
             llm = await agent.attach_llm(OpenAIAugmentedLLM)
             result = await llm.generate(
-                message="List all Github repositories for the user",
+                message="List all Slack channels in the workspace",
             )
-            logger.info(f"Github repositories: {result}")
+            logger.info(f"Slack channels: {result}")
 
 
 if __name__ == "__main__":

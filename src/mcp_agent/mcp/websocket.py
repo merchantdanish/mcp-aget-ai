@@ -4,6 +4,8 @@ Websocket transport layer for MCP agent to connect to MCP servers.
 
 import json
 import anyio
+from typing import Any
+
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from contextlib import asynccontextmanager
 from pydantic import ValidationError
@@ -20,6 +22,7 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def websocket_client(
     url: str,
+    headers: dict[str, Any] | None = None,
 ) -> AsyncGenerator[
     tuple[
         MemoryObjectReceiveStream[types.JSONRPCMessage | Exception],
@@ -54,7 +57,7 @@ async def websocket_client(
 
     try:
         # Connect using websockets, requesting the "mcp" subprotocol
-        async with ws_connect(url, subprotocols=[Subprotocol("mcp")]) as ws:
+        async with ws_connect(url, subprotocols=[Subprotocol("mcp")], additional_headers=headers) as ws:
             logger.debug(f"WebSocket connection established to {url}")
 
             async def ws_reader():

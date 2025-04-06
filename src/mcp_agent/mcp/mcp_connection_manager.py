@@ -278,9 +278,9 @@ class MCPConnectionManager(ContextDependent):
                 # Create stdio client config with redirected stderr
                 return stdio_client_with_rich_stderr(server_params)
             elif config.transport == "sse":
-                return sse_client(config.url)
+                return sse_client(config.url, config.headers)
             elif config.transport == "websocket":
-                return websocket_client(config.url)
+                return websocket_client(config.url, config.headers)
             else:
                 raise ValueError(f"Unsupported transport: {config.transport}")
 
