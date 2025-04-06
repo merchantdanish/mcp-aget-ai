@@ -7,14 +7,9 @@ decorators, and how to run it using the Temporal executor.
 import asyncio
 import logging
 
-from temporalio import workflow
-
 from mcp_agent.executor.temporal import TemporalExecutor
-
-# Import with workflow.unsafe.imports_passed_through to allow imports in workflow code
-with workflow.unsafe.imports_passed_through():
-    from mcp_agent.app import MCPApp
-    from mcp_agent.executor.workflow import WorkflowResult
+from mcp_agent.app import MCPApp
+from mcp_agent.executor.workflow import Workflow, WorkflowResult
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -25,7 +20,7 @@ app = MCPApp(name="temporal_workflow_example")
 
 
 @app.workflow
-class SimpleWorkflow:
+class SimpleWorkflow(Workflow[str]):
     """
     A simple workflow that demonstrates the basic structure of a Temporal workflow.
     """
