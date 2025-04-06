@@ -220,9 +220,6 @@ class MCPApp:
                         *args,
                         **kwargs,
                     )
-
-                # Register with the executor if it's a TemporalExecutor
-                if engine_type == "temporal":
                     self.context.workflow_registry.register(workflow_id, cls)
 
         self._initialized = True
