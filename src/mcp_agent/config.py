@@ -54,7 +54,7 @@ class MCPServerSettings(BaseModel):
     description: str | None = None
     """The description of the server."""
 
-    transport: Literal["stdio", "sse"] = "stdio"
+    transport: Literal["stdio", "sse", "websocket"] = "stdio"
     """The transport mechanism."""
 
     command: str | None = None
