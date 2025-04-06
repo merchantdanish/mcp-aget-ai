@@ -400,30 +400,11 @@ class TemporalExecutor(Executor):
             # Collect workflows from the registered workflows
             workflows = self.context.workflow_registry.list_workflows()
 
-            # Configure workflow sandbox to handle restrictions
-            from temporalio.worker.workflow_sandbox import (
-                SandboxedWorkflowRunner,
-                SandboxRestrictions,
-            )
-
-            # Create a sandbox with necessary passthrough modules
-            workflow_runner = SandboxedWorkflowRunner(
-                restrictions=SandboxRestrictions.default.with_passthrough_modules(
-                    "mcp_agent.executor.workflow",  # Ensure workflow base classes are accessible
-                    "mcp_agent.context_dependent",  # Allow context-dependent functionality
-                    "mcp_agent.workflows.llm",  # Allow LLM-related modules
-                    "mcp_agent.agents",  # Allow agent-related modules
-                    "mcp.server",
-                    "datetime",
-                )
-            )
-
             self._worker = Worker(
                 client=self.client,
                 task_queue=self.config.task_queue,
                 activities=activities,
                 workflows=workflows,
-                workflow_runner=workflow_runner,
             )
             print(
                 f"Starting Temporal Worker on task queue '{self.config.task_queue}' with {len(activities)} activities and {len(workflows)} workflows."

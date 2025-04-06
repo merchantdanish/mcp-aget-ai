@@ -208,10 +208,17 @@ class MCPApp:
                     decorator_registry.get_workflow_defn_decorator(engine_type)
                 )
 
+                # TODO: jerron - Setting sandboxed=False is a workaround to silence temporal's RestrictedWorkflowAccessError.
+                # Can we make this work without having to run outside sandbox environment?
+                # This is not ideal as it could lead to non-deterministic behavior.
+
                 # Apply the engine-specific decorator if available
                 if workflow_defn_decorator:
                     self._workflows[workflow_id] = workflow_defn_decorator(
-                        cls, *args, **kwargs
+                        cls,
+                        sandboxed=False,
+                        *args,
+                        **kwargs,
                     )
 
                 # Register with the executor if it's a TemporalExecutor
