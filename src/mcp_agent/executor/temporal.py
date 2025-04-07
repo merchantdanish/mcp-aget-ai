@@ -6,6 +6,7 @@ Read more: https://docs.temporal.io/develop/python/core-application
 """
 
 import asyncio
+from datetime import timedelta
 import functools
 import uuid
 from typing import (
@@ -33,6 +34,7 @@ from mcp_agent.executor.workflow_signal import (
     SignalRegistration,
     SignalValueT,
 )
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 if TYPE_CHECKING:
     from mcp_agent.context import Context
@@ -274,17 +276,19 @@ class TemporalExecutor(Executor):
     ) -> R | BaseException:
         func = task.func if isinstance(task, functools.partial) else task
         is_workflow_task = getattr(func, "is_workflow_task", False)
-        if not is_workflow_task:
-            return await asyncio.create_task(
-                self._execute_task_as_async(task, **kwargs)
-            )
+        # TODO: Jerron - Disabling this for now
+        # if not is_workflow_task:
+        #     return await asyncio.create_task(
+        #         self._execute_task_as_async(task, **kwargs)
+        #     )
 
         execution_metadata: Dict[str, Any] = getattr(func, "execution_metadata", {})
 
         # Derive stable activity name, e.g. module + qualname
         activity_name = execution_metadata.get("activity_name")
         if not activity_name:
-            activity_name = f"{func.__module__}.{func.__qualname__}"
+            # Follow same naming convention as the activity we pass to worker
+            activity_name = f"activity_{func.__name__}"
 
         schedule_to_close = execution_metadata.get(
             "schedule_to_close_timeout", self.config.timeout_seconds
@@ -292,18 +296,21 @@ class TemporalExecutor(Executor):
 
         retry_policy = execution_metadata.get("retry_policy", None)
 
-        _task_activity = self.wrap_as_activity(activity_name=activity_name, func=task)
+        _task_activity = self.wrap_as_activity(
+            activity_name=activity_name,
+            func=task,
+        )
 
         # # For partials, we pass the partial's arguments
         # args = task.args if isinstance(task, functools.partial) else ()
+        # TODO: Jerron - Currently facing issue where kwargs is passed to self.
         try:
-            result = await workflow.execute_activity(
-                activity_name,
-                args=kwargs.get("args", ()),
+            result = await workflow.execute_activity_method(
+                _task_activity,
+                kwargs,
                 task_queue=self.config.task_queue,
-                schedule_to_close_timeout=schedule_to_close,
+                schedule_to_close_timeout=timedelta(seconds=schedule_to_close),
                 retry_policy=retry_policy,
-                **kwargs,
             )
             return result
         except Exception as e:
@@ -317,6 +324,8 @@ class TemporalExecutor(Executor):
         *tasks: Callable[..., R] | Coroutine[Any, Any, R],
         **kwargs: Any,
     ) -> List[R | BaseException]:
+        """Execute multiple tasks (activities) in parallel."""
+
         # Must be called from within a workflow
         if not workflow._Runtime.current():
             raise RuntimeError(
@@ -394,6 +403,15 @@ class TemporalExecutor(Executor):
             # Collect activities from the global registry
             activity_registry = self.context.task_registry
             activities = []
+
+            # create essential activities
+            self.context.task_registry.register(
+                "activity_create_response",
+                self.wrap_as_activity(
+                    "activity_create_response", OpenAIAugmentedLLM.create_response
+                ),
+            )
+
             for name in activity_registry.list_activities():
                 activities.append(activity_registry.get_activity(name))
 
