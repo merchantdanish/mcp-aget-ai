@@ -33,9 +33,12 @@ async def example_usage():
 
             try:
                 filesystem_client = await connection_manager.get_server(
-                    server_name="filesystem", client_session_factory=MCPAgentClientSession
+                    server_name="filesystem",
+                    client_session_factory=MCPAgentClientSession,
                 )
-                logger.info("filesystem: Connected to server with persistent connection.")
+                logger.info(
+                    "filesystem: Connected to server with persistent connection."
+                )
 
                 fetch_client = await connection_manager.get_server(
                     server_name="fetch", client_session_factory=MCPAgentClientSession
