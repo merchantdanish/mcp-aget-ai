@@ -7,9 +7,11 @@ decorators, and how to run it using the Temporal executor.
 import asyncio
 import logging
 
+from mcp_agent.agents.agent import Agent
 from mcp_agent.executor.temporal import TemporalExecutor
 from mcp_agent.app import MCPApp
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -36,12 +38,25 @@ class SimpleWorkflow(Workflow[str]):
         Returns:
             A WorkflowResult containing the processed data
         """
-        logger.info(f"Running SimpleWorkflow with input: {input_data}")
+        finder_agent = Agent(
+            name="finder",
+            instruction="""You are a helpful assistant.""",
+            server_names=[],
+        )
 
-        # Execute the workflow task as a Temporal activity
-        result = input_data.upper()
+        async with finder_agent:
+            llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
+            result = await llm.generate_str(
+                message="Hello, how are you?",
+            )
+            return WorkflowResult(value=result)
 
-        return WorkflowResult(value=result)
+        # logger.info(f"Running SimpleWorkflow with input: {input_data}")
+
+        # # Execute the workflow task as a Temporal activity
+        # result = input_data.upper()
+
+        # return WorkflowResult(value=result)
 
 
 async def main():
