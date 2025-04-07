@@ -157,6 +157,7 @@ class TemporalSettings(BaseModel):
     task_queue: str
     max_concurrent_activities: int | None = None
     api_key: str | None = None
+    timeout_seconds: int | None = 60
 
 
 class UsageTelemetrySettings(BaseModel):
