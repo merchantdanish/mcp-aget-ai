@@ -14,6 +14,7 @@ from openai.types.chat import (
     ChatCompletionToolParam,
     ChatCompletionToolMessageParam,
     ChatCompletionUserMessageParam,
+    ChatCompletion,
 )
 from mcp.types import (
     CallToolRequestParams,
@@ -75,6 +76,11 @@ class OpenAIAugmentedLLM(
                 f"Using reasoning model '{chosen_model}' with '{self._reasoning_effort}' reasoning effort"
             )
 
+        self.openai_client = OpenAI(
+            api_key=self.context.config.openai.api_key,
+            base_url=self.context.config.openai.base_url,
+        )
+
         self.default_request_params = self.default_request_params or RequestParams(
             model=chosen_model,
             modelPreferences=self.model_preferences,
@@ -99,16 +105,16 @@ class OpenAIAugmentedLLM(
             **kwargs,
         )
 
+    async def create_response(self, **kwargs) -> ChatCompletion:
+        response = await self.openai_client.chat.completions.create(**kwargs)
+        return response
+
     async def generate(self, message, request_params: RequestParams | None = None):
         """
         Process a query using an LLM and available tools.
         The default implementation uses OpenAI's ChatCompletion as the LLM.
         Override this method to use a different LLM.
         """
-        config = self.context.config
-        openai_client = OpenAI(
-            api_key=config.openai.api_key, base_url=config.openai.base_url
-        )
         messages: List[ChatCompletionMessageParam] = []
         params = self.get_request_params(request_params)
 
@@ -174,7 +180,7 @@ class OpenAIAugmentedLLM(
             self._log_chat_progress(chat_turn=len(messages) // 2, model=model)
 
             executor_result = await self.executor.execute(
-                openai_client.chat.completions.create, **arguments
+                self.create_response, **arguments
             )
 
             response = executor_result[0]
