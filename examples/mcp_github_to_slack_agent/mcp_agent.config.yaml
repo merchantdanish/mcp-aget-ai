@@ -12,8 +12,15 @@ logger:
 mcp:
   servers:
     github:
-      command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-github"]
+      command: "docker"
+      args: [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "ghcr.io/github/github-mcp-server"
+      ]
       description: "Access GitHub API operations"
     slack:
       command: "npx"
