@@ -2,6 +2,8 @@
 
 A command-line application that lets you interact with websites using natural language through the Model Context Protocol (MCP).
 
+![browser agent](https://andrew-dev-s3.s3.us-east-1.amazonaws.com/browser-agent.gif)
+
 ## Features
 
 - **Natural Language Control**: Navigate and interact with websites using conversational commands
