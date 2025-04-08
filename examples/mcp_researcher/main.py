@@ -13,6 +13,7 @@ from rich import print
 
 app = MCPApp(name="mcp_root_test")
 
+
 async def example_usage():
     async with app.run() as agent_app:
         folder_path = Path("agent_folder")
@@ -22,13 +23,13 @@ async def example_usage():
 
         # Overwrite the config because full path to agent folder needs to be passed
         context.config.mcp.servers["interpreter"].args = [
-          "run",
-          "-i",
-          "--rm",
-          "--pull=always",
-          "-v",
-          f"{os.path.abspath('agent_folder')}:/mnt/data/",
-          "ghcr.io/evalstate/mcp-py-repl:latest",
+            "run",
+            "-i",
+            "--rm",
+            "--pull=always",
+            "-v",
+            f"{os.path.abspath('agent_folder')}:/mnt/data/",
+            "ghcr.io/evalstate/mcp-py-repl:latest",
         ]
 
         async with MCPConnectionManager(context.server_registry):
