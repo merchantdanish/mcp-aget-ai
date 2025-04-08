@@ -21,8 +21,10 @@ This application creates an MCP Agent that monitors GitHub pull requests and sub
 
 - Python 3.10 or higher
 - MCP Agent framework
-- [GitHub MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/github)
+- [GitHub MCP Server](https://github.com/github/github-mcp-server))
 - [Slack MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/slack)
+- Node.js and npm (this is for the Slack server)
+- [Docker](https://www.docker.com/)
 - Access to a GitHub repository
 - Access to a Slack workspace
 
@@ -55,12 +57,9 @@ This application creates an MCP Agent that monitors GitHub pull requests and sub
 uv sync --dev
 ```
 
-2. Create a secrets file:
-```
-cp mcp_agent.secrets.yaml mcp_agent.secrets.yaml
-```
+2. Create a `mcp_agent.secrets.yaml` secrets file
 
-3. Update the secrets file with your API keys
+3. Update the secrets file with your API keys and Tokens
 
 ### Usage
 
