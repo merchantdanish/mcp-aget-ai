@@ -64,6 +64,9 @@ class Agent(MCPAggregator):
 
         # Map function names to tools
         self._function_tool_map: Dict[str, FastTool] = {}
+        for function in self.functions:
+            tool: FastTool = FastTool.from_function(function)
+            self._function_tool_map[tool.name] = tool
 
         self.human_input_callback: HumanInputCallback | None = human_input_callback
         if not human_input_callback:
@@ -78,10 +81,6 @@ class Agent(MCPAggregator):
         await (
             self.__aenter__()
         )  # This initializes the connection manager and loads the servers
-
-        for function in self.functions:
-            tool: FastTool = FastTool.from_function(function)
-            self._function_tool_map[tool.name] = tool
 
     async def attach_llm(self, llm_factory: Callable[..., LLM]) -> LLM:
         """
