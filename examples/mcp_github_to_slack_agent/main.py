@@ -9,6 +9,7 @@ from rich import print
 
 app = MCPApp(name="github_to_slack")
 
+
 async def github_to_slack(github_owner: str, github_repo: str, slack_channel: str):
     async with app.run() as agent_app:
         context = agent_app.context
@@ -65,12 +66,13 @@ async def github_to_slack(github_owner: str, github_repo: str, slack_channel: st
                 # Execute the workflow
                 print("Executing GitHub to Slack workflow...")
                 await llm.generate_str(prompt)
-                
+
                 print("Workflow completed successfully!")
 
             finally:
                 # Clean up the agent
                 await github_to_slack_agent.close()
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="GitHub to Slack PR Summary Tool")
