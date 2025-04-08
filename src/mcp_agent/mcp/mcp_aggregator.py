@@ -76,40 +76,7 @@ class MCPAggregator(ContextDependent):
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
     async def __aenter__(self):
-        if self.initialized:
-            return self
-
-        # Keep a connection manager to manage persistent connections for this aggregator
-        if self.connection_persistence:
-            # Try to get existing connection manager from context
-            # TODO: saqadri (FA1) - verify
-            # Initialize connection manager tracking on the context if not present
-            # These are placed on the context since it's shared across aggregators
-
-            connection_manager: MCPConnectionManager | None = None
-
-            if not hasattr(self.context, "_mcp_connection_manager_lock"):
-                self.context._mcp_connection_manager_lock = asyncio.Lock()
-
-            if not hasattr(self.context, "_mcp_connection_manager_ref_count"):
-                self.context._mcp_connection_manager_ref_count = int(0)
-
-            async with self.context._mcp_connection_manager_lock:
-                self.context._mcp_connection_manager_ref_count += 1
-
-                if hasattr(self.context, "_mcp_connection_manager"):
-                    connection_manager = self.context._mcp_connection_manager
-                else:
-                    connection_manager = MCPConnectionManager(
-                        self.context.server_registry
-                    )
-                    await connection_manager.__aenter__()
-                    self.context._mcp_connection_manager = connection_manager
-
-                self._persistent_connection_manager = connection_manager
-
-        await self.load_servers()
-        self.initialized = True
+        await self.initialize()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -154,6 +121,43 @@ class MCPAggregator(ContextDependent):
         # Cache for prompt objects, maps server_name -> list of prompt objects
         self._server_to_prompt_map: Dict[str, List[NamespacedPrompt]] = {}
         self._prompt_map_lock = asyncio.Lock()
+
+    async def initialize(self, force: bool = False):
+        """Initialize the application."""
+        if self.initialized and not force:
+            return
+
+        # Keep a connection manager to manage persistent connections for this aggregator
+        if self.connection_persistence:
+            # Try to get existing connection manager from context
+            # TODO: saqadri (FA1) - verify
+            # Initialize connection manager tracking on the context if not present
+            # These are placed on the context since it's shared across aggregators
+
+            connection_manager: MCPConnectionManager | None = None
+
+            if not hasattr(self.context, "_mcp_connection_manager_lock"):
+                self.context._mcp_connection_manager_lock = asyncio.Lock()
+
+            if not hasattr(self.context, "_mcp_connection_manager_ref_count"):
+                self.context._mcp_connection_manager_ref_count = int(0)
+
+            async with self.context._mcp_connection_manager_lock:
+                self.context._mcp_connection_manager_ref_count += 1
+
+                if hasattr(self.context, "_mcp_connection_manager"):
+                    connection_manager = self.context._mcp_connection_manager
+                else:
+                    connection_manager = MCPConnectionManager(
+                        self.context.server_registry
+                    )
+                    await connection_manager.__aenter__()
+                    self.context._mcp_connection_manager = connection_manager
+
+                self._persistent_connection_manager = connection_manager
+
+        await self.load_servers()
+        self.initialized = True
 
     async def close(self):
         """
