@@ -126,7 +126,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         if isinstance(message, str):
             messages.append(UserMessage(content=message))
         elif isinstance(message, list):
-            message.extend(message)
+            messages.extend(message)
         else:
             messages.append(message)
 
