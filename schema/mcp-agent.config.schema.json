@@ -526,7 +526,7 @@
           "default": false,
           "title": "Vertex AI"
         },
-        "project_id": {
+        "project": {
           "anyOf": [
             {
               "type": "string"
