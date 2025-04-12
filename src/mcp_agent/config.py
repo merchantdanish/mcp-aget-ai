@@ -153,7 +153,8 @@ class GoogleSettings(BaseModel):
     Settings for using Google models in the MCP Agent application.
     """
 
-    api_key: str
+    api_key: str | None = None
+    """Or use the GOOGLE_API_KEY environment variable"""
 
     vertexai: bool = False
 

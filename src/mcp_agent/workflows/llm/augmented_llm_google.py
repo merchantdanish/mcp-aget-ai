@@ -104,7 +104,7 @@ class GoogleAugmentedLLM(
                     types.FunctionDeclaration(
                         name=tool.name,
                         description=tool.description,
-                        parameters=tool.inputSchema,
+                        parameters=transform_mcp_tool_schema(tool.inputSchema),
                     )
                 ]
             )
@@ -160,11 +160,13 @@ class GoogleAugmentedLLM(
             messages.append(response_as_message)
             responses.append(candidate.content)
 
-            stopReason = candidate.finish_reason
-            if stopReason:
-                self.logger.debug(f"Iteration {i}: {candidate.finish_message}")
-                break
-            else:
+            function_calls = [
+                self.execute_tool_call(part.function_call)
+                for part in candidate.content.parts
+                if part.function_call
+            ]
+
+            if function_calls:
                 function_calls = [
                     self.execute_tool_call(part.function_call)
                     for part in candidate.content.parts
@@ -180,6 +182,11 @@ class GoogleAugmentedLLM(
                 for result in results:
                     messages.append(result)
                     responses.append(result)
+            else:
+                self.logger.debug(
+                    f"Iteration {i}: Stopping because finish_reason is '{candidate.finish_reason}'"
+                )
+                break
 
         if params.use_history:
             self.history.set(messages)
@@ -388,6 +395,112 @@ class GoogleMCPTypeConverter(ProviderToMCPConverter[types.Content, types.Content
         )
 
         return function_response_content
+
+
+def transform_mcp_tool_schema(cls, schema: dict) -> dict:
+    """Transform JSON Schema to OpenAPI Schema format compatible with Gemini.
+
+    Key transformations:
+    1. Convert camelCase properties to snake_case (e.g., anyOf -> any_of)
+    2. Remove explicitly excluded fields (e.g., "default")
+    3. Recursively process nested structures (properties, items, anyOf)
+    4. Handle nullable types by setting nullable=true when anyOf includes type:"null"
+    5. Remove unsupported format values based on data type
+
+    Args:
+        schema: A JSON Schema dictionary
+
+    Returns:
+        A cleaned OpenAPI schema dictionary compatible with Gemini
+    """
+    # TODO: jerron - workaround until gemini get json schema support for function calling
+
+    # Get the field names from the Schema class using Pydantic's model_fields
+    supported_schema_props = set(types.Schema.model_fields.keys())
+
+    # Properties to exclude even if they would otherwise be supported
+    EXCLUDED_PROPERTIES = {"default"}
+
+    # Special case mappings for camelCase to snake_case conversions
+    CAMEL_TO_SNAKE_MAPPINGS = {
+        "anyOf": "any_of",
+        "maxLength": "max_length",
+        "minLength": "min_length",
+        "minProperties": "min_properties",
+        "maxProperties": "max_properties",
+        "maxItems": "max_items",
+        "minItems": "min_items",
+    }
+
+    # Supported formats by data type in Gemini
+    SUPPORTED_FORMATS = {
+        "string": {"enum", "date-time"},
+        "number": {"float", "double"},
+        "integer": {"int32", "int64"},
+    }
+
+    # Handle non-dict schemas
+    if not isinstance(schema, dict):
+        return schema
+
+    result = {}
+
+    for key, value in schema.items():
+        # Skip excluded properties
+        if key in EXCLUDED_PROPERTIES:
+            continue
+
+        # Handle format field based on data type
+        if key == "format":
+            schema_type = schema.get("type", "").lower()
+            if schema_type in SUPPORTED_FORMATS:
+                if value not in SUPPORTED_FORMATS[schema_type]:
+                    # Skip unsupported format for this data type
+                    continue
+
+        # Apply special case mappings if available
+        if key in CAMEL_TO_SNAKE_MAPPINGS:
+            snake_key = CAMEL_TO_SNAKE_MAPPINGS[key]
+        else:
+            # Standard camelCase to snake_case conversion
+            snake_key = "".join("_" + c.lower() if c.isupper() else c for c in key)
+
+        # Only proceed if the resulting key is supported
+        if snake_key not in supported_schema_props:
+            continue
+
+        # Handle nested structures that need recursive processing
+        if key == "properties" and isinstance(value, dict):
+            # For properties, process each property's schema
+            result[snake_key] = {
+                prop_k: cls._transform_schema(prop_v)
+                for prop_k, prop_v in value.items()
+            }
+        elif key == "items" and isinstance(value, dict):
+            # For items, process the schema
+            result[snake_key] = cls._transform_schema(value)
+        elif key == "anyOf" and isinstance(value, list):
+            # Create a list for non-null schemas
+            non_null_schemas = []
+            for item in value:
+                if isinstance(item, dict) and item.get("type") == "null":
+                    # Set nullable for null types
+                    result["nullable"] = True
+                else:
+                    # Process and add non-null schemas
+                    transformed_item = (
+                        cls._transform_schema(item) if isinstance(item, dict) else item
+                    )
+                    non_null_schemas.append(transformed_item)
+
+            # Only add any_of if we have non-null schemas
+            if non_null_schemas:
+                result["any_of"] = non_null_schemas
+        else:
+            # For other properties, use the value as is
+            result[snake_key] = value
+
+    return result
 
 
 def mcp_content_to_google_parts(
