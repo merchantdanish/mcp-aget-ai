@@ -266,9 +266,10 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         )
         request_params.metadata = metadata
 
-        structured_response = await self.generate_str(
-            message=message, request_params=request_params
-        )
+        response = await self.generate(message=message, request_params=request_params)
+        json_data = json.loads(response[-1].content)
+
+        structured_response = response_model.model_validate(json_data)
         return structured_response
 
     @classmethod
@@ -297,7 +298,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
         try:
             if tool_args_str:
-                tool_args = json.loads(tool_call.function.arguments.replace("'", '"'))
+                tool_args = json.loads(tool_call.function.arguments)
         except json.JSONDecodeError as e:
             return ToolMessage(
                 tool_call_id=tool_call_id,
@@ -380,13 +381,13 @@ class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ResponseMessage
         if param.role == "assistant":
             extras = param.model_dump(exclude={"role", "content"})
             return AssistantMessage(
-                content=mcp_content_to_azure_content(param.content),
+                content=mcp_content_to_azure_content([param.content]),
                 **extras,
             )
         elif param.role == "user":
             extras = param.model_dump(exclude={"role", "content"})
             return UserMessage(
-                content=mcp_content_to_azure_content(param.content, str_only=False),
+                content=mcp_content_to_azure_content([param.content], str_only=False),
                 **extras,
             )
         else:
@@ -437,7 +438,7 @@ class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ResponseMessage
             )
         else:
             raise ValueError(
-                f"Unexpected role: {param.role}, MCP only supports 'assistant', 'user', 'tool', 'system', 'developer'"
+                f"Unexpected role: {param.role}, Azure only supports 'assistant', 'user', 'tool', 'system', 'developer'"
             )
 
 
