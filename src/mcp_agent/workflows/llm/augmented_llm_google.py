@@ -275,10 +275,6 @@ class GoogleAugmentedLLM(
         tool_args = function_call.args
         tool_call_id = function_call.id
 
-        if not tool_name or not tool_call_id:
-            self.logger.error("Missing function call name or function call id.")
-            return None
-
         tool_call_request = CallToolRequest(
             method="tools/call",
             params=CallToolRequestParams(name=tool_name, arguments=tool_args),
