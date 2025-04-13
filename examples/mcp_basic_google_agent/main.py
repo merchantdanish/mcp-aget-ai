@@ -1,6 +1,8 @@
 import asyncio
 import time
 
+from pydantic import BaseModel
+
 from mcp_agent.app import MCPApp
 from mcp_agent.config import (
     GoogleSettings,
@@ -11,6 +13,13 @@ from mcp_agent.config import (
 )
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_google import GoogleAugmentedLLM
+
+
+class Essay(BaseModel):
+    title: str
+    body: str
+    conclusion: str
+
 
 settings = Settings(
     execution_engine="asyncio",
@@ -62,6 +71,12 @@ async def example_usage():
                 message="Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
             )
             logger.info(f"First 2 paragraphs of Model Context Protocol docs: {result}")
+
+            result = await llm.generate_structured(
+                message="Create a short essay using the first 2 paragraphs.",
+                response_model=Essay,
+            )
+            logger.info(f"Structured paragraphs: {result}")
 
 
 if __name__ == "__main__":
