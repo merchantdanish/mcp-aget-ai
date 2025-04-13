@@ -437,7 +437,7 @@ class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ResponseMessage
             )
         else:
             raise ValueError(
-                f"Unexpected role: {param.role}, MCP only supports 'assistant', 'user', 'tool', 'system', 'developer'"
+                f"Unexpected role: {param.role}, Azure only supports 'assistant', 'user', 'tool', 'system', 'developer'"
             )
 
 
