@@ -266,9 +266,10 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         )
         request_params.metadata = metadata
 
-        structured_response = await self.generate_str(
-            message=message, request_params=request_params
-        )
+        response = await self.generate(message=message, request_params=request_params)
+        json_data = json.loads(response[-1].content)
+
+        structured_response = response_model.model_validate(json_data)
         return structured_response
 
     @classmethod
