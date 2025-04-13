@@ -397,15 +397,22 @@ class GoogleMCPTypeConverter(ProviderToMCPConverter[types.Content, types.Content
         return function_response_content
 
 
-def transform_mcp_tool_schema(cls, schema: dict) -> dict:
+def transform_mcp_tool_schema(schema: dict) -> dict:
     """Transform JSON Schema to OpenAPI Schema format compatible with Gemini.
 
     Key transformations:
-    1. Convert camelCase properties to snake_case (e.g., anyOf -> any_of)
+    1. Convert camelCase properties to snake_case (e.g., maxLength -> max_length)
     2. Remove explicitly excluded fields (e.g., "default")
     3. Recursively process nested structures (properties, items, anyOf)
     4. Handle nullable types by setting nullable=true when anyOf includes type:"null"
     5. Remove unsupported format values based on data type
+    6. For anyOf fields, only the first non-null type is used (true union types not supported)
+    7. Preserve unsupported keywords by adding them to the description field
+
+    Notes:
+    - This implementation only supports nullable types (Type | None) for anyOf fields
+    - True union types (e.g., str | int) are not supported - only the first non-null type is used
+    - Unsupported fields are preserved in the description to ensure the LLM understands all constraints
 
     Args:
         schema: A JSON Schema dictionary
@@ -419,6 +426,7 @@ def transform_mcp_tool_schema(cls, schema: dict) -> dict:
     supported_schema_props = set(types.Schema.model_fields.keys())
 
     # Properties to exclude even if they would otherwise be supported
+    # 'default' is excluded because Google throws error if included.
     EXCLUDED_PROPERTIES = {"default"}
 
     # Special case mappings for camelCase to snake_case conversions
@@ -444,10 +452,12 @@ def transform_mcp_tool_schema(cls, schema: dict) -> dict:
         return schema
 
     result = {}
+    unsupported_keywords = []
 
     for key, value in schema.items():
-        # Skip excluded properties
+        # Add excluded properties to unsupported keywords
         if key in EXCLUDED_PROPERTIES:
+            unsupported_keywords.append(f"{key}: {value}")
             continue
 
         # Handle format field based on data type
@@ -455,7 +465,8 @@ def transform_mcp_tool_schema(cls, schema: dict) -> dict:
             schema_type = schema.get("type", "").lower()
             if schema_type in SUPPORTED_FORMATS:
                 if value not in SUPPORTED_FORMATS[schema_type]:
-                    # Skip unsupported format for this data type
+                    # Add unsupported format to unsupported keywords list
+                    unsupported_keywords.append(f"{key}: {value}")
                     continue
 
         # Apply special case mappings if available
@@ -465,40 +476,62 @@ def transform_mcp_tool_schema(cls, schema: dict) -> dict:
             # Standard camelCase to snake_case conversion
             snake_key = "".join("_" + c.lower() if c.isupper() else c for c in key)
 
-        # Only proceed if the resulting key is supported
+        # If key is not supported in Gemini schema, add to unsupported_keywords
         if snake_key not in supported_schema_props:
+            unsupported_keywords.append(f"{key}: {value}")
             continue
 
         # Handle nested structures that need recursive processing
         if key == "properties" and isinstance(value, dict):
             # For properties, process each property's schema
             result[snake_key] = {
-                prop_k: cls._transform_schema(prop_v)
+                prop_k: transform_mcp_tool_schema(prop_v)
                 for prop_k, prop_v in value.items()
             }
         elif key == "items" and isinstance(value, dict):
             # For items, process the schema
-            result[snake_key] = cls._transform_schema(value)
+            result[snake_key] = transform_mcp_tool_schema(value)
         elif key == "anyOf" and isinstance(value, list):
-            # Create a list for non-null schemas
-            non_null_schemas = []
-            for item in value:
-                if isinstance(item, dict) and item.get("type") == "null":
-                    # Set nullable for null types
-                    result["nullable"] = True
-                else:
-                    # Process and add non-null schemas
-                    transformed_item = (
-                        cls._transform_schema(item) if isinstance(item, dict) else item
-                    )
-                    non_null_schemas.append(transformed_item)
+            # NOTE: This implementation only supports nullable types (Type | None)
+            # True union types (e.g., str | int) are not supported in the OpenAPI Schema
+            # conversion for Gemini. Only the first non-null type will be used.
 
-            # Only add any_of if we have non-null schemas
-            if non_null_schemas:
-                result["any_of"] = non_null_schemas
+            has_null_type = False
+            non_null_schema = None
+
+            # Find if we have a null type and get the first non-null schema
+            for item in value:
+                if isinstance(item, dict):
+                    if item.get("type") == "null":
+                        has_null_type = True
+                    elif non_null_schema is None:
+                        non_null_schema = item
+
+            # Set nullable if we had a null type
+            if has_null_type:
+                result["nullable"] = True
+
+            # If we found a non-null schema, merge it with parent
+            if non_null_schema:
+                # We need to transform the schema to handle nested structures and camelCase conversions
+                transformed_schema = transform_mcp_tool_schema(non_null_schema)
+                # Merge transformed schema with parent (result)
+                for k, v in transformed_schema.items():
+                    if k not in result:  # Don't overwrite existing fields like nullable
+                        result[k] = v
+
+            # We don't add any_of to the result at all
         else:
             # For other properties, use the value as is
             result[snake_key] = value
+
+    # Add unsupported keywords to description
+    if unsupported_keywords:
+        keywords_text = ", ".join(unsupported_keywords)
+        result["description"] = (
+            result.setdefault("description", "")
+            + f". Additional properties: {keywords_text}"
+        )
 
     return result
 
