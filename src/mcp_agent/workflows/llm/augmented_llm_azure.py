@@ -316,7 +316,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         if result.content:
             return ToolMessage(
                 tool_call_id=tool_call_id,
-                content=mcp_content_to_azure_content(result.content),
+                content=mcp_content_to_azure_content([result.content]),
             )
 
         return None
@@ -380,13 +380,13 @@ class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ResponseMessage
         if param.role == "assistant":
             extras = param.model_dump(exclude={"role", "content"})
             return AssistantMessage(
-                content=mcp_content_to_azure_content(param.content),
+                content=mcp_content_to_azure_content([param.content]),
                 **extras,
             )
         elif param.role == "user":
             extras = param.model_dump(exclude={"role", "content"})
             return UserMessage(
-                content=mcp_content_to_azure_content(param.content, str_only=False),
+                content=mcp_content_to_azure_content([param.content], str_only=False),
                 **extras,
             )
         else:
