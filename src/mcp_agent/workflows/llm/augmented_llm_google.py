@@ -125,10 +125,8 @@ class GoogleAugmentedLLM(
                     disable=True
                 ),
                 candidate_count=1,
+                **(params.metadata or {}),
             )
-
-            if params.metadata:
-                inference_config = {**inference_config, **params.metadata}
 
             arguments = {
                 "model": model,
@@ -229,13 +227,28 @@ class GoogleAugmentedLLM(
         response_model: Type[ModelT],
         request_params: RequestParams | None = None,
     ) -> ModelT:
-        request_params = request_params or RequestParams()
-        metadata = request_params.metadata or {}
-        metadata["response_schema"] = response_model
+        import instructor
 
-        structured_response = await self.generate_str(
-            message=message, request_params=request_params
+        response = await self.generate_str(
+            message=message,
+            request_params=request_params,
         )
+
+        client = instructor.from_genai(
+            self.google_client, mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS
+        )
+
+        params = self.get_request_params(request_params)
+        model = await self.select_model(params)
+
+        structured_response = client.chat.completions.create(
+            model=model,
+            response_model=response_model,
+            messages=[
+                {"role": "user", "content": response},
+            ],
+        )
+
         return structured_response
 
     @classmethod
