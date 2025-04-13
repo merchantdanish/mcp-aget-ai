@@ -298,7 +298,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
         try:
             if tool_args_str:
-                tool_args = json.loads(tool_call.function.arguments.replace("'", '"'))
+                tool_args = json.loads(tool_call.function.arguments)
         except json.JSONDecodeError as e:
             return ToolMessage(
                 tool_call_id=tool_call_id,
@@ -317,7 +317,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         if result.content:
             return ToolMessage(
                 tool_call_id=tool_call_id,
-                content=mcp_content_to_azure_content([result.content]),
+                content=mcp_content_to_azure_content(result.content),
             )
 
         return None
