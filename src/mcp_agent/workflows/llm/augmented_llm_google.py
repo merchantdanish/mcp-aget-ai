@@ -1,4 +1,5 @@
 from typing import Type
+import base64
 from google.genai import Client
 from google.genai import types
 from mcp.types import (
@@ -27,8 +28,8 @@ from mcp_agent.workflows.llm.augmented_llm import (
 
 class GoogleAugmentedLLM(
     AugmentedLLM[
-        list[types.Content],
-        list[types.Content],
+        types.Content,
+        types.Content,
     ]
 ):
     """
@@ -149,6 +150,9 @@ class GoogleAugmentedLLM(
 
             self.logger.debug(f"{model} response:", data=response)
 
+            if not response.candidates:
+                break
+
             candidate = response.candidates[0]
 
             response_as_message = self.convert_message_to_message_param(
@@ -156,6 +160,10 @@ class GoogleAugmentedLLM(
             )
 
             messages.append(response_as_message)
+
+            if not candidate.content or not candidate.content.parts:
+                break
+
             responses.append(candidate.content)
 
             function_calls = [
@@ -165,12 +173,6 @@ class GoogleAugmentedLLM(
             ]
 
             if function_calls:
-                function_calls = [
-                    self.execute_tool_call(part.function_call)
-                    for part in candidate.content.parts
-                    if part.function_call
-                ]
-
                 results = await self.executor.execute(*function_calls)
 
                 self.logger.debug(
@@ -178,8 +180,13 @@ class GoogleAugmentedLLM(
                 )
 
                 for result in results:
-                    messages.append(result)
-                    responses.append(result)
+                    if isinstance(result, BaseException):
+                        self.logger.error(
+                            f"Warning: Unexpected error during tool execution: {result}. Continuing.."
+                        )
+                        break
+                    if result is not None:
+                        messages.append(result)
             else:
                 self.logger.debug(
                     f"Iteration {i}: Stopping because finish_reason is '{candidate.finish_reason}'"
@@ -219,7 +226,7 @@ class GoogleAugmentedLLM(
             ]
         )
 
-        return response.text
+        return response.text or ""
 
     async def generate_structured(
         self,
@@ -239,7 +246,7 @@ class GoogleAugmentedLLM(
         )
 
         params = self.get_request_params(request_params)
-        model = await self.select_model(params)
+        model = await self.select_model(params) or "gemini-2.0-flash"
 
         structured_response = client.chat.completions.create(
             model=model,
@@ -252,9 +259,7 @@ class GoogleAugmentedLLM(
         return structured_response
 
     @classmethod
-    def convert_message_to_message_param(
-        cls, message: types.Content, **kwargs
-    ) -> types.Content:
+    def convert_message_to_message_param(cls, message, **kwargs):
         """Convert a response object to an input parameter object to allow LLM calls to be chained."""
         return message
 
@@ -269,6 +274,10 @@ class GoogleAugmentedLLM(
         tool_name = function_call.name
         tool_args = function_call.args
         tool_call_id = function_call.id
+
+        if not tool_name or not tool_call_id:
+            self.logger.error("Missing function call name or function call id.")
+            return None
 
         tool_call_request = CallToolRequest(
             method="tools/call",
@@ -285,14 +294,14 @@ class GoogleAugmentedLLM(
 
         return function_response_content
 
-    def message_param_str(self, message: types.Content) -> str:
+    def message_param_str(self, message) -> str:
         """Convert an input message to a string representation."""
-        # TODO: Jerron - is this sufficient
+        # TODO: Jerron - to make more comprehensive
         return str(message.model_dump())
 
-    def message_str(self, message: types.Content) -> str:
+    def message_str(self, message) -> str:
         """Convert an output message to a string representation."""
-        # TODO: Jerron - is this sufficient
+        # TODO: Jerron - to make more comprehensive
         return str(message.model_dump())
 
 
@@ -315,9 +324,9 @@ class GoogleMCPTypeConverter(ProviderToMCPConverter[types.Content, types.Content
             return types.Content(
                 role="model",
                 parts=[
-                    types.Part.from_uri(
+                    types.Part.from_bytes(
+                        data=base64.b64decode(result.content.data),
                         mime_type=result.content.mimeType,
-                        file_uri=f"data:{result.content.mimeType};base64,{result.content.data}",
                     )
                 ],
             )
@@ -384,7 +393,7 @@ class GoogleMCPTypeConverter(ProviderToMCPConverter[types.Content, types.Content
             )
         else:
             raise ValueError(
-                f"Unexpected role: {param.role}, MCP only supports 'model', 'user', 'tool'"
+                f"Unexpected role: {param.role}, Google only supports 'model', 'user', 'tool'"
             )
 
     @classmethod
@@ -559,9 +568,8 @@ def mcp_content_to_google_parts(
             google_parts.append(types.Part.from_text(text=block.text))
         elif isinstance(block, ImageContent):
             google_parts.append(
-                types.Part.from_uri(
-                    file_uri=f"data:{block.mimeType};base64,{block.data}",
-                    mime_type=block.mimeType,
+                types.Part.from_bytes(
+                    data=base64.b64decode(block.data), mime_type=block.mimeType
                 )
             )
         elif isinstance(block, EmbeddedResource):
@@ -569,8 +577,8 @@ def mcp_content_to_google_parts(
                 google_parts.append(types.Part.from_text(text=block.text))
             else:
                 google_parts.append(
-                    types.Part.from_uri(
-                        file_uri=f"data:{block.resource.mimeType};base64,{block.resource.blob}",
+                    types.Part.from_bytes(
+                        data=base64.b64decode(block.resource.blob),
                         mime_type=block.resource.mimeType,
                     )
                 )
@@ -589,22 +597,24 @@ def google_parts_to_mcp_content(
         if part.text:
             mcp_content.append(TextContent(type="text", text=part.text))
         elif part.file_data:
-            if part.file_data.mime_type.startswith("image/"):
+            if part.file_data.file_uri.startswith(
+                "data:"
+            ) and part.file_data.mime_type.startswith("image/"):
+                _, base64_data = image_url_to_mime_and_base64(part.file_data.file_uri)
                 mcp_content.append(
                     ImageContent(
                         type="image",
                         mimeType=part.file_data.mime_type,
-                        data=part.file_data.data,
+                        data=base64_data,
                     )
                 )
             else:
-                _, base64_data = image_url_to_mime_and_base64(part.file_data.file_uri)
                 mcp_content.append(
                     EmbeddedResource(
-                        type="document",
+                        type="resource",
                         resource=BlobResourceContents(
                             mimeType=part.file_data.mime_type,
-                            blob=base64_data,
+                            uri=part.file_data.file_uri,
                         ),
                     )
                 )
