@@ -100,7 +100,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         if isinstance(message, str):
             messages.append({"role": "user", "content": [{"text": message}]})
         elif isinstance(message, list):
-            message.extend(message)
+            messages.extend(message)
         else:
             messages.append(message)
 
