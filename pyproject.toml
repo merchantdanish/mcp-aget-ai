@@ -15,7 +15,7 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115.6",
-    "instructor>=1.7.7",
+    "instructor>=1.7.9",
     "mcp>=1.6.0",
     "opentelemetry-distro>=0.50b0",
     "opentelemetry-exporter-otlp-proto-http>=1.29.0",
@@ -36,7 +36,6 @@ temporal = [
 ]
 anthropic = [
     "anthropic>=0.48.0",
-    "instructor[anthropic]>=1.7.2",
 ]
 bedrock = [
     "boto3>=1.37.23"
@@ -46,6 +45,9 @@ openai = [
 ]
 azure = [
     "azure-ai-inference>=1.0.0b9",
+]
+google = [
+    "google-genai>=1.10.0",
 ]
 cohere = [
     "cohere>=5.13.4",
