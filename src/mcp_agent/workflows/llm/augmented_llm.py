@@ -137,7 +137,7 @@ class RequestParams(CreateMessageRequestParams):
     """
 
 
-class AugmentedLLMProtocol(Protocol, Generic[MessageParamT, MessageT]):
+class AugmentedLLMProtocol(Protocol, Generic[MessageParamT, MessageT, ResponseT]):
     """Protocol defining the interface for augmented LLMs"""
 
     async def generate(
@@ -190,9 +190,7 @@ class ProviderToMCPConverter(Protocol, Generic[MessageParamT, MessageT]):
 
 
 class AugmentedLLM(
-    ContextDependent,
-    AugmentedLLMProtocol[MessageParamT, MessageT],
-    Generic[MessageParamT, MessageT, ResponseT],
+    ContextDependent, AugmentedLLMProtocol[MessageParamT, MessageT, ResponseT]
 ):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
