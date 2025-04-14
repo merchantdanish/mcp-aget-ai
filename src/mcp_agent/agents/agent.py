@@ -173,7 +173,11 @@ class Agent(MCPAggregator):
             Tool(
                 name=HUMAN_INPUT_TOOL_NAME,
                 description=human_input_tool.description,
-                inputSchema=human_input_tool.parameters,
+                inputSchema={
+                    "type": "object",
+                    "properties": {"request": HumanInputRequest.model_json_schema()},
+                    "required": ["request"],
+                },
             )
         )
 
