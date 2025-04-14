@@ -55,7 +55,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
             intelligencePriority=0.3,
         )
         # Get default model from config if available
-        default_model = "amazon.nova-lite-v1:0"  # Fallback default
+        default_model = "us.amazon.nova-lite-v1:0"  # Fallback default
 
         if self.context.config.bedrock:
             if hasattr(self.context.config.bedrock, "default_model"):
@@ -296,7 +296,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         client = instructor.from_bedrock(self.bedrock_client)
 
         params = self.get_request_params(request_params)
-        model = await self.select_model(params)
+        model = await self.select_model(params) or "us.amazon.nova-lite-v1:0"
 
         # Extract structured data from natural language
         structured_response = client.chat.completions.create(
