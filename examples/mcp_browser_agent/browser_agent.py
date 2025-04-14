@@ -140,7 +140,7 @@ def print_banner():
 def print_welcome():
     print_banner()
     print(f"\n{BOLD}Welcome to Browser Console Agent{RESET}")
-    print(f"Interact with websites using natural language in your terminal.\n")
+    print("Interact with websites using natural language in your terminal.\n")
     print(f"{SYSTEM_COLOR}You can type a {BOLD}number{RESET}{SYSTEM_COLOR} to select from suggested actions or type your own queries.{RESET}")
     print(f"{SYSTEM_COLOR}Type {BOLD}'exit'{RESET}{SYSTEM_COLOR} or {BOLD}'quit'{RESET}{SYSTEM_COLOR} to end the session.{RESET}\n")
 
