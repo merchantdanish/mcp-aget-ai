@@ -15,6 +15,9 @@ from mcp_agent.core.prompt import Prompt
 @pytest.mark.parametrize(
     "model_name",
     [
+        "gpt-4.1",
+        "gpt-4.1-nano",
+        "gpt-4.1-mini",
         "gpt-4o-mini",  # OpenAI model
         "haiku35",  # Anthropic model
         "deepseek",
@@ -88,6 +91,9 @@ class WeatherForecast(BaseModel):
     [
         "gpt-4o",  # OpenAI model
         "o3-mini.low",  # reasoning
+        "gpt-4.1",
+        "gpt-4.1-nano",
+        "gpt-4.1-mini",
     ],
 )
 async def test_structured_weather_forecast_openai_structured_api(fast_agent, model_name):
@@ -291,7 +297,14 @@ async def test_generic_model_textual_prompting(fast_agent, model_name):
 @pytest.mark.e2e
 @pytest.mark.parametrize(
     "model_name",
-    ["deepseek", "haiku35", "gpt-4o"],
+    [
+        "deepseek",
+        "haiku35",
+        "gpt-4o",
+        "gpt-4.1",
+        "gpt-4.1-nano",
+        "gpt-4.1-mini",
+    ],
 )
 async def test_basic_tool_calling(fast_agent, model_name):
     """Test that the agent can generate structured weather forecast data."""
