@@ -104,9 +104,15 @@ class OpenAIAugmentedLLM(
             refusal=message.refusal,
             **kwargs,
         )
-
-    async def create_response(self, **kwargs) -> ChatCompletion:
-        response = await self.openai_client.chat.completions.create(**kwargs)
+    
+    @staticmethod
+    async def create_response(params) -> ChatCompletion:
+        openai_client = OpenAI(
+            api_key=params["context"]["api_key"],
+            base_url=params["context"]["base_url"],
+        )
+        del params["context"]
+        response = openai_client.chat.completions.create(**params)
         return response
 
     async def generate(self, message, request_params: RequestParams | None = None):
@@ -180,10 +186,12 @@ class OpenAIAugmentedLLM(
             self._log_chat_progress(chat_turn=len(messages) // 2, model=model)
 
             executor_result = await self.executor.execute(
-                self.create_response, **arguments
+                self.create_response, context=self.context.config.openai, **arguments
             )
 
             response = executor_result[0]
+            
+            response = ChatCompletion.model_validate(response)
 
             self.logger.debug(
                 "OpenAI ChatCompletion response:",

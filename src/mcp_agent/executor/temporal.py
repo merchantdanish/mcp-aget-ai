@@ -296,18 +296,10 @@ class TemporalExecutor(Executor):
 
         retry_policy = execution_metadata.get("retry_policy", None)
 
-        _task_activity = self.wrap_as_activity(
-            activity_name=activity_name,
-            func=task,
-        )
-
-        # # For partials, we pass the partial's arguments
-        # args = task.args if isinstance(task, functools.partial) else ()
-        # TODO: Jerron - Currently facing issue where kwargs is passed to self.
         try:
-            result = await workflow.execute_activity_method(
-                _task_activity,
-                kwargs,
+            result = await workflow.execute_activity(
+                activity_name,
+                arg=kwargs,
                 task_queue=self.config.task_queue,
                 schedule_to_close_timeout=timedelta(seconds=schedule_to_close),
                 retry_policy=retry_policy,
@@ -409,6 +401,14 @@ class TemporalExecutor(Executor):
                 "activity_create_response",
                 self.wrap_as_activity(
                     "activity_create_response", OpenAIAugmentedLLM.create_response
+                ),
+            )
+
+            # Register tool execution activity
+            self.context.task_registry.register(
+                "activity_execute_tool_call",
+                self.wrap_as_activity(
+                    "activity_execute_tool_call", OpenAIAugmentedLLM.execute_tool_call
                 ),
             )
 
