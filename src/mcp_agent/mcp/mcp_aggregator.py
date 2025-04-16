@@ -434,33 +434,15 @@ class MCPAggregator(ContextDependent):
         server_name: str = None
         local_tool_name: str = None
 
-        if SEP in name:  # Namespaced tool name
-            parts = name.split(SEP)
+        # Use the helper method to parse the capability name
+        server_name, local_tool_name = self._parse_capability_name(name, "tool")
 
-            for i in range(len(parts) - 1, 0, -1):
-                potential_server_name = SEP.join(parts[:i])
-                if potential_server_name in self.server_names:
-                    server_name = potential_server_name
-                    local_tool_name = SEP.join(parts[i:])
-                    break
-
-            if server_name is None:
-                server_name, local_tool_name = name.split(SEP, 1)
-        else:
-            # Assume un-namespaced, loop through all servers to find the tool. First match wins.
-            for _, tools in self._server_to_tool_map.items():
-                for namespaced_tool in tools:
-                    if namespaced_tool.tool.name == name:
-                        server_name = namespaced_tool.server_name
-                        local_tool_name = name
-                        break
-
-            if server_name is None or local_tool_name is None:
-                logger.error(f"Error: Tool '{name}' not found")
-                return CallToolResult(
-                    isError=True,
-                    content=[TextContent(type="text", text=f"Tool '{name}' not found")],
-                )
+        if server_name is None or local_tool_name is None:
+            logger.error(f"Error: Tool '{name}' not found")
+            return CallToolResult(
+                isError=True,
+                content=[TextContent(type="text", text=f"Tool '{name}' not found")],
+            )
 
         logger.info(
             "Requesting tool call",
@@ -634,51 +616,47 @@ class MCPAggregator(ContextDependent):
         self, name: str, capability: Literal["tool", "prompt"]
     ) -> tuple[str, str]:
         """
-        Parse a possibly namespaced capability name into server name and local capability name.
-        Examples of capabilities include tools and prompts.
+        Parse a capability name into server name and local capability name.
 
         Args:
             name: The tool or prompt name, possibly namespaced
-            capability: The type of capability, such as 'tool' or 'prompt'
+            capability: The type of capability, either 'tool' or 'prompt'
 
         Returns:
             Tuple of (server_name, local_name)
         """
-        server_name = None
-        local_name = None
-
-        if SEP in name:  # Namespaced capability name
+        # First check if this is a namespaced name with a valid server prefix
+        if SEP in name:
             parts = name.split(SEP)
+
+            # Try matching from longest possible prefix to shortest
             for i in range(len(parts) - 1, 0, -1):
-                potential_server_name = SEP.join(parts[:i])
-                if potential_server_name in self.server_names:
-                    server_name = potential_server_name
-                    local_name = SEP.join(parts[i:])
-                    break
+                prefix = SEP.join(parts[:i])
+                if prefix in self.server_names:
+                    return prefix, SEP.join(parts[i:])
 
-            if server_name is None:
-                server_name, local_name = name.split(SEP, 1)
+        # If no server name prefix is found, search all servers for a capability with this exact name
+        if capability == "tool":
+            capability_map = self._server_to_tool_map
+
+            def getter(item: NamespacedTool):
+                return item.tool.name
+        elif capability == "prompt":
+            capability_map = self._server_to_prompt_map
+
+            def getter(item: NamespacedPrompt):
+                return item.prompt.name
         else:
-            if capability == "tool":
-                # Assume un-namespaced, loop through all servers to find the tool. First match wins.
-                for _, tools in self._server_to_tool_map.items():
-                    for namespaced_tool in tools:
-                        if namespaced_tool.tool.name == name:
-                            server_name = namespaced_tool.server_name
-                            local_name = name
-                            break
-            elif capability == "prompt":
-                # Assume un-namespaced, loop through all servers to find the prompt. First match wins.
-                for _, prompts in self._server_to_prompt_map.items():
-                    for namespaced_prompt in prompts:
-                        if namespaced_prompt.prompt.name == name:
-                            server_name = namespaced_prompt.server_name
-                            local_name = name
-                            break
-            else:
-                raise ValueError(f"Unsupported capability: {capability}")
+            raise ValueError(f"Unsupported capability: {capability}")
 
-        return server_name, local_name
+        # Search across all servers
+        for srv_name, items in capability_map.items():
+            for item in items:
+                if getter(item) == name:
+                    return srv_name, name
+
+        # No match found
+        return None, None
 
     async def _start_server(self, server_name: str):
         if self.connection_persistence:
