@@ -39,7 +39,7 @@ async def example_usage_persistent():
         # Call fetch.fetch on the aggregator
         # (i.e. server-namespacing -- fetch is the servername, which exposes fetch tool)
         result = await aggregator.call_tool(
-            name="fetch-fetch",
+            name="fetch_fetch",
             arguments={"url": "https://jsonplaceholder.typicode.com/todos/1"},
         )
         logger.info("fetch result:", data=result)
@@ -80,7 +80,7 @@ async def example_usage():
         # Call fetch.fetch on the aggregator
         # (i.e. server-namespacing -- fetch is the servername, which exposes fetch tool)
         result = await aggregator.call_tool(
-            name="fetch-fetch",
+            name="fetch_fetch",
             arguments={"url": "https://jsonplaceholder.typicode.com/todos/1"},
         )
         logger.info(f"fetch result: {str(result)}")
