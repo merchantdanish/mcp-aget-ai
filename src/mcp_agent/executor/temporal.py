@@ -225,7 +225,7 @@ class TemporalExecutor(Executor):
         async def wrapped_activity(*args, **local_kwargs):
             try:
                 if asyncio.iscoroutinefunction(func):
-                    return await func(*args, **local_kwargs)
+                    return await func(**args[0])
                 elif asyncio.iscoroutine(func):
                     return await func
                 else:
@@ -282,6 +282,14 @@ class TemporalExecutor(Executor):
         #         self._execute_task_as_async(task, **kwargs)
         #     )
 
+        # Handle partial functions by combining their kwargs with the ones passed to execute
+        task_kwargs = {}
+        if isinstance(task, functools.partial):
+            task_kwargs = task.keywords
+        
+        # Combine kwargs
+        combined_kwargs = {**task_kwargs, **kwargs}
+
         execution_metadata: Dict[str, Any] = getattr(func, "execution_metadata", {})
 
         # Derive stable activity name, e.g. module + qualname
@@ -297,9 +305,9 @@ class TemporalExecutor(Executor):
         retry_policy = execution_metadata.get("retry_policy", None)
 
         try:
-            result = await workflow.execute_activity(
+            result = await workflow.execute_activity_method(
                 activity_name,
-                arg=kwargs,
+                arg=combined_kwargs,  # Use combined kwargs
                 task_queue=self.config.task_queue,
                 schedule_to_close_timeout=timedelta(seconds=schedule_to_close),
                 retry_policy=retry_policy,
@@ -400,7 +408,7 @@ class TemporalExecutor(Executor):
             self.context.task_registry.register(
                 "activity_create_response",
                 self.wrap_as_activity(
-                    "activity_create_response", OpenAIAugmentedLLM.create_response
+                    "activity_create_response", OpenAIAugmentedLLM().create_response
                 ),
             )
 
@@ -408,7 +416,7 @@ class TemporalExecutor(Executor):
             self.context.task_registry.register(
                 "activity_execute_tool_call",
                 self.wrap_as_activity(
-                    "activity_execute_tool_call", OpenAIAugmentedLLM.execute_tool_call
+                    "activity_execute_tool_call", OpenAIAugmentedLLM().execute_tool_call
                 ),
             )
 

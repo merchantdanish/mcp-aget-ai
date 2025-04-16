@@ -1,5 +1,6 @@
 import json
 import re
+import functools
 from typing import Iterable, List, Type
 
 from openai import OpenAI
@@ -105,14 +106,8 @@ class OpenAIAugmentedLLM(
             **kwargs,
         )
     
-    @staticmethod
-    async def create_response(params) -> ChatCompletion:
-        openai_client = OpenAI(
-            api_key=params["context"]["api_key"],
-            base_url=params["context"]["base_url"],
-        )
-        del params["context"]
-        response = openai_client.chat.completions.create(**params)
+    async def create_response(self, **kwargs) -> ChatCompletion:
+        response = self.openai_client.chat.completions.create(**kwargs)
         return response
 
     async def generate(self, message, request_params: RequestParams | None = None):
@@ -186,7 +181,7 @@ class OpenAIAugmentedLLM(
             self._log_chat_progress(chat_turn=len(messages) // 2, model=model)
 
             executor_result = await self.executor.execute(
-                self.create_response, context=self.context.config.openai, **arguments
+                self.create_response, **arguments
             )
 
             response = executor_result[0]
@@ -228,9 +223,9 @@ class OpenAIAugmentedLLM(
                 choice.finish_reason in ["tool_calls", "function_call"]
                 and message.tool_calls
             ):
-                # Execute all tool calls in parallel.
+                # Execute all tool calls in parallel using functools.partial to bind arguments
                 tool_tasks = [
-                    self.execute_tool_call(tool_call)
+                    functools.partial(self.execute_tool_call, tool_call=tool_call)
                     for tool_call in message.tool_calls
                 ]
                 # Wait for all tool calls to complete.
@@ -358,9 +353,9 @@ class OpenAIAugmentedLLM(
         Execute a single tool call and return the result message.
         Returns None if there's no content to add to messages.
         """
-        tool_name = tool_call.function.name
-        tool_args_str = tool_call.function.arguments
-        tool_call_id = tool_call.id
+        tool_name = tool_call["function"]["name"]
+        tool_args_str = tool_call["function"]["arguments"]
+        tool_call_id = tool_call["id"]
         tool_args = {}
 
         try:
