@@ -11,7 +11,7 @@ import logging
 
 # Import Temporal libraries
 from mcp_agent.executor.temporal import TemporalExecutor
-from main import app
+from main import app, llm
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -25,7 +25,7 @@ async def main():
     # Initialize the app to set up the context and executor
     async with app.run() as running_app:
         executor: TemporalExecutor = running_app.executor
-        await executor.start_worker()
+        await executor.start_worker(agents=[llm])
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ from temporalio import activity, workflow, exceptions
 from temporalio.client import Client as TemporalClient
 from temporalio.worker import Worker
 
+from mcp_agent.agents.agent import LLM
 from mcp_agent.config import TemporalSettings
 from mcp_agent.executor.executor import Executor, ExecutorConfig, R
 from mcp_agent.executor.workflow_signal import (
@@ -34,6 +35,7 @@ from mcp_agent.executor.workflow_signal import (
     SignalRegistration,
     SignalValueT,
 )
+from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 if TYPE_CHECKING:
@@ -295,8 +297,22 @@ class TemporalExecutor(Executor):
         # Derive stable activity name, e.g. module + qualname
         activity_name = execution_metadata.get("activity_name")
         if not activity_name:
-            # Follow same naming convention as the activity we pass to worker
-            activity_name = f"activity_{func.__name__}"
+            # Check if this is an LLM method
+            if func.__name__ in ["create_response", "execute_tool_call"]:
+                # Try to get the agent name from the LLM instance
+                agent_name = None
+                if hasattr(task, "__self__") and hasattr(task.__self__, "name"):
+                    agent_name = task.__self__.name
+                
+                if agent_name:
+                    # Use agent-specific activity name
+                    activity_name = f"activity_{agent_name}_{func.__name__}"
+                else:
+                    # Follow same naming convention as the activity we pass to worker
+                    activity_name = f"activity_{func.__name__}"
+            else:
+                # Follow same naming convention as the activity we pass to worker
+                activity_name = f"activity_{func.__name__}"
 
         schedule_to_close = execution_metadata.get(
             "schedule_to_close_timeout", self.config.timeout_seconds
@@ -392,10 +408,14 @@ class TemporalExecutor(Executor):
         )
         return handle
 
-    async def start_worker(self):
+    async def start_worker(self, agents: list[AugmentedLLM]=[]):
         """
         Start a worker in this process, auto-registering all tasks
         from the global registry and all workflows registered with the executor.
+        
+        Args:
+            agents: Optional dictionary mapping agent names to their attached LLM instances.
+                   These will be used to register agent-specific activities.
         """
         await self.ensure_client()
 
@@ -403,22 +423,26 @@ class TemporalExecutor(Executor):
             # Collect activities from the global registry
             activity_registry = self.context.task_registry
             activities = []
-
-            # create essential activities
-            self.context.task_registry.register(
-                "activity_create_response",
-                self.wrap_as_activity(
-                    "activity_create_response", OpenAIAugmentedLLM().create_response
-                ),
-            )
-
-            # Register tool execution activity
-            self.context.task_registry.register(
-                "activity_execute_tool_call",
-                self.wrap_as_activity(
-                    "activity_execute_tool_call", OpenAIAugmentedLLM().execute_tool_call
-                ),
-            )
+                        
+            # Register activities for each agent's LLM
+            for agent in agents:
+                    # Register create_response activity for this agent
+                    self.context.task_registry.register(
+                        f"activity_{agent.name}_create_response",
+                        self.wrap_as_activity(
+                            f"activity_{agent.name}_create_response", 
+                            agent.create_response
+                        ),
+                    )
+                    
+                    # Register execute_tool_call activity for this agent
+                    self.context.task_registry.register(
+                        f"activity_{agent.name}_execute_tool_call",
+                        self.wrap_as_activity(
+                            f"activity_{agent.name}_execute_tool_call", 
+                            agent.execute_tool_call
+                        ),
+                    )
 
             for name in activity_registry.list_activities():
                 activities.append(activity_registry.get_activity(name))

@@ -232,6 +232,14 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
         self.model_selector = self.context.model_selector
         self.type_converter = type_converter
+    
+    @abstractmethod
+    async def create_response(self, params: dict):
+        "Create a response from the LLM"
+    
+    @abstractmethod
+    async def execute_tool_call(self, params: dict):
+        "Execute a single tool call and return the result message."
 
     @abstractmethod
     async def generate(

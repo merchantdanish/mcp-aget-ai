@@ -20,6 +20,12 @@ logger = logging.getLogger(__name__)
 # Create the app with Temporal as the execution engine
 app = MCPApp(name="temporal_workflow_example")
 
+finder_agent = Agent(
+    name="finder",
+    instruction="""You are a helpful assistant.""",
+    server_names=["fetch"],
+)
+llm = finder_agent.attach_llm(OpenAIAugmentedLLM)
 
 @app.workflow
 class SimpleWorkflow(Workflow[str]):
@@ -38,18 +44,11 @@ class SimpleWorkflow(Workflow[str]):
         Returns:
             A WorkflowResult containing the processed data
         """
-        finder_agent = Agent(
-            name="finder",
-            instruction="""You are a helpful assistant.""",
-            server_names=[],
-        )
 
-        async with finder_agent:
-            llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
-            result = await llm.generate_str(
-                message="Hello, how are you?",
-            )
-            return WorkflowResult(value=result)
+        result = await llm.generate_str(
+            message="Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+        )
+        return WorkflowResult(value=result)
 
         # logger.info(f"Running SimpleWorkflow with input: {input_data}")
 

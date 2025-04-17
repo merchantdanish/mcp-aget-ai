@@ -84,7 +84,7 @@ class Agent(MCPAggregator):
             tool: FastTool = FastTool.from_function(function)
             self._function_tool_map[tool.name] = tool
 
-    async def attach_llm(
+    def attach_llm(
         self, llm_factory: Callable[..., LLM] | None = None, llm: LLM | None = None
     ) -> LLM:
         """
