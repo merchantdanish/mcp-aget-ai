@@ -69,7 +69,7 @@ class OpenAIAugmentedLLM(
                 self._reasoning_effort = self.context.config.openai.reasoning_effort
 
         # o1 does not have tool support
-        self._reasoning = chosen_model.startswith("o3")
+        self._reasoning = chosen_model.startswith(("o3", "o4"))
         if self._reasoning:
             self.logger.info(
                 f"Using reasoning model '{chosen_model}' with '{self._reasoning_effort}' reasoning effort"
