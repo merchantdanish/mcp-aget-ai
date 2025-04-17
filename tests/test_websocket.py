@@ -2,7 +2,7 @@ import pytest
 import json
 from contextlib import asynccontextmanager
 from typing import List
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, MagicMock
 
 import mcp.types as types
 from mcp_agent.mcp.websocket import websocket_client
@@ -37,10 +37,14 @@ class MockWebSocket:
 @asynccontextmanager
 async def mock_ws_connect(*args, **kwargs):
     """Mock the websockets.connect function."""
-    mock_ws = MockWebSocket([
-        json.dumps({"jsonrpc": "2.0", "method": "initialize", "id": 1}),
-        json.dumps({"jsonrpc": "2.0", "result": {"protocolVersion": "2023-12-07"}, "id": 1})
-    ])
+    mock_ws = MockWebSocket(
+        [
+            json.dumps({"jsonrpc": "2.0", "method": "initialize", "id": 1}),
+            json.dumps(
+                {"jsonrpc": "2.0", "result": {"protocolVersion": "2023-12-07"}, "id": 1}
+            ),
+        ]
+    )
     yield mock_ws
 
 
@@ -49,7 +53,10 @@ async def test_websocket_client():
     """Test that websocket_client correctly handles JSON-RPC messages."""
 
     with patch("mcp_agent.mcp.websocket.ws_connect", new=mock_ws_connect):
-        async with websocket_client("ws://localhost:8000") as (read_stream, write_stream):
+        async with websocket_client("ws://localhost:8000") as (
+            read_stream,
+            write_stream,
+        ):
             # Test receiving a message
             message = await read_stream.receive()
             assert isinstance(message, types.JSONRPCMessage)
@@ -57,9 +64,7 @@ async def test_websocket_client():
 
             # Test sending a message
             response = types.JSONRPCMessage(
-                jsonrpc="2.0",
-                result={"message": "Hello World"},
-                id=1
+                jsonrpc="2.0", result={"message": "Hello World"}, id=1
             )
             await write_stream.send(response)
 
@@ -73,9 +78,14 @@ async def test_websocket_client():
 async def test_websocket_client_with_headers():
     """Test that websocket_client correctly handles headers."""
 
-    with patch("mcp_agent.mcp.websocket.ws_connect", side_effect=mock_ws_connect) as mock_connect:
+    with patch(
+        "mcp_agent.mcp.websocket.ws_connect", side_effect=mock_ws_connect
+    ) as mock_connect:
         headers = {"Authorization": "Bearer test-api-key"}
-        async with websocket_client("ws://localhost:8000", headers=headers) as (read_stream, write_stream):
+        async with websocket_client("ws://localhost:8000", headers=headers) as (
+            read_stream,
+            write_stream,
+        ):
             # Verify that ws_connect was called with the correct headers
             mock_connect.assert_called_once()
             _, kwargs = mock_connect.call_args
@@ -91,27 +101,27 @@ async def test_transport_factory_websocket():
 
     # Create a configuration with websocket transport
     config = MCPServerSettings(
-        name="test-server",
-        transport="websocket",
-        url="ws://localhost:8000"
+        name="test-server", transport="websocket", url="ws://localhost:8000"
     )
 
     # Create a mock registry
     mock_registry = MagicMock()
-    mock_registry.registry = {
-        "test-server": config
-    }
+    mock_registry.registry = {"test-server": config}
 
     # Create a connection manager with the mock registry
     connection_manager = MCPConnectionManager(mock_registry)
 
     # Create a spy for the websocket_client function
-    with patch("mcp_agent.mcp.mcp_connection_manager.websocket_client") as mock_websocket:
+    with patch(
+        "mcp_agent.mcp.mcp_connection_manager.websocket_client"
+    ) as mock_websocket:
         # Mock task group to avoid actually running the server
         with patch.object(connection_manager, "_tg", new=MagicMock()):
             with patch.object(connection_manager, "running_servers", new={}):
                 # Launch the server
-                server_conn = await connection_manager.launch_server("test-server", MagicMock())
+                server_conn = await connection_manager.launch_server(
+                    "test-server", MagicMock()
+                )
 
                 # Directly call the transport_context_factory to check if it's correctly configured
                 server_conn._transport_context_factory()

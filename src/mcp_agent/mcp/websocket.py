@@ -57,7 +57,9 @@ async def websocket_client(
 
     try:
         # Connect using websockets, requesting the "mcp" subprotocol
-        async with ws_connect(url, subprotocols=[Subprotocol("mcp")], additional_headers=headers) as ws:
+        async with ws_connect(
+            url, subprotocols=[Subprotocol("mcp")], additional_headers=headers
+        ) as ws:
             logger.debug(f"WebSocket connection established to {url}")
 
             async def ws_reader():
@@ -69,11 +71,15 @@ async def websocket_client(
                     async with read_stream_writer:
                         async for raw_text in ws:
                             try:
-                                message = types.JSONRPCMessage.model_validate_json(raw_text)
+                                message = types.JSONRPCMessage.model_validate_json(
+                                    raw_text
+                                )
                                 await read_stream_writer.send(message)
                             except ValidationError as exc:
                                 # If JSON parse or model validation fails, send the exception
-                                logger.warning(f"Failed to parse WebSocket message: {exc}")
+                                logger.warning(
+                                    f"Failed to parse WebSocket message: {exc}"
+                                )
                                 await read_stream_writer.send(exc)
                 except anyio.ClosedResourceError:
                     await anyio.lowlevel.checkpoint()
