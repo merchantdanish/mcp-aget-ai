@@ -1,5 +1,8 @@
+import argparse
 import asyncio
 import time
+
+from rich import print
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
@@ -11,7 +14,7 @@ from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 app = MCPApp(name="mcp_websockets")  # settings=settings)
 
 
-async def example_usage():
+async def example_usage(username: str):
     async with app.run() as agent_app:
         logger = agent_app.logger
         context = agent_app.context
@@ -32,15 +35,20 @@ async def example_usage():
             logger.info("Tools available:", data=result.model_dump())
 
             llm = await agent.attach_llm(OpenAIAugmentedLLM)
-            result = await llm.generate(
-                message="List all Github repositories for the user",
+            result = await llm.generate_str(
+                message=f"List all public Github repositories created by the user {username}.",
             )
-            logger.info(f"Github repositories: {result}")
+            print(f"Github repositories: {result}")
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("username", help="GitHub username to fetch repositories for")
+
+    args = parser.parse_args()
+
     start = time.time()
-    asyncio.run(example_usage())
+    asyncio.run(example_usage(args.username))
     end = time.time()
     t = end - start
 
