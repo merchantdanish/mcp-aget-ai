@@ -1,0 +1,10 @@
+{
+  "agent": "mcp_basic_azure_agent",
+  "response_times": [
+    0.5436026296868308,
+    1.2198770819937836,
+    1.9660541971060184
+  ],
+  "success_rate": 89.54369185707844,
+  "avg_response_time": 1.2431779695955443
+}

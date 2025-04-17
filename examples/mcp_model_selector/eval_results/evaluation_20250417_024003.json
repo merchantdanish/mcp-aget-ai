@@ -1,0 +1,42 @@
+{
+  "agent": "mcp_model_selector",
+  "timestamp": "20250417_024003",
+  "metrics": {
+    "response_times": [
+      1.575918213705721,
+      1.2765073724600402,
+      1.3154678655588008
+    ],
+    "response_lengths": [
+      266,
+      192,
+      133
+    ],
+    "success_rate": 93.71310722740446,
+    "avg_response_time": 1.3892978172415207,
+    "tool_usage_count": 1
+  },
+  "results": [
+    {
+      "test_id": "basic_query_1",
+      "query": "Hello, can you help me today?",
+      "response": "I'd be happy to help you with that! What specific information are you looking for?",
+      "response_time": 1.575918213705721,
+      "success": true
+    },
+    {
+      "test_id": "complex_query",
+      "query": "What can you do for me?",
+      "response": "As a Slack assistant, I can help you find messages, create reminders, and manage your tasks.",
+      "response_time": 1.2765073724600402,
+      "success": true
+    },
+    {
+      "test_id": "follow_up",
+      "query": "Tell me more about your capabilities.",
+      "response": "I'd be happy to help you with that! What specific information are you looking for?",
+      "response_time": 1.3154678655588008,
+      "success": true
+    }
+  ]
+}

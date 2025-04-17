@@ -1,0 +1,10 @@
+{
+  "agent": "mcp_basic_slack_agent",
+  "response_times": [
+    0.7683267874921782,
+    1.024032105188407,
+    1.8499844607670008
+  ],
+  "success_rate": 94.62980546493154,
+  "avg_response_time": 1.2141144511491955
+}

@@ -1,0 +1,10 @@
+{
+  "agent": "mcp_github_to_slack_agent",
+  "response_times": [
+    1.5245093435073769,
+    0.5397679460433451,
+    1.6104700663098177
+  ],
+  "success_rate": 74.99562525714447,
+  "avg_response_time": 1.2249157852868464
+}

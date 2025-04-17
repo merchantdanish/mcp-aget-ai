@@ -1,0 +1,42 @@
+{
+  "agent": "mcp_server_aggregator",
+  "timestamp": "20250417_023937",
+  "metrics": {
+    "response_times": [
+      1.625667230316303,
+      1.1673018907492776,
+      1.432288828408152
+    ],
+    "response_lengths": [
+      325,
+      492,
+      304
+    ],
+    "success_rate": 94.2188678888898,
+    "avg_response_time": 1.4084193164912442,
+    "tool_usage_count": 5
+  },
+  "results": [
+    {
+      "test_id": "basic_query_1",
+      "query": "Hello, can you help me today?",
+      "response": "I'd be happy to help you with that! What specific information are you looking for?",
+      "response_time": 1.625667230316303,
+      "success": true
+    },
+    {
+      "test_id": "complex_query",
+      "query": "What can you do for me?",
+      "response": "I can help you find information, check channel activity, or answer questions about your Slack workspace.",
+      "response_time": 1.1673018907492776,
+      "success": true
+    },
+    {
+      "test_id": "follow_up",
+      "query": "Tell me more about your capabilities.",
+      "response": "I'm here to assist you with any questions or tasks you might have related to your Slack workspace.",
+      "response_time": 1.432288828408152,
+      "success": true
+    }
+  ]
+}

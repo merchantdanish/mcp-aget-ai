@@ -1,0 +1,42 @@
+{
+  "agent": "mcp_basic_agent",
+  "timestamp": "20250417_024238",
+  "metrics": {
+    "response_times": [
+      1.8141024119552254,
+      1.9546432934666242,
+      0.9135951435479985
+    ],
+    "response_lengths": [
+      212,
+      231,
+      124
+    ],
+    "success_rate": 88.93416458872416,
+    "avg_response_time": 1.5607802829899493,
+    "tool_usage_count": 2
+  },
+  "results": [
+    {
+      "test_id": "basic_query_1",
+      "query": "Hello, can you help me today?",
+      "response": "I'm here to assist you with any questions or tasks you might have related to your Slack workspace.",
+      "response_time": 1.8141024119552254,
+      "success": true
+    },
+    {
+      "test_id": "complex_query",
+      "query": "What can you do for me?",
+      "response": "I can help you find information, check channel activity, or answer questions about your Slack workspace.",
+      "response_time": 1.9546432934666242,
+      "success": true
+    },
+    {
+      "test_id": "follow_up",
+      "query": "Tell me more about your capabilities.",
+      "response": "As a Slack assistant, I can help you find messages, create reminders, and manage your tasks.",
+      "response_time": 0.9135951435479985,
+      "success": true
+    }
+  ]
+}

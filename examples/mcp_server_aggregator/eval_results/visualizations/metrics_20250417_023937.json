@@ -1,0 +1,10 @@
+{
+  "agent": "mcp_server_aggregator",
+  "response_times": [
+    1.625667230316303,
+    1.1673018907492776,
+    1.432288828408152
+  ],
+  "success_rate": 94.2188678888898,
+  "avg_response_time": 1.4084193164912442
+}

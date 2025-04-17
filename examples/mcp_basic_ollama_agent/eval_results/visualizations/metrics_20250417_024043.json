@@ -1,0 +1,10 @@
+{
+  "agent": "mcp_basic_ollama_agent",
+  "response_times": [
+    1.7207057089027278,
+    1.7470767173657709,
+    0.9797103641106968
+  ],
+  "success_rate": 92.11244220624343,
+  "avg_response_time": 1.4824975967930651
+}
