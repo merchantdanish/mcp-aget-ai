@@ -7,7 +7,6 @@ from mcp.server.sse import SseServerTransport
 from mcp.types import TextContent, ImageContent, EmbeddedResource
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount
-from starlette.types import Scope, Receive, Send
 
 
 def main():
@@ -25,12 +24,9 @@ def main():
 
     @server.call_tool()
     async def handle_call_tool(
-            name: str, arguments: dict[str, Any] | None
+        name: str, arguments: dict[str, Any] | None
     ) -> list[TextContent | ImageContent | EmbeddedResource]:
-        return await TextContent(
-            type="text",
-            text="42"
-        )
+        return await TextContent(type="text", text="42")
 
     initialization_options: InitializationOptions = InitializationOptions(
         server_name=server.name,
@@ -43,25 +39,23 @@ def main():
 
     async def handle_sse(request):
         async with sse_server_transport.connect_sse(
-                scope=request.scope,
-                receive=request.receive,
-                send=request._send
+            scope=request.scope, receive=request.receive, send=request._send
         ) as streams:
             await server.run(
                 read_stream=streams[0],
                 write_stream=streams[1],
-                initialization_options=initialization_options
+                initialization_options=initialization_options,
             )
 
     starlette_app: Starlette = Starlette(
         routes=[
             Route("/sse", endpoint=handle_sse),
-            Mount("/messages/", app=sse_server_transport.handle_post_message)
+            Mount("/messages/", app=sse_server_transport.handle_post_message),
         ],
     )
 
     uvicorn.run(starlette_app, host="0.0.0.0", port=8000, log_level=-10000)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

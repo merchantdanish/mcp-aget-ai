@@ -1,7 +1,6 @@
 import asyncio
 
 from dotenv import load_dotenv
-from mcp.types import CallToolResult
 from rich import print
 
 from mcp_agent.agents.agent import Agent
@@ -12,13 +11,13 @@ load_dotenv()  # load environment variables from .env
 
 async def test_sse():
     app: MCPApp = MCPApp(name="test-app")
-    async with app.run() as mcp_agent_app:
+    async with app.run():
         print("MCP App initialized.")
 
         agent: Agent = Agent(
             name="agent",
             instruction="You are an assistant",
-            server_names=["mcp_test_server_sse"]
+            server_names=["mcp_test_server_sse"],
         )
 
         async with agent:
@@ -29,5 +28,5 @@ async def test_sse():
             # print("SSE test passed!")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(test_sse())
