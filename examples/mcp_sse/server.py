@@ -7,6 +7,7 @@ from mcp.server.sse import SseServerTransport
 from mcp.types import TextContent, ImageContent, EmbeddedResource
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount
+from pydantic import BaseModel, create_model
 
 
 def main():
@@ -15,10 +16,14 @@ def main():
 
     @server.list_tools()
     async def handle_list_tools() -> list[Tool]:
+        # Create an empty schema (or define a real one if you need parameters)
+        EmptyInputSchema = create_model("EmptyInputSchema", __base__=BaseModel)
+
         return [
             Tool(
                 name="get-magic-number",
                 description="Returns the magic number",
+                inputSchema=EmptyInputSchema.model_json_schema(),  # Add the required inputSchema
             )
         ]
 
@@ -26,7 +31,9 @@ def main():
     async def handle_call_tool(
         name: str, arguments: dict[str, Any] | None
     ) -> list[TextContent | ImageContent | EmbeddedResource]:
-        return await TextContent(type="text", text="42")
+        return [
+            TextContent(type="text", text="42")
+        ]  # Return a list, not awaiting the content
 
     initialization_options: InitializationOptions = InitializationOptions(
         server_name=server.name,
