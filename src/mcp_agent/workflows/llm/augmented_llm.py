@@ -432,3 +432,16 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         """Log a chat finished event"""
         data = {"progress_action": "Finished", "model": model, "agent_name": self.name}
         self.logger.debug("Chat finished", data=data)
+
+
+def image_url_to_mime_and_base64(url: str) -> tuple[str, str]:
+    """
+    Extract mime type and base64 data from ImageUrl
+    """
+    import re
+
+    match = re.match(r"data:(image/\w+);base64,(.*)", url)
+    if not match:
+        raise ValueError(f"Invalid image data URI: {url[:30]}...")
+    mime_type, base64_data = match.groups()
+    return mime_type, base64_data

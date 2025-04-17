@@ -69,7 +69,7 @@ class OpenAIAugmentedLLM(
                 self._reasoning_effort = self.context.config.openai.reasoning_effort
 
         # o1 does not have tool support
-        self._reasoning = chosen_model.startswith("o3")
+        self._reasoning = chosen_model.startswith(("o3", "o4"))
         if self._reasoning:
             self.logger.info(
                 f"Using reasoning model '{chosen_model}' with '{self._reasoning_effort}' reasoning effort"
@@ -90,14 +90,18 @@ class OpenAIAugmentedLLM(
         cls, message: ChatCompletionMessage, **kwargs
     ) -> ChatCompletionMessageParam:
         """Convert a response object to an input parameter object to allow LLM calls to be chained."""
-        return ChatCompletionAssistantMessageParam(
-            role="assistant",
-            content=message.content,
-            tool_calls=message.tool_calls,
-            audio=message.audio,
-            refusal=message.refusal,
+        assistant_message_params = {
+            "role": "assistant",
+            "audio": message.audio,
+            "refusal": message.refusal,
             **kwargs,
-        )
+        }
+        if message.content is not None:
+            assistant_message_params["content"] = message.content
+        if message.tool_calls is not None:
+            assistant_message_params["tool_calls"] = message.tool_calls
+
+        return ChatCompletionAssistantMessageParam(**assistant_message_params)
 
     async def generate(self, message, request_params: RequestParams | None = None):
         """
@@ -199,7 +203,11 @@ class OpenAIAugmentedLLM(
             responses.append(message)
 
             # Fixes an issue with openai validation that does not allow non alphanumeric characters, dashes, and underscores
-            sanitized_name = re.sub(r"[^a-zA-Z0-9_-]", "_", self.name) if isinstance(self.name, str) else None
+            sanitized_name = (
+                re.sub(r"[^a-zA-Z0-9_-]", "_", self.name)
+                if isinstance(self.name, str)
+                else None
+            )
 
             converted_message = self.convert_message_to_message_param(
                 message, name=sanitized_name
@@ -368,7 +376,9 @@ class OpenAIAugmentedLLM(
             return ChatCompletionToolMessageParam(
                 role="tool",
                 tool_call_id=tool_call_id,
-                content=[mcp_content_to_openai_content(c) for c in result.content],
+                content="\n".join(
+                    str(mcp_content_to_openai_content(c)) for c in result.content
+                ),
             )
 
         return None

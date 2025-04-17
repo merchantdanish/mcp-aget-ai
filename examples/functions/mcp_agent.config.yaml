@@ -4,18 +4,13 @@ execution_engine: asyncio
 logger:
   transports: [console, file]
   level: debug
-  show_progress: true
+  progress_display: true
   path_settings:
     path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
     unique_id: "timestamp" # Options: "timestamp" or "session_id"
     timestamp_format: "%Y%m%d_%H%M%S"
 
-mcp:
-  servers:
-    fetch:
-      command: "uvx"
-      args: ["mcp-server-fetch"]
-
-bedrock:
+openai:
   # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
-  default_model: "us.amazon.nova-lite-v1:0"
+  #  default_model: "o3-mini"
+  default_model: "gpt-4o-mini"

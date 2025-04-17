@@ -3,7 +3,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from anthropic.types import Message, TextBlock, ToolUseBlock, Usage
 
-from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM, RequestParams
+from mcp_agent.workflows.llm.augmented_llm_anthropic import (
+    AnthropicAugmentedLLM,
+    RequestParams,
+)
 
 
 class TestAnthropicAugmentedLLM:
@@ -46,7 +49,7 @@ class TestAnthropicAugmentedLLM:
             cache_creation_input_tokens=0,
             cache_read_input_tokens=0,
             input_tokens=2789,
-            output_tokens=89
+            output_tokens=89,
         )
 
     @staticmethod
@@ -61,14 +64,14 @@ class TestAnthropicAugmentedLLM:
                     type="tool_use",
                     name="search_tool",
                     input={"query": "test query"},
-                    id=f"tool_{call_count}"
+                    id=f"tool_{call_count}",
                 )
             ],
             model="claude-3-7-sonnet-latest",
             stop_reason="tool_use",
             id=f"resp_{call_count}",
             type="message",
-            usage=usage
+            usage=usage,
         )
 
     @staticmethod
@@ -78,17 +81,12 @@ class TestAnthropicAugmentedLLM:
         """
         return Message(
             role=role,
-            content=[
-                TextBlock(
-                    type="text",
-                    text=text
-                )
-            ],
+            content=[TextBlock(type="text", text=text)],
             model="claude-3-7-sonnet-latest",
             stop_reason="end_turn",
             id="final_response",
             type="message",
-            usage=usage
+            usage=usage,
         )
 
     @staticmethod
@@ -97,9 +95,11 @@ class TestAnthropicAugmentedLLM:
         Checks if there's a final iteration prompt in the given messages.
         """
         for msg in messages:
-            if (msg.get("role") == "user" and
-                isinstance(msg.get("content"), str) and
-                "please stop using tools" in msg.get("content", "").lower()):
+            if (
+                msg.get("role") == "user"
+                and isinstance(msg.get("content"), str)
+                and "please stop using tools" in msg.get("content", "").lower()
+            ):
                 return True
         return False
 
@@ -114,20 +114,26 @@ class TestAnthropicAugmentedLLM:
             call_count += 1
 
             messages = kwargs.get("messages", [])
-            has_final_iteration_prompt = self.check_final_iteration_prompt_in_messages(messages)
+            has_final_iteration_prompt = self.check_final_iteration_prompt_in_messages(
+                messages
+            )
 
             if has_final_iteration_prompt:
-                return [self.create_text_message(
-                    "Here is my final answer based on all the tool results gathered so far...",
-                    default_usage
-                )]
+                return [
+                    self.create_text_message(
+                        "Here is my final answer based on all the tool results gathered so far...",
+                        default_usage,
+                    )
+                ]
             else:
                 return [self.create_tool_use_message(call_count, default_usage)]
 
         return side_effect
 
     @pytest.mark.asyncio
-    async def test_final_response_after_max_iterations_with_tool_use(self, mock_llm, default_usage):
+    async def test_final_response_after_max_iterations_with_tool_use(
+        self, mock_llm, default_usage
+    ):
         """
         Tests whether we get a final text response when reaching max_iterations with tool_use.
         """
@@ -138,14 +144,16 @@ class TestAnthropicAugmentedLLM:
         )
 
         # Setup tool call mock
-        mock_llm.call_tool = AsyncMock(return_value=MagicMock(content="Tool result", isError=False))
+        mock_llm.call_tool = AsyncMock(
+            return_value=MagicMock(content="Tool result", isError=False)
+        )
 
         # Call LLM with max_iterations=3
         request_params = RequestParams(
             model="claude-3-7-sonnet-latest",
             maxTokens=1000,
             max_iterations=3,
-            use_history=True
+            use_history=True,
         )
 
         responses = await mock_llm.generate("Test query", request_params)
@@ -165,5 +173,6 @@ class TestAnthropicAugmentedLLM:
         messages = final_call_args["messages"]
 
         # Check for the presence of the final answer request message
-        assert self.check_final_iteration_prompt_in_messages(messages), "No message requesting to stop using tools was found"
-
+        assert self.check_final_iteration_prompt_in_messages(messages), (
+            "No message requesting to stop using tools was found"
+        )

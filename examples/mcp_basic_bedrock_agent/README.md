@@ -19,7 +19,7 @@ Configuration Options
 2. Via your AWS config file (`~/.aws/config` and/or `~/.aws/credentials`)
 
 Optional:
-- `default_model`: Defaults to `amazon.nova-lite-v1:0` but can be customized in your config.
+- `default_model`: Defaults to `us.amazon.nova-lite-v1:0` but can be customized in your config. For more info see: https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html
 - `profile`: Select which AWS profile should be used.
 
 ## Running the Agent

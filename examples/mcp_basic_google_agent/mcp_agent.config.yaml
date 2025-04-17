@@ -16,6 +16,6 @@ mcp:
       command: "uvx"
       args: ["mcp-server-fetch"]
 
-bedrock:
+google:
   # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
-  default_model: "us.amazon.nova-lite-v1:0"
+  default_model: gemini-2.0-flash

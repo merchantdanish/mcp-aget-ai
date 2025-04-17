@@ -498,6 +498,62 @@
       "title": "AzureSettings",
       "type": "object"
     },
+    "GoogleSettings": {
+      "additionalProperties": true,
+      "description": "Settings for using Google models in the MCP Agent application.",
+      "properties": {
+        "api_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
+        },
+        "vertexai": {
+          "anyOf": [
+            {
+              "type": "bool"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "Vertex AI"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Id"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Location"
+        }
+      },
+      "title": "GoogleSettings",
+      "type": "object"
+    },
     "BedrockSettings": {
       "additionalProperties": true,
       "description": "Settings for using AWS Bedrock models in the MCP Agent application.",
@@ -774,6 +830,18 @@
       ],
       "default": null,
       "description": "Settings for using Azure models in the MCP Agent application"
+    },
+    "google": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GoogleSettings"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Settings for using Google models in the MCP Agent application"
     },
     "bedrock": {
       "anyOf": [
