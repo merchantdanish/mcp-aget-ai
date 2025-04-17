@@ -1,0 +1,42 @@
+{
+  "agent": "workflow_orchestrator_worker",
+  "timestamp": "20250417_212017",
+  "metrics": {
+    "response_times": [
+      1.7747528042536502,
+      0.6359471392425935,
+      1.4349823930008108
+    ],
+    "response_lengths": [
+      479,
+      395,
+      243
+    ],
+    "success_rate": 93.00619284285524,
+    "avg_response_time": 1.2818941121656848,
+    "tool_usage_count": 5
+  },
+  "results": [
+    {
+      "test_id": "basic_query_1",
+      "query": "Hello, can you help me today?",
+      "response": "I'd be happy to help you with that! What specific information are you looking for?",
+      "response_time": 1.7747528042536502,
+      "success": true
+    },
+    {
+      "test_id": "complex_query",
+      "query": "What can you do for me?",
+      "response": "I'm here to assist you with any questions or tasks you might have related to your Slack workspace.",
+      "response_time": 0.6359471392425935,
+      "success": true
+    },
+    {
+      "test_id": "follow_up",
+      "query": "Tell me more about your capabilities.",
+      "response": "I'd be happy to help you with that! What specific information are you looking for?",
+      "response_time": 1.4349823930008108,
+      "success": true
+    }
+  ]
+}

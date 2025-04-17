@@ -1,0 +1,10 @@
+{
+  "agent": "workflow_orchestrator_worker",
+  "response_times": [
+    1.7747528042536502,
+    0.6359471392425935,
+    1.4349823930008108
+  ],
+  "success_rate": 93.00619284285524,
+  "avg_response_time": 1.2818941121656848
+}
