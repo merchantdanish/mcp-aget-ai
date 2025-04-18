@@ -1,4 +1,4 @@
-# MCP Agent example
+# MCP Websocket example
 
 This example shows a basic agent that can connect to an MCP server over websockets
 
