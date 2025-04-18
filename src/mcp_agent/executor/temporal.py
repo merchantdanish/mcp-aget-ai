@@ -299,8 +299,8 @@ class TemporalExecutor(Executor):
             if func.__name__ in ["create_response", "execute_tool_call"]:
                 # Try to get the agent name from the LLM instance
                 agent_name = None
-                if hasattr(task, "__self__") and hasattr(task.__self__, "name"):
-                    agent_name = task.__self__.name
+                if hasattr(func, "__self__") and hasattr(func.__self__, "name"):
+                    agent_name = func.__self__.name
 
                 if agent_name:
                     # Use agent-specific activity name

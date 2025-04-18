@@ -10,8 +10,10 @@ import asyncio
 import logging
 
 # Import Temporal libraries
+from mcp_agent.agents.agent import Agent
 from mcp_agent.executor.temporal import TemporalExecutor
-from main import app, llm
+from main import app
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -24,8 +26,17 @@ async def main():
     """
     # Initialize the app to set up the context and executor
     async with app.run() as running_app:
+        finder_agent = Agent(
+            name="finder",
+            instruction="""You are a helpful assistant.""",
+            server_names=["fetch"],
+        )
+        await finder_agent.initialize()
+
+        finder_llm = finder_agent.attach_llm(OpenAIAugmentedLLM)
+
         executor: TemporalExecutor = running_app.executor
-        await executor.start_worker(agents=[llm])
+        await executor.start_worker(agents=[finder_llm])
 
 
 if __name__ == "__main__":

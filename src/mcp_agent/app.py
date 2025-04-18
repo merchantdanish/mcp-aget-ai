@@ -79,7 +79,7 @@ class MCPApp:
 
         self._workflows: Dict[str, Type["Workflow"]] = {}  # id to workflow class
         self._pending_workflows: Dict[str, tuple[Type, tuple, dict]] = {}
-        self._pending_workflow_run_methods: Dict[str, tuple] = {}
+        self._pending_workflow_runs: Dict[str, tuple] = {}
         self._agent_configs: Dict[
             str, "AgentConfig"
         ] = {}  # name to agent configuration
@@ -165,7 +165,7 @@ class MCPApp:
         # Store a reference to this app instance in the context for easier access
         self._context.app = self
 
-        # Initialise pending workflow run
+        # Initialise pending workflow runs
         if self.context and self.context.executor:
             decorator_registry = self._context.decorator_registry
             engine_type = self._context.executor.execution_engine
@@ -177,9 +177,8 @@ class MCPApp:
             if workflow_run_decorator:
                 for function_id, (
                     fn,
-                    fn_kwargs,
-                ) in self._pending_workflow_run_methods.items():
-                    # Find which workflow class this method belongs to
+                    decorator_kwargs,
+                ) in self._pending_workflow_runs.items():
                     module_class_name, method_name = function_id.rsplit(".", 1)
                     module_name, class_name = module_class_name.rsplit(".", 1)
 
@@ -190,7 +189,9 @@ class MCPApp:
                             and workflow_cls.__name__ == class_name
                         ):
                             # Decorate the method and store on the class
-                            decorated_method = workflow_run_decorator(fn, **fn_kwargs)
+                            decorated_method = workflow_run_decorator(
+                                fn, **decorator_kwargs
+                            )
                             setattr(
                                 workflow_cls,
                                 f"_decorated_{method_name}",
@@ -199,7 +200,11 @@ class MCPApp:
                             break
 
         # Initialise pending workflows
-        for workflow_id, (cls, args, kwargs) in self._pending_workflows.items():
+        for workflow_id, (
+            cls,
+            decorator_args,
+            decorator_kwargs,
+        ) in self._pending_workflows.items():
             if self.context and self.context.executor:
                 decorator_registry = self.context.decorator_registry
                 engine_type = self.context.executor.execution_engine
@@ -217,8 +222,8 @@ class MCPApp:
                     self._workflows[workflow_id] = workflow_defn_decorator(
                         cls,
                         sandboxed=False,
-                        *args,
-                        **kwargs,
+                        *decorator_args,
+                        **decorator_kwargs,
                     )
                     self.context.workflow_registry.register(workflow_id, cls)
 
@@ -304,7 +309,7 @@ class MCPApp:
         function_id = f"{fn.__module__}.{fn.__qualname__}"
 
         # Store the function and its kwargs for later decoration
-        self._pending_workflow_run_methods[function_id] = (fn, kwargs)
+        self._pending_workflow_runs[function_id] = (fn, kwargs)
 
         # Return a wrapper that checks if we're initialized or defers to original function
         @functools.wraps(fn)
