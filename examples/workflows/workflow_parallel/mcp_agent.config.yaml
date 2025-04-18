@@ -1,5 +1,5 @@
 # workflow_parallel
-$schema: ../../schema/mcp-agent.config.schema.json
+$schema: ../../../schema/mcp-agent.config.schema.json
 
 execution_engine: asyncio
 logger:

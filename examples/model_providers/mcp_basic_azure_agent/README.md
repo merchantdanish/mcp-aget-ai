@@ -10,7 +10,8 @@ Check out the [Azure Python SDK docs](https://learn.microsoft.com/en-us/python/a
 - `api_key`
 
 Example configurations:
-``` yaml
+
+```yaml
 # mcp_agent.secrets.yaml
 
 # Azure OpenAI inference endpoint
@@ -29,7 +30,6 @@ azure:
 
 To return structured outputs for Azure OpenAI endpoints, you might need to include `api_version` as '2025-01-01-preview'.
 
-
 Attach these values in `mcp_agent.secrets.yaml` or `mcp_agent.config.yaml`
 
 ## Running the Agent
@@ -37,7 +37,7 @@ Attach these values in `mcp_agent.secrets.yaml` or `mcp_agent.config.yaml`
 To run the "Finder" agent, navigate to the example directory and execute:
 
 ```bash
-cd examples/mcp_basic_azure_agent
+cd examples/model_providers/mcp_basic_azure_agent
 
 uv run --extra azure main.py
 ```

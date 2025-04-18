@@ -1,4 +1,4 @@
-$schema: ../../schema/mcp-agent.config.schema.json
+$schema: ../../../schema/mcp-agent.config.schema.json
 
 execution_engine: asyncio
 logger:
@@ -21,11 +21,7 @@ mcp:
       args:
         # Add directories you'd like the agent to access, such as
         # /Users/my-username/Desktop
-        [
-          "-y",
-          "@modelcontextprotocol/server-filesystem",
-          "/Users/akshay/tmp",
-        ]
+        ["-y", "@modelcontextprotocol/server-filesystem", "/Users/akshay/tmp"]
 
 openai:
   # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored

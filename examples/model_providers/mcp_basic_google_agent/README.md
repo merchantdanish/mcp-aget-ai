@@ -7,9 +7,11 @@ This example demonstrates how to create and run a basic "Finder" Agent using Goo
 Before running the agent, ensure you have your Gemini Developer API or Vertex AI configuration details set up:
 
 ### Required Parameters
+
 - `api_key`: Your Gemini Developer API key (can also be set via GOOGLE_API_KEY environment variable)
 
 ### Optional Parameters
+
 - `vertexai`: Boolean flag to enable VertexAI integration (default: false)
 - `project`: Google Cloud project ID (required if using VertexAI)
 - `location`: Google Cloud location (required if using VertexAI)
@@ -18,6 +20,7 @@ Before running the agent, ensure you have your Gemini Developer API or Vertex AI
 You can provide these in one of the following ways:
 
 Configuration Options
+
 1. Via `mcp_agent.secrets.yaml` or `mcp_agent.config.yaml`:
    ```yaml
    google:
@@ -34,7 +37,7 @@ Configuration Options
 To run the "Finder" agent, navigate to the example directory and execute:
 
 ```bash
-cd examples/mcp_basic_google_agent
+cd examples/model_providers/mcp_basic_google_agent
 
 uv run main.py
 ```

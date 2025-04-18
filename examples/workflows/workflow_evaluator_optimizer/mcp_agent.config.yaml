@@ -1,4 +1,4 @@
-$schema: ../../schema/mcp-agent.config.schema.json
+$schema: ../../../schema/mcp-agent.config.schema.json
 
 execution_engine: asyncio
 logger:
@@ -18,11 +18,7 @@ mcp:
       args: ["mcp-server-fetch"]
     filesystem:
       command: "npx"
-      args:
-        [
-          "-y",
-          "@modelcontextprotocol/server-filesystem"
-        ]
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
 
 openai:
   # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
