@@ -12,7 +12,7 @@ from mcp_agent.workflows.parallel.fan_in import FanInInput, FanIn
 from mcp_agent.workflows.parallel.fan_out import FanOut
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 
 class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):

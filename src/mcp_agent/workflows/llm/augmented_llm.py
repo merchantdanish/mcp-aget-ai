@@ -22,13 +22,13 @@ from mcp.types import (
     TextContent,
 )
 
-from mcp_agent.context_dependent import ContextDependent
+from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 
 if TYPE_CHECKING:
     from mcp_agent.agents.agent import Agent
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
     from mcp_agent.logging.logger import Logger
 
 MessageParamT = TypeVar("MessageParamT")
@@ -232,11 +232,11 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
         self.model_selector = self.context.model_selector
         self.type_converter = type_converter
-    
+
     @abstractmethod
     async def create_response(self, params: dict):
         "Create a response from the LLM"
-    
+
     @abstractmethod
     async def execute_tool_call(self, params: dict):
         "Execute a single tool call and return the result message."

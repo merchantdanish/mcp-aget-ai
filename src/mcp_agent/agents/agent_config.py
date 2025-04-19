@@ -20,7 +20,7 @@ from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM, RequestParams
 
 if TYPE_CHECKING:
     from mcp_agent.agents.agent import Agent
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 # Define TypeVar for LLM types
 LLM = TypeVar("LLM", bound=AugmentedLLM)

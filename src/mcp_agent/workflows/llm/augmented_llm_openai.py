@@ -105,7 +105,7 @@ class OpenAIAugmentedLLM(
             refusal=message.refusal,
             **kwargs,
         )
-    
+
     async def create_response(self, **kwargs) -> ChatCompletion:
         response = self.openai_client.chat.completions.create(**kwargs)
         return response
@@ -185,7 +185,7 @@ class OpenAIAugmentedLLM(
             )
 
             response = executor_result[0]
-            
+
             response = ChatCompletion.model_validate(response)
 
             self.logger.debug(

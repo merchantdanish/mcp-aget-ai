@@ -7,7 +7,7 @@ from mcp_agent.workflows.intent_classifier.intent_classifier_llm import (
 )
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 CLASSIFIER_SYSTEM_INSTRUCTION = """
 You are a precise intent classifier that analyzes input requests to determine their intended action or purpose.

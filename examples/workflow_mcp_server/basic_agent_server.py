@@ -12,7 +12,7 @@ import os
 import logging
 
 from mcp_agent.app import MCPApp
-from mcp_agent.app_server import create_mcp_server_for_app
+from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.llm.llm_selector import ModelPreferences

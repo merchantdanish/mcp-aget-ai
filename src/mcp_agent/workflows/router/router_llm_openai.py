@@ -5,7 +5,7 @@ from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.router.router_llm import LLMRouter
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 ROUTING_SYSTEM_INSTRUCTION = """
 You are a highly accurate request router that directs incoming requests to the most appropriate category.

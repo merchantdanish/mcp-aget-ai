@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 
 class Intent(BaseModel):

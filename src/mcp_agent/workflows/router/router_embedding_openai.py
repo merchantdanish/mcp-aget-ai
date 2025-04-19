@@ -5,7 +5,7 @@ from mcp_agent.workflows.embedding.embedding_openai import OpenAIEmbeddingModel
 from mcp_agent.workflows.router.router_embedding import EmbeddingRouter
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 
 class OpenAIEmbeddingRouter(EmbeddingRouter):

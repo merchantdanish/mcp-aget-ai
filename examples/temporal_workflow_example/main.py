@@ -27,6 +27,7 @@ finder_agent = Agent(
 )
 llm = finder_agent.attach_llm(OpenAIAugmentedLLM)
 
+
 @app.workflow
 class SimpleWorkflow(Workflow[str]):
     """

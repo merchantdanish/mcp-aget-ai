@@ -13,7 +13,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.tools import Tool as FastTool
 
 from mcp_agent.app import MCPApp
-from mcp_agent.app_server_types import (
+from mcp_agent.server.app_server_types import (
     MCPMessageParam,
     MCPMessageResult,
     create_model_from_schema,
@@ -21,14 +21,14 @@ from mcp_agent.app_server_types import (
 from mcp_agent.agents.agent import Agent
 from mcp_agent.agents.agent_config import AgentConfig, create_agent
 from mcp_agent.config import MCPServerSettings
-from mcp_agent.context_dependent import ContextDependent
+from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.workflow import Workflow, WorkflowRegistry
 from mcp_agent.logging.logger import get_logger
-from mcp_agent.mcp_server_registry import ServerRegistry
+from mcp_agent.mcp.mcp_server_registry import ServerRegistry
 from mcp_agent.workflows.llm.augmented_llm import MessageParamT, RequestParams
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 

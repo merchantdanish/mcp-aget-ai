@@ -4,7 +4,7 @@ import time
 from typing import Optional
 from rich.console import Console
 from mcp_agent.console import console as default_console
-from mcp_agent.event_progress import ProgressEvent, ProgressAction
+from mcp_agent.logging.event_progress import ProgressEvent, ProgressAction
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from contextlib import contextmanager
 
