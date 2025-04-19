@@ -6,6 +6,7 @@ decorators, and how to run it using the Temporal executor.
 
 import asyncio
 import logging
+import os
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.executor.temporal import TemporalExecutor
@@ -19,6 +20,12 @@ logger = logging.getLogger(__name__)
 
 # Create the app with Temporal as the execution engine
 app = MCPApp(name="temporal_workflow_example")
+
+finder_agent = Agent(
+    name="finder",
+    instruction="""You are a helpful assistant.""",
+    server_names=["fetch", "filesystem"],
+)
 
 
 
@@ -39,11 +46,8 @@ class SimpleWorkflow(Workflow[str]):
         Returns:
             A WorkflowResult containing the processed data
         """
-        finder_agent = Agent(
-            name="finder",
-            instruction="""You are a helpful assistant.""",
-            server_names=["fetch"],
-        )
+        context = finder_agent.context
+        context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
 
         async with finder_agent:
             finder_llm = finder_agent.attach_llm(OpenAIAugmentedLLM)
