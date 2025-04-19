@@ -21,6 +21,21 @@ logger:
     unique_id: "timestamp" # Options: "timestamp" or "session_id"
     timestamp_format: "%Y%m%d_%H%M%S"
 
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+      description: "Fetch content at URLs from the world wide web"
+    filesystem:
+      command: "npx"
+      args: [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          # Current directory will be added by the code
+        ]
+      description: "Read and write files on the filesystem"
+
 openai:
   # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
   #  default_model: "o3-mini"
