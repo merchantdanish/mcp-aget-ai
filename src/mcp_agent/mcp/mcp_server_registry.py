@@ -26,8 +26,10 @@ from mcp_agent.config import (
     MCPServerSettings,
     Settings,
 )
+
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
+from mcp_agent.mcp.websocket import websocket_client
 
 logger = get_logger(__name__)
 
@@ -155,7 +157,10 @@ class ServerRegistry:
                 raise ValueError(f"URL is required for SSE transport: {server_name}")
 
             # Use sse_client to get the read and write streams
-            async with sse_client(config.url) as (read_stream, write_stream):
+            async with sse_client(url=config.url, headers=config.headers) as (
+                read_stream,
+                write_stream,
+            ):
                 session = client_session_factory(
                     read_stream,
                     write_stream,
@@ -170,6 +175,29 @@ class ServerRegistry:
                     finally:
                         logger.debug(f"{server_name}: Closed session to server")
 
+        elif config.transport == "websocket":
+            if not config.url:
+                raise ValueError(
+                    f"URL is required for websocket transport: {server_name}"
+                )
+
+            async with websocket_client(url=config.url, headers=config.headers) as (
+                read_stream,
+                write_stream,
+            ):
+                session = client_session_factory(
+                    read_stream,
+                    write_stream,
+                    read_timeout_seconds,
+                )
+                async with session:
+                    logger.info(
+                        f"{server_name}: Connected to server using websocket transport."
+                    )
+                    try:
+                        yield session
+                    finally:
+                        logger.debug(f"{server_name}: Closed session to server")
         # Unsupported transport
         else:
             raise ValueError(f"Unsupported transport: {config.transport}")
