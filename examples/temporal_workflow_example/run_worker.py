@@ -11,7 +11,6 @@ import logging
 import os
 
 # Import Temporal libraries
-from mcp_agent.agents.agent import Agent
 from mcp_agent.executor.temporal import TemporalExecutor
 from main import app, finder_agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
