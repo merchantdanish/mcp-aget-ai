@@ -229,7 +229,7 @@ class TemporalExecutor(Executor):
                 elif asyncio.iscoroutine(func):
                     return await func
                 else:
-                    return func(*args, **local_kwargs)
+                    return func(**args[0])
             except Exception as e:
                 # Handle exceptions gracefully
                 raise e
@@ -428,7 +428,8 @@ class TemporalExecutor(Executor):
                 self.context.task_registry.register(
                     f"activity_{agent.name}_create_response",
                     self.wrap_as_activity(
-                        f"activity_{agent.name}_create_response", agent.create_response
+                        f"activity_{agent.name}_create_response",
+                        agent.create_response,
                     ),
                 )
 
