@@ -4,7 +4,7 @@ A central context object to store global state that is shared across the applica
 
 import asyncio
 import concurrent.futures
-from typing import Any, Optional, Union, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 
@@ -178,7 +178,9 @@ async def configure_executor(config: "Settings"):
 
 
 async def initialize_context(
-    config: Optional[Union["Settings", str]] = None,
+    config: Optional["Settings"] = None,
+    task_registry: Optional[ActivityRegistry] = None,
+    decorator_registry: Optional[DecoratorRegistry] = None,
     store_globally: bool = False,
     session_id: str = None,
 ):
@@ -187,8 +189,6 @@ async def initialize_context(
     """
     if config is None:
         config = get_settings()
-    elif isinstance(config, str):
-        config = get_settings(config_path=config)
 
     context = Context()
     context.config = config
@@ -208,11 +208,15 @@ async def initialize_context(
 
     # Configure the executor
     context.executor = await configure_executor(config)
-    context.task_registry = ActivityRegistry()
 
-    context.decorator_registry = DecoratorRegistry()
-    register_asyncio_decorators(context.decorator_registry)
-    register_temporal_decorators(context.decorator_registry)
+    context.task_registry = task_registry or ActivityRegistry()
+
+    if not decorator_registry:
+        context.decorator_registry = DecoratorRegistry()
+        register_asyncio_decorators(context.decorator_registry)
+        register_temporal_decorators(context.decorator_registry)
+    else:
+        context.decorator_registry = decorator_registry
 
     # Store the tracer in context if needed
     context.tracer = trace.get_tracer(config.otel.service_name)
