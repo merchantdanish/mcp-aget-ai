@@ -21,7 +21,6 @@ from mcp_agent.workflows.llm.augmented_llm import (
     ModelT,
     ProviderToMCPConverter,
     RequestParams,
-    image_url_to_mime_and_base64,
     CallToolResult,
 )
 
@@ -314,7 +313,7 @@ class GoogleMCPTypeConverter(ProviderToMCPConverter[types.Content, types.Content
             )
         if isinstance(result.content, TextContent):
             return types.Content(
-                role="model", parts=[types.Part.from_text(result.content.text)]
+                role="model", parts=[types.Part.from_text(text=result.content.text)]
             )
         else:
             return types.Content(
@@ -331,7 +330,7 @@ class GoogleMCPTypeConverter(ProviderToMCPConverter[types.Content, types.Content
     def from_mcp_message_param(cls, param: MCPMessageParam) -> types.Content:
         if param.role == "assistant":
             return types.Content(
-                role="model", parts=[types.Part.from_text(param.content)]
+                role="model", parts=[types.Part.from_text(text=param.content)]
             )
         elif param.role == "user":
             return types.Content(
@@ -626,3 +625,16 @@ def google_parts_to_mcp_content(
             mcp_content.append(TextContent(type="text", text=str(part)))
 
     return mcp_content
+
+
+def image_url_to_mime_and_base64(url: str) -> tuple[str, str]:
+    """
+    Extract mime type and base64 data from ImageUrl
+    """
+    import re
+
+    match = re.match(r"data:(image/\w+);base64,(.*)", url)
+    if not match:
+        raise ValueError(f"Invalid image data URI: {url[:30]}...")
+    mime_type, base64_data = match.groups()
+    return mime_type, base64_data
