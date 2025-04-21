@@ -1,4 +1,5 @@
 import functools
+from types import MethodType
 from typing import Any, Dict, Optional, Type, TypeVar, Callable, TYPE_CHECKING
 from datetime import timedelta
 import asyncio
@@ -321,7 +322,7 @@ class MCPApp:
         name: str | None = None,
         schedule_to_close_timeout: timedelta | None = None,
         retry_policy: Dict[str, Any] | None = None,
-        **kwargs: Any,
+        **kwargs,
     ) -> Callable[[Callable[..., R]], Callable[..., R]]:
         """
         Decorator to mark a function as a workflow task,
@@ -341,62 +342,48 @@ class MCPApp:
             ValueError: If the retry policy or timeout is invalid
         """
 
-        def decorator(func: Callable[..., R]) -> Callable[..., R]:
-            if not asyncio.iscoroutinefunction(func):
-                raise TypeError(f"Function {func.__name__} must be async.")
+        def decorator(target: Callable[..., R]) -> Callable[..., R]:
+            func = unwrap(target)  # underlying function
 
-            actual_name = name or f"{func.__module__}.{func.__qualname__}"
-            timeout = schedule_to_close_timeout or timedelta(minutes=10)
+            if not asyncio.iscoroutinefunction(func):
+                raise TypeError(f"{func.__qualname__} must be async")
+
+            activity_name = name or f"{func.__module__}.{func.__qualname__}"
             metadata = {
-                "activity_name": actual_name,
-                "schedule_to_close_timeout": timeout,
+                "activity_name": activity_name,
+                "schedule_to_close_timeout": schedule_to_close_timeout
+                or timedelta(minutes=10),
                 "retry_policy": retry_policy or {},
                 **kwargs,
             }
 
-            setattr(func, "is_workflow_task", True)
-            setattr(func, "execution_metadata", metadata)
+            # bookkeeping that survives partial/bound wrappers
+            func.is_workflow_task = True
+            func.execution_metadata = metadata
 
-            # Register with the task registry
-            self._task_registry.register(actual_name, func, metadata)
+            task_defn = self._decorator_registry.get_workflow_task_decorator(
+                self.config.execution_engine
+            )
 
-            # Apply engine-specific decorator if available
-            decorator_registry = self._decorator_registry
-            engine_type = self.config.execution_engine
+            if task_defn:
+                if isinstance(target, MethodType):
+                    self_ref = target.__self__
 
-            task_decorator = decorator_registry.get_workflow_task_decorator(engine_type)
+                    @functools.wraps(func)
+                    async def _bound_adapter(*a, **k):
+                        return await func(self_ref, *a, **k)
 
-            if task_decorator:
-                # Pass the metadata to the engine-specific decorator
-                return task_decorator(func, **metadata)
+                    task_callable = task_defn(_bound_adapter, name=activity_name)
+                else:
+                    task_callable = task_defn(func, name=activity_name)
+            else:
+                task_callable = target  # asyncio backend
 
-            # If no engine-specific decorator or app not initialized, return original function
-            return func
+            # ---- register *after* decorating --------------------------------
+            self._task_registry.register(activity_name, task_callable, metadata)
 
-            # TODO: saqadri - determine if we need this
-            # Preserve metadata through partial application
-            # @functools.wraps(func)
-            # async def wrapper(*args: Any, **kwargs: Any) -> R:
-            #     result = await func(*args, **kwargs)
-            #     return cast(R, result)  # Ensure type checking works
-
-            # # Add metadata that survives partial application
-            # wrapper.is_workflow_task = True  # type: ignore
-            # wrapper.execution_metadata = metadata  # type: ignore
-
-            # # Make metadata accessible through partial
-            # def __getattr__(name: str) -> Any:
-            #     if name == "is_workflow_task":
-            #         return True
-            #     if name == "execution_metadata":
-            #         return metadata
-            #     raise AttributeError(f"'{func.__name__}' has no attribute '{name}'")
-
-            # wrapper.__getattr__ = __getattr__  # type: ignore
-
-            # return wrapper
-
-            return func
+            # Un‑bound function: decorate once, return the result
+            return task_defn(func, name=activity_name)
 
         return decorator
 
@@ -423,3 +410,14 @@ class MCPApp:
         """
         self._agent_configs[config.name] = config
         return config
+
+
+def unwrap(c: Callable[..., Any]) -> Callable[..., Any]:
+    """Return the underlying function object for any callable."""
+    while True:
+        if isinstance(c, functools.partial):
+            c = c.func
+        elif isinstance(c, MethodType):
+            c = c.__func__
+        else:
+            return c

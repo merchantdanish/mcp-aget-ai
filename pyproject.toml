@@ -33,7 +33,7 @@ dependencies = [
 
 [project.optional-dependencies]
 temporal = [
-    "temporalio>=1.8.0",
+    "temporalio>=1.10.0",
 ]
 anthropic = [
     "anthropic>=0.48.0",
