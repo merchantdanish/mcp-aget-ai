@@ -123,6 +123,12 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         if params.use_history:
             messages.extend(self.history.get())
 
+        system_prompt = self.instruction or params.systemPrompt
+        if system_prompt and len(messages) == 0:
+            messages.append(
+                SystemMessage(content=system_prompt)
+            )
+
         if isinstance(message, str):
             messages.append(UserMessage(content=message))
         elif isinstance(message, list):
