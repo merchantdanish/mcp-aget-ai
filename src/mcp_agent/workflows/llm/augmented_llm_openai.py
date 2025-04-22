@@ -165,7 +165,7 @@ class OpenAIAugmentedLLM(
                     **arguments,
                     
                     # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
-                    # "max_completion_tokens": params.maxTokens,
+                    # "max_tokens": params.maxTokens,
                     
                     "max_completion_tokens": params.maxTokens,
                     "reasoning_effort": self._reasoning_effort,
