@@ -1,7 +1,7 @@
 import asyncio
 from typing import List, Literal, Dict, Optional, TypeVar, TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 from mcp.client.session import ClientSession
 from mcp.server.lowlevel.server import Server
 from mcp.server.stdio import stdio_server
@@ -72,8 +72,6 @@ class MCPAggregator(ContextDependent):
 
     server_names: List[str]
     """A list of server names to connect to."""
-
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
     async def __aenter__(self):
         await self.initialize()
