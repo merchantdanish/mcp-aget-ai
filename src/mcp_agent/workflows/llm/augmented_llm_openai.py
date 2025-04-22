@@ -68,7 +68,7 @@ class OpenAIAugmentedLLM(
             if hasattr(self.context.config.openai, "reasoning_effort"):
                 self._reasoning_effort = self.context.config.openai.reasoning_effort
 
-        self._reasoning = lambda model : model.startswith("o1") or model.startswith("o3") or model.startswith("o4")
+        self._reasoning = lambda model : model.startswith(("o1","o3","o4"))
 
         if self._reasoning(chosen_model):
             self.logger.info(
