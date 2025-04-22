@@ -81,15 +81,26 @@ class Executor(ABC, ContextDependent):
     @abstractmethod
     async def execute(
         self,
-        *tasks: Callable[..., R] | Coroutine[Any, Any, R],
-        **kwargs: Any,
+        task: Callable[..., R] | Coroutine[Any, Any, R],
+        *args,
+        **kwargs,
+    ) -> R | BaseException:
+        """Execute a list of tasks and return their results"""
+
+    @abstractmethod
+    async def execute_many(
+        self,
+        tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
+        *args,
+        **kwargs,
     ) -> List[R | BaseException]:
         """Execute a list of tasks and return their results"""
 
     @abstractmethod
     async def execute_streaming(
         self,
-        *tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
+        tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
+        *args,
         **kwargs: Any,
     ) -> AsyncIterator[R | BaseException]:
         """Execute tasks and yield results as they complete"""
@@ -209,24 +220,21 @@ class AsyncioExecutor(Executor):
             )
 
     async def _execute_task(
-        self, task: Callable[..., R] | Coroutine[Any, Any, R], **kwargs: Any
+        self, task: Callable[..., R] | Coroutine[Any, Any, R], *args, **kwargs
     ) -> R | BaseException:
         async def run_task(task: Callable[..., R] | Coroutine[Any, Any, R]) -> R:
             try:
                 if asyncio.iscoroutine(task):
                     return await task
                 elif asyncio.iscoroutinefunction(task):
-                    return await task(**kwargs)
+                    return await task(*args, **kwargs)
                 else:
                     # Execute the callable and await if it returns a coroutine
                     loop = asyncio.get_running_loop()
 
-                    # If kwargs are provided, wrap the function with partial
-                    if kwargs:
-                        wrapped_task = functools.partial(task, **kwargs)
-                        result = await loop.run_in_executor(None, wrapped_task)
-                    else:
-                        result = await loop.run_in_executor(None, task)
+                    # Using partial to handle both args and kwargs together
+                    wrapped_task = functools.partial(task, *args, **kwargs)
+                    result = await loop.run_in_executor(None, wrapped_task)
 
                     # Handle case where the sync function returns a coroutine
                     if asyncio.iscoroutine(result):
@@ -245,14 +253,41 @@ class AsyncioExecutor(Executor):
 
     async def execute(
         self,
-        *tasks: Callable[..., R] | Coroutine[Any, Any, R],
-        **kwargs: Any,
+        task: Callable[..., R] | Coroutine[Any, Any, R],
+        *args,
+        **kwargs,
+    ) -> R | BaseException:
+        """
+        Execute a task and return its results.
+
+        Args:
+            task: The task to execute
+            *args: Positional arguments to pass to the task
+            **kwargs: Additional arguments to pass to the tasks
+
+        Returns:
+            A result or exception
+        """
+        # TODO: saqadri - validate if async with self.execution_context() is needed here
+        async with self.execution_context():
+            return self._execute_task(
+                task,
+                *args,
+                **kwargs,
+            )
+
+    async def execute_many(
+        self,
+        tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
+        *args,
+        **kwargs,
     ) -> List[R | BaseException]:
         """
         Execute a list of tasks and return their results.
 
         Args:
-            *tasks: The tasks to execute
+            tasks: The tasks to execute
+            *args: Positional arguments to pass to each task
             **kwargs: Additional arguments to pass to the tasks
 
         Returns:
@@ -273,14 +308,16 @@ class AsyncioExecutor(Executor):
 
     async def execute_streaming(
         self,
-        *tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
+        tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
+        *args,
         **kwargs: Any,
     ) -> AsyncIterator[R | BaseException]:
         """
         Execute tasks and yield results as they complete.
 
         Args:
-            *tasks: The tasks to execute
+            tasks: The tasks to execute
+            *args: Positional arguments to pass to each task
             **kwargs: Additional arguments to pass to the tasks
 
         Yields:
@@ -293,6 +330,7 @@ class AsyncioExecutor(Executor):
                 asyncio.create_task(
                     self._execute_task(
                         task,
+                        *args,
                         **kwargs,
                     )
                 )

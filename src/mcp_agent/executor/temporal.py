@@ -37,7 +37,6 @@ from mcp_agent.executor.workflow_signal import (
     SignalRegistration,
     SignalValueT,
 )
-from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 
 if TYPE_CHECKING:
     from mcp_agent.app import MCPApp
@@ -277,15 +276,13 @@ class TemporalExecutor(Executor):
         self, task: Callable[..., R] | Coroutine[Any, Any, R], *args, **kwargs
     ) -> R | BaseException:
         func = task.func if isinstance(task, functools.partial) else task
-        orig_func = func
         func = unwrap(func)
 
-        # TODO: Jerron - commment this out for now
-        # is_workflow_task = getattr(func, "is_workflow_task", False)
-        # if not is_workflow_task:
-        #     print(f"WARNING: Task {func.__name__} is not a workflow task.")
-        #     # TODO: saqadri - should we asyncio.create_task?
-        #     return await self._execute_task_as_async(task, *args, **kwargs)
+        is_workflow_task = getattr(func, "is_workflow_task", False)
+        if not is_workflow_task:
+            print(f"WARNING: Task {func.__name__} is not a workflow task.")
+            # TODO: saqadri - should we asyncio.create_task?
+            return await self._execute_task_as_async(task, *args, **kwargs)
 
         # Handle partial functions by combining their kwargs with the ones passed to execute
         # task_kwargs = {}
@@ -301,32 +298,14 @@ class TemporalExecutor(Executor):
         activity_name = execution_metadata.get("activity_name")
 
         print(f"Activity name: {activity_name}")
-        # TODO: saqadri - remove this
-        if not activity_name:
-            # Check if this is an LLM method
-            if orig_func.__name__ in ["create_response", "execute_tool_call"]:
-                # Try to get the agent name from the LLM instance
-                agent_name = None
-                if hasattr(orig_func, "__self__") and hasattr(
-                    orig_func.__self__, "name"
-                ):
-                    agent_name = orig_func.__self__.name
-
-                if agent_name:
-                    # Use agent-specific activity name
-                    activity_name = f"activity_{agent_name}_{orig_func.__name__}"
-                else:
-                    # Follow same naming convention as the activity we pass to worker
-                    activity_name = f"activity_{orig_func.__name__}"
-            else:
-                # Follow same naming convention as the activity we pass to worker
-                activity_name = f"activity_{orig_func.__name__}"
 
         schedule_to_close = execution_metadata.get(
             "schedule_to_close_timeout", self.config.timeout_seconds
         )
 
-        if not isinstance(schedule_to_close, timedelta):
+        if schedule_to_close is not None and not isinstance(
+            schedule_to_close, timedelta
+        ):
             # Convert to timedelta if it's not already
             schedule_to_close = timedelta(seconds=schedule_to_close)
 
@@ -441,60 +420,6 @@ class TemporalExecutor(Executor):
             task_queue=self.config.task_queue,
         )
         return handle
-
-    async def start_worker(self, agents: list[AugmentedLLM] = []):
-        """
-        Start a worker in this process, auto-registering all tasks
-        from the global registry and all workflows registered with the executor.
-
-        Args:
-            agents: Optional dictionary mapping agent names to their attached LLM instances.
-                   These will be used to register agent-specific activities.
-        """
-        await self.ensure_client()
-
-        if self._worker is None:
-            # Collect activities from the global registry
-            activity_registry = self.context.task_registry
-            activities = []
-
-            # Register activities for each agent's LLM
-            for agent in agents:
-                # Register create_response activity for this agent
-                self.context.task_registry.register(
-                    f"activity_{agent.name}_create_response",
-                    self.wrap_as_activity(
-                        f"activity_{agent.name}_create_response",
-                        agent.create_response,
-                    ),
-                )
-
-                # Register execute_tool_call activity for this agent
-                self.context.task_registry.register(
-                    f"activity_{agent.name}_execute_tool_call",
-                    self.wrap_as_activity(
-                        f"activity_{agent.name}_execute_tool_call",
-                        agent.execute_tool_call,
-                    ),
-                )
-
-            for name in activity_registry.list_activities():
-                activities.append(activity_registry.get_activity(name))
-
-            # Collect workflows from the registered workflows
-            workflows = self.context.workflow_registry.list_workflows()
-
-            self._worker = Worker(
-                client=self.client,
-                task_queue=self.config.task_queue,
-                activities=activities,
-                workflows=workflows,
-            )
-            print(
-                f"Starting Temporal Worker on task queue '{self.config.task_queue}' with {len(activities)} activities and {len(workflows)} workflows."
-            )
-
-        await self._worker.run()
 
 
 @asynccontextmanager
