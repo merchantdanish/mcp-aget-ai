@@ -272,7 +272,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 )
 
             # Wait for all tasks to complete
-            results = await self.executor.execute(*futures)
+            results = await self.executor.execute_many(futures)
 
         # Store task results
         for task, result in zip(step.tasks, results):

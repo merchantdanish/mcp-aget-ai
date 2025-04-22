@@ -150,7 +150,7 @@ class AgentConfig(BaseModel):
             server_names=self.server_names,
             functions=self.functions,
             connection_persistence=self.connection_persistence,
-            human_input_callback=self.human_input_callback,
+            # human_input_callback=self.human_input_callback,
             context=context,
             **self.extra_kwargs,
         )

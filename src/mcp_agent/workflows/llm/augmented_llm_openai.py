@@ -185,7 +185,7 @@ class OpenAIAugmentedLLM(
             self._log_chat_progress(chat_turn=len(messages) // 2, model=model)
 
             executor_result = await self.executor.execute(
-                self.create_response, **arguments
+                self.create_response, arguments
             )
 
             response = executor_result[0]
@@ -233,7 +233,7 @@ class OpenAIAugmentedLLM(
                     for tool_call in message.tool_calls
                 ]
                 # Wait for all tool calls to complete.
-                tool_results = await self.executor.execute(*tool_tasks)
+                tool_results = await self.executor.execute_many(tool_tasks)
                 self.logger.debug(
                     f"Iteration {i}: Tool call results: {str(tool_results) if tool_results else 'None'}"
                 )

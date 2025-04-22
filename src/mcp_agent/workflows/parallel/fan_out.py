@@ -95,7 +95,7 @@ class FanOut(ContextDependent):
 
             # Wait for all tasks to complete
             logger.debug("Running fan-out tasks:", data=task_names)
-            task_results = await self.executor.execute(*tasks)
+            task_results = await self.executor.execute_many(tasks)
 
         logger.debug(
             "Fan-out tasks completed:", data=dict(zip(task_names, task_results))
@@ -141,7 +141,7 @@ class FanOut(ContextDependent):
                 tasks.append(functools.partial(fn_result_to_string, function, message))
                 task_names.append(function.__name__ or id(function))
 
-            task_results = await self.executor.execute(*tasks)
+            task_results = await self.executor.execute_many(tasks)
 
         return dict(zip(task_names, task_results))
 
@@ -182,6 +182,6 @@ class FanOut(ContextDependent):
                 tasks.append(functools.partial(function, message))
                 task_names.append(function.__name__ or id(function))
 
-            task_results = await self.executor.execute(*tasks)
+            task_results = await self.executor.execute_many(tasks)
 
         return dict(zip(task_names, task_results))

@@ -12,7 +12,6 @@ from mcp_agent.agents.agent import Agent
 from mcp_agent.executor.temporal import TemporalExecutor
 from mcp_agent.app import MCPApp
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
-from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -48,13 +47,21 @@ class SimpleWorkflow(Workflow[str]):
         context = finder_agent.context
         context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
 
-        async with finder_agent:
-            finder_llm = finder_agent.attach_llm(OpenAIAugmentedLLM)
+        # async with finder_agent:
+        initialized = await finder_agent.initialize_activity()
+        print(f"Finder agent initialized: {initialized}")
 
-            result = await finder_llm.generate_str(
-                message="Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
-            )
-            return WorkflowResult(value=result)
+        if initialized:
+            tools = await finder_agent.list_tools_activity()
+            return WorkflowResult(value=tools)
+        else:
+            return WorkflowResult(value="Finder agent initialization failed.")
+
+        # finder_llm = finder_agent.attach_llm(OpenAIAugmentedLLM)
+
+        # result = await finder_llm.generate_str(
+        #     message="Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+        # )
 
         # logger.info(f"Running SimpleWorkflow with input: {input_data}")
 

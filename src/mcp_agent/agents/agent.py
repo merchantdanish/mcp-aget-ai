@@ -10,6 +10,8 @@ from mcp.types import (
     Tool,
 )
 
+from mcp_agent.agents.agent_config import AgentConfig
+from mcp_agent.agents.agent_activities import AgentTasks
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator
 from mcp_agent.human_input.types import (
     HumanInputCallback,
@@ -243,3 +245,27 @@ class Agent(MCPAggregator):
                     )
                 ],
             )
+
+    async def initialize_activity(self, force: bool = False) -> bool:
+        print("Initializing agent:", self.name)
+
+        res = await self.executor.execute(
+            AgentTasks.initialize_agent,
+            AgentConfig(
+                name=self.name,
+                instruction=self.instruction,
+                server_names=self.server_names,
+                functions=self.functions,
+                connection_persistence=self.connection_persistence,
+            ),
+            force,
+        )
+
+        return res
+
+    async def list_tools_activity(self) -> ListToolsResult:
+        agent_tasks = AgentTasks(self.context)
+        return await self.executor.execute(
+            agent_tasks.list_tools,
+            self.name,
+        )

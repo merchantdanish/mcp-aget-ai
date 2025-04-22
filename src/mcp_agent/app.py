@@ -322,7 +322,7 @@ class MCPApp:
         name: str | None = None,
         schedule_to_close_timeout: timedelta | None = None,
         retry_policy: Dict[str, Any] | None = None,
-        **kwargs,
+        **meta_kwargs,
     ) -> Callable[[Callable[..., R]], Callable[..., R]]:
         """
         Decorator to mark a function as a workflow task,
@@ -354,7 +354,7 @@ class MCPApp:
                 "schedule_to_close_timeout": schedule_to_close_timeout
                 or timedelta(minutes=10),
                 "retry_policy": retry_policy or {},
-                **kwargs,
+                **meta_kwargs,
             }
 
             # bookkeeping that survives partial/bound wrappers
@@ -384,6 +384,80 @@ class MCPApp:
 
             # Un‑bound function: decorate once, return the result
             return task_defn(func, name=activity_name)
+
+        return decorator
+
+    def workflow_task2(
+        self,
+        name: str | None = None,
+        schedule_to_close_timeout: timedelta | None = None,
+        retry_policy: Dict[str, Any] | None = None,
+        **meta_kwargs,
+    ) -> Callable[[Callable[..., R]], Callable[..., R]]:
+        """
+        Decorator to mark a function as a workflow task,
+        automatically registering it in the global activity registry.
+
+        Args:
+            name: Optional custom name for the activity
+            schedule_to_close_timeout: Maximum time the task can take to complete
+            retry_policy: Retry policy configuration
+            **kwargs: Additional metadata passed to the activity registration
+
+        Returns:
+            Decorated function that preserves async and typing information
+
+        Raises:
+            TypeError: If the decorated function is not async
+            ValueError: If the retry policy or timeout is invalid
+        """
+
+        def decorator(target: Callable[..., R]) -> Callable[..., R]:
+            func = unwrap(target)  # underlying function
+
+            if not asyncio.iscoroutinefunction(func):
+                raise TypeError(f"{func.__qualname__} must be async")
+
+            activity_name = name or f"{func.__module__}.{func.__qualname__}"
+            metadata = {
+                "activity_name": activity_name,
+                "schedule_to_close_timeout": schedule_to_close_timeout
+                or timedelta(minutes=10),
+                "retry_policy": retry_policy or {},
+                **meta_kwargs,
+            }
+
+            # bookkeeping that survives partial/bound wrappers
+            func.is_workflow_task = True
+            func.execution_metadata = metadata
+
+            task_defn = self._decorator_registry.get_workflow_task_decorator(
+                self.config.execution_engine
+            )
+
+            if task_defn:  # Temporal backend
+                if isinstance(target, MethodType):
+                    self_ref = target.__self__
+
+                    async def _impl(kwargs_dict: dict):
+                        return await func(self_ref, **kwargs_dict)
+
+                else:  # un‑bound function
+
+                    async def _impl(kwargs_dict: dict):
+                        return await func(**kwargs_dict)
+
+                _impl = functools.wraps(func)(_impl)
+                task_callable = task_defn(_impl, name=activity_name)
+
+            else:  # asyncio backend
+                task_callable = target
+
+            # ---- register *after* decorating --------------------------------
+            self._task_registry.register(activity_name, task_callable, metadata)
+
+            # Un‑bound function: decorate once, return the result
+            return task_callable
 
         return decorator
 
