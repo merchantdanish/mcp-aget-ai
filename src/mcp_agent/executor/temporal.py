@@ -6,9 +6,11 @@ Read more: https://docs.temporal.io/develop/python/core-application
 """
 
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import timedelta
 import functools
 import uuid
+from types import MethodType
 from typing import (
     Any,
     AsyncIterator,
@@ -23,6 +25,7 @@ from typing import (
 from pydantic import ConfigDict
 from temporalio import activity, workflow, exceptions
 from temporalio.client import Client as TemporalClient
+from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.worker import Worker
 
 from mcp_agent.config import TemporalSettings
@@ -37,6 +40,7 @@ from mcp_agent.executor.workflow_signal import (
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 
 if TYPE_CHECKING:
+    from mcp_agent.app import MCPApp
     from mcp_agent.core.context import Context
 
 
@@ -237,24 +241,21 @@ class TemporalExecutor(Executor):
         return wrapped_activity
 
     async def _execute_task_as_async(
-        self, task: Callable[..., R] | Coroutine[Any, Any, R], **kwargs: Any
+        self, task: Callable[..., R] | Coroutine[Any, Any, R], *args, **kwargs
     ) -> R | BaseException:
         async def run_task(task: Callable[..., R] | Coroutine[Any, Any, R]) -> R:
             try:
                 if asyncio.iscoroutine(task):
                     return await task
                 elif asyncio.iscoroutinefunction(task):
-                    return await task(**kwargs)
+                    return await task(*args, **kwargs)
                 else:
                     # Execute the callable and await if it returns a coroutine
                     loop = asyncio.get_running_loop()
 
-                    # If kwargs are provided, wrap the function with partial
-                    if kwargs:
-                        wrapped_task = functools.partial(task, **kwargs)
-                        result = await loop.run_in_executor(None, wrapped_task)
-                    else:
-                        result = await loop.run_in_executor(None, task)
+                    # Using partial to handle both args and kwargs together
+                    wrapped_task = functools.partial(task, *args, **kwargs)
+                    result = await loop.run_in_executor(None, wrapped_task)
 
                     # Handle case where the sync function returns a coroutine
                     if asyncio.iscoroutine(result):
@@ -262,7 +263,8 @@ class TemporalExecutor(Executor):
 
                     return result
             except Exception as e:
-                # TODO: saqadri - adding logging or other error handling here
+                # TODO: saqadri - set up logger
+                # logger.error(f"Error executing task: {e}")
                 return e
 
         if self._activity_semaphore:
@@ -272,60 +274,73 @@ class TemporalExecutor(Executor):
             return await run_task(task)
 
     async def _execute_task(
-        self, task: Callable[..., R] | Coroutine[Any, Any, R], **kwargs: Any
+        self, task: Callable[..., R] | Coroutine[Any, Any, R], *args, **kwargs
     ) -> R | BaseException:
         func = task.func if isinstance(task, functools.partial) else task
-        # TODO: Jerron - Disabling this for now
+        orig_func = func
+        func = unwrap(func)
+
+        # TODO: Jerron - commment this out for now
         # is_workflow_task = getattr(func, "is_workflow_task", False)
         # if not is_workflow_task:
-        #     return await asyncio.create_task(
-        #         self._execute_task_as_async(task, **kwargs)
-        #     )
+        #     print(f"WARNING: Task {func.__name__} is not a workflow task.")
+        #     # TODO: saqadri - should we asyncio.create_task?
+        #     return await self._execute_task_as_async(task, *args, **kwargs)
 
         # Handle partial functions by combining their kwargs with the ones passed to execute
-        task_kwargs = {}
-        if isinstance(task, functools.partial):
-            task_kwargs = task.keywords
+        # task_kwargs = {}
+        # if isinstance(task, functools.partial):
+        #    task_kwargs = task.keywords
 
         # Combine kwargs
-        combined_kwargs = {**task_kwargs, **kwargs}
+        # combined_kwargs = {**task_kwargs, **kwargs}
 
         execution_metadata: Dict[str, Any] = getattr(func, "execution_metadata", {})
 
         # Derive stable activity name, e.g. module + qualname
         activity_name = execution_metadata.get("activity_name")
+
+        print(f"Activity name: {activity_name}")
+        # TODO: saqadri - remove this
         if not activity_name:
             # Check if this is an LLM method
-            if func.__name__ in ["create_response", "execute_tool_call"]:
+            if orig_func.__name__ in ["create_response", "execute_tool_call"]:
                 # Try to get the agent name from the LLM instance
                 agent_name = None
-                if hasattr(func, "__self__") and hasattr(func.__self__, "name"):
-                    agent_name = func.__self__.name
+                if hasattr(orig_func, "__self__") and hasattr(
+                    orig_func.__self__, "name"
+                ):
+                    agent_name = orig_func.__self__.name
 
                 if agent_name:
                     # Use agent-specific activity name
-                    activity_name = f"activity_{agent_name}_{func.__name__}"
+                    activity_name = f"activity_{agent_name}_{orig_func.__name__}"
                 else:
                     # Follow same naming convention as the activity we pass to worker
-                    activity_name = f"activity_{func.__name__}"
+                    activity_name = f"activity_{orig_func.__name__}"
             else:
                 # Follow same naming convention as the activity we pass to worker
-                activity_name = f"activity_{func.__name__}"
+                activity_name = f"activity_{orig_func.__name__}"
 
         schedule_to_close = execution_metadata.get(
             "schedule_to_close_timeout", self.config.timeout_seconds
         )
+
+        if not isinstance(schedule_to_close, timedelta):
+            # Convert to timedelta if it's not already
+            schedule_to_close = timedelta(seconds=schedule_to_close)
 
         retry_policy = execution_metadata.get("retry_policy", None)
 
         try:
             result = await workflow.execute_activity_method(
                 activity_name,
-                arg=combined_kwargs,  # Use combined kwargs
+                args=args,
                 task_queue=self.config.task_queue,
-                schedule_to_close_timeout=timedelta(seconds=schedule_to_close),
+                schedule_to_close_timeout=schedule_to_close,
                 retry_policy=retry_policy,
             )
+            print("Activity result:", result)
             return result
         except Exception as e:
             # Properly propagate activity errors
@@ -335,8 +350,27 @@ class TemporalExecutor(Executor):
 
     async def execute(
         self,
-        *tasks: Callable[..., R] | Coroutine[Any, Any, R],
-        **kwargs: Any,
+        task: Callable[..., R] | Coroutine[Any, Any, R],
+        *args,
+        **kwargs,
+    ) -> R | BaseException:
+        """Execute multiple tasks (activities) in parallel."""
+
+        # Must be called from within a workflow
+        if not workflow._Runtime.current():
+            raise RuntimeError(
+                "TemporalExecutor.execute must be called from within a workflow"
+            )
+
+        # TODO: saqadri - validate if async with self.execution_context() is needed here
+        async with self.execution_context():
+            return await self._execute_task(task, *args, **kwargs)
+
+    async def execute_many(
+        self,
+        tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
+        *args,
+        **kwargs,
     ) -> List[R | BaseException]:
         """Execute multiple tasks (activities) in parallel."""
 
@@ -349,14 +383,15 @@ class TemporalExecutor(Executor):
         # TODO: saqadri - validate if async with self.execution_context() is needed here
         async with self.execution_context():
             return await asyncio.gather(
-                *(self._execute_task(task, **kwargs) for task in tasks),
+                *(self._execute_task(task, *args, **kwargs) for task in tasks),
                 return_exceptions=True,
             )
 
     async def execute_streaming(
         self,
-        *tasks: Callable[..., R] | Coroutine[Any, Any, R],
-        **kwargs: Any,
+        tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
+        *args,
+        **kwargs,
     ) -> AsyncIterator[R | BaseException]:
         if not workflow._Runtime.current():
             raise RuntimeError(
@@ -366,7 +401,7 @@ class TemporalExecutor(Executor):
         # TODO: saqadri - validate if async with self.execution_context() is needed here
         async with self.execution_context():
             # Create futures for all tasks
-            futures = [self._execute_task(task, **kwargs) for task in tasks]
+            futures = [self._execute_task(task, *args, **kwargs) for task in tasks]
             pending = set(futures)
 
             while pending:
@@ -387,6 +422,7 @@ class TemporalExecutor(Executor):
                 target_host=self.config.host,
                 namespace=self.config.namespace,
                 api_key=self.config.api_key,
+                data_converter=pydantic_data_converter,
             )
 
         return self.client
@@ -459,3 +495,55 @@ class TemporalExecutor(Executor):
             )
 
         await self._worker.run()
+
+
+@asynccontextmanager
+async def create_temporal_worker_for_app(app: "MCPApp"):
+    """
+    Create a Temporal worker for the given app.
+    """
+
+    # Initialize the app to set up the context and executor
+    async with app.run() as running_app:
+        if not isinstance(running_app.executor, TemporalExecutor):
+            raise ValueError("App executor is not a TemporalExecutor.")
+
+        await running_app.executor.ensure_client()
+
+        # Collect activities from the global registry
+        activities = []
+        activity_registry = running_app.context.task_registry
+
+        for name in activity_registry.list_activities():
+            activities.append(activity_registry.get_activity(name))
+
+        print(f"Activitieis list: {activity_registry.list_activities()}")
+
+        # Collect workflows from the registered workflows
+        workflows = running_app.context.workflow_registry.list_workflows()
+
+        worker = Worker(
+            client=running_app.executor.client,
+            task_queue=running_app.executor.config.task_queue,
+            activities=activities,
+            workflows=workflows,
+        )
+
+        try:
+            # Yield the worker to allow the caller to use it
+            yield worker
+        finally:
+            # No explicit cleanup needed here as the app context will handle it
+            # when the async with block exits
+            pass
+
+
+def unwrap(c: Callable[..., Any]) -> Callable[..., Any]:
+    """Return the underlying function object for any callable."""
+    while True:
+        if isinstance(c, functools.partial):
+            c = c.func
+        elif isinstance(c, MethodType):
+            c = c.__func__
+        else:
+            return c
