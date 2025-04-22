@@ -68,7 +68,6 @@ class OpenAIAugmentedLLM(
             if hasattr(self.context.config.openai, "reasoning_effort"):
                 self._reasoning_effort = self.context.config.openai.reasoning_effort
 
-        # o1 does not have tool support
         self._reasoning = lambda model : model.startswith("o1") or model.startswith("o3") or model.startswith("o4")
 
         if self._reasoning(chosen_model):
@@ -164,6 +163,10 @@ class OpenAIAugmentedLLM(
             if self._reasoning(model):
                 arguments = {
                     **arguments,
+                    
+                    # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
+                    # "max_completion_tokens": params.maxTokens,
+                    
                     "max_completion_tokens": params.maxTokens,
                     "reasoning_effort": self._reasoning_effort,
                 }
