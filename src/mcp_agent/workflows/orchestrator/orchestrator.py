@@ -250,13 +250,15 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 agent = self.agents.get(task.agent)
                 if not agent:
                     # TODO: saqadri - should we fail the entire workflow in this case?
-                    raise ValueError(f"No agent found matching {task.agent}")
+                    futures.append(f"No agent matching {task.agent}")
+                    continue
+                    # raise ValueError(f"No agent found matching {task.agent}")
                 elif isinstance(agent, AugmentedLLM):
                     llm = agent
                 else:
                     # Enter agent context
                     ctx_agent = await stack.enter_async_context(agent)
-                    llm = await ctx_agent.attach_llm(self.llm_factory)
+                    llm = ctx_agent.attach_llm(self.llm_factory)
 
                 task_description = TASK_PROMPT_TEMPLATE.format(
                     objective=previous_result.objective,
@@ -359,6 +361,24 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             response_model=NextStep,
         )
         return next_step
+
+    async def create_response(self, **kwargs):
+        """
+        Create a response from the LLM.
+        This method is required by the AugmentedLLM abstract class but not used directly.
+        """
+        raise NotImplementedError(
+            "Orchestrator does not implement create_response directly"
+        )
+
+    async def execute_tool_call(self, tool_call):
+        """
+        Execute a single tool call and return the result message.
+        This method is required by the AugmentedLLM abstract class but not used directly.
+        """
+        raise NotImplementedError(
+            "Orchestrator does not implement execute_tool_call directly"
+        )
 
     def _format_server_info(self, server_name: str) -> str:
         """Format server information for display to planners"""

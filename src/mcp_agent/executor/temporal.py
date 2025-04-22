@@ -282,6 +282,19 @@ class TemporalExecutor(Executor):
         #         self._execute_task_as_async(task, **kwargs)
         #     )
 
+        # TODO: jerron - theres probably a better way to check if task is activity or not. Will come back to it.
+        # Check if this function should be run as a Temporal activity
+        execution_metadata: Dict[str, Any] = getattr(func, "execution_metadata", {})
+        has_activity_name = "activity_name" in execution_metadata
+        is_llm_method = func.__name__ in ["create_response", "execute_tool_call"]
+
+        # If it's not a specific LLM method and doesn't have an explicit activity name,
+        # execute it as a normal async task
+        if not is_llm_method and not has_activity_name:
+            return await asyncio.create_task(
+                self._execute_task_as_async(task, **kwargs)
+            )
+
         # Handle partial functions by combining their kwargs with the ones passed to execute
         task_kwargs = {}
         if isinstance(task, functools.partial):
@@ -289,8 +302,6 @@ class TemporalExecutor(Executor):
 
         # Combine kwargs
         combined_kwargs = {**task_kwargs, **kwargs}
-
-        execution_metadata: Dict[str, Any] = getattr(func, "execution_metadata", {})
 
         # Derive stable activity name, e.g. module + qualname
         activity_name = execution_metadata.get("activity_name")
@@ -453,6 +464,7 @@ class TemporalExecutor(Executor):
                 task_queue=self.config.task_queue,
                 activities=activities,
                 workflows=workflows,
+                debug_mode=True,  # TODO: jerron - turn this off once done with development
             )
             print(
                 f"Starting Temporal Worker on task queue '{self.config.task_queue}' with {len(activities)} activities and {len(workflows)} workflows."
