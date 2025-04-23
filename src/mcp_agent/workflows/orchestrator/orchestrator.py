@@ -63,6 +63,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         self,
         llm_factory: Callable[[Agent], AugmentedLLM[MessageParamT, MessageT]],
         planner: AugmentedLLM | None = None,
+        synthesizer: AugmentedLLM | None = None,
         available_agents: List[Agent | AugmentedLLM] | None = None,
         plan_type: Literal["full", "iterative"] = "full",
         context: Optional["Context"] = None,
@@ -87,6 +88,15 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 You are an expert planner. Given an objective task and a list of MCP servers (which are collections of tools)
                 or Agents (which are collections of servers), your job is to break down the objective into a series of steps,
                 which can be performed by LLMs with access to the servers or agents.
+                """,
+            )
+        )
+
+        self.sythesizer = synthesizer or llm_factory(
+            agent=Agent(
+                name="LLM Orchestration Synthesizer",
+                instruction="""
+                You are an expert synthesizer. Given the results of a series of steps, your job is to synthesize the results into a cohesive result.
                 """,
             )
         )
@@ -200,7 +210,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     plan_result=format_plan_result(plan_result)
                 )
 
-                plan_result.result = await self.planner.generate_str(
+                plan_result.result = await self.sythesizer.generate_str(
                     message=synthesis_prompt,
                     request_params=params.model_copy(update={"max_iterations": 1}),
                 )

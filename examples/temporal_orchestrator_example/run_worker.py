@@ -37,6 +37,7 @@ async def main():
             context_agents = []
 
             context_agents.append(orchestrator.planner)
+            context_agents.append(orchestrator.sythesizer)
 
             for agent in orchestrator.agents.values():
                 context_agent = await stack.enter_async_context(agent)
