@@ -109,7 +109,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
 
         elif isinstance(optimizer, AugmentedLLM):
             self.optimizer_llm = optimizer
-            self.aggregator = optimizer.aggregator
+            self.aggregator = optimizer.agent
             self.instruction = optimizer.instruction
 
         else:

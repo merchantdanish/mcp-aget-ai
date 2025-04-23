@@ -1,5 +1,8 @@
 from typing import TYPE_CHECKING, List, Type
 from boto3 import Session
+
+from pydantic import BaseModel
+
 from mcp.types import (
     CallToolRequestParams,
     CallToolRequest,
@@ -10,6 +13,7 @@ from mcp.types import (
     TextResourceContents,
     BlobResourceContents,
 )
+from mcp_agent.config import BedrockSettings
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -24,6 +28,7 @@ if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime.type_defs import (
         MessageOutputTypeDef,
         ConverseRequestTypeDef,
+        ConverseResponseTypeDef,
         MessageUnionTypeDef,
         ContentBlockUnionTypeDef,
         ToolConfigurationTypeDef,
@@ -31,6 +36,7 @@ if TYPE_CHECKING:
 else:
     MessageOutputTypeDef = object
     ConverseRequestTypeDef = object
+    ConverseResponseTypeDef = object
     MessageUnionTypeDef = object
     ContentBlockUnionTypeDef = object
     ToolConfigurationTypeDef = object
@@ -60,19 +66,6 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         if self.context.config.bedrock:
             if hasattr(self.context.config.bedrock, "default_model"):
                 default_model = self.context.config.bedrock.default_model
-
-        if self.context.config.bedrock:
-            session = Session(profile_name=self.context.config.bedrock.profile)
-            self.bedrock_client = session.client(
-                "bedrock-runtime",
-                aws_access_key_id=self.context.config.bedrock.aws_access_key_id,
-                aws_secret_access_key=self.context.config.bedrock.aws_secret_access_key,
-                aws_session_token=self.context.config.bedrock.aws_session_token,
-                region_name=self.context.config.bedrock.aws_region,
-            )
-        else:
-            session = Session()
-            self.bedrock_client = session.client("bedrock-runtime")
 
         self.default_request_params = self.default_request_params or RequestParams(
             model=default_model,
@@ -104,7 +97,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         else:
             messages.append(message)
 
-        response = await self.aggregator.list_tools()
+        response = await self.agent.list_tools()
 
         tool_config: ToolConfigurationTypeDef = {
             "tools": [
@@ -153,11 +146,13 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
             self.logger.debug(f"{arguments}")
             self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
-            executor_result = await self.executor.execute(
-                self.bedrock_client.converse, **arguments
+            response: ConverseResponseTypeDef = await self.executor.execute(
+                BedrockCompletionTasks.request_completion_task,
+                RequestCompletionRequest(
+                    config=self.context.config.bedrock,
+                    payload=arguments,
+                ),
             )
-
-            response = executor_result[0]
 
             if isinstance(response, BaseException):
                 self.logger.error(f"Error: {response}")
@@ -286,25 +281,24 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         response_model: Type[ModelT],
         request_params: RequestParams | None = None,
     ) -> ModelT:
-        import instructor
-
         response = await self.generate_str(
             message=message,
             request_params=request_params,
         )
 
-        client = instructor.from_bedrock(self.bedrock_client)
-
         params = self.get_request_params(request_params)
         model = await self.select_model(params) or "us.amazon.nova-lite-v1:0"
 
-        # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
-            modelId=model,
-            messages=[{"role": "user", "content": [{"text": response}]}],
-            response_model=response_model,
+        structured_response = await self.executor.execute(
+            BedrockCompletionTasks.request_structured_completion_task,
+            RequestStructuredCompletionRequest(
+                config=self.context.config.bedrock,
+                params=params,
+                response_model=response_model,
+                response_str=response,
+                model=model,
+            ),
         )
-
         return structured_response
 
     @classmethod
@@ -330,6 +324,79 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
     def message_str(self, message: MessageUnionTypeDef) -> str:
         """Convert an output message to a string representation."""
         return self.message_param_str(message)
+
+
+class RequestCompletionRequest(BaseModel):
+    config: BedrockSettings
+    payload: dict
+
+
+class RequestStructuredCompletionRequest(BaseModel):
+    config: BedrockSettings
+    params: RequestParams
+    response_model: Type[ModelT]
+    response_str: str
+    model: str
+
+
+class BedrockCompletionTasks:
+    @staticmethod
+    async def request_completion_task(
+        request: RequestCompletionRequest,
+    ) -> ConverseResponseTypeDef:
+        """
+        Request a completion from Bedrock's API.
+        """
+
+        if request.config:
+            session = Session(profile_name=request.config.profile)
+            bedrock_client = session.client(
+                "bedrock-runtime",
+                aws_access_key_id=request.config.aws_access_key_id,
+                aws_secret_access_key=request.config.aws_secret_access_key,
+                aws_session_token=request.config.aws_session_token,
+                region_name=request.config.bedrock.aws_region,
+            )
+        else:
+            session = Session()
+            bedrock_client = session.client("bedrock-runtime")
+
+        payload = request.payload
+        response = bedrock_client.converse(**payload)
+        return response
+
+    @staticmethod
+    async def request_structured_completion_task(
+        request: RequestStructuredCompletionRequest,
+    ):
+        """
+        Request a structured completion using Instructor's Bedrock API.
+        """
+        import instructor
+
+        if request.config:
+            session = Session(profile_name=request.config.profile)
+            bedrock_client = session.client(
+                "bedrock-runtime",
+                aws_access_key_id=request.config.aws_access_key_id,
+                aws_secret_access_key=request.config.aws_secret_access_key,
+                aws_session_token=request.config.aws_session_token,
+                region_name=request.config.bedrock.aws_region,
+            )
+        else:
+            session = Session()
+            bedrock_client = session.client("bedrock-runtime")
+
+        client = instructor.from_bedrock(bedrock_client)
+
+        # Extract structured data from natural language
+        structured_response = client.chat.completions.create(
+            modelId=request.model,
+            messages=[{"role": "user", "content": [{"text": request.response_str}]}],
+            response_model=request.response_model,
+        )
+
+        return structured_response
 
 
 class BedrockMCPTypeConverter(

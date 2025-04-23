@@ -3,6 +3,8 @@ import re
 import functools
 from typing import Iterable, List, Type
 
+from pydantic import BaseModel
+
 from openai import OpenAI
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
@@ -28,6 +30,7 @@ from mcp.types import (
     TextResourceContents,
 )
 
+from mcp_agent.config import OpenAISettings
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -77,11 +80,6 @@ class OpenAIAugmentedLLM(
                 f"Using reasoning model '{chosen_model}' with '{self._reasoning_effort}' reasoning effort"
             )
 
-        self.openai_client = OpenAI(
-            api_key=self.context.config.openai.api_key,
-            base_url=self.context.config.openai.base_url,
-        )
-
         self.default_request_params = self.default_request_params or RequestParams(
             model=chosen_model,
             modelPreferences=self.model_preferences,
@@ -110,10 +108,6 @@ class OpenAIAugmentedLLM(
 
         return ChatCompletionAssistantMessageParam(**assistant_message_params)
 
-    async def create_response(self, **kwargs) -> ChatCompletion:
-        response = self.openai_client.chat.completions.create(**kwargs)
-        return response
-
     async def generate(self, message, request_params: RequestParams | None = None):
         """
         Process a query using an LLM and available tools.
@@ -141,7 +135,7 @@ class OpenAIAugmentedLLM(
         else:
             messages.append(message)
 
-        response = await self.aggregator.list_tools()
+        response = await self.agent.list_tools()
         available_tools: List[ChatCompletionToolParam] = [
             ChatCompletionToolParam(
                 type="function",
@@ -184,13 +178,13 @@ class OpenAIAugmentedLLM(
             self.logger.debug(f"{arguments}")
             self._log_chat_progress(chat_turn=len(messages) // 2, model=model)
 
-            executor_result = await self.executor.execute(
-                self.create_response, arguments
+            response: ChatCompletion = await self.executor.execute(
+                OpenAICompletionTasks.request_completion_task,
+                RequestCompletionRequest(
+                    config=self.context.config.openai,
+                    payload=arguments,
+                ),
             )
-
-            response = executor_result[0]
-
-            response = ChatCompletion.model_validate(response)
 
             self.logger.debug(
                 "OpenAI ChatCompletion response:",
@@ -311,32 +305,23 @@ class OpenAIAugmentedLLM(
         # We need to do this in a two-step process because Instructor doesn't
         # know how to invoke MCP tools via call_tool, so we'll handle all the
         # processing first and then pass the final response through Instructor
-        import instructor
 
         response = await self.generate_str(
             message=message,
             request_params=request_params,
         )
 
-        # Next we pass the text through instructor to extract structured data
-        client = instructor.from_openai(
-            OpenAI(
-                api_key=self.context.config.openai.api_key,
-                base_url=self.context.config.openai.base_url,
-            ),
-            mode=instructor.Mode.TOOLS_STRICT,
-        )
-
         params = self.get_request_params(request_params)
-        model = await self.select_model(params)
+        model = await self.select_model(params) or "gpt-4o"
 
-        # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
-            model=model or "gpt-4o",
-            response_model=response_model,
-            messages=[
-                {"role": "user", "content": response},
-            ],
+        structured_response = await self.executor.execute(
+            OpenAICompletionTasks.request_structured_completion_task,
+            RequestStructuredCompletionRequest(
+                config=self.context.config.openai,
+                response_model=response_model,
+                response_str=response,
+                model=model,
+            ),
         )
 
         return structured_response
@@ -418,6 +403,66 @@ class OpenAIAugmentedLLM(
             return content
 
         return str(message)
+
+
+class RequestCompletionRequest(BaseModel):
+    config: OpenAISettings
+    payload: dict
+
+
+class RequestStructuredCompletionRequest(BaseModel):
+    config: OpenAISettings
+    response_model: Type[ModelT]
+    response_str: str
+    model: str
+
+
+class OpenAICompletionTasks:
+    @staticmethod
+    async def request_completion_task(
+        request: RequestCompletionRequest,
+    ) -> ChatCompletion:
+        """
+        Request a completion from OpenAI's API.
+        """
+
+        openai_client = OpenAI(
+            api_key=request.config.api_key,
+            base_url=request.config.base_url,
+        )
+
+        payload = request.payload
+        response = openai_client.chat.completions.create(**payload)
+        return response
+
+    @staticmethod
+    async def request_structured_completion_task(
+        request: RequestStructuredCompletionRequest,
+    ):
+        """
+        Request a structured completion using Instructor's OpenAI API.
+        """
+        import instructor
+
+        # Next we pass the text through instructor to extract structured data
+        client = instructor.from_openai(
+            OpenAI(
+                api_key=request.config.api_key,
+                base_url=request.config.base_url,
+            ),
+            mode=instructor.Mode.TOOLS_STRICT,
+        )
+
+        # Extract structured data from natural language
+        structured_response = client.chat.completions.create(
+            model=request.model,
+            response_model=request.response_model,
+            messages=[
+                {"role": "user", "content": request.response_str},
+            ],
+        )
+
+        return structured_response
 
 
 class MCPOpenAITypeConverter(

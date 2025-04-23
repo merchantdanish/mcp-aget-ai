@@ -1,5 +1,8 @@
 from typing import Type
 import base64
+
+from pydantic import BaseModel
+
 from google.genai import Client
 from google.genai import types
 from mcp.types import (
@@ -13,6 +16,7 @@ from mcp.types import (
     BlobResourceContents,
 )
 
+from mcp_agent.config import GoogleSettings
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
@@ -55,15 +59,6 @@ class GoogleAugmentedLLM(
             if hasattr(self.context.config.google, "default_model"):
                 default_model = self.context.config.google.default_model
 
-        if self.context.config.google and self.context.config.google.vertexai:
-            self.google_client = Client(
-                vertexai=self.context.config.google.vertexai,
-                project=self.context.config.google.project,
-                location=self.context.config.google.location,
-            )
-        else:
-            self.google_client = Client(api_key=self.context.config.google.api_key)
-
         self.default_request_params = self.default_request_params or RequestParams(
             model=default_model,
             modelPreferences=self.model_preferences,
@@ -96,7 +91,7 @@ class GoogleAugmentedLLM(
         else:
             messages.append(message)
 
-        response = await self.aggregator.list_tools()
+        response = await self.agent.list_tools()
 
         tools = [
             types.Tool(
@@ -137,11 +132,13 @@ class GoogleAugmentedLLM(
             self.logger.debug(f"{arguments}")
             self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
-            executor_result = await self.executor.execute(
-                self.google_client.models.generate_content, **arguments
+            response: types.GenerateContentResponse = await self.executor.execute(
+                GoogleCompletionTasks.request_completion_task,
+                RequestCompletionRequest(
+                    config=self.context.config.google,
+                    payload=arguments,
+                ),
             )
-
-            response = executor_result[0]
 
             if isinstance(response, BaseException):
                 self.logger.error(f"Error: {response}")
@@ -172,7 +169,7 @@ class GoogleAugmentedLLM(
             ]
 
             if function_calls:
-                results = await self.executor.execute(*function_calls)
+                results = await self.executor.execute_many(function_calls)
 
                 self.logger.debug(
                     f"Iteration {i}: Tool call results: {str(results) if results else 'None'}"
@@ -233,26 +230,23 @@ class GoogleAugmentedLLM(
         response_model: Type[ModelT],
         request_params: RequestParams | None = None,
     ) -> ModelT:
-        import instructor
-
         response = await self.generate_str(
             message=message,
             request_params=request_params,
         )
 
-        client = instructor.from_genai(
-            self.google_client, mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS
-        )
-
         params = self.get_request_params(request_params)
         model = await self.select_model(params) or "gemini-2.0-flash"
 
-        structured_response = client.chat.completions.create(
-            model=model,
-            response_model=response_model,
-            messages=[
-                {"role": "user", "content": response},
-            ],
+        structured_response = await self.executor.execute(
+            GoogleCompletionTasks.request_structured_completion_task,
+            RequestStructuredCompletionRequest(
+                config=self.context.config.google,
+                params=params,
+                response_model=response_model,
+                response_str=response,
+                model=model,
+            ),
         )
 
         return structured_response
@@ -298,6 +292,74 @@ class GoogleAugmentedLLM(
         """Convert an output message to a string representation."""
         # TODO: Jerron - to make more comprehensive
         return str(message.model_dump())
+
+
+class RequestCompletionRequest(BaseModel):
+    config: GoogleSettings
+    payload: dict
+
+
+class RequestStructuredCompletionRequest(BaseModel):
+    config: GoogleSettings
+    params: RequestParams
+    response_model: Type[ModelT]
+    response_str: str
+    model: str
+
+
+class GoogleCompletionTasks:
+    @staticmethod
+    async def request_completion_task(
+        request: RequestCompletionRequest,
+    ) -> types.GenerateContentResponse:
+        """
+        Request a completion from Google's API.
+        """
+
+        if request.config and request.config.vertexai:
+            google_client = Client(
+                vertexai=request.config.vertexai,
+                project=request.config.project,
+                location=request.config.location,
+            )
+        else:
+            google_client = Client(api_key=request.config.api_key)
+
+        payload = request.payload
+        response = google_client.models.generate_content(**payload)
+        return response
+
+    @staticmethod
+    async def request_structured_completion_task(
+        request: RequestStructuredCompletionRequest,
+    ):
+        """
+        Request a structured completion using Instructor's Google API.
+        """
+        import instructor
+
+        if request.config and request.config.vertexai:
+            google_client = Client(
+                vertexai=request.config.vertexai,
+                project=request.config.project,
+                location=request.config.location,
+            )
+        else:
+            google_client = Client(api_key=request.config.api_key)
+
+        client = instructor.from_genai(
+            google_client, mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS
+        )
+
+        structured_response = client.chat.completions.create(
+            model=request.model,
+            response_model=request.response_model,
+            messages=[
+                {"role": "user", "content": request.response_str},
+            ],
+        )
+
+        return structured_response
 
 
 class GoogleMCPTypeConverter(ProviderToMCPConverter[types.Content, types.Content]):

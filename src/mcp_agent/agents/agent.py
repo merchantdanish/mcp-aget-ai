@@ -23,16 +23,18 @@ from mcp_agent.human_input.types import (
     HumanInputResponse,
     HUMAN_INPUT_SIGNAL_NAME,
 )
-from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
+
 from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
+    from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
+
 
 logger = get_logger(__name__)
 
 # Define a TypeVar for AugmentedLLM and its subclasses
-LLM = TypeVar("LLM", bound=AugmentedLLM)
+LLM = TypeVar("LLM", bound="AugmentedLLM")
 
 HUMAN_INPUT_TOOL_NAME = "__human_input__"
 
@@ -73,7 +75,7 @@ class Agent(BaseModel, ContextDependent):
     Callback function for requesting human input.
     """
 
-    llm: AugmentedLLM | None = None
+    llm: Optional["AugmentedLLM"] = None
     """
     The LLM instance that is attached to the agent. This is set in attach_llm method.
     """

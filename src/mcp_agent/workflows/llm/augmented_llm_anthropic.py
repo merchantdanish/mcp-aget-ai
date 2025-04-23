@@ -34,6 +34,7 @@ from mcp.types import (
 
 # from mcp_agent import console
 # from mcp_agent.agents.agent import HUMAN_INPUT_TOOL_NAME
+from mcp_agent.config import AnthropicSettings
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -113,7 +114,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         Override this method to use a different LLM.
         """
         config = self.context.config
-        anthropic = Anthropic(api_key=config.anthropic.api_key)
         messages: List[MessageParam] = []
         params = self.get_request_params(request_params)
 
@@ -127,7 +127,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         else:
             messages.append(message)
 
-        response = await self.aggregator.list_tools()
+        response = await self.agent.list_tools()
         available_tools: List[ToolParam] = [
             {
                 "name": tool.name,
@@ -166,14 +166,16 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             self.logger.debug(f"{arguments}")
             self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
-            executor_result = await self.executor.execute(
-                anthropic.messages.create, **arguments
+            response: Message = await self.executor.execute(
+                AnthropicCompletionTasks.request_completion_task,
+                request=RequestCompletionRequest(
+                    config=config.anthropic,
+                    payload=arguments,
+                ),
             )
 
-            response = executor_result[0]
-
             if isinstance(response, BaseException):
-                self.logger.error(f"Error: {executor_result}")
+                self.logger.error(f"Error: {response}")
                 break
 
             self.logger.debug(
@@ -292,27 +294,23 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         # We need to do this in a two-step process because Instructor doesn't
         # know how to invoke MCP tools via call_tool, so we'll handle all the
         # processing first and then pass the final response through Instructor
-        import instructor
-
         response = await self.generate_str(
             message=message,
             request_params=request_params,
         )
 
-        # Next we pass the text through instructor to extract structured data
-        client = instructor.from_anthropic(
-            Anthropic(api_key=self.context.config.anthropic.api_key),
-        )
-
         params = self.get_request_params(request_params)
         model = await self.select_model(params)
 
-        # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
-            model=model,
-            response_model=response_model,
-            messages=[{"role": "user", "content": response}],
-            max_tokens=params.maxTokens,
+        structured_response: ModelT = self.executor.execute(
+            AnthropicCompletionTasks.request_structured_completion_task,
+            request=RequestStructuredCompletionRequest(
+                config=self.context.config.anthropic,
+                params=params,
+                response_model=response_model,
+                response_str=response,
+                model=model,
+            ),
         )
 
         return structured_response
@@ -376,6 +374,59 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 return str(content)
 
         return str(message)
+
+
+class RequestCompletionRequest(BaseModel):
+    config: AnthropicSettings
+    payload: dict
+
+
+class RequestStructuredCompletionRequest(BaseModel):
+    config: AnthropicSettings
+    params: RequestParams
+    response_model: Type[ModelT]
+    response_str: str
+    model: str
+
+
+class AnthropicCompletionTasks:
+    @staticmethod
+    async def request_completion_task(
+        request: RequestCompletionRequest,
+    ) -> Message:
+        """
+        Request a completion from Anthropic's API.
+        """
+
+        anthropic = Anthropic(api_key=request.config.api_key)
+
+        payload = request.payload
+        response = anthropic.messages.create(**payload)
+        return response
+
+    @staticmethod
+    async def request_structured_completion_task(
+        request: RequestStructuredCompletionRequest,
+    ):
+        """
+        Request a structured completion using Instructor's Anthropic API.
+        """
+        import instructor
+
+        # We pass the text through instructor to extract structured data
+        client = instructor.from_anthropic(
+            Anthropic(api_key=request.config.api_key),
+        )
+
+        # Extract structured data from natural language
+        structured_response = client.chat.completions.create(
+            model=request.model,
+            response_model=request.response_model,
+            messages=[{"role": "user", "content": request.response_str}],
+            max_tokens=request.params.maxTokens,
+        )
+
+        return structured_response
 
 
 class AnthropicMCPTypeConverter(ProviderToMCPConverter[MessageParam, Message]):

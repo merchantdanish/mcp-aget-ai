@@ -11,7 +11,7 @@ from typing import (
     TYPE_CHECKING,
 )
 
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from mcp.types import (
     CallToolRequest,
@@ -22,12 +22,11 @@ from mcp.types import (
     TextContent,
 )
 
+from mcp_agent.agents.agent import Agent
 from mcp_agent.core.context_dependent import ContextDependent
-from mcp_agent.mcp.mcp_aggregator import MCPAggregator
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 
 if TYPE_CHECKING:
-    from mcp_agent.agents.agent import Agent
     from mcp_agent.core.context import Context
     from mcp_agent.logging.logger import Logger
 
@@ -45,33 +44,39 @@ MCPMessageParam = SamplingMessage
 MCPMessageResult = CreateMessageResult
 
 
-class Memory(Protocol, Generic[MessageParamT]):
+class Memory(BaseModel, Generic[MessageParamT]):
     """
     Simple memory management for storing past interactions in-memory.
     """
 
-    # TODO: saqadri - add checkpointing and other advanced memory capabilities
+    # Pydantic settings common to all memories
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,  # lets MessageParamT be anything (e.g. a pydantic model)
+        extra="allow",  # fail fast on unexpected attributes
+    )
 
-    def __init__(self): ...
+    def extend(self, messages: List[MessageParamT]) -> None:  # noqa: D401
+        raise NotImplementedError
 
-    def extend(self, messages: List[MessageParamT]) -> None: ...
+    def set(self, messages: List[MessageParamT]) -> None:
+        raise NotImplementedError
 
-    def set(self, messages: List[MessageParamT]) -> None: ...
+    def append(self, message: MessageParamT) -> None:
+        raise NotImplementedError
 
-    def append(self, message: MessageParamT) -> None: ...
+    def get(self) -> List[MessageParamT]:
+        raise NotImplementedError
 
-    def get(self) -> List[MessageParamT]: ...
+    def clear(self) -> None:
+        raise NotImplementedError
 
-    def clear(self) -> None: ...
 
-
-class SimpleMemory(Memory, Generic[MessageParamT]):
+class SimpleMemory(Memory[MessageParamT]):
     """
-    Simple memory management for storing past interactions in-memory.
+    In-memory implementation that just keeps an ordered list of messages.
     """
 
-    def __init__(self):
-        self.history: List[MessageParamT] = []
+    history: List[MessageParamT] = Field(default_factory=list)
 
     def extend(self, messages: List[MessageParamT]):
         self.history.extend(messages)
@@ -83,10 +88,10 @@ class SimpleMemory(Memory, Generic[MessageParamT]):
         self.history.append(message)
 
     def get(self) -> List[MessageParamT]:
-        return self.history
+        return list(self.history)
 
     def clear(self):
-        self.history = []
+        self.history.clear()
 
 
 class RequestParams(CreateMessageRequestParams):
@@ -183,6 +188,7 @@ class ProviderToMCPConverter(Protocol, Generic[MessageParamT, MessageT]):
         """Convert an MCP tool result to an LLM input type"""
 
 
+# TODO: saqadri - this likely needs to be converted to a Pydantic model
 class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, MessageT]):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
@@ -215,13 +221,21 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         """
         super().__init__(context=context, **kwargs)
         self.executor = self.context.executor
-        self.aggregator = (
-            agent if agent is not None else MCPAggregator(server_names or [])
-        )
         self.name = name or (agent.name if agent else None)
         self.instruction = instruction or (
             agent.instruction if agent and isinstance(agent.instruction, str) else None
         )
+        self.agent = (
+            agent
+            if agent is not None
+            else Agent(
+                name=self.name,
+                instruction=self.instruction,
+                server_names=server_names,
+                llm=self,
+            )
+        )
+
         self.history: Memory[MessageParamT] = SimpleMemory[MessageParamT]()
         self.default_request_params = default_request_params
         self.model_preferences = (
@@ -232,14 +246,6 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
         self.model_selector = self.context.model_selector
         self.type_converter = type_converter
-
-    @abstractmethod
-    async def create_response(self, params: dict):
-        "Create a response from the LLM"
-
-    @abstractmethod
-    async def execute_tool_call(self, params: dict):
-        "Execute a single tool call and return the result message."
 
     @abstractmethod
     async def generate(
@@ -395,7 +401,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
             tool_name = request.params.name
             tool_args = request.params.arguments
-            result = await self.aggregator.call_tool(tool_name, tool_args)
+            result = await self.agent.call_tool(tool_name, tool_args)
 
             postprocess = await self.post_tool_call(
                 tool_call_id=tool_call_id, request=request, result=result

@@ -2,6 +2,7 @@ import json
 from typing import Iterable, List, Optional, Type, Union
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import (
+    ChatCompletions,
     ChatResponseMessage,
     UserMessage,
     AssistantMessage,
@@ -21,6 +22,9 @@ from azure.ai.inference.models import (
     ChatRole,
 )
 from azure.core.credentials import AzureKeyCredential
+
+from pydantic import BaseModel
+
 from mcp.types import (
     CallToolRequestParams,
     CallToolRequest,
@@ -31,6 +35,7 @@ from mcp.types import (
     TextResourceContents,
 )
 
+from mcp_agent.config import AzureSettings
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -83,15 +88,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             if hasattr(self.context.config.azure, "default_model"):
                 default_model = self.context.config.azure.default_model
 
-        if self.context.config.azure:
-            self.azure_client = ChatCompletionsClient(
-                endpoint=self.context.config.azure.endpoint,
-                credential=AzureKeyCredential(self.context.config.azure.api_key),
-                **self.context.config.azure.model_dump(
-                    exclude={"endpoint", "credential"}
-                ),
-            )
-        else:
+        if not self.context.config.azure:
             self.logger.error(
                 "Azure configuration not found. Please provide Azure configuration."
             )
@@ -130,7 +127,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         else:
             messages.append(message)
 
-        response = await self.aggregator.list_tools()
+        response = await self.agent.list_tools()
 
         tools: list[ChatCompletionsToolDefinition] = [
             ChatCompletionsToolDefinition(
@@ -161,11 +158,13 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             self.logger.debug(f"{arguments}")
             self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
-            executor_result = await self.executor.execute(
-                self.azure_client.complete, **arguments
+            response = await self.executor.execute(
+                AzureCompletionTasks.request_completion_task,
+                RequestCompletionRequest(
+                    config=self.context.config.azure,
+                    payload=arguments,
+                ),
             )
-
-            response = executor_result[0]
 
             if isinstance(response, BaseException):
                 self.logger.error(f"Error: {response}")
@@ -188,7 +187,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                         for tool_call in response.choices[0].message.tool_calls
                     ]
 
-                    tool_results = await self.executor.execute(*tool_tasks)
+                    tool_results = await self.executor.execute_many(tool_tasks)
 
                     self.logger.debug(
                         f"Iteration {i}: Tool call results: {str(tool_results) if tool_results else 'None'}"
@@ -347,6 +346,31 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         if message.content:
             return message.content
         return str(message)
+
+
+class RequestCompletionRequest(BaseModel):
+    config: AzureSettings
+    payload: dict
+
+
+class AzureCompletionTasks:
+    @staticmethod
+    async def request_completion_task(
+        request: RequestCompletionRequest,
+    ) -> ChatCompletions:
+        """
+        Request a completion from Azure's API.
+        """
+
+        azure_client = ChatCompletionsClient(
+            endpoint=request.config.endpoint,
+            credential=AzureKeyCredential(request.config.api_key),
+            **request.config.model_dump(exclude={"endpoint", "credential"}),
+        )
+
+        payload = request.payload
+        response = azure_client.complete(**payload)
+        return response
 
 
 class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ResponseMessage]):
