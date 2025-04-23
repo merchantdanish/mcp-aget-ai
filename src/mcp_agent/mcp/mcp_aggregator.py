@@ -421,7 +421,7 @@ class MCPAggregator(ContextDependent):
         )
 
     async def call_tool(
-        self, name: str, arguments: dict | None = None
+        self, name: str, arguments: dict | None = None, server_name: str | None = None
     ) -> CallToolResult:
         """
         Call a namespaced tool, e.g., 'server_name.tool_name'.
@@ -432,8 +432,10 @@ class MCPAggregator(ContextDependent):
         server_name: str = None
         local_tool_name: str = None
 
-        # Use the helper method to parse the capability name
-        server_name, local_tool_name = self._parse_capability_name(name, "tool")
+        if server_name:
+            local_tool_name = name
+        else:
+            server_name, local_tool_name = self._parse_capability_name(name, "tool")
 
         if server_name is None or local_tool_name is None:
             logger.error(f"Error: Tool '{name}' not found")
@@ -523,7 +525,10 @@ class MCPAggregator(ContextDependent):
         )
 
     async def get_prompt(
-        self, name: str, arguments: dict[str, str] | None = None
+        self,
+        name: str,
+        arguments: dict[str, str] | None = None,
+        server_name: str | None = None,
     ) -> GetPromptResult:
         """
         Get a prompt from a server.
@@ -540,7 +545,11 @@ class MCPAggregator(ContextDependent):
         if not self.initialized:
             await self.load_servers()
 
-        server_name, local_prompt_name = self._parse_capability_name(name, "prompt")
+        if server_name:
+            local_prompt_name = name
+        else:
+            server_name, local_prompt_name = self._parse_capability_name(name, "prompt")
+
         if server_name is None or local_prompt_name is None:
             logger.error(f"Error: Prompt '{name}' not found")
             return GetPromptResult(
