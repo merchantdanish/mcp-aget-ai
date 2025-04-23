@@ -112,7 +112,7 @@ async def main():
 
         handle = await executor.start_workflow(
             "SimpleWorkflow",
-            """Hello! Say hello back! Do nothing else!""",
+            """Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction""",
         )
         a = await handle.result()
         print(a)
