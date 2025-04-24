@@ -333,6 +333,10 @@ class OpenAIAugmentedLLM(
             ),
         )
 
+        # Convert dict back to the proper model instance if needed
+        if isinstance(structured_response, dict):
+            structured_response = response_model.model_validate(structured_response)
+
         return structured_response
 
     async def pre_tool_call(self, tool_call_id: str | None, request: CallToolRequest):
