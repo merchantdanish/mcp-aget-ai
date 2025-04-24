@@ -125,9 +125,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
         system_prompt = self.instruction or params.systemPrompt
         if system_prompt and len(messages) == 0:
-            messages.append(
-                SystemMessage(content=system_prompt)
-            )
+            messages.append(SystemMessage(content=system_prompt))
 
         if isinstance(message, str):
             messages.append(UserMessage(content=message))

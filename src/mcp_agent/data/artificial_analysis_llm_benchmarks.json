@@ -6246,5 +6246,137 @@
         "bbh_score": null
       }
     }
+  },
+  {
+    "name": "glm-4-flash",
+    "description": "high-performance general-purpose language model",
+    "provider": "ZhipuAI",
+    "metrics": {
+      "cost": {
+        "blended_cost_per_1m": 2.8,
+        "input_cost_per_1m": 1.8,
+        "output_cost_per_1m": 8.0
+      },
+      "speed": {
+        "time_to_first_token_ms": 900.0,
+        "tokens_per_second": 90.0
+      },
+      "intelligence": {
+        "quality_score": 76.0,
+        "mmlu_score": 82.0,
+        "gsm8k_score": 80.0,
+        "bbh_score": 72.0
+      }
+    }
+  },
+  {
+    "name": "glm-4-plus",
+    "description": "enhanced version of the large model, with stronger intelligence",
+    "provider": "ZhipuAI",
+    "metrics": {
+      "cost": {
+        "blended_cost_per_1m": 4.0,
+        "input_cost_per_1m": 2.5,
+        "output_cost_per_1m": 12.0
+      },
+      "speed": {
+        "time_to_first_token_ms": 1100.0,
+        "tokens_per_second": 85.0
+      },
+      "intelligence": {
+        "quality_score": 82.0,
+        "mmlu_score": 85.0,
+        "gsm8k_score": 83.0,
+        "bbh_score": 75.0
+      }
+    }
+  },
+  {
+    "name": "glm-4-long",
+    "description": "supports longer context large model",
+    "provider": "ZhipuAI",
+    "metrics": {
+      "cost": {
+        "blended_cost_per_1m": 6.0,
+        "input_cost_per_1m": 4.0,
+        "output_cost_per_1m": 14.0
+      },
+      "speed": {
+        "time_to_first_token_ms": 1200.0,
+        "tokens_per_second": 75.0
+      },
+      "intelligence": {
+        "quality_score": 80.0,
+        "mmlu_score": 83.0,
+        "gsm8k_score": 82.0,
+        "bbh_score": 74.0
+      }
+    }
+  },
+  {
+    "name": "glm-4-flashx-250414",
+    "description": "high-performance Flash model, faster response speed",
+    "provider": "ZhipuAI",
+    "metrics": {
+      "cost": {
+        "blended_cost_per_1m": 3.0,
+        "input_cost_per_1m": 1.9,
+        "output_cost_per_1m": 9.0
+      },
+      "speed": {
+        "time_to_first_token_ms": 800.0,
+        "tokens_per_second": 100.0
+      },
+      "intelligence": {
+        "quality_score": 78.0,
+        "mmlu_score": 80.0,
+        "gsm8k_score": 78.0,
+        "bbh_score": 72.0
+      }
+    }
+  },
+  {
+    "name": "glm-4-flash-250414",
+    "description": "standard Flash model, balanced speed and performance",
+    "provider": "ZhipuAI",
+    "metrics": {
+      "cost": {
+        "blended_cost_per_1m": 2.5,
+        "input_cost_per_1m": 1.6,
+        "output_cost_per_1m": 7.0
+      },
+      "speed": {
+        "time_to_first_token_ms": 850.0,
+        "tokens_per_second": 95.0
+      },
+      "intelligence": {
+        "quality_score": 75.0,
+        "mmlu_score": 78.0,
+        "gsm8k_score": 76.0,
+        "bbh_score": 70.0
+      }
+    }
+  },
+  {
+    "name": "glm-4-air-250414",
+    "description": "lightweight large model, lower resource consumption",
+    "provider": "ZhipuAI",
+    "metrics": {
+      "cost": {
+        "blended_cost_per_1m": 2.0,
+        "input_cost_per_1m": 1.2,
+        "output_cost_per_1m": 6.0
+      },
+      "speed": {
+        "time_to_first_token_ms": 750.0,
+        "tokens_per_second": 110.0
+      },
+      "intelligence": {
+        "quality_score": 70.0,
+        "mmlu_score": 72.0,
+        "gsm8k_score": 70.0,
+        "bbh_score": 65.0
+      }
+    }
   }
 ]
