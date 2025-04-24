@@ -78,7 +78,12 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             available_agents: List of agents available to tasks executed by this orchestrator
             context: Application context
         """
-        super().__init__(context=context, **kwargs)
+        super().__init__(
+            name="orchestrator",
+            instruction="You are an orchestrator",
+            context=context,
+            **kwargs,
+        )
 
         self.llm_factory = llm_factory
 

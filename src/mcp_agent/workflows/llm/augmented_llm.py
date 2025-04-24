@@ -206,7 +206,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     def __init__(
         self,
         agent: Optional["Agent"] = None,
-        server_names: List[str] | None = None,
+        server_names: List[str] = [],
         instruction: str | None = None,
         name: str | None = None,
         default_request_params: RequestParams | None = None,
@@ -221,10 +221,8 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         """
         super().__init__(context=context, **kwargs)
         self.executor = self.context.executor
-        self.name = name or (agent.name if agent else None)
-        self.instruction = instruction or (
-            agent.instruction if agent and isinstance(agent.instruction, str) else None
-        )
+        self.name = name or agent.name
+        self.instruction = instruction or agent.instruction
 
         if agent is not None:
             self.agent = agent
