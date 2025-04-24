@@ -13,6 +13,7 @@ from openai.types.chat import (
     ChatCompletionContentPartRefusalParam,
     ChatCompletionMessage,
     ChatCompletionMessageParam,
+    ChatCompletionMessageToolCall,
     ChatCompletionSystemMessageParam,
     ChatCompletionToolParam,
     ChatCompletionToolMessageParam,
@@ -25,6 +26,7 @@ from mcp.types import (
     CallToolResult,
     EmbeddedResource,
     ImageContent,
+    ListToolsResult,
     ModelPreferences,
     TextContent,
     TextResourceContents,
@@ -135,7 +137,7 @@ class OpenAIAugmentedLLM(
         else:
             messages.append(message)
 
-        response = await self.agent.list_tools()
+        response: ListToolsResult = await self.agent.list_tools()
         available_tools: List[ChatCompletionToolParam] = [
             ChatCompletionToolParam(
                 type="function",
@@ -178,12 +180,14 @@ class OpenAIAugmentedLLM(
             self.logger.debug(f"{arguments}")
             self._log_chat_progress(chat_turn=len(messages) // 2, model=model)
 
-            response: ChatCompletion = await self.executor.execute(
-                OpenAICompletionTasks.request_completion_task,
+            request = ensure_serializable(
                 RequestCompletionRequest(
                     config=self.context.config.openai,
                     payload=arguments,
                 ),
+            )
+            response: ChatCompletion = await self.executor.execute(
+                OpenAICompletionTasks.request_completion_task, request
             )
 
             self.logger.debug(
@@ -336,15 +340,15 @@ class OpenAIAugmentedLLM(
 
     async def execute_tool_call(
         self,
-        tool_call: ChatCompletionToolParam,
+        tool_call: ChatCompletionMessageToolCall,
     ) -> ChatCompletionToolMessageParam | None:
         """
         Execute a single tool call and return the result message.
         Returns None if there's no content to add to messages.
         """
-        tool_name = tool_call["function"]["name"]
-        tool_args_str = tool_call["function"]["arguments"]
-        tool_call_id = tool_call["id"]
+        tool_name = tool_call.function.name
+        tool_args_str = tool_call.function.arguments
+        tool_call_id = tool_call.id
         tool_args = {}
 
         try:
@@ -433,6 +437,7 @@ class OpenAICompletionTasks:
 
         payload = request.payload
         response = openai_client.chat.completions.create(**payload)
+        response = ensure_serializable(response)
         return response
 
     @staticmethod
@@ -654,3 +659,17 @@ def openai_content_to_mcp_content(
 def typed_dict_extras(d: dict, exclude: List[str]):
     extras = {k: v for k, v in d.items() if k not in exclude}
     return extras
+
+
+def ensure_serializable(data: BaseModel) -> BaseModel:
+    """
+    Workaround for https://github.com/pydantic/pydantic/issues/7713, see https://github.com/pydantic/pydantic/issues/7713#issuecomment-2604574418
+    """
+    try:
+        json.dumps(data)
+    except TypeError:
+        # use `vars` to coerce nested data into dictionaries
+        data_json_from_dicts = json.dumps(data, default=lambda x: vars(x))  # type: ignore
+        data_obj = json.loads(data_json_from_dicts)
+        data = type(data)(**data_obj)
+    return data

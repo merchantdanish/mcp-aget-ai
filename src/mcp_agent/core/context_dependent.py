@@ -12,9 +12,9 @@ class ContextDependent:
     Provides both global fallback and instance-specific context support.
     """
 
-    def __init__(self, *args, context: Optional["Context"] = None, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, context: Optional["Context"] = None, **kwargs):
         self._context = context
+        super().__init__(**kwargs)
 
     @property
     def context(self) -> "Context":

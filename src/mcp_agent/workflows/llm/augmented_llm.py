@@ -22,13 +22,13 @@ from mcp.types import (
     TextContent,
 )
 
-from mcp_agent.agents.agent import Agent
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
     from mcp_agent.logging.logger import Logger
+    from mcp_agent.agents.agent import Agent
 
 MessageParamT = TypeVar("MessageParamT")
 """A type representing an input message to an LLM."""
@@ -225,16 +225,19 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         self.instruction = instruction or (
             agent.instruction if agent and isinstance(agent.instruction, str) else None
         )
-        self.agent = (
-            agent
-            if agent is not None
-            else Agent(
+
+        if agent is not None:
+            self.agent = agent
+        else:
+            # Import here to avoid circular import
+            from mcp_agent.agents.agent import Agent
+
+            self.agent = Agent(
                 name=self.name,
                 instruction=self.instruction,
                 server_names=server_names,
                 llm=self,
             )
-        )
 
         self.history: Memory[MessageParamT] = SimpleMemory[MessageParamT]()
         self.default_request_params = default_request_params

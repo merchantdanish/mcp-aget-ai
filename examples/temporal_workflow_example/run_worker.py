@@ -8,12 +8,17 @@ This leverages the TemporalExecutor's start_worker method to handle the worker s
 
 import asyncio
 import logging
-import os
 
-# Import Temporal libraries
-from mcp_agent.executor.temporal import TemporalExecutor
-from main import app, finder_agent
-from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+from mcp_agent.agents.agent import AgentTasks
+from mcp_agent.executor.temporal import create_temporal_worker_for_app
+from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicCompletionTasks
+from mcp_agent.workflows.llm.augmented_llm_azure import AzureCompletionTasks
+from mcp_agent.workflows.llm.augmented_llm_bedrock import BedrockCompletionTasks
+from mcp_agent.workflows.llm.augmented_llm_google import GoogleCompletionTasks
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAICompletionTasks
+
+from main import app
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -26,13 +31,31 @@ async def main():
     """
     # Initialize the app to set up the context and executor
     async with app.run() as running_app:
-        context = finder_agent.context
-        context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
+        agent_tasks = AgentTasks(context=running_app.context)
+        app.workflow_task()(agent_tasks.call_tool_task)
+        app.workflow_task()(agent_tasks.get_capabilities_task)
+        app.workflow_task()(agent_tasks.get_prompt_task)
+        app.workflow_task()(agent_tasks.initialize_aggregator_task)
+        app.workflow_task()(agent_tasks.list_prompts_task)
+        app.workflow_task()(agent_tasks.list_tools_task)
+        app.workflow_task()(agent_tasks.shutdown_aggregator_task)
 
-        async with finder_agent:
-            finder_llm = finder_agent.attach_llm(OpenAIAugmentedLLM)
-            executor: TemporalExecutor = running_app.executor
-            await executor.start_worker(agents=[finder_llm])
+        app.workflow_task()(AnthropicCompletionTasks.request_completion_task)
+        app.workflow_task()(AnthropicCompletionTasks.request_structured_completion_task)
+
+        app.workflow_task()(AzureCompletionTasks.request_completion_task)
+
+        app.workflow_task()(BedrockCompletionTasks.request_completion_task)
+        app.workflow_task()(BedrockCompletionTasks.request_structured_completion_task)
+
+        app.workflow_task()(GoogleCompletionTasks.request_completion_task)
+        app.workflow_task()(GoogleCompletionTasks.request_structured_completion_task)
+
+        app.workflow_task()(OpenAICompletionTasks.request_completion_task)
+        app.workflow_task()(OpenAICompletionTasks.request_structured_completion_task)
+
+        async with create_temporal_worker_for_app(running_app) as worker:
+            await worker.run()
 
 
 if __name__ == "__main__":

@@ -297,6 +297,9 @@ class TemporalExecutor(Executor):
         # Derive stable activity name, e.g. module + qualname
         activity_name = execution_metadata.get("activity_name")
 
+        activity_registry = self.context.task_registry
+        activity_task = activity_registry.get_activity(activity_name)
+
         print(f"Activity name: {activity_name}")
 
         schedule_to_close = execution_metadata.get(
@@ -312,8 +315,8 @@ class TemporalExecutor(Executor):
         retry_policy = execution_metadata.get("retry_policy", None)
 
         try:
-            result = await workflow.execute_activity_method(
-                activity_name,
+            result = await workflow.execute_activity(
+                activity_task,
                 args=args,
                 task_queue=self.config.task_queue,
                 schedule_to_close_timeout=schedule_to_close,

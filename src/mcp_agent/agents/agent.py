@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from typing import Callable, Dict, List, Optional, TypeVar, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, TypeVar, TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
@@ -15,10 +15,9 @@ from mcp.types import (
     Tool,
 )
 
-from mcp_agent.core.context_dependent import ContextDependent
+from mcp_agent.core.context import Context
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator, NamespacedPrompt, NamespacedTool
 from mcp_agent.human_input.types import (
-    HumanInputCallback,
     HumanInputRequest,
     HumanInputResponse,
     HUMAN_INPUT_SIGNAL_NAME,
@@ -27,19 +26,21 @@ from mcp_agent.human_input.types import (
 from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
-    from mcp_agent.core.context import Context
     from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
+
+    # Define a TypeVar for AugmentedLLM and its subclasses that's only used at type checking time
+    LLM = TypeVar("LLM", bound="AugmentedLLM")
+else:
+    # Define a TypeVar without the bound for runtime
+    LLM = TypeVar("LLM")
 
 
 logger = get_logger(__name__)
 
-# Define a TypeVar for AugmentedLLM and its subclasses
-LLM = TypeVar("LLM", bound="AugmentedLLM")
-
 HUMAN_INPUT_TOOL_NAME = "__human_input__"
 
 
-class Agent(BaseModel, ContextDependent):
+class Agent(BaseModel):
     """
     An Agent is an entity that has access to a set of MCP servers and can interact with them.
     Each agent should have a purpose defined by its instruction.
@@ -65,17 +66,22 @@ class Agent(BaseModel, ContextDependent):
     List of local functions that the agent can call.
     """
 
+    context: Optional[Context] = None
+    """
+    The application context that the agent is running in.
+    """
+
     connection_persistence: bool = True
     """
     Whether to persist connections to the MCP servers.
     """
 
-    human_input_callback: HumanInputCallback | None = None
+    human_input_callback: Optional[Callable] = None
     """
-    Callback function for requesting human input.
+    Callback function for requesting human input. Must match HumanInputCallback protocol.
     """
 
-    llm: Optional["AugmentedLLM"] = None
+    llm: Optional[Any] = None
     """
     The LLM instance that is attached to the agent. This is set in attach_llm method.
     """
@@ -86,7 +92,9 @@ class Agent(BaseModel, ContextDependent):
     This is set to True after agent.initialize() is completed.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)  # allow ContextDependent
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True, extra="allow"
+    )  # allow ContextDependent
 
     # region Private attributes
     _function_tool_map: Dict[str, FastTool] = PrivateAttr(default_factory=dict)
@@ -112,6 +120,12 @@ class Agent(BaseModel, ContextDependent):
     # endregion
 
     def model_post_init(self, __context) -> None:
+        if self.context is None:
+            # Fall back to global context if available
+            from mcp_agent.core.context import get_current_context
+
+            self.context = get_current_context()
+
         # Map function names to tools
         self._function_tool_map = {
             (tool := FastTool.from_function(fn)).name: tool for fn in self.functions
@@ -214,6 +228,13 @@ class Agent(BaseModel, ContextDependent):
         self.initialized = False
         logger.debug(f"Agent {self.name} shutdown.")
 
+    async def __aenter__(self):
+        await self.initialize()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.shutdown()
+
     async def get_capabilities(
         self, server_name: str | None
     ) -> ServerCapabilities | Dict[str, ServerCapabilities]:
@@ -263,7 +284,7 @@ class Agent(BaseModel, ContextDependent):
 
         # Add a human_input_callback as a tool
         if not self.human_input_callback:
-            self.logger.debug("Human input callback not set")
+            logger.debug("Human input callback not set")
             return result
 
         # Add a human_input_callback as a tool
@@ -323,6 +344,7 @@ class Agent(BaseModel, ContextDependent):
 
         Raises:
             TimeoutError: If the timeout is exceeded
+            ValueError: If human_input_callback is not set or doesn't have the right signature
         """
         if not self.human_input_callback:
             raise ValueError("Human input callback not set")
@@ -444,11 +466,13 @@ class InitAggregatorResponse(BaseModel):
 
     initialized: bool
 
-    namespaced_tool_map: Dict[str, NamespacedTool]
-    server_to_tool_map: Dict[str, List[NamespacedTool]]
+    namespaced_tool_map: Dict[str, NamespacedTool] = Field(default_factory=dict)
+    server_to_tool_map: Dict[str, List[NamespacedTool]] = Field(default_factory=dict)
 
-    namespaced_prompt_map: Dict[str, NamespacedPrompt]
-    server_to_prompt_map: Dict[str, List[NamespacedPrompt]]
+    namespaced_prompt_map: Dict[str, NamespacedPrompt] = Field(default_factory=dict)
+    server_to_prompt_map: Dict[str, List[NamespacedPrompt]] = Field(
+        default_factory=dict
+    )
 
 
 class ListToolsRequest(BaseModel):

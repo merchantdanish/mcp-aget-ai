@@ -373,6 +373,7 @@ class MCPApp:
                     async def _bound_adapter(*a, **k):
                         return await func(self_ref, *a, **k)
 
+                    _bound_adapter.__annotations__ = func.__annotations__.copy()
                     task_callable = task_defn(_bound_adapter, name=activity_name)
                 else:
                     task_callable = task_defn(func, name=activity_name)
@@ -382,8 +383,8 @@ class MCPApp:
             # ---- register *after* decorating --------------------------------
             self._task_registry.register(activity_name, task_callable, metadata)
 
-            # Un‑bound function: decorate once, return the result
-            return task_defn(func, name=activity_name)
+            # Return the callable we created rather than re-decorating
+            return task_callable
 
         return decorator
 
