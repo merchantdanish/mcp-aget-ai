@@ -445,7 +445,7 @@ async def create_temporal_worker_for_app(app: "MCPApp"):
         for name in activity_registry.list_activities():
             activities.append(activity_registry.get_activity(name))
 
-        print(f"Activitieis list: {activity_registry.list_activities()}")
+        print(f"Activities list: {activity_registry.list_activities()}")
 
         # Collect workflows from the registered workflows
         workflows = running_app.context.workflow_registry.list_workflows()
