@@ -284,6 +284,19 @@ class TemporalExecutor(Executor):
             # TODO: saqadri - should we asyncio.create_task?
             return await self._execute_task_as_async(task, *args, **kwargs)
 
+        # TODO: jerron - theres probably a better way to check if task is activity or not. Will come back to it.
+        # Check if this function should be run as a Temporal activity
+        execution_metadata: Dict[str, Any] = getattr(func, "execution_metadata", {})
+        has_activity_name = "activity_name" in execution_metadata
+        is_llm_method = func.__name__ in ["create_response", "execute_tool_call"]
+
+        # If it's not a specific LLM method and doesn't have an explicit activity name,
+        # execute it as a normal async task
+        if not is_llm_method and not has_activity_name:
+            return await asyncio.create_task(
+                self._execute_task_as_async(task, **kwargs)
+            )
+
         # Handle partial functions by combining their kwargs with the ones passed to execute
         # task_kwargs = {}
         # if isinstance(task, functools.partial):
@@ -291,8 +304,6 @@ class TemporalExecutor(Executor):
 
         # Combine kwargs
         # combined_kwargs = {**task_kwargs, **kwargs}
-
-        execution_metadata: Dict[str, Any] = getattr(func, "execution_metadata", {})
 
         # Derive stable activity name, e.g. module + qualname
         activity_name = execution_metadata.get("activity_name")

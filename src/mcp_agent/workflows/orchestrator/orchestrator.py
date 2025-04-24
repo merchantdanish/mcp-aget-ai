@@ -11,6 +11,7 @@ from typing import (
 )
 
 from mcp_agent.agents.agent import Agent
+from mcp_agent.executor.temporal import TemporalExecutor
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -63,6 +64,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         self,
         llm_factory: Callable[[Agent], AugmentedLLM[MessageParamT, MessageT]],
         planner: AugmentedLLM | None = None,
+        synthesizer: AugmentedLLM | None = None,
         available_agents: List[Agent | AugmentedLLM] | None = None,
         plan_type: Literal["full", "iterative"] = "full",
         context: Optional["Context"] = None,
@@ -87,6 +89,15 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 You are an expert planner. Given an objective task and a list of MCP servers (which are collections of tools)
                 or Agents (which are collections of servers), your job is to break down the objective into a series of steps,
                 which can be performed by LLMs with access to the servers or agents.
+                """,
+            )
+        )
+
+        self.sythesizer = synthesizer or llm_factory(
+            agent=Agent(
+                name="LLM Orchestration Synthesizer",
+                instruction="""
+                You are an expert synthesizer. Given the results of a series of steps, your job is to synthesize the results into a cohesive result.
                 """,
             )
         )
@@ -200,7 +211,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     plan_result=format_plan_result(plan_result)
                 )
 
-                plan_result.result = await self.planner.generate_str(
+                plan_result.result = await self.sythesizer.generate_str(
                     message=synthesis_prompt,
                     request_params=params.model_copy(update={"max_iterations": 1}),
                 )
@@ -244,32 +255,48 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         futures: List[Coroutine[Any, Any, str]] = []
         results = []
 
-        async with contextlib.AsyncExitStack() as stack:
-            # Set up all the tasks with their agents and LLMs
+        # TODO: jerron - hacky way to prevent workflow from idling sometimes when using temporal. Will look for better way.
+        # since we have establish agent context in worker, we dont have to do it again here.
+        if isinstance(self.executor, TemporalExecutor):
             for task in step.tasks:
                 agent = self.agents.get(task.agent)
                 if not agent:
-                    # TODO: saqadri - should we fail the entire workflow in this case?
-                    raise ValueError(f"No agent found matching {task.agent}")
-                elif isinstance(agent, AugmentedLLM):
-                    llm = agent
-                else:
-                    # Enter agent context
-                    ctx_agent = await stack.enter_async_context(agent)
-                    llm = await ctx_agent.attach_llm(self.llm_factory)
-
+                    futures.append(f"No agent matching {task.agent}")
+                    continue
+                llm = agent.attach_llm(self.llm_factory)
                 task_description = TASK_PROMPT_TEMPLATE.format(
                     objective=previous_result.objective,
                     task=task.description,
                     context=context,
                 )
-
                 futures.append(
                     llm.generate_str(
                         message=task_description,
                         request_params=params,
                     )
                 )
+        else:
+            async with contextlib.AsyncExitStack() as stack:
+                # Set up all the tasks with their agents and LLMs
+                for task in step.tasks:
+                    agent = self.agents.get(task.agent)
+                    if not agent:
+                        # TODO: saqadri - should we fail the entire workflow in this case?
+                        futures.append(f"No agent matching {task.agent}")
+                        continue
+                        # raise ValueError(f"No agent found matching {task.agent}")
+                    elif isinstance(agent, AugmentedLLM):
+                        llm = agent
+                    else:
+                        # Enter agent context
+                        ctx_agent = await stack.enter_async_context(agent)
+                        llm = ctx_agent.attach_llm(self.llm_factory)
+
+                    task_description = TASK_PROMPT_TEMPLATE.format(
+                        objective=previous_result.objective,
+                        task=task.description,
+                        context=context,
+                    )
 
             # Wait for all tasks to complete
             results = await self.executor.execute_many(futures)
@@ -359,6 +386,24 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             response_model=NextStep,
         )
         return next_step
+
+    async def create_response(self, **kwargs):
+        """
+        Create a response from the LLM.
+        This method is required by the AugmentedLLM abstract class but not used directly.
+        """
+        raise NotImplementedError(
+            "Orchestrator does not implement create_response directly"
+        )
+
+    async def execute_tool_call(self, tool_call):
+        """
+        Execute a single tool call and return the result message.
+        This method is required by the AugmentedLLM abstract class but not used directly.
+        """
+        raise NotImplementedError(
+            "Orchestrator does not implement execute_tool_call directly"
+        )
 
     def _format_server_info(self, server_name: str) -> str:
         """Format server information for display to planners"""

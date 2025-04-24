@@ -35,7 +35,7 @@ class SimpleWorkflow(Workflow[str]):
     """
 
     @app.workflow_run
-    async def run(self, input_data: str) -> WorkflowResult[str]:
+    async def run(self, input: str) -> WorkflowResult[str]:
         """
         Run the workflow, processing the input data.
 
@@ -52,7 +52,7 @@ class SimpleWorkflow(Workflow[str]):
             finder_llm = finder_agent.attach_llm(OpenAIAugmentedLLM)
 
             result = await finder_llm.generate_str(
-                message="Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+                message=input,
             )
             return WorkflowResult(value=result)
 
@@ -67,7 +67,10 @@ class SimpleWorkflow(Workflow[str]):
 async def main():
     async with app.run() as agent_app:
         executor: TemporalExecutor = agent_app.executor
-        handle = await executor.start_workflow("SimpleWorkflow", "Hello, World!")
+        handle = await executor.start_workflow(
+            "SimpleWorkflow",
+            "Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+        )
         a = await handle.result()
         print(a)
 
