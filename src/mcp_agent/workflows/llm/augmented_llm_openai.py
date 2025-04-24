@@ -420,7 +420,7 @@ class RequestCompletionRequest(BaseModel):
 
 class RequestStructuredCompletionRequest(BaseModel):
     config: OpenAISettings
-    response_model: Type[ModelT]
+    model_path: str
     response_str: str
     model: str
 
@@ -447,11 +447,17 @@ class OpenAICompletionTasks:
     @staticmethod
     async def request_structured_completion_task(
         request: RequestStructuredCompletionRequest,
-    ):
+    ) -> ModelT:
         """
         Request a structured completion using Instructor's OpenAI API.
         """
         import instructor
+        import importlib
+
+        # Dynamically import the model class
+        module_path, class_name = request.model_path.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        response_model = getattr(module, class_name)
 
         # Next we pass the text through instructor to extract structured data
         client = instructor.from_openai(
@@ -465,7 +471,7 @@ class OpenAICompletionTasks:
         # Extract structured data from natural language
         structured_response = client.chat.completions.create(
             model=request.model,
-            response_model=request.response_model,
+            response_model=response_model,
             messages=[
                 {"role": "user", "content": request.response_str},
             ],
