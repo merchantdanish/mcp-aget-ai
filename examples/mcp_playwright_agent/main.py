@@ -80,6 +80,7 @@ Do not stop after the first match or page. Confirm when saved.
                 # Execute the workflow
                 print("🚀 Executing LinkedIn candidate search workflow and saving results as CSV...")
                 result = await llm.generate_str(prompt)
+                print("LLM Output:", result)
 
                 print("✅ Agent finished execution. Verifying file save...")
 
