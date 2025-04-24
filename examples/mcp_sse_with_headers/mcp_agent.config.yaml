@@ -12,10 +12,15 @@ logger:
 
 mcp:
   servers:
-    fetch:
-      command: "uvx"
-      args: ["mcp-server-fetch"]
+    slack:
+      name: "slack"
+      description: "Slack MCP server"
+      transport: "sse"
+      url: "<enter your SSE url>"
+      headers:
+        Authorization: "Bearer <enter your oauth access token>"
 
-bedrock:
+openai:
   # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
-  default_model: "us.amazon.nova-lite-v1:0"
+  #  default_model: "o3-mini"
+  default_model: "gpt-4o-mini"

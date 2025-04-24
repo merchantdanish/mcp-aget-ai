@@ -54,7 +54,7 @@ class MCPServerSettings(BaseModel):
     description: str | None = None
     """The description of the server."""
 
-    transport: Literal["stdio", "sse"] = "stdio"
+    transport: Literal["stdio", "sse", "websocket"] = "stdio"
     """The transport mechanism."""
 
     command: str | None = None
@@ -72,11 +72,11 @@ class MCPServerSettings(BaseModel):
     auth: MCPServerAuthSettings | None = None
     """The authentication configuration for the server."""
 
+    headers: Dict[str, str] | None = None
+    """HTTP headers for sse or websocket requests."""
+
     roots: Optional[List[MCPRootSettings]] = None
     """Root directories this server has access to."""
-
-    env: Dict[str, str] | None = None
-    """Environment variables to pass to the server process."""
 
     env: Dict[str, str] | None = None
     """Environment variables to pass to the server process."""
@@ -144,6 +144,23 @@ class AzureSettings(BaseModel):
     api_key: str
 
     endpoint: str
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
+class GoogleSettings(BaseModel):
+    """
+    Settings for using Google models in the MCP Agent application.
+    """
+
+    api_key: str | None = None
+    """Or use the GOOGLE_API_KEY environment variable"""
+
+    vertexai: bool = False
+
+    project: str | None = None
+
+    location: str | None = None
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
@@ -301,6 +318,9 @@ class Settings(BaseSettings):
 
     azure: AzureSettings | None = None
     """Settings for using Azure models in the MCP Agent application"""
+
+    google: GoogleSettings | None = None
+    """Settings for using Google models in the MCP Agent application"""
 
     otel: OpenTelemetrySettings | None = OpenTelemetrySettings()
     """OpenTelemetry logging settings for the MCP Agent application"""
