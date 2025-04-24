@@ -260,6 +260,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         futures: List[Coroutine[Any, Any, str]] = []
         results = []
 
+        # TODO: saqadri (MAC) - fix this
         # TODO: jerron - hacky way to prevent workflow from idling sometimes when using temporal. Will look for better way.
         # since we have establish agent context in worker, we dont have to do it again here.
         if isinstance(self.executor, TemporalExecutor):
@@ -391,24 +392,6 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             response_model=NextStep,
         )
         return next_step
-
-    async def create_response(self, **kwargs):
-        """
-        Create a response from the LLM.
-        This method is required by the AugmentedLLM abstract class but not used directly.
-        """
-        raise NotImplementedError(
-            "Orchestrator does not implement create_response directly"
-        )
-
-    async def execute_tool_call(self, tool_call):
-        """
-        Execute a single tool call and return the result message.
-        This method is required by the AugmentedLLM abstract class but not used directly.
-        """
-        raise NotImplementedError(
-            "Orchestrator does not implement execute_tool_call directly"
-        )
 
     def _format_server_info(self, server_name: str) -> str:
         """Format server information for display to planners"""

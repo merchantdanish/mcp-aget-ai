@@ -17,6 +17,7 @@ from mcp.types import (
 )
 
 from mcp_agent.config import GoogleSettings
+from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
@@ -309,6 +310,7 @@ class RequestStructuredCompletionRequest(BaseModel):
 
 class GoogleCompletionTasks:
     @staticmethod
+    @workflow_task
     async def request_completion_task(
         request: RequestCompletionRequest,
     ) -> types.GenerateContentResponse:
@@ -330,6 +332,7 @@ class GoogleCompletionTasks:
         return response
 
     @staticmethod
+    @workflow_task
     async def request_structured_completion_task(
         request: RequestStructuredCompletionRequest,
     ):

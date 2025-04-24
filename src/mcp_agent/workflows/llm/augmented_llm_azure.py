@@ -1,5 +1,5 @@
 import json
-from typing import Iterable, List, Optional, Type, Union
+from typing import Iterable, Optional, Type, Union
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import (
     ChatCompletions,
@@ -36,6 +36,8 @@ from mcp.types import (
 )
 
 from mcp_agent.config import AzureSettings
+from mcp_agent.executor.workflow_task import workflow_task
+from mcp_agent.utils.common import typed_dict_extras
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -122,9 +124,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
         system_prompt = self.instruction or params.systemPrompt
         if system_prompt and len(messages) == 0:
-            messages.append(
-                SystemMessage(content=system_prompt)
-            )
+            messages.append(SystemMessage(content=system_prompt))
 
         if isinstance(message, str):
             messages.append(UserMessage(content=message))
@@ -361,6 +361,7 @@ class RequestCompletionRequest(BaseModel):
 
 class AzureCompletionTasks:
     @staticmethod
+    @workflow_task
     async def request_completion_task(
         request: RequestCompletionRequest,
     ) -> ChatCompletions:
@@ -561,8 +562,3 @@ def image_url_to_mime_and_base64(image_url: ImageUrl) -> tuple[str, str]:
         raise ValueError(f"Invalid image data URI: {url[:30]}...")
     mime_type, base64_data = match.groups()
     return mime_type, base64_data
-
-
-def typed_dict_extras(d: dict, exclude: List[str]):
-    extras = {k: v for k, v in d.items() if k not in exclude}
-    return extras

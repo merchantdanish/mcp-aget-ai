@@ -10,7 +10,6 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 import functools
 import uuid
-from types import MethodType
 from typing import (
     Any,
     AsyncIterator,
@@ -37,6 +36,7 @@ from mcp_agent.executor.workflow_signal import (
     SignalRegistration,
     SignalValueT,
 )
+from mcp_agent.utils.common import unwrap
 
 if TYPE_CHECKING:
     from mcp_agent.app import MCPApp
@@ -283,22 +283,10 @@ class TemporalExecutor(Executor):
         activity_name: str | None = execution_metadata.get("activity_name", None)
 
         if not is_workflow_task or not activity_name:
-            print(f"WARNING: Task {func.__name__} is not a workflow task.")
-            # TODO: saqadri - should we asyncio.create_task?
             return await self._execute_task_as_async(task, *args, **kwargs)
-
-        # Handle partial functions by combining their kwargs with the ones passed to execute
-        # task_kwargs = {}
-        # if isinstance(task, functools.partial):
-        #    task_kwargs = task.keywords
-
-        # Combine kwargs
-        # combined_kwargs = {**task_kwargs, **kwargs}
 
         activity_registry = self.context.task_registry
         activity_task = activity_registry.get_activity(activity_name)
-
-        print(f"Activity name: {activity_name}")
 
         schedule_to_close = execution_metadata.get(
             "schedule_to_close_timeout", self.config.timeout_seconds
@@ -320,7 +308,6 @@ class TemporalExecutor(Executor):
                 schedule_to_close_timeout=schedule_to_close,
                 retry_policy=retry_policy,
             )
-            print("Activity result:", result)
             return result
         except Exception as e:
             # Properly propagate activity errors
@@ -428,6 +415,7 @@ async def create_temporal_worker_for_app(app: "MCPApp"):
     """
     Create a Temporal worker for the given app.
     """
+    activities = []
 
     # Initialize the app to set up the context and executor
     async with app.run() as running_app:
@@ -436,14 +424,22 @@ async def create_temporal_worker_for_app(app: "MCPApp"):
 
         await running_app.executor.ensure_client()
 
+        from mcp_agent.agents.agent import AgentTasks
+
+        agent_tasks = AgentTasks(context=running_app.context)
+        app.workflow_task()(agent_tasks.call_tool_task)
+        app.workflow_task()(agent_tasks.get_capabilities_task)
+        app.workflow_task()(agent_tasks.get_prompt_task)
+        app.workflow_task()(agent_tasks.initialize_aggregator_task)
+        app.workflow_task()(agent_tasks.list_prompts_task)
+        app.workflow_task()(agent_tasks.list_tools_task)
+        app.workflow_task()(agent_tasks.shutdown_aggregator_task)
+
         # Collect activities from the global registry
-        activities = []
         activity_registry = running_app.context.task_registry
 
         for name in activity_registry.list_activities():
             activities.append(activity_registry.get_activity(name))
-
-        print(f"Activities list: {activity_registry.list_activities()}")
 
         # Collect workflows from the registered workflows
         workflows = running_app.context.workflow_registry.list_workflows()
@@ -462,14 +458,3 @@ async def create_temporal_worker_for_app(app: "MCPApp"):
             # No explicit cleanup needed here as the app context will handle it
             # when the async with block exits
             pass
-
-
-def unwrap(c: Callable[..., Any]) -> Callable[..., Any]:
-    """Return the underlying function object for any callable."""
-    while True:
-        if isinstance(c, functools.partial):
-            c = c.func
-        elif isinstance(c, MethodType):
-            c = c.__func__
-        else:
-            return c

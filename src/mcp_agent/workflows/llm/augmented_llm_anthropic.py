@@ -1,4 +1,3 @@
-import json
 from typing import Iterable, List, Type, Union
 
 from pydantic import BaseModel
@@ -35,6 +34,8 @@ from mcp.types import (
 # from mcp_agent import console
 # from mcp_agent.agents.agent import HUMAN_INPUT_TOOL_NAME
 from mcp_agent.config import AnthropicSettings
+from mcp_agent.executor.workflow_task import workflow_task
+from mcp_agent.utils.common import typed_dict_extras, to_string
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -391,6 +392,7 @@ class RequestStructuredCompletionRequest(BaseModel):
 
 class AnthropicCompletionTasks:
     @staticmethod
+    @workflow_task
     async def request_completion_task(
         request: RequestCompletionRequest,
     ) -> Message:
@@ -405,6 +407,7 @@ class AnthropicCompletionTasks:
         return response
 
     @staticmethod
+    @workflow_task
     async def request_structured_completion_task(
         request: RequestStructuredCompletionRequest,
     ):
@@ -688,15 +691,3 @@ def anthropic_stop_reason_to_mcp_stop_reason(stop_reason: str) -> StopReason:
         return "toolUse"
     else:
         return stop_reason
-
-
-def to_string(obj: BaseModel | dict) -> str:
-    if isinstance(obj, BaseModel):
-        return obj.model_dump_json()
-    else:
-        return json.dumps(obj)
-
-
-def typed_dict_extras(d: dict, exclude: List[str]):
-    extras = {k: v for k, v in d.items() if k not in exclude}
-    return extras

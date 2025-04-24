@@ -206,6 +206,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     def __init__(
         self,
         agent: Optional["Agent"] = None,
+        # TODO: saqadri (MAC) - Make this | None = None
         server_names: List[str] = [],
         instruction: str | None = None,
         name: str | None = None,

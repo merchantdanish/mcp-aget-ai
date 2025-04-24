@@ -33,6 +33,8 @@ from mcp.types import (
 )
 
 from mcp_agent.config import OpenAISettings
+from mcp_agent.executor.workflow_task import workflow_task
+from mcp_agent.utils.common import ensure_serializable, typed_dict_extras
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -320,6 +322,7 @@ class OpenAIAugmentedLLM(
         params = self.get_request_params(request_params)
         model = await self.select_model(params) or "gpt-4o"
 
+        # TODO: saqadri (MAC) - this is brittle, make it more robust by serializing response_model
         # Get the import path for the class
         model_path = f"{response_model.__module__}.{response_model.__name__}"
 
@@ -333,6 +336,7 @@ class OpenAIAugmentedLLM(
             ),
         )
 
+        # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
         # Convert dict back to the proper model instance if needed
         if isinstance(structured_response, dict):
             structured_response = response_model.model_validate(structured_response)
@@ -432,6 +436,7 @@ class RequestStructuredCompletionRequest(BaseModel):
 
 class OpenAICompletionTasks:
     @staticmethod
+    @workflow_task
     async def request_completion_task(
         request: RequestCompletionRequest,
     ) -> ChatCompletion:
@@ -450,6 +455,7 @@ class OpenAICompletionTasks:
         return response
 
     @staticmethod
+    @workflow_task
     async def request_structured_completion_task(
         request: RequestStructuredCompletionRequest,
     ) -> ModelT:
@@ -669,22 +675,3 @@ def openai_content_to_mcp_content(
                 raise ValueError(f"Unexpected content type: {c.type}")
 
     return mcp_content
-
-
-def typed_dict_extras(d: dict, exclude: List[str]):
-    extras = {k: v for k, v in d.items() if k not in exclude}
-    return extras
-
-
-def ensure_serializable(data: BaseModel) -> BaseModel:
-    """
-    Workaround for https://github.com/pydantic/pydantic/issues/7713, see https://github.com/pydantic/pydantic/issues/7713#issuecomment-2604574418
-    """
-    try:
-        json.dumps(data)
-    except TypeError:
-        # use `vars` to coerce nested data into dictionaries
-        data_json_from_dicts = json.dumps(data, default=lambda x: vars(x))  # type: ignore
-        data_obj = json.loads(data_json_from_dicts)
-        data = type(data)(**data_obj)
-    return data

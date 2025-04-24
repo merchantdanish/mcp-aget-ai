@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Type
+from typing import TYPE_CHECKING, Type
 from boto3 import Session
 
 from pydantic import BaseModel
@@ -14,6 +14,8 @@ from mcp.types import (
     BlobResourceContents,
 )
 from mcp_agent.config import BedrockSettings
+from mcp_agent.executor.workflow_task import workflow_task
+from mcp_agent.utils.common import typed_dict_extras
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -341,6 +343,7 @@ class RequestStructuredCompletionRequest(BaseModel):
 
 class BedrockCompletionTasks:
     @staticmethod
+    @workflow_task
     async def request_completion_task(
         request: RequestCompletionRequest,
     ) -> ConverseResponseTypeDef:
@@ -366,6 +369,7 @@ class BedrockCompletionTasks:
         return response
 
     @staticmethod
+    @workflow_task
     async def request_structured_completion_task(
         request: RequestStructuredCompletionRequest,
     ):
@@ -535,8 +539,3 @@ def bedrock_content_to_mcp_content(
             )
 
     return mcp_content
-
-
-def typed_dict_extras(d: dict, exclude: List[str]):
-    extras = {k: v for k, v in d.items() if k not in exclude}
-    return extras

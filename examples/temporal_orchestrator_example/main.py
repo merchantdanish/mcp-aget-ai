@@ -5,8 +5,6 @@ decorators, and how to run it using the Temporal executor.
 """
 
 import asyncio
-import logging
-import os
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.executor.temporal import TemporalExecutor
