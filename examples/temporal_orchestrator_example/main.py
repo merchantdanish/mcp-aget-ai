@@ -60,19 +60,6 @@ style_enforcer = Agent(
     server_names=["fetch"],
 )
 
-orchestrator = Orchestrator(
-    llm_factory=OpenAIAugmentedLLM,
-    available_agents=[
-        finder_agent,
-        # writer_agent,
-        # proofreader,
-        # fact_checker,
-        # style_enforcer,
-    ],
-    # We will let the orchestrator iteratively plan the task at every step
-    plan_type="full",
-)
-
 
 @app.workflow
 class SimpleWorkflow(Workflow[str]):
@@ -92,6 +79,20 @@ class SimpleWorkflow(Workflow[str]):
             A WorkflowResult containing the processed data
         """
 
+        orchestrator = Orchestrator(
+            llm_factory=OpenAIAugmentedLLM,
+            available_agents=[
+                finder_agent,
+                # writer_agent,
+                # proofreader,
+                # fact_checker,
+                # style_enforcer,
+            ],
+            # We will let the orchestrator iteratively plan the task at every step
+            plan_type="full",
+            context=app.context,
+        )
+
         result = await orchestrator.generate_str(
             message=input, request_params=RequestParams(model="gpt-4o-mini")
         )
@@ -101,13 +102,6 @@ class SimpleWorkflow(Workflow[str]):
 
 async def main():
     async with app.run() as orchestrator_app:
-        context = orchestrator_app.context
-        logger = orchestrator_app.logger
-
-        logger.info("Current config:", data=context.config.model_dump())
-
-        context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
-
         executor: TemporalExecutor = orchestrator_app.executor
 
         handle = await executor.start_workflow(
