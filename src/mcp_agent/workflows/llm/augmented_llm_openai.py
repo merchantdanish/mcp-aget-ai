@@ -320,11 +320,14 @@ class OpenAIAugmentedLLM(
         params = self.get_request_params(request_params)
         model = await self.select_model(params) or "gpt-4o"
 
+        # Get the import path for the class
+        model_path = f"{response_model.__module__}.{response_model.__name__}"
+
         structured_response = await self.executor.execute(
             OpenAICompletionTasks.request_structured_completion_task,
             RequestStructuredCompletionRequest(
                 config=self.context.config.openai,
-                response_model=response_model,
+                model_path=model_path,
                 response_str=response,
                 model=model,
             ),
