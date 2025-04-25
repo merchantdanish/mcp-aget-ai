@@ -353,7 +353,7 @@ class TemporalExecutor(Executor):
         # TODO: saqadri - validate if async with self.execution_context() is needed here
         async with self.execution_context():
             return await asyncio.gather(
-                *(self._execute_task(task, *args, **kwargs) for task in tasks),
+                *[self._execute_task(task, *args, **kwargs) for task in tasks],
                 return_exceptions=True,
             )
 
