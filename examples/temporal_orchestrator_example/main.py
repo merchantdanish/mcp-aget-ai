@@ -92,7 +92,8 @@ class SimpleWorkflow(Workflow[str]):
         )
 
         result = await orchestrator.generate_str(
-            message=input, request_params=RequestParams(model="gpt-4o-mini")
+            message=input,
+            request_params=RequestParams(model="gpt-4o", max_iterations=100),
         )
 
         return WorkflowResult(value=result)

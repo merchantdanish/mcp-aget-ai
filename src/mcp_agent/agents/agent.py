@@ -549,13 +549,16 @@ class AgentTasks:
         connection_persistence = request.connection_persistence
 
         # Create or get the MCPAggregator for the agent
-        if agent_name not in self.server_aggregators_for_agent:
-            self.server_aggregators_for_agent[agent_name] = MCPAggregator(
-                server_names=server_names,
-                connection_persistence=connection_persistence,
-                context=self.context,
-                name=agent_name,
-            )
+        async with self.server_aggregators_for_agent_lock:
+            aggregator = self.server_aggregators_for_agent.get(request.agent_name)
+            if not aggregator:
+                aggregator = MCPAggregator(
+                    server_names=server_names,
+                    connection_persistence=connection_persistence,
+                    context=self.context,
+                    name=request.agent_name,
+                )
+                self.server_aggregators_for_agent[request.agent_name] = aggregator
 
         # Initialize the servers
         aggregator = self.server_aggregators_for_agent[agent_name]
@@ -574,11 +577,13 @@ class AgentTasks:
         Shutdown the agent's servers.
         """
 
-        # TODO: saqadri - check if a lock is needed here
-        server_aggregator = self.server_aggregators_for_agent.get(agent_name)
+        async with self.server_aggregators_for_agent_lock:
+            server_aggregator = self.server_aggregators_for_agent.get(agent_name)
+            if server_aggregator:
+                del self.server_aggregators_for_agent[agent_name]
+
         if server_aggregator:
             await server_aggregator.close()
-            del self.server_aggregators_for_agent[agent_name]
 
         return True
 

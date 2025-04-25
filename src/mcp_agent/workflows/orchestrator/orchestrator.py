@@ -11,7 +11,6 @@ from typing import (
 )
 
 from mcp_agent.agents.agent import Agent
-from mcp_agent.executor.temporal import TemporalExecutor
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -260,49 +259,38 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         futures: List[Coroutine[Any, Any, str]] = []
         results = []
 
-        # TODO: saqadri (MAC) - fix this
-        # TODO: jerron - hacky way to prevent workflow from idling sometimes when using temporal. Will look for better way.
-        # since we have establish agent context in worker, we dont have to do it again here.
-        if isinstance(self.executor, TemporalExecutor):
+        async with contextlib.AsyncExitStack() as stack:
+            active_agents: dict[str, Agent] = {}
+
+            # Set up all the tasks with their agents and LLMs
             for task in step.tasks:
                 agent = self.agents.get(task.agent)
                 if not agent:
-                    futures.append(f"No agent matching {task.agent}")
-                    continue
-                llm = agent.attach_llm(self.llm_factory)
+                    # TODO: saqadri - should we fail the entire workflow in this case?
+                    raise ValueError(f"No agent found matching {task.agent}")
+                elif isinstance(agent, AugmentedLLM):
+                    llm = agent
+                else:
+                    ctx_agent = active_agents.get(agent.name)
+                    if ctx_agent is None:
+                        ctx_agent = await stack.enter_async_context(
+                            agent
+                        )  # Enter agent context if agent is not already active
+                        active_agents[agent.name] = ctx_agent
+                    llm = ctx_agent.attach_llm(self.llm_factory)
+
                 task_description = TASK_PROMPT_TEMPLATE.format(
                     objective=previous_result.objective,
                     task=task.description,
                     context=context,
                 )
+
                 futures.append(
                     llm.generate_str(
                         message=task_description,
                         request_params=params,
                     )
                 )
-        else:
-            async with contextlib.AsyncExitStack() as stack:
-                # Set up all the tasks with their agents and LLMs
-                for task in step.tasks:
-                    agent = self.agents.get(task.agent)
-                    if not agent:
-                        # TODO: saqadri - should we fail the entire workflow in this case?
-                        futures.append(f"No agent matching {task.agent}")
-                        continue
-                        # raise ValueError(f"No agent found matching {task.agent}")
-                    elif isinstance(agent, AugmentedLLM):
-                        llm = agent
-                    else:
-                        # Enter agent context
-                        ctx_agent = await stack.enter_async_context(agent)
-                        llm = ctx_agent.attach_llm(self.llm_factory)
-
-                    task_description = TASK_PROMPT_TEMPLATE.format(
-                        objective=previous_result.objective,
-                        task=task.description,
-                        context=context,
-                    )
 
             # Wait for all tasks to complete
             results = await self.executor.execute_many(futures)
