@@ -278,7 +278,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                         ctx_agent = await stack.enter_async_context(
                             agent
                         )  # Enter agent context if agent is not already active
-                        active_agents[ctx_agent.name] = ctx_agent
+                        active_agents[agent.name] = ctx_agent
                     llm = ctx_agent.attach_llm(self.llm_factory)
 
                 task_description = TASK_PROMPT_TEMPLATE.format(
@@ -287,15 +287,24 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     context=context,
                 )
 
-                futures.append(
-                    llm.generate_str(
-                        message=task_description,
-                        request_params=params,
+                if self.context.config.execution_engine == "asyncio":
+                    futures.append(
+                        llm.generate_str(
+                            message=task_description,
+                            request_params=params,
+                        )
                     )
-                )
+                else:
+                    results.append(
+                        await llm.generate_str(
+                            message=task_description,
+                            request_params=params,
+                        )
+                    )
 
             # Wait for all tasks to complete
-            results = await self.executor.execute_many(futures)
+            if futures:
+                results = await self.executor.execute_many(futures)
 
         # Store task results
         for task, result in zip(step.tasks, results):
