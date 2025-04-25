@@ -18,47 +18,6 @@ from mcp_agent.workflows.orchestrator.orchestrator import Orchestrator
 # Create the app with Temporal as the execution engine
 app = MCPApp(name="temporal_workflow_example")
 
-finder_agent = Agent(
-    name="finder",
-    instruction="""You are an agent with access to the filesystem, 
-    as well as the ability to fetch URLs. Your job is to identify 
-    the closest match to a user's request, make the appropriate tool calls, 
-    and return the URI and CONTENTS of the closest match.""",
-    server_names=["fetch", "filesystem"],
-)
-
-writer_agent = Agent(
-    name="writer",
-    instruction="""You are an agent that can write to the filesystem.
-    You are tasked with taking the user's input, addressing it, and 
-    writing the result to disk in the appropriate location.""",
-    server_names=["filesystem"],
-)
-
-proofreader = Agent(
-    name="proofreader",
-    instruction=""""Review the short story for grammar, spelling, and punctuation errors.
-    Identify any awkward phrasing or structural issues that could improve clarity. 
-    Provide detailed feedback on corrections.""",
-    server_names=["fetch"],
-)
-
-fact_checker = Agent(
-    name="fact_checker",
-    instruction="""Verify the factual consistency within the story. Identify any contradictions,
-    logical inconsistencies, or inaccuracies in the plot, character actions, or setting. 
-    Highlight potential issues with reasoning or coherence.""",
-    server_names=["fetch"],
-)
-
-style_enforcer = Agent(
-    name="style_enforcer",
-    instruction="""Analyze the story for adherence to style guidelines.
-    Evaluate the narrative flow, clarity of expression, and tone. Suggest improvements to 
-    enhance storytelling, readability, and engagement.""",
-    server_names=["fetch"],
-)
-
 
 @app.workflow
 class SimpleWorkflow(Workflow[str]):
@@ -80,6 +39,47 @@ class SimpleWorkflow(Workflow[str]):
 
         context = app.context
         context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
+
+        finder_agent = Agent(
+            name="finder",
+            instruction="""You are an agent with access to the filesystem, 
+            as well as the ability to fetch URLs. Your job is to identify 
+            the closest match to a user's request, make the appropriate tool calls, 
+            and return the URI and CONTENTS of the closest match.""",
+            server_names=["fetch", "filesystem"],
+        )
+
+        writer_agent = Agent(
+            name="writer",
+            instruction="""You are an agent that can write to the filesystem.
+            You are tasked with taking the user's input, addressing it, and 
+            writing the result to disk in the appropriate location.""",
+            server_names=["filesystem"],
+        )
+
+        proofreader = Agent(
+            name="proofreader",
+            instruction=""""Review the short story for grammar, spelling, and punctuation errors.
+            Identify any awkward phrasing or structural issues that could improve clarity. 
+            Provide detailed feedback on corrections.""",
+            server_names=["fetch"],
+        )
+
+        fact_checker = Agent(
+            name="fact_checker",
+            instruction="""Verify the factual consistency within the story. Identify any contradictions,
+            logical inconsistencies, or inaccuracies in the plot, character actions, or setting. 
+            Highlight potential issues with reasoning or coherence.""",
+            server_names=["fetch"],
+        )
+
+        style_enforcer = Agent(
+            name="style_enforcer",
+            instruction="""Analyze the story for adherence to style guidelines.
+            Evaluate the narrative flow, clarity of expression, and tone. Suggest improvements to 
+            enhance storytelling, readability, and engagement.""",
+            server_names=["fetch"],
+        )
 
         orchestrator = Orchestrator(
             llm_factory=OpenAIAugmentedLLM,
