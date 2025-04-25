@@ -249,12 +249,15 @@ class TemporalExecutor(Executor):
                 elif asyncio.iscoroutinefunction(task):
                     return await task(*args, **kwargs)
                 else:
-                    # Execute the callable and await if it returns a coroutine
-                    loop = asyncio.get_running_loop()
-
-                    # Using partial to handle both args and kwargs together
-                    wrapped_task = functools.partial(task, *args, **kwargs)
-                    result = await loop.run_in_executor(None, wrapped_task)
+                    # Check if we're in a Temporal workflow context
+                    if workflow._Runtime.current():
+                        wrapped_task = functools.partial(task, *args, **kwargs)
+                        result = wrapped_task()
+                    else:
+                        # Outside a workflow, use standard asyncio executor
+                        loop = asyncio.get_running_loop()
+                        wrapped_task = functools.partial(task, *args, **kwargs)
+                        result = await loop.run_in_executor(None, wrapped_task)
 
                     # Handle case where the sync function returns a coroutine
                     if asyncio.iscoroutine(result):
