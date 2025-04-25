@@ -116,6 +116,7 @@ class Agent(BaseModel):
     )
 
     _agent_tasks: "AgentTasks" = PrivateAttr(default=None)
+    _init_lock: asyncio.Lock = PrivateAttr(default_factory=asyncio.Lock)
 
     # endregion
 
@@ -167,44 +168,45 @@ class Agent(BaseModel):
     async def initialize(self, force: bool = False):
         """Initialize the agent."""
 
-        if self.initialized and not force:
-            return
+        async with self._init_lock:
+            if self.initialized and not force:
+                return
 
-        logger.debug(f"Initializing agent {self.name}...")
+            logger.debug(f"Initializing agent {self.name}...")
 
-        executor = self.context.executor
+            executor = self.context.executor
 
-        result: InitAggregatorResponse = await executor.execute(
-            self._agent_tasks.initialize_aggregator_task,
-            InitAggregatorRequest(
-                agent_name=self.name,
-                server_names=self.server_names,
-                connection_persistence=self.connection_persistence,
-                force=force,
-            ),
-        )
-
-        if not result.initialized:
-            raise RuntimeError(
-                f"Failed to initialize agent {self.name}. "
-                f"Check the server names and connection persistence settings."
+            result: InitAggregatorResponse = await executor.execute(
+                self._agent_tasks.initialize_aggregator_task,
+                InitAggregatorRequest(
+                    agent_name=self.name,
+                    server_names=self.server_names,
+                    connection_persistence=self.connection_persistence,
+                    force=force,
+                ),
             )
 
-        # TODO: saqadri - check if a lock is needed here
-        self._namespaced_tool_map.clear()
-        self._namespaced_tool_map.update(result.namespaced_tool_map)
+            if not result.initialized:
+                raise RuntimeError(
+                    f"Failed to initialize agent {self.name}. "
+                    f"Check the server names and connection persistence settings."
+                )
 
-        self._server_to_tool_map.clear()
-        self._server_to_tool_map.update(result.server_to_tool_map)
+            # TODO: saqadri - check if a lock is needed here
+            self._namespaced_tool_map.clear()
+            self._namespaced_tool_map.update(result.namespaced_tool_map)
 
-        self._namespaced_prompt_map.clear()
-        self._namespaced_prompt_map.update(result.namespaced_prompt_map)
+            self._server_to_tool_map.clear()
+            self._server_to_tool_map.update(result.server_to_tool_map)
 
-        self._server_to_prompt_map.clear()
-        self._server_to_prompt_map.update(result.server_to_prompt_map)
+            self._namespaced_prompt_map.clear()
+            self._namespaced_prompt_map.update(result.namespaced_prompt_map)
 
-        self.initialized = result.initialized
-        logger.debug(f"Agent {self.name} initialized.")
+            self._server_to_prompt_map.clear()
+            self._server_to_prompt_map.update(result.server_to_prompt_map)
+
+            self.initialized = result.initialized
+            logger.debug(f"Agent {self.name} initialized.")
 
     async def shutdown(self):
         """
@@ -266,11 +268,24 @@ class Agent(BaseModel):
         if not self.initialized:
             await self.initialize()
 
-        executor = self.context.executor
-        result: ListToolsResult = await executor.execute(
-            self._agent_tasks.list_tools_task,
-            ListToolsRequest(agent_name=self.name, server_name=server_name),
-        )
+        if server_name:
+            result = ListToolsResult(
+                prompts=[
+                    namespaced_tool.tool.model_copy(
+                        update={"name": namespaced_tool.namespaced_tool_name}
+                    )
+                    for namespaced_tool in self._server_to_tool_map.get(server_name, [])
+                ]
+            )
+        else:
+            result = ListToolsResult(
+                tools=[
+                    namespaced_tool.tool.model_copy(
+                        update={"name": namespaced_tool_name}
+                    )
+                    for namespaced_tool_name, namespaced_tool in self._namespaced_tool_map.items()
+                ]
+            )
 
         # Add function tools
         for tool in self._function_tool_map.values():
