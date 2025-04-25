@@ -1,8 +1,6 @@
 import contextlib
 from typing import (
-    Any,
     Callable,
-    Coroutine,
     List,
     Literal,
     Optional,
@@ -255,8 +253,11 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         # Format previous results
         context = format_plan_result(previous_result)
 
+        # TODO: saqadri (MAC) - we should be able to execute the tasks in parallel,
+        # but something is breaking temporal's determinism guarantees
+        # We will run them sequentially for now
         # Execute subtasks in parallel
-        futures: List[Coroutine[Any, Any, str]] = []
+        # futures: List[Coroutine[Any, Any, str]] = []
         results = []
 
         async with contextlib.AsyncExitStack() as stack:
@@ -285,15 +286,22 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     context=context,
                 )
 
-                futures.append(
-                    llm.generate_str(
+                results.append(
+                    await llm.generate_str(
                         message=task_description,
                         request_params=params,
                     )
                 )
 
+                # futures.append(
+                #     llm.generate_str(
+                #         message=task_description,
+                #         request_params=params,
+                #     )
+                # )
+
             # Wait for all tasks to complete
-            results = await self.executor.execute_many(futures)
+            # results = await self.executor.execute_many(futures)
 
         # Store task results
         for task, result in zip(step.tasks, results):

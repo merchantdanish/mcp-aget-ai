@@ -5,6 +5,7 @@ decorators, and how to run it using the Temporal executor.
 """
 
 import asyncio
+import os
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.executor.temporal import TemporalExecutor
@@ -77,14 +78,17 @@ class SimpleWorkflow(Workflow[str]):
             A WorkflowResult containing the processed data
         """
 
+        context = app.context
+        context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
+
         orchestrator = Orchestrator(
             llm_factory=OpenAIAugmentedLLM,
             available_agents=[
                 finder_agent,
-                # writer_agent,
-                # proofreader,
-                # fact_checker,
-                # style_enforcer,
+                writer_agent,
+                proofreader,
+                fact_checker,
+                style_enforcer,
             ],
             # We will let the orchestrator iteratively plan the task at every step
             plan_type="full",
@@ -103,9 +107,16 @@ async def main():
     async with app.run() as orchestrator_app:
         executor: TemporalExecutor = orchestrator_app.executor
 
+        task = """Load the student's short story from short_story.md, 
+        and generate a report with feedback across proofreading, 
+        factuality/logical consistency and style adherence. Use the style rules from 
+        https://apastyle.apa.org/learn/quick-guide-on-formatting and 
+        https://apastyle.apa.org/learn/quick-guide-on-references.
+        Write the graded report to graded_report.md in the same directory as short_story.md"""
+
         handle = await executor.start_workflow(
             "SimpleWorkflow",
-            """Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction""",
+            task,
         )
         a = await handle.result()
         print(a)

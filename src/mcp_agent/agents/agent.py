@@ -203,7 +203,7 @@ class Agent(BaseModel):
         self._server_to_prompt_map.clear()
         self._server_to_prompt_map.update(result.server_to_prompt_map)
 
-        self.initialized = True
+        self.initialized = result.initialized
         logger.debug(f"Agent {self.name} initialized.")
 
     async def shutdown(self):
@@ -309,7 +309,7 @@ class Agent(BaseModel):
 
         executor = self.context.executor
         result: ListPromptsResult = await executor.execute(
-            self._agent_tasks.list_tools_task,
+            self._agent_tasks.list_prompts_task,
             ListToolsRequest(agent_name=self.name, server_name=server_name),
         )
 
@@ -531,9 +531,13 @@ class AgentTasks:
     Agent tasks for executing agent-related activities.
     """
 
+    # --- global-per-worker state -------------------------------------------------
     # Maps agent name to its corresponding MCPAggregator
     server_aggregators_for_agent: Dict[str, MCPAggregator] = {}
     server_aggregators_for_agent_lock: asyncio.Lock = asyncio.Lock()
+    # Maps agent name to its reference count
+    agent_refcounts: dict[str, int] = {}
+    # ---------------------------------------------------------------------------
 
     def __init__(self, context: "Context"):
         self.context = context
@@ -551,6 +555,7 @@ class AgentTasks:
         # Create or get the MCPAggregator for the agent
         async with self.server_aggregators_for_agent_lock:
             aggregator = self.server_aggregators_for_agent.get(request.agent_name)
+            refcount = self.agent_refcounts.get(agent_name, 0)
             if not aggregator:
                 aggregator = MCPAggregator(
                     server_names=server_names,
@@ -559,6 +564,9 @@ class AgentTasks:
                     name=request.agent_name,
                 )
                 self.server_aggregators_for_agent[request.agent_name] = aggregator
+
+            # Bump the reference counter
+            self.agent_refcounts[agent_name] = refcount + 1
 
         # Initialize the servers
         aggregator = self.server_aggregators_for_agent[agent_name]
@@ -578,9 +586,19 @@ class AgentTasks:
         """
 
         async with self.server_aggregators_for_agent_lock:
-            server_aggregator = self.server_aggregators_for_agent.get(agent_name)
-            if server_aggregator:
-                del self.server_aggregators_for_agent[agent_name]
+            refcount = self.agent_refcounts.get(agent_name)
+            if refcount is None:
+                # Nothing to do – shutdown called more often than initialize
+                return True
+
+            if refcount > 1:
+                # Still outstanding agent refs – just decrement and exit
+                self.agent_refcounts[agent_name] = refcount - 1
+                return True
+
+            # refcount is 1 – this is the last shutdown
+            server_aggregator = self.server_aggregators_for_agent.pop(agent_name, None)
+            self.agent_refcounts.pop(agent_name, None)
 
         if server_aggregator:
             await server_aggregator.close()
