@@ -9,7 +9,6 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import timedelta
 import functools
-import uuid
 from typing import (
     Any,
     AsyncIterator,
@@ -48,12 +47,13 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
     """Temporal-based signal handling using workflow signals"""
 
     async def wait_for_signal(self, signal, timeout_seconds=None) -> SignalValueT:
+        """Waits for a signal with an optional timeout."""
         if not workflow._Runtime.current():
             raise RuntimeError(
                 "TemporalSignalHandler.wait_for_signal must be called from within a workflow"
             )
 
-        unique_signal_name = f"{signal.name}_{uuid.uuid4()}"
+        unique_signal_name = f"{signal.name}_{workflow.uuid4()}"
         registration = SignalRegistration(
             signal_name=signal.name,
             unique_name=unique_signal_name,
@@ -112,7 +112,7 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
 
         def decorator(func: Callable) -> Callable:
             # Create unique signal name for this handler
-            unique_signal_name = f"{signal_name}_{uuid.uuid4()}"
+            unique_signal_name = f"{signal_name}_{workflow.uuid4()}"
 
             # Create the actual handler that will be registered with Temporal
             @workflow.signal(name=unique_signal_name)
@@ -137,6 +137,7 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
         return decorator
 
     async def signal(self, signal):
+        """Sends a signal"""
         self.validate_signal(signal)
 
         workflow_handle = workflow.get_external_workflow_handle(
