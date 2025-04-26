@@ -150,7 +150,6 @@ class OpenAIAugmentedLLM(
                     "description": tool.description,
                     "parameters": tool.inputSchema,
                     "strict": self._strict_tool_validation,
-                    # TODO: saqadri - determine if we should specify "strict" to True by default
                 },
             )
             for tool in response.tools
