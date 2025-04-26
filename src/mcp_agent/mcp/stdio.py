@@ -9,6 +9,7 @@ from typing import TextIO
 import shutil
 import subprocess
 import sys
+import psutil
 
 import anyio
 import anyio.lowlevel
@@ -133,23 +134,84 @@ async def stdio_client_with_rich_stderr(
         try:
             yield read_stream, write_stream
         finally:
-            # Clean up process
-            logger.debug(
-                f"Terminating process (PID: {process.pid if hasattr(process, 'pid') else 'unknown'})"
-            )
+            if not process or process.returncode is not None:
+                return  # Process already terminated or not started
+
+            pid = process.pid
+            if pid is None:
+                logger.warning("Process PID is None, cannot terminate children.")
+                return
+
             try:
-                process.terminate()
-                if sys.platform == "win32":
-                    try:
-                        with anyio.fail_after(2.0):
-                            await process.wait()
-                    except TimeoutError:
-                        # Force kill if it doesn't terminate
-                        process.kill()
-            except Exception as e:
-                logger.warning(
-                    f"Error terminating process (PID: {process.pid if hasattr(process, 'pid') else 'unknown'}): {e}"
+                parent = psutil.Process(pid)
+                children = parent.children(recursive=True)
+                logger.debug(
+                    f"Terminating process {pid} and its {len(children)} child(ren)."
                 )
+
+                # Terminate children first
+                for child in children:
+                    try:
+                        logger.debug(f"Terminating child process {child.pid}")
+                        child.terminate()  # Send SIGTERM (or equivalent on Windows)
+                    except psutil.NoSuchProcess:
+                        logger.debug(f"Child process {child.pid} already terminated.")
+                    except Exception as e:
+                        logger.warning(
+                            f"Error terminating child process {child.pid}: {e}"
+                        )
+
+                # Allow some time for children to terminate gracefully
+                gone, alive = psutil.wait_procs(children, timeout=1.0)
+                for child in alive:
+                    try:
+                        logger.warning(
+                            f"Child process {child.pid} did not terminate gracefully, killing."
+                        )
+                        child.kill()  # Force kill if still alive
+                    except psutil.NoSuchProcess:
+                        pass  # Already gone
+                    except Exception as e:
+                        logger.error(f"Error killing child process {child.pid}: {e}")
+
+                # Now terminate the parent process
+                logger.debug(f"Terminating parent process {pid}")
+                try:
+                    parent.terminate()
+                except psutil.NoSuchProcess:
+                    logger.debug(f"Parent process {pid} already terminated.")
+                    return  # Nothing more to do
+
+                # Wait for parent process to terminate
+                try:
+                    await process.wait()  # Use the original anyio process object's wait
+                    logger.debug(f"Parent process {pid} terminated gracefully.")
+                except Exception as wait_exc:
+                    logger.warning(
+                        f"Error waiting for parent process {pid}: {wait_exc}. Attempting force kill."
+                    )
+                    try:
+                        parent.kill()
+                    except psutil.NoSuchProcess:
+                        pass  # Already gone
+                    except Exception as kill_exc:
+                        logger.error(
+                            f"Error force killing parent process {pid}: {kill_exc}"
+                        )
+
+            except psutil.NoSuchProcess:
+                logger.debug(f"Process {pid} not found, likely already terminated.")
+            except Exception as e:
+                logger.error(f"Error during process cleanup for PID {pid}: {e}")
+            finally:
+                # Ensure anyio resources are properly cleaned up
+                # This might be redundant if process.wait() succeeded, but good practice
+                try:
+                    await process.aclose()
+                except Exception as close_exc:
+                    logger.warning(
+                        f"Error closing anyio process resources for PID {pid}: {close_exc}"
+                    )
 
 
 def _get_executable_command(command: str) -> str:
