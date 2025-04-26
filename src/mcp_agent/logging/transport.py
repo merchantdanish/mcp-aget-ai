@@ -305,14 +305,15 @@ class AsyncEventBus:
     async def start(self):
         """Start the event bus and all lifecycle-aware listeners."""
         # Init _loop and _queue in start method to avoid binding loop when importing the module.
-        self._stop_event = asyncio.Event()
-        self._queue = asyncio.Queue()
-        # Store the loop we're created on
-        try:
-            self._loop = asyncio.get_running_loop()
-        except RuntimeError:
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
+        if self._queue is None:
+            self._stop_event = asyncio.Event()
+            self._queue = asyncio.Queue()
+            # Store the loop we're created on
+            try:
+                self._loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self._loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(self._loop)
         if self._running:
             return
 
