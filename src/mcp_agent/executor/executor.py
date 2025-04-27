@@ -291,7 +291,7 @@ class AsyncioExecutor(Executor):
         """
         # TODO: saqadri - validate if async with self.execution_context() is needed here
         async with self.execution_context():
-            return self._execute_task(
+            return await self._execute_task(
                 task,
                 *args,
                 **kwargs,
