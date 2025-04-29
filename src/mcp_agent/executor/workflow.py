@@ -15,6 +15,7 @@ import uuid
 from pydantic import BaseModel, ConfigDict, Field
 
 from mcp_agent.core.context_dependent import ContextDependent
+from mcp_agent.executor.temporal import TemporalExecutor
 from mcp_agent.executor.workflow_signal import Signal
 from mcp_agent.logging.logger import get_logger
 
@@ -317,14 +318,26 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 # Run the workflow through the executor with pause/cancel monitoring
                 self.update_status("running")
 
-                run_task = asyncio.create_task(self.run(*args, **kwargs))
-                cancel_task = asyncio.create_task(self._cancel_task())
+                tasks = []
+                cancel_task = None
+                if self.context.config.execution_engine == "temporal":
+                    executor: TemporalExecutor = self.executor
+                    run_task = asyncio.create_task(
+                        executor.execute_workflow(self._workflow_id, *args, **kwargs)
+                    )
+                    # TODO: jerron - cancel task not working for temporal
+                    tasks.append(run_task)
+                else:
+                    run_task = asyncio.create_task(self.run(*args, **kwargs))
+                    cancel_task = asyncio.create_task(self._cancel_task())
+                    tasks.extend([run_task, cancel_task])
 
                 # Simply wait for either the run task or cancel task to complete
                 try:
                     # Wait for either task to complete, whichever happens first
                     done, _ = await asyncio.wait(
-                        [run_task, cancel_task], return_when=asyncio.FIRST_COMPLETED
+                        tasks,
+                        return_when=asyncio.FIRST_COMPLETED,
                     )
 
                     # Check which task completed
@@ -335,7 +348,8 @@ class Workflow(ABC, Generic[T], ContextDependent):
                         raise CancelledError("Workflow was cancelled")
                     elif run_task in done:
                         # Run task completed, cancel the cancel task
-                        cancel_task.cancel()
+                        if cancel_task:
+                            cancel_task.cancel()
                         # Get the result (or propagate any exception)
                         result = await run_task
                         self.update_status("completed")
