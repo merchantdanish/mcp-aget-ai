@@ -19,6 +19,7 @@ from typing import (
     Optional,
     TYPE_CHECKING,
 )
+import inspect
 
 from pydantic import ConfigDict
 from temporalio import activity, workflow, exceptions
@@ -401,17 +402,39 @@ class TemporalExecutor(Executor):
     async def start_workflow(
         self,
         workflow_id: str,
-        input: any,
+        *args,
+        **kwargs,
     ):
         await self.ensure_client()
         workflow = self.context.workflow_registry.get_workflow(workflow_id)
         handle = await self.client.start_workflow(
             workflow,
-            input,
+            *args,
+            **kwargs,
             id=workflow_id,
             task_queue=self.config.task_queue,
         )
         return handle
+
+    async def execute_workflow(
+        self,
+        workflow_id: str,
+        *args,
+        **kwargs,
+    ):
+        await self.ensure_client()
+        workflow = self.context.workflow_registry.get_workflow(workflow_id)
+        # TODO: jerron - workaround for workflow run_sync method registering instance in workflow registry
+        if not inspect.isclass(workflow):
+            workflow = workflow.__class__
+        result = await self.client.execute_workflow(
+            workflow,
+            *args,
+            **kwargs,
+            id=workflow_id,
+            task_queue=self.config.task_queue,
+        )
+        return result
 
 
 @asynccontextmanager
