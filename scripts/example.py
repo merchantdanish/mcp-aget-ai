@@ -107,7 +107,8 @@ def create_requirements_file(
 @app.command(name="list")
 def list_examples():
     """List all available examples."""
-    examples_dir = Path("examples")
+    project_root = Path(__file__).resolve().parent.parent
+    examples_dir = project_root / "examples"
     if not examples_dir.exists():
         console.print("[red]No examples directory found[/]")
         raise typer.Exit(1)
@@ -160,8 +161,9 @@ def run(
     debug: bool = typer.Option(False, "--debug", "-d", help="Print debug information"),
 ):
     """Run a specific example."""
-    examples_dir = Path("examples").resolve()
+    # Ensure we're using the right working directory
     project_root = Path(__file__).resolve().parent.parent
+    examples_dir = project_root / "examples"
     
     # Split path into category and example name
     parts = example_path.replace("\\", "/").split("/")
@@ -174,6 +176,7 @@ def run(
     
     if not example_dir.exists():
         console.print(f"[red]Example '{example_name}' not found in category '{category}'[/]")
+        console.print(f"Path checked: {example_dir}")
         raise typer.Exit(1)
 
     # Clean if requested
@@ -257,7 +260,8 @@ def clean_env(
     ),
 ):
     """Clean up virtual environments from examples."""
-    examples_dir = Path("examples")
+    project_root = Path(__file__).resolve().parent.parent
+    examples_dir = project_root / "examples"
 
     if example_path:
         # Split path into category and example name
