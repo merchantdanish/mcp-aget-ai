@@ -252,7 +252,7 @@ This app uses a Qdrant vector database (via an MCP server) to do Q&A over a corp
 
 https://github.com/user-attachments/assets/f4dcd227-cae9-4a59-aa9e-0eceeb4acaf4
 
-**Link to code**: [examples/interactive_demos/streamlit_mcp_rag_agent](./examples/interactive_demos/streamlit_mcp_rag_agent/)
+**Link to code**: [examples/usecases/streamlit_mcp_rag_agent](./examples/usecases/streamlit_mcp_rag_agent/)
 
 > [!NOTE]
 > Huge thanks to [Jerron Lim (@StreetLamb)](https://github.com/StreetLamb)
@@ -265,7 +265,7 @@ Here's the "file finder" agent from [Quickstart](#quickstart) implemented in Mar
 
 <img src="https://github.com/user-attachments/assets/139a95a5-e3ac-4ea7-9c8f-bad6577e8597" width="400"/>
 
-**Link to code**: [examples/interactive_demos/marimo_mcp_basic_agent](./examples/interactive_demos/marimo_mcp_basic_agent/)
+**Link to code**: [examples/usecases/marimo_mcp_basic_agent](./examples/usecases/marimo_mcp_basic_agent/)
 
 > [!NOTE]
 > Huge thanks to [Akshay Agrawal (@akshayka)](https://github.com/akshayka)
