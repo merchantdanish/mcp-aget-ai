@@ -10,15 +10,12 @@ This example demonstrates three approaches to creating agents and workflows:
 import asyncio
 import os
 import logging
+from pydantic import BaseModel
 
 from mcp_agent.app import MCPApp
-from mcp_agent.executor.temporal import TemporalExecutor
 from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows.llm.augmented_llm import RequestParams
-from mcp_agent.workflows.llm.llm_selector import ModelPreferences
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 
 # Initialize logging
@@ -29,6 +26,10 @@ logger = logging.getLogger(__name__)
 app = MCPApp(name="basic_agent_server", description="Basic agent server example")
 
 
+class RunParams(BaseModel):
+    input: str
+
+
 @app.workflow
 class BasicAgentWorkflow(Workflow[str]):
     """
@@ -37,7 +38,7 @@ class BasicAgentWorkflow(Workflow[str]):
     """
 
     @app.workflow_run
-    async def run(self, input: str) -> WorkflowResult[str]:
+    async def run(self, params: RunParams) -> WorkflowResult[str]:
         """
         Run the basic agent workflow.
 
@@ -47,7 +48,6 @@ class BasicAgentWorkflow(Workflow[str]):
         Returns:
             WorkflowResult containing the processed data.
         """
-
         finder_agent = Agent(
             name="finder",
             instruction="""You are a helpful assistant.""",
@@ -58,25 +58,16 @@ class BasicAgentWorkflow(Workflow[str]):
         context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
 
         async with finder_agent:
-            finder_llm = finder_agent.attach_llm(OpenAIAugmentedLLM)
+            finder_llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
 
             result = await finder_llm.generate_str(
-                message=input,
+                message=params.input,
             )
             return WorkflowResult(value=result)
 
 
 async def main():
     async with app.run() as agent_app:
-        # executor: TemporalExecutor = agent_app.executor
-        # handle = await executor.start_workflow(
-        #     "BasicAgentWorkflow",
-        #     "Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
-        # )
-        # a = await handle.result()
-        # print(a)
-        # Add the current directory to the filesystem server's args if needed
-
         # Log registered workflows and agent configurations
         logger.info(f"Creating MCP server for {agent_app.name}")
 
