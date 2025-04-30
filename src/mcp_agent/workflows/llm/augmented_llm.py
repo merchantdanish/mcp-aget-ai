@@ -129,10 +129,6 @@ class RequestParams(CreateMessageRequestParams):
     """
     The likelihood of the model selecting higher-probability options while generating a response.
     """
-    need_tool_calls: bool = True
-    """
-    Whether to include tool calls in the response.
-    """
 
 
 class AugmentedLLMProtocol(Protocol, Generic[MessageParamT, MessageT]):

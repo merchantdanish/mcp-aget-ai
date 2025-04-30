@@ -140,20 +140,19 @@ class OpenAIAugmentedLLM(
         else:
             messages.append(message)
         available_tools = None
-        if params.need_tool_calls:
-            response = await self.aggregator.list_tools()
-            available_tools: List[ChatCompletionToolParam] = [
-                ChatCompletionToolParam(
-                    type="function",
-                    function={
-                        "name": tool.name,
-                        "description": tool.description,
-                        "parameters": tool.inputSchema,
-                        # TODO: saqadri - determine if we should specify "strict" to True by default
-                    },
-                )
-                for tool in response.tools
-            ]
+        response = await self.aggregator.list_tools()
+        available_tools: List[ChatCompletionToolParam] = [
+            ChatCompletionToolParam(
+                type="function",
+                function={
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.inputSchema,
+                    # TODO: saqadri - determine if we should specify "strict" to True by default
+                },
+            )
+            for tool in response.tools
+        ]
         if not available_tools:
             available_tools = None
 
