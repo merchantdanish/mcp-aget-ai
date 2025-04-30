@@ -2,7 +2,7 @@ import json
 import re
 from typing import Iterable, List, Type
 
-from openai import AsyncOpenAI
+from openai import OpenAI
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionContentPartParam,
@@ -110,7 +110,7 @@ class OpenAIAugmentedLLM(
         Override this method to use a different LLM.
         """
         config = self.context.config
-        openai_client = AsyncOpenAI(
+        openai_client = OpenAI(
             api_key=config.openai.api_key, base_url=config.openai.base_url
         )
         messages: List[ChatCompletionMessageParam] = []
@@ -134,20 +134,19 @@ class OpenAIAugmentedLLM(
         else:
             messages.append(message)
         available_tools = None
-        if params.need_tool_calls:
-            response = await self.aggregator.list_tools()
-            available_tools: List[ChatCompletionToolParam] = [
-                ChatCompletionToolParam(
-                    type="function",
-                    function={
-                        "name": tool.name,
-                        "description": tool.description,
-                        "parameters": tool.inputSchema,
-                        # TODO: saqadri - determine if we should specify "strict" to True by default
-                    },
-                )
-                for tool in response.tools
-            ]
+        response = await self.aggregator.list_tools()
+        available_tools: List[ChatCompletionToolParam] = [
+            ChatCompletionToolParam(
+                type="function",
+                function={
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.inputSchema,
+                    # TODO: saqadri - determine if we should specify "strict" to True by default
+                },
+            )
+            for tool in response.tools
+        ]
         if not available_tools:
             available_tools = None
 
@@ -314,7 +313,7 @@ class OpenAIAugmentedLLM(
 
         # Next we pass the text through instructor to extract structured data
         client = instructor.from_openai(
-            AsyncOpenAI(
+            OpenAI(
                 api_key=self.context.config.openai.api_key,
                 base_url=self.context.config.openai.base_url,
             ),
@@ -325,7 +324,7 @@ class OpenAIAugmentedLLM(
         model = await self.select_model(params)
 
         # Extract structured data from natural language
-        structured_response = await client.chat.completions.create(
+        structured_response = client.chat.completions.create(
             model=model or "gpt-4o",
             response_model=response_model,
             messages=[
