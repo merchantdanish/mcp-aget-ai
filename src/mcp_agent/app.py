@@ -21,7 +21,6 @@ from mcp_agent.executor.task_registry import ActivityRegistry
 from mcp_agent.executor.workflow_signal import SignalWaitCallback
 from mcp_agent.executor.workflow_task import GlobalWorkflowTaskRegistry
 from mcp_agent.human_input.types import HumanInputCallback
-from mcp_agent.human_input.handler import console_input_callback
 from mcp_agent.utils.common import unwrap
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 
@@ -58,7 +57,7 @@ class MCPApp:
         name: str = "mcp_application",
         description: str | None = None,
         settings: Optional[Settings] | str = None,
-        human_input_callback: Optional[HumanInputCallback] = console_input_callback,
+        human_input_callback: Optional[HumanInputCallback] = None,
         signal_notification: Optional[SignalWaitCallback] = None,
         upstream_session: Optional["ServerSession"] = None,
         model_selector: ModelSelector = None,

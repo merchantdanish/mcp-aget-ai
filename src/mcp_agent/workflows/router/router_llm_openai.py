@@ -30,7 +30,9 @@ class OpenAILLMRouter(LLMRouter):
         **kwargs,
     ):
         openai_llm = OpenAIAugmentedLLM(
-            instruction=ROUTING_SYSTEM_INSTRUCTION, context=context
+            name=f"openai_router-{str(context.executor.uuid())}",
+            instruction=ROUTING_SYSTEM_INSTRUCTION,
+            context=context,
         )
 
         super().__init__(

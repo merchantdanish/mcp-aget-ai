@@ -188,7 +188,7 @@ class ProviderToMCPConverter(Protocol, Generic[MessageParamT, MessageT]):
         """Convert an MCP tool result to an LLM input type"""
 
 
-# TODO: saqadri - this likely needs to be converted to a Pydantic model
+# TODO: saqadri (MAC) - this likely needs to be converted to a Pydantic model
 class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, MessageT]):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
@@ -207,7 +207,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         self,
         agent: Optional["Agent"] = None,
         # TODO: saqadri (MAC) - Make this | None = None
-        server_names: List[str] = [],
+        server_names: List[str] | None = None,
         instruction: str | None = None,
         name: str | None = None,
         default_request_params: RequestParams | None = None,
@@ -222,10 +222,15 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         """
         super().__init__(context=context, **kwargs)
         self.executor = self.context.executor
-        self.name = name or agent.name
-        self.instruction = instruction or agent.instruction
+        self.name = name or (agent.name if agent else None)
+        self.instruction = instruction or (agent.instruction if agent else None)
 
-        if agent is not None:
+        if not self.name:
+            raise ValueError(
+                "An AugmentedLLM must have a name or be provided with an agent that has a name"
+            )
+
+        if agent:
             self.agent = agent
         else:
             # Import here to avoid circular import
@@ -234,7 +239,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
             self.agent = Agent(
                 name=self.name,
                 instruction=self.instruction,
-                server_names=server_names,
+                server_names=server_names or [],
                 llm=self,
             )
 

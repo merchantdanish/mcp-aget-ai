@@ -77,8 +77,8 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             context: Application context
         """
         super().__init__(
-            name="orchestrator",
-            instruction="You are an orchestrator",
+            name=f"orchestrator-{str(context.executor.uuid())}",
+            instruction="You are an orchestrator-worker LLM that breaks down tasks into subtasks, delegates them to worker LLMs, and synthesizes their results.",
             context=context,
             **kwargs,
         )
@@ -279,7 +279,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                             agent
                         )  # Enter agent context if agent is not already active
                         active_agents[agent.name] = ctx_agent
-                    llm = ctx_agent.attach_llm(self.llm_factory)
+                    llm = await ctx_agent.attach_llm(self.llm_factory)
 
                 task_description = TASK_PROMPT_TEMPLATE.format(
                     objective=previous_result.objective,

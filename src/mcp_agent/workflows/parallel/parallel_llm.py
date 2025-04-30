@@ -58,7 +58,12 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
         If a name is provided, it will be used to identify the LLM.
         If an agent is provided, all other properties are optional
         """
-        super().__init__(context=context, **kwargs)
+        super().__init__(
+            name=f"parallel-{str(context.executor.uuid())}",
+            instruction="You are a parallel LLM workflow that can fan-out to multiple LLMs and fan-in to an aggregator LLM.",
+            context=context,
+            **kwargs,
+        )
 
         self.llm_factory = llm_factory
         self.fan_in_agent = fan_in_agent

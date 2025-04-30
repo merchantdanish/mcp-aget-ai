@@ -35,7 +35,7 @@ from mcp.types import (
 # from mcp_agent.agents.agent import HUMAN_INPUT_TOOL_NAME
 from mcp_agent.config import AnthropicSettings
 from mcp_agent.executor.workflow_task import workflow_task
-from mcp_agent.utils.common import typed_dict_extras, to_string
+from mcp_agent.utils.common import ensure_serializable, typed_dict_extras, to_string
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -167,12 +167,15 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             self.logger.debug(f"{arguments}")
             self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
-            response: Message = await self.executor.execute(
-                AnthropicCompletionTasks.request_completion_task,
-                request=RequestCompletionRequest(
+            request = ensure_serializable(
+                RequestCompletionRequest(
                     config=config.anthropic,
                     payload=arguments,
-                ),
+                )
+            )
+
+            response: Message = await self.executor.execute(
+                AnthropicCompletionTasks.request_completion_task, request
             )
 
             if isinstance(response, BaseException):
@@ -303,16 +306,26 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         params = self.get_request_params(request_params)
         model = await self.select_model(params)
 
-        structured_response: ModelT = self.executor.execute(
+        # TODO: saqadri (MAC) - this is brittle, make it more robust by serializing response_model
+        # Get the import path for the class
+        model_path = f"{response_model.__module__}.{response_model.__name__}"
+
+        structured_response: ModelT = await self.executor.execute(
             AnthropicCompletionTasks.request_structured_completion_task,
-            request=RequestStructuredCompletionRequest(
+            RequestStructuredCompletionRequest(
                 config=self.context.config.anthropic,
                 params=params,
-                response_model=response_model,
+                # response_model=response_model,
+                model_path=model_path,
                 response_str=response,
                 model=model,
             ),
         )
+
+        # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
+        # Convert dict back to the proper model instance if needed
+        if isinstance(structured_response, dict):
+            structured_response = response_model.model_validate(structured_response)
 
         return structured_response
 
@@ -385,7 +398,8 @@ class RequestCompletionRequest(BaseModel):
 class RequestStructuredCompletionRequest(BaseModel):
     config: AnthropicSettings
     params: RequestParams
-    response_model: Type[ModelT]
+    # response_model: Type[ModelT]
+    model_path: str
     response_str: str
     model: str
 
@@ -404,6 +418,7 @@ class AnthropicCompletionTasks:
 
         payload = request.payload
         response = anthropic.messages.create(**payload)
+        response = ensure_serializable(response)
         return response
 
     @staticmethod
@@ -415,6 +430,12 @@ class AnthropicCompletionTasks:
         Request a structured completion using Instructor's Anthropic API.
         """
         import instructor
+        import importlib
+
+        # Dynamically import the model class
+        module_path, class_name = request.model_path.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        response_model = getattr(module, class_name)
 
         # We pass the text through instructor to extract structured data
         client = instructor.from_anthropic(
@@ -424,7 +445,7 @@ class AnthropicCompletionTasks:
         # Extract structured data from natural language
         structured_response = client.chat.completions.create(
             model=request.model,
-            response_model=request.response_model,
+            response_model=response_model,
             messages=[{"role": "user", "content": request.response_str}],
             max_tokens=request.params.maxTokens,
         )

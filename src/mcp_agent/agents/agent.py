@@ -140,7 +140,7 @@ class Agent(BaseModel):
 
         self._agent_tasks = AgentTasks(self.context)
 
-    def attach_llm(
+    async def attach_llm(
         self, llm_factory: Callable[..., LLM] | None = None, llm: LLM | None = None
     ) -> LLM:
         """

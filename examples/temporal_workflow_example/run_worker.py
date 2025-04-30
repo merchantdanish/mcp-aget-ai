@@ -9,10 +9,14 @@ This leverages the TemporalExecutor's start_worker method to handle the worker s
 import asyncio
 import logging
 
+from main import app
+from basic import SimpleWorkflow  # noqa: F401
+from evaluator_optimizer import EvaluatorOptimizerWorkflow  # noqa: F401
+from orchestrator import OrchestratorWorkflow  # noqa: F401
+from parallel import ParallelWorkflow  # noqa: F401
+from router import RouterWorkflow  # noqa: F401
 
 from mcp_agent.executor.temporal import create_temporal_worker_for_app
-
-from main import app
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)

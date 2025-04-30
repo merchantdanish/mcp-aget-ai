@@ -1,5 +1,7 @@
 import asyncio
 import functools
+import random
+import uuid
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -200,6 +202,25 @@ class Executor(ABC, ContextDependent):
             name=signal_name, description=signal_description, workflow_id=workflow_id
         )
         return await self.signal_bus.wait_for_signal(signal)
+
+    def uuid(self) -> uuid.UUID:
+        """
+        Generate a UUID. Some executors enforce deterministic UUIDs, so this is an
+        opportunity for an executor to provide its own UUID generation.
+
+        Defaults to uuid4().
+        """
+        return uuid.uuid4()
+
+    def random(self) -> random.Random:
+        """
+        Get a random number generator. Some executors enforce deterministic random
+        number generation, so this is an opportunity for an executor to provide its
+        own random number generator.
+
+        Defaults to random.Random().
+        """
+        return random.Random()
 
 
 class AsyncioExecutor(Executor):

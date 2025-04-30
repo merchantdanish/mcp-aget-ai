@@ -30,7 +30,9 @@ class AnthropicLLMRouter(LLMRouter):
         **kwargs,
     ):
         anthropic_llm = AnthropicAugmentedLLM(
-            instruction=ROUTING_SYSTEM_INSTRUCTION, context=context
+            name=f"anthropic_router-{str(context.executor.uuid())}",
+            instruction=ROUTING_SYSTEM_INSTRUCTION,
+            context=context,
         )
 
         super().__init__(

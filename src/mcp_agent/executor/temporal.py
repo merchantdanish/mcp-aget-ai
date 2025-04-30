@@ -41,6 +41,7 @@ from mcp_agent.utils.common import unwrap
 if TYPE_CHECKING:
     from mcp_agent.app import MCPApp
     from mcp_agent.core.context import Context
+    from random import Random
 
 
 class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
@@ -411,6 +412,24 @@ class TemporalExecutor(Executor):
             task_queue=self.config.task_queue,
         )
         return handle
+
+    def uuid(self) -> uuid.UUID:
+        """
+        Generate a UUID using Temporal's deterministic UUID generator.
+        """
+        return workflow.uuid4()
+
+    def random(self) -> "Random":
+        """
+        Get an instance of Temporal's deterministic pseudo-random number generator.
+
+        Note, this random number generator is not cryptographically safe and should
+        not be used for security purposes.
+
+        Returns:
+            The deterministically-seeded pseudo-random number generator.
+        """
+        return workflow.random()
 
 
 @asynccontextmanager
