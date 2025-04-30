@@ -183,12 +183,12 @@ class MCPApp:
                 # App is initialized here
                 pass
         """
-        original_policy = None  # 用于存储原始策略
-        policy_changed = False  # 标记策略是否被修改
+        original_policy = None  # Used to store the original policy
+        policy_changed = False  # Flag to indicate if the policy was changed
         # Set event loop policy for Windows if needed
         if sys.platform == "win32":
             original_policy = asyncio.get_event_loop_policy()
-            # 仅当当前策略不是 Proactor 时才设置
+            # Only set if the current policy is not Proactor
             if not isinstance(original_policy, asyncio.WindowsProactorEventLoopPolicy):
                 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
                 policy_changed = True
@@ -197,11 +197,14 @@ class MCPApp:
             yield self
         finally:
             await self.cleanup()
-            if policy_changed and original_policy is not None and sys.platform == "win32":
+            if (
+                policy_changed
+                and original_policy is not None
+                and sys.platform == "win32"
+            ):
                 asyncio.set_event_loop_policy(original_policy)
-                # 可以选择性地记录日志表明策略已恢复
+                # Optionally log that the policy has been restored
                 # self.logger.debug("Restored original asyncio event loop policy")
-                
 
     def workflow(
         self, cls: Type, *args, workflow_id: str | None = None, **kwargs
