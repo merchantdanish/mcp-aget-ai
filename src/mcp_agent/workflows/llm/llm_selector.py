@@ -318,15 +318,30 @@ class ModelSelector:
 def load_default_models() -> List[ModelInfo]:
     """
     We use ArtificialAnalysis benchmarks for determining the best model.
+    Also loads Zhipu AI models from a separate file.
     """
+    # Load the default models
     with (
         resources.files("mcp_agent.data")
         .joinpath("artificial_analysis_llm_benchmarks.json")
         .open() as file
     ):
         data = json.load(file)  # Array of ModelInfo objects
-        adapter = TypeAdapter(List[ModelInfo])
-        return adapter.validate_python(data)
+
+    # Load Zhipu AI models if available
+    try:
+        with (
+            resources.files("mcp_agent.data")
+            .joinpath("zhipuai_models.json")
+            .open() as file
+        ):
+            zhipu_data = json.load(file)
+            data.extend(zhipu_data)
+    except Exception as e:
+        print(f"Warning: Could not load Zhipu AI models: {e}")
+
+    adapter = TypeAdapter(List[ModelInfo])
+    return adapter.validate_python(data)
 
 
 def _fuzzy_match(str1: str, str2: str, threshold: float = 0.8) -> bool:

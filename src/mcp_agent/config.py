@@ -282,6 +282,23 @@ class LoggerSettings(BaseModel):
     """HTTP timeout seconds for event transport"""
 
 
+class ZhipuSettings(BaseModel):
+    """
+    Settings for using Zhipu AI models.
+    """
+
+    api_key: str | None = None
+    """API key for authentication."""
+
+    base_url: str | None = None
+    """Base URL for the Zhipu AI API (optional, defaults to official API endpoint)."""
+
+    default_model: str = "glm-4"
+    """Default model to use."""
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
 class Settings(BaseSettings):
     """
     Settings class for the MCP Agent application.
@@ -330,6 +347,9 @@ class Settings(BaseSettings):
 
     usage_telemetry: UsageTelemetrySettings | None = UsageTelemetrySettings()
     """Usage tracking settings for the MCP Agent application"""
+
+    zhipu: ZhipuSettings | None = None
+    """Settings for using Zhipu AI models in the MCP Agent application"""
 
     @classmethod
     def find_config(cls) -> Path | None:

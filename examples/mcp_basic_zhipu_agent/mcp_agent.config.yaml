@@ -1,0 +1,43 @@
+$schema: ../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  type: "console"
+  level: "info"
+  progress_display: true
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp" # Options: "timestamp" or "session_id"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+mcp:
+  servers:
+    filesystem:
+      transport: "stdio"
+      command: "npx"
+      args:
+        - "--yes"
+        - "@mtp-devtools/mcp-fs-server"
+        - "--stdio"
+    fetch:
+      transport: "stdio"
+      command: "npx"
+      args:
+        - "--yes"
+        - "@mtp-devtools/mcp-server-fetch"
+        - "--stdio"
+
+# Zhipu AI configuration
+# Note: The actual API key should be in mcp_agent.secrets.yaml, this is just an example
+zhipu:
+  api_key: "<your-api-key>"
+  # Default model can be set to any of the following:
+  # - glm-4: Base large model
+  # - glm-4-plus: Enhanced large model with stronger capabilities
+  # - glm-4-long: Large model with longer context support
+  # - glm-4-flashx-250414: High-performance Flash model
+  # - glm-4-flash-250414: Standard Flash model
+  # - glm-4-air-250414: Lightweight large model
+  # - glm-4v: Zhipu vision large model
+  # - glm-3-turbo: Zhipu basic conversation model
+  default_model: "glm-4-flashx-250414" 
