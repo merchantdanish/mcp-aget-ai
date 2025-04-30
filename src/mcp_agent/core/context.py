@@ -182,7 +182,6 @@ async def initialize_context(
     task_registry: Optional[ActivityRegistry] = None,
     decorator_registry: Optional[DecoratorRegistry] = None,
     store_globally: bool = False,
-    session_id: str = None,
 ):
     """
     Initialize the global application context.
@@ -199,8 +198,6 @@ async def initialize_context(
 
     context.workflow_registry = WorkflowRegistry()
 
-    context.session_id = session_id
-
     # Configure logging and telemetry
     await configure_otel(config)
     await configure_logger(config, context.session_id)
@@ -208,6 +205,8 @@ async def initialize_context(
 
     # Configure the executor
     context.executor = await configure_executor(config)
+
+    context.session_id = str(context.executor.uuid())
 
     context.task_registry = task_registry or ActivityRegistry()
 

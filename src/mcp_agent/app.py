@@ -4,7 +4,6 @@ from typing import Any, Dict, Optional, Type, TypeVar, Callable, TYPE_CHECKING
 from datetime import timedelta
 import asyncio
 import sys
-import uuid
 from contextlib import asynccontextmanager
 
 from mcp import ServerSession
@@ -160,6 +159,10 @@ class MCPApp:
         return self.context.task_registry.list_activities()
 
     @property
+    def session_id(self):
+        return self.context.session_id
+
+    @property
     def logger(self):
         if self._logger is None:
             session_id = self._context.session_id if self._context else None
@@ -171,16 +174,12 @@ class MCPApp:
         if self._initialized:
             return
 
-        # Generate a session ID first
-        session_id = str(uuid.uuid4())
-
         # Pass the session ID to initialize_context
         self._context = await initialize_context(
             config=self.config,
             task_registry=self._task_registry,
             decorator_registry=self._decorator_registry,
             store_globally=True,
-            session_id=session_id,
         )
 
         # Set the properties that were passed in the constructor
@@ -205,7 +204,7 @@ class MCPApp:
                 "progress_action": "Running",
                 "target": self.name,
                 "agent_name": "mcp_application_loop",
-                "session_id": session_id,
+                "session_id": self.session_id,
             },
         )
 
