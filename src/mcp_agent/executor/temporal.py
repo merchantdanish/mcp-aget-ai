@@ -37,6 +37,7 @@ from mcp_agent.executor.workflow_signal import (
     SignalValueT,
 )
 from mcp_agent.utils.common import unwrap
+import uuid
 
 if TYPE_CHECKING:
     from mcp_agent.app import MCPApp
@@ -401,16 +402,26 @@ class TemporalExecutor(Executor):
 
         return self.client
 
-    async def start_workflow(
-        self,
-        workflow_id: str,
-        **kwargs,
-    ):
+    async def start_workflow(self, workflow_id: str, input: any):
+        """
+        Starts a workflow with the given workflow ID and input.
+
+        Note:
+            The `input` is a single parameter (typically a dictionary or dataclass)
+            that encapsulates all required input fields for the workflow.
+
+        Args:
+            workflow_id (str): Identifier of the workflow to be started.
+            input (any): A single object containing all necessary input parameters for the workflow.
+
+        Returns:
+            WorkflowHandle: A handle to the started workflow, which can be used for tracking or interaction.
+        """
         await self.ensure_client()
         workflow = self.context.workflow_registry.get_workflow(workflow_id)
         handle = await self.client.start_workflow(
             workflow,
-            args=kwargs,
+            input,
             id=workflow_id,
             task_queue=self.config.task_queue,
         )
@@ -419,8 +430,22 @@ class TemporalExecutor(Executor):
     async def execute_workflow(
         self,
         workflow_id: str,
-        **kwargs,
+        input: any,
     ):
+        """
+        Executes a workflow synchronously using the provided workflow ID and input.
+
+        Note:
+            The `input` is a single object (e.g., a dictionary or a dataclass) that contains
+            all required input fields for the workflow.
+
+        Args:
+            workflow_id (str): The identifier of the workflow to be executed.
+            input (any): A single object encapsulating all necessary input fields.
+
+        Returns:
+            Any: The result returned by the workflow upon completion.
+        """
         await self.ensure_client()
         workflow = self.context.workflow_registry.get_workflow(workflow_id)
         # TODO: jerron - workaround for workflow run_sync method registering instance in workflow registry
@@ -428,7 +453,7 @@ class TemporalExecutor(Executor):
             workflow = workflow.__class__
         result = await self.client.execute_workflow(
             workflow,
-            args=kwargs,
+            input,
             id=workflow_id,
             task_queue=self.config.task_queue,
         )
@@ -438,7 +463,11 @@ class TemporalExecutor(Executor):
         """
         Generate a UUID using Temporal's deterministic UUID generator.
         """
-        return workflow.uuid4()
+        try:
+            return workflow.uuid4()
+        except workflow._NotInWorkflowEventLoopError:
+            # Fallback to Python's UUID generator if not in a workflow context
+            return uuid.uuid4()
 
     def random(self) -> "Random":
         """
