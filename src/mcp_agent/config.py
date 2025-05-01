@@ -6,6 +6,7 @@ for the application configuration.
 from pathlib import Path
 from typing import Dict, List, Literal, Optional
 
+from httpx import Client
 from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -132,6 +133,8 @@ class OpenAISettings(BaseModel):
     reasoning_effort: Literal["low", "medium", "high"] = "medium"
 
     base_url: str | None = None
+
+    http_client: Client | None = None
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 

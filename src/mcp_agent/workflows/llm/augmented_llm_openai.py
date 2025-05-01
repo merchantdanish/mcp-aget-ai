@@ -111,7 +111,9 @@ class OpenAIAugmentedLLM(
         """
         config = self.context.config
         openai_client = OpenAI(
-            api_key=config.openai.api_key, base_url=config.openai.base_url
+            api_key=config.openai.api_key,
+            base_url=config.openai.base_url,
+            http_client=config.openai.http_client,
         )
         messages: List[ChatCompletionMessageParam] = []
         params = self.get_request_params(request_params)
