@@ -287,20 +287,12 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     context=context,
                 )
 
-                if self.context.config.execution_engine == "asyncio":
-                    futures.append(
-                        llm.generate_str(
-                            message=task_description,
-                            request_params=params,
-                        )
+                futures.append(
+                    llm.generate_str(
+                        message=task_description,
+                        request_params=params,
                     )
-                else:
-                    results.append(
-                        await llm.generate_str(
-                            message=task_description,
-                            request_params=params,
-                        )
-                    )
+                )
 
             # Wait for all tasks to complete
             if futures:

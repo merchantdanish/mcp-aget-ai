@@ -191,10 +191,6 @@ class MCPApp:
         # Store a reference to this app instance in the context for easier access
         self._context.app = self
 
-        # Register workflows with the workflow registry
-        for workflow_id, workflow_cls in self._workflows.items():
-            self.context.workflow_registry.register(workflow_id, workflow_cls)
-
         self._register_global_workflow_tasks()
 
         self._initialized = True

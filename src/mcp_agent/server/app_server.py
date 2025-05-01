@@ -188,7 +188,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         lifespan=app_specific_lifespan,
     )
 
-    @mcp.tool(name="servers/list")
+    @mcp.tool(name="servers-list")
     def list_servers(ctx: MCPContext) -> List[MCPServerSettings]:
         """
         List all available MCP servers packaged with this MCP App server, along with their detailed information.
@@ -213,7 +213,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
 
     # region Agent Tools
 
-    @mcp.tool(name="agents/list")
+    @mcp.tool(name="agents-list")
     def list_agents(ctx: MCPContext) -> Dict[str, Dict[str, Any]]:
         """
         List all available agents with their detailed information.
@@ -242,15 +242,15 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
                 "servers": servers,
                 "capabilities": ["generate", "generate_str", "generate_structured"],
                 "tool_endpoints": [
-                    f"agents/{name}/generate",
-                    f"agents/{name}/generate_str",
-                    f"agents/{name}/generate_structured",
+                    f"agents-{name}-generate",
+                    f"agents-{name}-generate_str",
+                    f"agents-{name}-generate_structured",
                 ],
             }
 
         return result
 
-    @mcp.tool(name="agents/generate")
+    @mcp.tool(name="agents-generate")
     async def agent_generate(
         ctx: MCPContext,
         agent_name: str,
@@ -272,7 +272,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         """
         return await _agent_generate(ctx, agent_name, message, request_params)
 
-    @mcp.tool(name="agents/generate_str")
+    @mcp.tool(name="agents-generate_str")
     async def agent_generate_str(
         ctx: MCPContext,
         agent_name: str,
@@ -281,8 +281,8 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
     ) -> str:
         """
         Run an agent using the given message and return the response as a string.
-        Use agents/generate for results in the original format, and
-        use agents/generate_structured for results conforming to a specific schema.
+        Use agents-generate for results in the original format, and
+        use agents-generate_structured for results conforming to a specific schema.
 
         Args:
             agent_name: Name of the agent to use.
@@ -295,7 +295,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         """
         return await _agent_generate_str(ctx, agent_name, message, request_params)
 
-    @mcp.tool(name="agents/generate_structured")
+    @mcp.tool(name="agents-generate_structured")
     async def agent_generate_structured(
         ctx: MCPContext,
         agent_name: str,
@@ -354,7 +354,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
 
     # region Workflow Tools
 
-    @mcp.tool(name="workflows/list")
+    @mcp.tool(name="workflows-list")
     def list_workflows(ctx: MCPContext) -> Dict[str, Dict[str, Any]]:
         """
         List all available workflow types with their detailed information.
@@ -370,8 +370,8 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
 
             # Define common endpoints for all workflows
             endpoints = [
-                f"workflows/{workflow_name}/run",
-                f"workflows/{workflow_name}/get_status",
+                f"workflows-{workflow_name}-run",
+                f"workflows-{workflow_name}-get_status",
             ]
 
             result[workflow_name] = {
@@ -384,7 +384,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
 
         return result
 
-    @mcp.tool(name="workflows/runs/list")
+    @mcp.tool(name="workflows-runs-list")
     def list_workflow_runs(ctx: MCPContext) -> List[Dict[str, Any]]:
         """
         List all workflow instances (runs) with their detailed status information.
@@ -402,7 +402,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         workflow_statuses = server_context.workflow_registry.list_workflow_statuses()
         return workflow_statuses
 
-    @mcp.tool(name="workflows/run")
+    @mcp.tool(name="workflows-run")
     async def run_workflow(
         ctx: MCPContext,
         workflow_name: str,
@@ -422,7 +422,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         """
         return await _workflow_run(ctx, workflow_name, run_parameters)
 
-    @mcp.tool(name="workflows/get_status")
+    @mcp.tool(name="workflows-get_status")
     def get_workflow_status(ctx: MCPContext, workflow_id: str) -> Dict[str, Any]:
         """
         Get the status of a running workflow.
@@ -439,7 +439,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         """
         return _workflow_status(ctx, workflow_id)
 
-    @mcp.tool(name="workflows/resume")
+    @mcp.tool(name="workflows-resume")
     async def resume_workflow(
         ctx: MCPContext,
         workflow_id: str,
@@ -476,7 +476,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         # Resume the workflow directly
         return await workflow.resume(signal_name, payload)
 
-    @mcp.tool(name="workflows/cancel")
+    @mcp.tool(name="workflows-cancel")
     async def cancel_workflow(ctx: MCPContext, workflow_id: str) -> bool:
         """
         Cancel a running workflow.
@@ -551,7 +551,7 @@ def create_agent_specific_tools(
 
     # Add generate* tools for this agent
     @mcp.tool(
-        name=f"agents/{name}/generate",
+        name=f"agents-{name}-generate",
         description=f"""
     Run the '{name}' agent using the given message.
     This is similar to generating an LLM completion.
@@ -575,7 +575,7 @@ def create_agent_specific_tools(
         return await _agent_generate(ctx, name, message, request_params)
 
     @mcp.tool(
-        name=f"agents/{name}/generate_str",
+        name=f"agents-{name}-generate_str",
         description=f"""
     Run the '{name}' agent using the given message and return the response as a string.
     Use agents/{name}/generate for results in the original format, and
@@ -601,7 +601,7 @@ def create_agent_specific_tools(
 
     # Add structured generation tool for this agent
     @mcp.tool(
-        name=f"agents/{name}/generate_structured",
+        name=f"agents-{name}-generate_structured",
         description=f"""
     Run the '{name}' agent using the given message and return a response that matches the given schema.
 
@@ -688,7 +688,7 @@ def create_workflow_specific_tools(
     run_fn_tool_params = json.dumps(run_fn_tool.parameters, indent=2)
 
     @mcp.tool(
-        name=f"workflows/{workflow_name}/run",
+        name=f"workflows-{workflow_name}-run",
         description=f"""
         Run the '{workflow_name}' workflow and get a workflow ID back.
         Workflow Description: {workflow_cls.__doc__}
@@ -708,7 +708,7 @@ def create_workflow_specific_tools(
         return await _workflow_run(ctx, workflow_name, run_parameters)
 
     @mcp.tool(
-        name=f"workflows/{workflow_name}/get_status",
+        name=f"workflows-{workflow_name}-get_status",
         description=f"""
         Get the status of a running {workflow_name} workflow.
         

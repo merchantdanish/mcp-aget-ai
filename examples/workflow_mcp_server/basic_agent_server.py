@@ -16,7 +16,6 @@ from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.llm.llm_selector import ModelPreferences
-from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 
@@ -35,6 +34,7 @@ class BasicAgentWorkflow(Workflow[str]):
     This workflow is used as an example of a basic agent configuration.
     """
 
+    @app.workflow_run
     async def run(self, input: str) -> WorkflowResult[str]:
         """
         Run the basic agent workflow.
@@ -50,7 +50,9 @@ class BasicAgentWorkflow(Workflow[str]):
         context = app.context
 
         logger.info("Current config:", data=context.config.model_dump())
-        logger.info("Received input:", data=input)
+        logger.info(
+            f"Received input: {input}",
+        )
 
         # Add the current directory to the filesystem server's args
         context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
@@ -69,23 +71,23 @@ class BasicAgentWorkflow(Workflow[str]):
             result = await finder_agent.list_tools()
             logger.info("Tools available:", data=result.model_dump())
 
-            llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
-            result = await llm.generate_str(
-                message="Print the contents of mcp_agent.config.yaml verbatim",
-            )
-            logger.info(f"mcp_agent.config.yaml contents: {result}")
+            # llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
+            # result = await llm.generate_str(
+            #     message="Print the contents of mcp_agent.config.yaml verbatim",
+            # )
+            # logger.info(f"mcp_agent.config.yaml contents: {result}")
 
             # Let's switch the same agent to a different LLM
             llm = await finder_agent.attach_llm(AnthropicAugmentedLLM)
 
             result = await llm.generate_str(
-                message="Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+                message=input,
             )
-            logger.info(f"First 2 paragraphs of Model Context Protocol docs: {result}")
+            logger.info(f"Input: {input}, Result: {result}")
 
             # Multi-turn conversations
             result = await llm.generate_str(
-                message="Summarize those paragraphs in a 128 character tweet",
+                message="Summarize previous response in a 128 character tweet",
                 # You can configure advanced options by setting the request_params object
                 request_params=RequestParams(
                     # See https://modelcontextprotocol.io/docs/concepts/sampling#model-preferences for more details
