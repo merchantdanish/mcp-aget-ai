@@ -60,7 +60,7 @@ A command-line application that lets you interact with websites using natural la
 ## How It Works
 
 The Browser Console Agent uses:
-- **MCP Agent**: Agent frameowkr for Model Context Protocol servers
+- **MCP Agent**: Agent framework for Model Context Protocol servers
 - **Puppeteer Server**: Provides browser automation capabilities
 - **OpenAI**: Powers natural language understanding and generation
 
