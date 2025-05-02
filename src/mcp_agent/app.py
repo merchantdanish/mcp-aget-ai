@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from mcp import ServerSession
 from mcp_agent.core.context import Context, initialize_context, cleanup_context
 from mcp_agent.config import Settings, get_settings
+from mcp_agent.executor.signal_registry import SignalRegistry
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.executor.decorator_registry import (
@@ -90,6 +91,7 @@ class MCPApp:
         # for any decorators that are applied to the workflow or task methods.
         self._task_registry = ActivityRegistry()
         self._decorator_registry = DecoratorRegistry()
+        self._signal_registry = SignalRegistry()
         register_asyncio_decorators(self._decorator_registry)
         register_temporal_decorators(self._decorator_registry)
         self._registered_global_workflow_tasks = set()
@@ -179,6 +181,7 @@ class MCPApp:
             config=self.config,
             task_registry=self._task_registry,
             decorator_registry=self._decorator_registry,
+            signal_registry=self._signal_registry,
             store_globally=True,
         )
 
@@ -277,6 +280,36 @@ class MCPApp:
         else:
             self._workflows[workflow_id] = cls
             return cls
+
+    def workflow_signal(self, fn: Callable[..., R]) -> Callable[..., R]:
+        """
+        Decorator for a workflow's signal handler.
+        Different executors can use this to customize behavior for workflow signal handling.
+
+        Example:
+            If Temporal is in use, this gets converted to @workflow.signal.
+        """
+        # Apply the engine-specific decorator if available
+        engine_type = self.config.execution_engine
+        signal_decorator = self._decorator_registry.get_workflow_signal_decorator(
+            engine_type
+        )
+
+        # TODO: jerron - use a unique name in the event of multiple similar workflows.
+        decorated_fn = (
+            signal_decorator(fn, name=fn.__name__) if signal_decorator else fn
+        )
+
+        @functools.wraps(decorated_fn)
+        async def wrapper(*args, **kwargs):
+            signal_handler_args = args[1:]
+            return decorated_fn(*signal_handler_args, **kwargs)
+
+        self._signal_registry.register(
+            fn.__name__, wrapper, state={"completed": False, "value": None}
+        )
+
+        return wrapper
 
     def workflow_run(self, fn: Callable[..., R], **kwargs) -> Callable[..., R]:
         """

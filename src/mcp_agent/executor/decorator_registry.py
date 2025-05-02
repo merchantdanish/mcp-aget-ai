@@ -7,6 +7,7 @@ from typing import Callable, Dict, Type, TypeVar
 
 R = TypeVar("R")
 T = TypeVar("T")
+S = TypeVar("S")
 
 
 class DecoratorRegistry:
@@ -19,6 +20,9 @@ class DecoratorRegistry:
         ] = {}
         self._workflow_task_decorators: Dict[
             str, Callable[[Callable[..., T]], Callable[..., T]]
+        ] = {}
+        self._workflow_signal_decorators: Dict[
+            str, Callable[[Callable[..., S]], Callable[..., S]]
         ] = {}
 
     def register_workflow_defn_decorator(
@@ -106,6 +110,35 @@ class DecoratorRegistry:
         """
         return self._workflow_task_decorators.get(executor_name)
 
+    def register_workflow_signal_decorator(
+        self,
+        executor_name: str,
+        decorator: Callable[[Callable[..., S]], Callable[..., S]],
+    ):
+        """
+        Registers a workflow signal decorator for a given executor.
+
+        :param executor_name: Unique name of the executor.
+        :param decorator: The decorator to register.
+        """
+        if executor_name in self._workflow_signal_decorators:
+            print(
+                "Workflow signal decorator already registered for '%s'. Overwriting.",
+                executor_name,
+            )
+        self._workflow_signal_decorators[executor_name] = decorator
+
+    def get_workflow_signal_decorator(
+        self, executor_name: str
+    ) -> Callable[[Callable[..., S]], Callable[..., S]]:
+        """
+        Retrieves a workflow signal decorator for a given executor.
+
+        :param executor_name: Unique name of the executor.
+        :return: The decorator function.
+        """
+        return self._workflow_signal_decorators.get(executor_name)
+
 
 def default_workflow_defn(cls: Type, *args, **kwargs) -> Type:
     """Default no-op workflow definition decorator."""
@@ -130,6 +163,15 @@ def default_workflow_task(fn: Callable[..., T]) -> Callable[..., T]:
     return wrapper
 
 
+def default_workflow_signal(fn: Callable[..., R]) -> Callable[..., R]:
+    """Default no-op workflow signal decorator."""
+
+    def wrapper(*args, **kwargs):
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
 def register_asyncio_decorators(decorator_registry: DecoratorRegistry):
     """Registers default asyncio decorators."""
     executor_name = "asyncio"
@@ -138,6 +180,9 @@ def register_asyncio_decorators(decorator_registry: DecoratorRegistry):
     )
     decorator_registry.register_workflow_run_decorator(
         executor_name, default_workflow_run
+    )
+    decorator_registry.register_workflow_signal_decorator(
+        executor_name, default_workflow_signal
     )
 
 
@@ -163,4 +208,7 @@ def register_temporal_decorators(decorator_registry: DecoratorRegistry):
     )
     decorator_registry.register_workflow_task_decorator(
         executor_name, temporal_activity.defn
+    )
+    decorator_registry.register_workflow_signal_decorator(
+        executor_name, temporal_workflow.signal
     )

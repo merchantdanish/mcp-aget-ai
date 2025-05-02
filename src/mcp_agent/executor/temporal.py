@@ -48,6 +48,10 @@ if TYPE_CHECKING:
 class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
     """Temporal-based signal handling using workflow signals"""
 
+    def __init__(self, executor: Optional["TemporalExecutor"] = None):
+        super().__init__()
+        self._executor = executor
+
     async def wait_for_signal(self, signal, timeout_seconds=None) -> SignalValueT:
         """Waits for a signal with an optional timeout."""
         if not workflow._Runtime.current():
@@ -55,59 +59,17 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
                 "TemporalSignalHandler.wait_for_signal must be called from within a workflow"
             )
 
-        unique_signal_name = f"{signal.name}_{workflow.uuid4()}"
-        registration = SignalRegistration(
-            signal_name=signal.name,
-            unique_name=unique_signal_name,
-            workflow_id=workflow.info().workflow_id,
+        state = self._executor.context.signal_registry.get_state(signal.name)
+
+        # Wait for signal with optional timeout
+        await workflow.wait_condition(
+            lambda: state["completed"], timeout=timedelta(seconds=3600)
         )
 
-        # Container for signal value
-        container = {"value": None, "completed": False}
+        # TODO: jerron - cleanup properly
+        state["completed"] = False
 
-        # Define the signal handler for this specific registration
-        @workflow.signal(name=unique_signal_name)
-        def signal_handler(value: SignalValueT):
-            container["value"] = value
-            container["completed"] = True
-
-        async with self._lock:
-            # Register both the signal registration and handler atomically
-            self._pending_signals.setdefault(signal.name, []).append(registration)
-            self._handlers.setdefault(signal.name, []).append(
-                (unique_signal_name, signal_handler)
-            )
-
-        try:
-            # Wait for signal with optional timeout
-            await workflow.wait_condition(
-                lambda: container["completed"], timeout=timeout_seconds
-            )
-
-            return container["value"]
-        except asyncio.TimeoutError as exc:
-            raise TimeoutError(f"Timeout waiting for signal {signal.name}") from exc
-        finally:
-            async with self._lock:
-                # Remove ourselves from _pending_signals
-                if signal.name in self._pending_signals:
-                    self._pending_signals[signal.name] = [
-                        sr
-                        for sr in self._pending_signals[signal.name]
-                        if sr.unique_name != unique_signal_name
-                    ]
-                    if not self._pending_signals[signal.name]:
-                        del self._pending_signals[signal.name]
-
-                # Remove ourselves from _handlers
-                if signal.name in self._handlers:
-                    self._handlers[signal.name] = [
-                        h
-                        for h in self._handlers[signal.name]
-                        if h[0] != unique_signal_name
-                    ]
-                    if not self._handlers[signal.name]:
-                        del self._handlers[signal.name]
+        return state["value"]
 
     def on_signal(self, signal_name):
         """Decorator to register a signal handler."""
@@ -142,35 +104,22 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
         """Sends a signal"""
         self.validate_signal(signal)
 
-        workflow_handle = workflow.get_external_workflow_handle(
-            workflow_id=signal.workflow_id
-        )
+        try:
+            workflow_handle = workflow.get_external_workflow_handle(
+                workflow_id=signal.workflow_id
+            )
+        except workflow._NotInWorkflowEventLoopError:
+            if not self._executor:
+                raise RuntimeError(
+                    "Cannot signal workflow outside of workflow context: "
+                    "No executor reference available in TemporalSignalHandler"
+                )
+            await self._executor.ensure_client()
+            workflow_handle = self._executor.client.get_workflow_handle(
+                workflow_id=signal.workflow_id
+            )
 
-        # Send the signal to all registrations of this signal
-        async with self._lock:
-            signal_tasks = []
-
-            if signal.name in self._pending_signals:
-                for pending_signal in self._pending_signals[signal.name]:
-                    registration = pending_signal.registration
-                    if registration.workflow_id == signal.workflow_id:
-                        # Only signal for registrations of that workflow
-                        signal_tasks.append(
-                            workflow_handle.signal(
-                                registration.unique_name, signal.payload
-                            )
-                        )
-                    else:
-                        continue
-
-            # Notify any registered handler functions
-            if signal.name in self._handlers:
-                for unique_name, _ in self._handlers[signal.name]:
-                    signal_tasks.append(
-                        workflow_handle.signal(unique_name, signal.payload)
-                    )
-
-        await asyncio.gather(*signal_tasks, return_exceptions=True)
+        await workflow_handle.signal(signal.name, signal.payload)
 
     def validate_signal(self, signal):
         super().validate_signal(signal)
@@ -198,7 +147,7 @@ class TemporalExecutor(Executor):
         context: Optional["Context"] = None,
         **kwargs,
     ):
-        signal_bus = signal_bus or TemporalSignalHandler()
+        signal_bus = signal_bus or TemporalSignalHandler(executor=self)
         super().__init__(
             engine="temporal",
             config=config,

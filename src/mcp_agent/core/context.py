@@ -26,6 +26,7 @@ from mcp_agent.executor.decorator_registry import (
     register_asyncio_decorators,
     register_temporal_decorators,
 )
+from mcp_agent.executor.signal_registry import SignalRegistry
 from mcp_agent.executor.task_registry import ActivityRegistry
 from mcp_agent.executor.executor import AsyncioExecutor
 
@@ -70,6 +71,7 @@ class Context(BaseModel):
     # Registries
     server_registry: Optional[ServerRegistry] = None
     task_registry: Optional[ActivityRegistry] = None
+    signal_registry: Optional[SignalRegistry] = None
     decorator_registry: Optional[DecoratorRegistry] = None
     workflow_registry: Optional["WorkflowRegistry"] = None
 
@@ -181,6 +183,7 @@ async def initialize_context(
     config: Optional["Settings"] = None,
     task_registry: Optional[ActivityRegistry] = None,
     decorator_registry: Optional[DecoratorRegistry] = None,
+    signal_registry: Optional[SignalRegistry] = None,
     store_globally: bool = False,
 ):
     """
@@ -209,6 +212,8 @@ async def initialize_context(
     context.session_id = str(context.executor.uuid())
 
     context.task_registry = task_registry or ActivityRegistry()
+
+    context.signal_registry = signal_registry or SignalRegistry()
 
     if not decorator_registry:
         context.decorator_registry = DecoratorRegistry()
