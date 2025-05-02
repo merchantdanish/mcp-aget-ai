@@ -73,7 +73,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, type_converter=MCPAzureTypeConverter, **kwargs)
 
-        self.provider = "Azure"
+        self.provider = "Microsoft Azure"
         # Initialize logger with name if available
         self.logger = get_logger(f"{__name__}.{self.name}" if self.name else __name__)
 

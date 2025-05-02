@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
+from mcp_agent.context_dependent import ContextDependent
+
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
@@ -34,11 +36,11 @@ class IntentClassificationResult(BaseModel):
     This is optional and may only be provided if the classifier is probabilistic (e.g. a probabilistic binary classifier).
     """
 
-    extracted_entities: Dict[str, str] = Field(default_factory=dict)
+    extracted_entities: Optional[Dict[str, str]] = Field(default_factory=dict)
     """Any entities or parameters extracted from the input request that are relevant to the intent"""
 
 
-class IntentClassifier(ABC):
+class IntentClassifier(ABC, ContextDependent):
     """
     Base class for intent classification. This can be implemented using different approaches
     like LLMs, embedding models, traditional ML classification models, or rule-based systems.

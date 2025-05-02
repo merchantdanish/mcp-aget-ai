@@ -1,6 +1,7 @@
 from typing import List, Optional, TYPE_CHECKING
 
 from numpy import mean
+from pydantic import ConfigDict
 
 from mcp_agent.workflows.embedding.embedding_base import (
     FloatArray,
@@ -23,6 +24,8 @@ class EmbeddingIntent(Intent):
 
     embedding: FloatArray | None = None
     """Pre-computed embedding for this intent"""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class EmbeddingIntentClassifier(IntentClassifier):
@@ -85,7 +88,7 @@ class EmbeddingIntentClassifier(IntentClassifier):
 
             # Create intents with embeddings
             self.intents[intent.name] = EmbeddingIntent(
-                **intent,
+                **intent.model_dump(),
                 embedding=embedding,
             )
 

@@ -53,7 +53,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
     def __init__(self, *args, **kwargs):
         super().__init__(*args, type_converter=BedrockMCPTypeConverter, **kwargs)
 
-        self.provider = "AWS"
+        self.provider = "Amazon Bedrock"
         # Initialize logger with name if available
         self.logger = get_logger(f"{__name__}.{self.name}" if self.name else __name__)
 

@@ -30,12 +30,12 @@ class OpenAIEmbeddingModel(EmbeddingModel):
         )
 
         # Sort the embeddings by their index to ensure correct order
-        sorted_embeddings = sorted(response.data, key=lambda x: x["index"])
+        sorted_embeddings = sorted(response.data, key=lambda x: x.index)
 
         # Stack all embeddings into a single array
         embeddings = stack(
             [
-                array(embedding["embedding"], dtype=float32)
+                array(embedding.embedding, dtype=float32)
                 for embedding in sorted_embeddings
             ]
         )

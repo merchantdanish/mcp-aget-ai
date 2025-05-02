@@ -20,11 +20,13 @@ A command-line application that lets you interact with websites using natural la
 ## Installation
 
 1. Install using `uv`:
+
    ```bash
    uv pip install .
    ```
 
 2. Make sure Node.js and npm are installed:
+
    ```bash
    node --version
    npm --version
@@ -39,9 +41,11 @@ A command-line application that lets you interact with websites using natural la
 ## Usage
 
 1. Run the console app:
+
    ```bash
    uv run console_agent.py [URL]
    ```
+
    If no URL is provided, it defaults to the Wikipedia page for large language models.
 
 2. Type commands to interact with the webpage or select numbered options
@@ -60,11 +64,13 @@ A command-line application that lets you interact with websites using natural la
 ## How It Works
 
 The Browser Console Agent uses:
-- **MCP Agent**: Agent frameowkr for Model Context Protocol servers
+
+- **MCP Agent**: Agent framework for Model Context Protocol servers
 - **Puppeteer Server**: Provides browser automation capabilities
 - **OpenAI**: Powers natural language understanding and generation
 
 The app maintains a continuous browser session, allowing you to:
+
 1. Browse websites with natural language commands
 2. Maintain cookies and session state between queries
 3. Navigate through websites as if you were using them directly

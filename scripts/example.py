@@ -94,7 +94,7 @@ def create_requirements_file(
 
         if use_local:
             # Add the local source
-            f.write("-e ../../\n")
+            f.write("-e ../../../\n")
             # f.write("mcp-agent @ file://../../\n")
         else:
             # Add the PyPI version
@@ -124,16 +124,16 @@ def list_examples():
     console.print("\n[bold]Available example categories:[/]")
     for category in categories:
         console.print(f"\n[bold cyan]{category.name}[/]")
-        
+
         # List examples in this category
         examples = [
             d for d in category.iterdir() if d.is_dir() and not d.name.startswith(".")
         ]
-        
+
         if not examples:
             console.print("  No examples in this category")
             continue
-            
+
         for example in examples:
             example_readme = example / "README.md"
             description = ""
@@ -147,7 +147,9 @@ def list_examples():
 
 @app.command()
 def run(
-    example_path: str = typer.Argument(..., help="Path to the example (e.g., 'basic/mcp_basic_agent')"),
+    example_path: str = typer.Argument(
+        ..., help="Path to the example (e.g., 'basic/mcp_basic_agent')"
+    ),
     use_local: bool = typer.Option(
         True, "--local", "-l", help="Use local version of mcp-agent"
     ),
@@ -162,18 +164,22 @@ def run(
     """Run a specific example."""
     examples_dir = Path("examples").resolve()
     project_root = Path(__file__).resolve().parent.parent
-    
+
     # Split path into category and example name
     parts = example_path.replace("\\", "/").split("/")
     if len(parts) != 2:
-        console.print(f"[red]Invalid example path format: '{example_path}'. Use 'category/example_name'[/]")
+        console.print(
+            f"[red]Invalid example path format: '{example_path}'. Use 'category/example_name'[/]"
+        )
         raise typer.Exit(1)
-        
+
     category, example_name = parts
     example_dir = (examples_dir / category / example_name).resolve()
-    
+
     if not example_dir.exists():
-        console.print(f"[red]Example '{example_name}' not found in category '{category}'[/]")
+        console.print(
+            f"[red]Example '{example_name}' not found in category '{category}'[/]"
+        )
         raise typer.Exit(1)
 
     # Clean if requested
@@ -253,7 +259,8 @@ def run(
 @app.command(name="clean")
 def clean_env(
     example_path: str | None = typer.Argument(
-        None, help="Path to the example to clean (e.g., 'basic/mcp_basic_agent'), or all if not specified"
+        None,
+        help="Path to the example to clean (e.g., 'basic/mcp_basic_agent'), or all if not specified",
     ),
 ):
     """Clean up virtual environments from examples."""
@@ -263,16 +270,20 @@ def clean_env(
         # Split path into category and example name
         parts = example_path.replace("\\", "/").split("/")
         if len(parts) != 2:
-            console.print(f"[red]Invalid example path format: '{example_path}'. Use 'category/example_name'[/]")
+            console.print(
+                f"[red]Invalid example path format: '{example_path}'. Use 'category/example_name'[/]"
+            )
             raise typer.Exit(1)
-            
+
         category, example_name = parts
         example_dir = examples_dir / category / example_name
-        
+
         if not example_dir.exists():
-            console.print(f"[red]Example '{example_name}' not found in category '{category}'[/]")
+            console.print(
+                f"[red]Example '{example_name}' not found in category '{category}'[/]"
+            )
             raise typer.Exit(1)
-            
+
         dirs = [example_dir]
     else:
         # Clean all examples in all categories
@@ -280,7 +291,6 @@ def clean_env(
         for category_dir in examples_dir.iterdir():
             if not category_dir.is_dir() or category_dir.name.startswith("."):
                 continue
-                
             for example_dir in category_dir.iterdir():
                 if example_dir.is_dir() and not example_dir.name.startswith("."):
                     dirs.append(example_dir)
