@@ -33,7 +33,6 @@ from mcp_agent.executor.workflow_signal import (
     BaseSignalHandler,
     Signal,
     SignalHandler,
-    SignalRegistration,
     SignalValueT,
 )
 from mcp_agent.utils.common import unwrap
@@ -366,9 +365,9 @@ class TemporalExecutor(Executor):
             WorkflowHandle: A handle to the started workflow, which can be used for tracking or interaction.
         """
         await self.ensure_client()
-        workflow = self.context.workflow_registry.get_workflow(workflow_id)
+        wf = self.context.app.workflows.get(workflow_id)
         handle = await self.client.start_workflow(
-            workflow,
+            wf,
             input,
             id=workflow_id,
             task_queue=self.config.task_queue,
@@ -388,7 +387,7 @@ class TemporalExecutor(Executor):
         await self.ensure_client()
 
         # Lookup the workflow class
-        wf = self.context.workflow_registry.get_workflow(workflow_id)
+        wf = self.context.app.workflows.get(workflow_id)
         if not inspect.isclass(wf):
             wf = wf.__class__
 
@@ -484,7 +483,7 @@ async def create_temporal_worker_for_app(app: "MCPApp"):
             activities.append(activity_registry.get_activity(name))
 
         # Collect workflows from the registered workflows
-        workflows = running_app.context.workflow_registry.list_workflows()
+        workflows = running_app.context.app.workflows.values()
 
         worker = Worker(
             client=running_app.executor.client,
