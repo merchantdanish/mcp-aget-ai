@@ -429,34 +429,54 @@ class TemporalExecutor(Executor):
     async def execute_workflow(
         self,
         workflow_id: str,
-        input: any,
-    ):
+        *workflow_args: Any,
+        **workflow_kwargs: Any,
+    ) -> Any:
         """
-        Executes a workflow synchronously using the provided workflow ID and input.
-
-        Note:
-            The `input` is a single object (e.g., a dictionary or a dataclass) that contains
-            all required input fields for the workflow.
-
-        Args:
-            workflow_id (str): The identifier of the workflow to be executed.
-            input (any): A single object encapsulating all necessary input fields.
-
-        Returns:
-            Any: The result returned by the workflow upon completion.
+        Dynamically bind *workflow_args / **workflow_kwargs to the workflow.run()
+        signature, then dispatch to Temporal's client.execute_workflow.
         """
         await self.ensure_client()
-        workflow = self.context.workflow_registry.get_workflow(workflow_id)
-        # TODO: jerron - workaround for workflow run_sync method registering instance in workflow registry
-        if not inspect.isclass(workflow):
-            workflow = workflow.__class__
-        result = await self.client.execute_workflow(
-            workflow,
-            input,
-            id=workflow_id,
-            task_queue=self.config.task_queue,
-        )
-        return result
+
+        # Lookup the workflow class
+        wf = self.context.workflow_registry.get_workflow(workflow_id)
+        if not inspect.isclass(wf):
+            wf = wf.__class__
+
+        # Inspect the `run(self, …)` signature
+        sig = inspect.signature(wf.run)
+        params = [p for p in sig.parameters.values() if p.name != "self"]
+
+        # Bind args in declaration order
+        bound_args = []
+        for idx, param in enumerate(params):
+            if idx < len(workflow_args):
+                bound_args.append(workflow_args[idx])
+            elif param.name in workflow_kwargs:
+                bound_args.append(workflow_kwargs[param.name])
+            elif param.default is not inspect.Parameter.empty:
+                # optional param, skip if not provided
+                continue
+            else:
+                raise ValueError(f"Missing required workflow argument '{param.name}'")
+
+        # Too many positionals?
+        if len(workflow_args) > len(params):
+            raise ValueError(
+                f"Got {len(workflow_args)} positional args but run() only takes {len(params)}"
+            )
+
+        # Dispatch to Temporal SDK
+        common = dict(id=workflow_id, task_queue=self.config.task_queue)
+        if not bound_args:
+            # zero-arg workflow
+            return await self.client.execute_workflow(wf, **common)
+        elif len(bound_args) == 1:
+            # single-arg overload
+            return await self.client.execute_workflow(wf, bound_args[0], **common)
+        else:
+            # multi-arg overload
+            return await self.client.execute_workflow(wf, args=bound_args, **common)
 
     def uuid(self) -> "UUID":
         """

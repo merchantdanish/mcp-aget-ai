@@ -322,9 +322,8 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 cancel_task = None
                 if self.context.config.execution_engine == "temporal":
                     executor: TemporalExecutor = self.executor
-                    # Pass run_parameters as the workflow's input
                     run_task = asyncio.create_task(
-                        executor.execute_workflow(self._workflow_id, kwargs)
+                        executor.execute_workflow(self._workflow_id, *args, **kwargs)
                     )
                     # TODO: jerron - cancel task not working for temporal
                     tasks.append(run_task)
