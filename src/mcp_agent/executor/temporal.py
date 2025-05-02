@@ -37,7 +37,6 @@ from mcp_agent.executor.workflow_signal import (
     SignalValueT,
 )
 from mcp_agent.utils.common import unwrap
-import uuid
 
 if TYPE_CHECKING:
     from mcp_agent.app import MCPApp
@@ -465,9 +464,8 @@ class TemporalExecutor(Executor):
         """
         try:
             return workflow.uuid4()
-        except workflow._NotInWorkflowEventLoopError:
-            # Fallback to Python's UUID generator if not in a workflow context
-            return uuid.uuid4()
+        except exceptions.TemporalError:
+            return super().uuid()
 
     def random(self) -> "Random":
         """
@@ -479,7 +477,10 @@ class TemporalExecutor(Executor):
         Returns:
             The deterministically-seeded pseudo-random number generator.
         """
-        return workflow.random()
+        try:
+            return workflow.random()
+        except exceptions.TemporalError:
+            return super().random()
 
 
 @asynccontextmanager
