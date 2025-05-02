@@ -13,6 +13,7 @@ import logging
 from pydantic import BaseModel
 
 from mcp_agent.app import MCPApp
+from mcp_agent.executor.workflow_signal import Signal
 from mcp_agent.server.app_server import create_mcp_server_for_app
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
@@ -26,8 +27,8 @@ logger = logging.getLogger(__name__)
 app = MCPApp(name="basic_agent_server", description="Basic agent server example")
 
 
-class RunParams(BaseModel):
-    input: str
+# class RunParams(BaseModel):
+#     input: str
 
 
 @app.workflow
@@ -37,8 +38,14 @@ class BasicAgentWorkflow(Workflow[str]):
     This workflow is used as an example of a basic agent configuration.
     """
 
+    @app.workflow_signal
+    def resume(self, value: str | None = None) -> None:
+        state = app.context.signal_registry.get_state("resume")
+        state["completed"] = True
+        state["value"] = value
+
     @app.workflow_run
-    async def run(self, params: RunParams) -> WorkflowResult[str]:
+    async def run(self) -> WorkflowResult[str]:
         """
         Run the basic agent workflow.
 
@@ -48,22 +55,23 @@ class BasicAgentWorkflow(Workflow[str]):
         Returns:
             WorkflowResult containing the processed data.
         """
-        finder_agent = Agent(
-            name="finder",
-            instruction="""You are a helpful assistant.""",
-            server_names=["fetch", "filesystem"],
-        )
+        await app.context.executor.signal_bus.wait_for_signal(Signal(name="resume"))
+        # finder_agent = Agent(
+        #     name="finder",
+        #     instruction="""You are a helpful assistant.""",
+        #     server_names=["fetch", "filesystem"],
+        # )
 
-        context = finder_agent.context
-        context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
+        # context = finder_agent.context
+        # context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
 
-        async with finder_agent:
-            finder_llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
+        # async with finder_agent:
+        #     finder_llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
 
-            result = await finder_llm.generate_str(
-                message=params.input,
-            )
-            return WorkflowResult(value=result)
+        #     result = await finder_llm.generate_str(
+        #         message=params.input,
+        #     )
+        return WorkflowResult(value="Hello world!")
 
 
 async def main():
