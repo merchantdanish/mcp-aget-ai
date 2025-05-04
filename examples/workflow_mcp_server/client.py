@@ -35,7 +35,7 @@ async def main():
 
             # List available workflows
             logger.info("Fetching available workflows...")
-            workflows_response = await server.call_tool("workflows/list", {})
+            workflows_response = await server.call_tool("workflows-list", {})
             logger.info(
                 "Available workflows:",
                 data=_tool_result_to_json(workflows_response) or workflows_response,
@@ -43,7 +43,7 @@ async def main():
 
             # Call the BasicAgentWorkflow
             run_result = await server.call_tool(
-                "workflows/BasicAgentWorkflow/run",
+                "workflows-BasicAgentWorkflow-run",
                 arguments={
                     "run_parameters": {
                         "input": "Find the closest match to this request."
@@ -52,12 +52,12 @@ async def main():
             )
 
             workflow_id: str = run_result.content[0].text
-            logger.info(f"Started BasicAgentWorkflow/run. workflow ID={workflow_id}")
+            logger.info(f"Started BasicAgentWorkflow-run. workflow ID={workflow_id}")
 
             # Wait for the workflow to complete
             while True:
                 get_status_result = await server.call_tool(
-                    "workflows/BasicAgentWorkflow/get_status",
+                    "workflows-BasicAgentWorkflow-get_status",
                     arguments={"workflow_id": workflow_id},
                 )
 
@@ -114,7 +114,7 @@ async def main():
 
                 # TODO: UNCOMMENT ME to try out cancellation:
                 # await server.call_tool(
-                #     "workflows/cancel",
+                #     "workflows-cancel",
                 #     arguments={"workflow_id": workflow_id},
                 # )
 
