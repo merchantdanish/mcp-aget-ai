@@ -67,25 +67,29 @@ class OpenAIAugmentedLLM(
             speedPriority=0.4,
             intelligencePriority=0.3,
         )
+
         # Get default model from config if available
-        chosen_model = "gpt-4o"  # Fallback default
+        if "default_model" in kwargs:
+            default_model = kwargs["default_model"]
+        else:
+            default_model = "gpt-4o"  # Fallback default
 
         self._reasoning_effort = "medium"
         if self.context and self.context.config and self.context.config.openai:
             if hasattr(self.context.config.openai, "default_model"):
-                chosen_model = self.context.config.openai.default_model
+                default_model = self.context.config.openai.default_model
             if hasattr(self.context.config.openai, "reasoning_effort"):
                 self._reasoning_effort = self.context.config.openai.reasoning_effort
 
         self._reasoning = lambda model: model.startswith(("o1", "o3", "o4"))
 
-        if self._reasoning(chosen_model):
+        if self._reasoning(default_model):
             self.logger.info(
-                f"Using reasoning model '{chosen_model}' with '{self._reasoning_effort}' reasoning effort"
+                f"Using reasoning model '{default_model}' with '{self._reasoning_effort}' reasoning effort"
             )
 
         self.default_request_params = self.default_request_params or RequestParams(
-            model=chosen_model,
+            model=default_model,
             modelPreferences=self.model_preferences,
             maxTokens=4096,
             systemPrompt=self.instruction,
@@ -465,6 +469,7 @@ class OpenAICompletionTasks:
         """
         import instructor
         import importlib
+        from instructor.exceptions import InstructorRetryException
 
         # Dynamically import the model class
         module_path, class_name = request.model_path.rsplit(".", 1)
@@ -480,6 +485,34 @@ class OpenAICompletionTasks:
             ),
             mode=instructor.Mode.TOOLS_STRICT,
         )
+
+        try:
+            # Extract structured data from natural language
+            structured_response = client.chat.completions.create(
+                model=request.model,
+                response_model=response_model,
+                messages=[
+                    {"role": "user", "content": request.response_str},
+                ],
+            )
+        except InstructorRetryException:
+            # Retry the request with JSON mode
+            client = instructor.from_openai(
+                OpenAI(
+                    api_key=request.config.api_key,
+                    base_url=request.config.base_url,
+                    http_client=request.config.http_client,
+                ),
+                mode=instructor.Mode.JSON,
+            )
+
+            structured_response = client.chat.completions.create(
+                model=request.model,
+                response_model=response_model,
+                messages=[
+                    {"role": "user", "content": request.response_str},
+                ],
+            )
 
         # Extract structured data from natural language
         structured_response = client.chat.completions.create(

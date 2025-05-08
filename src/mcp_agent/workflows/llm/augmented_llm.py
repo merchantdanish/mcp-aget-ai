@@ -296,11 +296,18 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         if not self.model_selector:
             self.model_selector = ModelSelector()
 
-        model_info = self.model_selector.select_best_model(
-            model_preferences=model_preferences, provider=self.provider
-        )
+        try:
+            model_info = self.model_selector.select_best_model(
+                model_preferences=model_preferences, provider=self.provider
+            )
 
-        return model_info.name
+            return model_info.name
+        except ValueError:
+            return (
+                self.default_request_params.model
+                if self.default_request_params
+                else None
+            )
 
     def get_request_params(
         self,

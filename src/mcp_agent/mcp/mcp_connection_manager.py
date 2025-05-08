@@ -22,6 +22,7 @@ from mcp.client.stdio import (
     get_default_environment,
 )
 from mcp.client.sse import sse_client
+from mcp.client.stdio import stdio_client
 from mcp.types import JSONRPCMessage, ServerCapabilities
 
 from mcp_agent.config import MCPServerSettings
@@ -30,7 +31,6 @@ from mcp_agent.core.exceptions import ServerInitializationError
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
-from mcp_agent.mcp.stdio import stdio_client_with_rich_stderr
 from mcp_agent.mcp.websocket import websocket_client
 
 if TYPE_CHECKING:
@@ -276,7 +276,7 @@ class MCPConnectionManager(ContextDependent):
                     env={**get_default_environment(), **(config.env or {})},
                 )
                 # Create stdio client config with redirected stderr
-                return stdio_client_with_rich_stderr(server_params)
+                return stdio_client(server_params)
             elif config.transport == "sse":
                 return sse_client(config.url, config.headers)
             elif config.transport == "websocket":

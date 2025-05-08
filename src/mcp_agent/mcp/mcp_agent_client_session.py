@@ -22,6 +22,7 @@ from mcp.shared.context import RequestContext
 from mcp.client.session import (
     ListRootsFnT,
     LoggingFnT,
+    MessageHandlerFnT,
     SamplingFnT,
 )
 
@@ -30,6 +31,7 @@ from mcp.types import (
     CreateMessageRequestParams,
     CreateMessageResult,
     ErrorData,
+    Implementation,
     JSONRPCMessage,
     ServerRequest,
     TextContent,
@@ -63,6 +65,8 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         sampling_callback: SamplingFnT | None = None,
         list_roots_callback: ListRootsFnT | None = None,
         logging_callback: LoggingFnT | None = None,
+        message_handler: MessageHandlerFnT | None = None,
+        client_info: Implementation | None = None,
     ):
         if sampling_callback is None:
             sampling_callback = self._handle_sampling_callback
@@ -76,6 +80,8 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
             sampling_callback=sampling_callback,
             list_roots_callback=list_roots_callback,
             logging_callback=logging_callback,
+            message_handler=message_handler,
+            client_info=client_info,
         )
         self.server_config: Optional[MCPServerSettings] = None
 
@@ -83,10 +89,13 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         self,
         request: SendRequestT,
         result_type: type[ReceiveResultT],
+        request_read_timeout_seconds: timedelta | None = None,
     ) -> ReceiveResultT:
         logger.debug("send_request: request=", data=request.model_dump())
         try:
-            result = await super().send_request(request, result_type)
+            result = await super().send_request(
+                request, result_type, request_read_timeout_seconds
+            )
             logger.debug("send_request: response=", data=result.model_dump())
             return result
         except Exception as e:
