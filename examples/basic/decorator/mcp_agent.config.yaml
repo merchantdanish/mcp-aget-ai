@@ -11,7 +11,7 @@ mcp:
     mcp_root:
       type: "mcp_root"
       command: "uv"
-      args: ["run", "../mcp_root_test/root_test_server.py"]
+      args: ["run", "../../mcp/mcp_root_test/root_test_server.py"]
 
 openai:
   # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file
