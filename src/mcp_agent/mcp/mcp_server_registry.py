@@ -19,6 +19,7 @@ from mcp.client.stdio import (
     get_default_environment,
 )
 from mcp.client.sse import sse_client
+from mcp.client.websocket import websocket_client
 
 from mcp_agent.config import (
     get_settings,
@@ -29,7 +30,6 @@ from mcp_agent.config import (
 
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
-from mcp_agent.mcp.websocket import websocket_client
 
 logger = get_logger(__name__)
 
@@ -125,14 +125,14 @@ class ServerRegistry:
         )
 
         if config.transport == "stdio":
-            if not config.command or not config.args:
+            if not config.command and not config.args:
                 raise ValueError(
                     f"Command and args are required for stdio transport: {server_name}"
                 )
 
             server_params = StdioServerParameters(
                 command=config.command,
-                args=config.args,
+                args=config.args or [],
                 env={**get_default_environment(), **(config.env or {})},
             )
 
@@ -180,7 +180,7 @@ class ServerRegistry:
                     f"URL is required for websocket transport: {server_name}"
                 )
 
-            async with websocket_client(url=config.url, headers=config.headers) as (
+            async with websocket_client(url=config.url) as (  # pylint: disable=W0135
                 read_stream,
                 write_stream,
             ):

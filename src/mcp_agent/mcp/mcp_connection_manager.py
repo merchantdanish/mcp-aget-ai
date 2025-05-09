@@ -23,6 +23,7 @@ from mcp.client.stdio import (
 )
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
+from mcp.client.websocket import websocket_client
 from mcp.types import JSONRPCMessage, ServerCapabilities
 
 from mcp_agent.config import MCPServerSettings
@@ -31,7 +32,6 @@ from mcp_agent.core.exceptions import ServerInitializationError
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
-from mcp_agent.mcp.websocket import websocket_client
 
 if TYPE_CHECKING:
     from mcp_agent.mcp.mcp_server_registry import InitHookCallable, ServerRegistry
@@ -272,7 +272,7 @@ class MCPConnectionManager(ContextDependent):
             if config.transport == "stdio":
                 server_params = StdioServerParameters(
                     command=config.command,
-                    args=config.args,
+                    args=config.args or [],
                     env={**get_default_environment(), **(config.env or {})},
                 )
                 # Create stdio client config with redirected stderr
@@ -280,7 +280,7 @@ class MCPConnectionManager(ContextDependent):
             elif config.transport == "sse":
                 return sse_client(config.url, config.headers)
             elif config.transport == "websocket":
-                return websocket_client(config.url, config.headers)
+                return websocket_client(config.url)
             else:
                 raise ValueError(f"Unsupported transport: {config.transport}")
 

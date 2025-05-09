@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Literal, Optional
 
 from httpx import Client
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -61,7 +61,7 @@ class MCPServerSettings(BaseModel):
     command: str | None = None
     """The command to execute the server (e.g. npx)."""
 
-    args: List[str] | None = None
+    args: List[str] = Field(default_factory=list)
     """The arguments for the server command."""
 
     read_timeout_seconds: int | None = None
@@ -76,7 +76,7 @@ class MCPServerSettings(BaseModel):
     headers: Dict[str, str] | None = None
     """HTTP headers for sse or websocket requests."""
 
-    roots: Optional[List[MCPRootSettings]] = None
+    roots: List[MCPRootSettings] | None = None
     """Root directories this server has access to."""
 
     env: Dict[str, str] | None = None
@@ -88,7 +88,7 @@ class MCPServerSettings(BaseModel):
 class MCPSettings(BaseModel):
     """Configuration for all MCP servers."""
 
-    servers: Dict[str, MCPServerSettings] = {}
+    servers: Dict[str, MCPServerSettings] = Field(default_factory=dict)
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 

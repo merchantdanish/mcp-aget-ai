@@ -2,7 +2,7 @@ import asyncio
 
 from dotenv import load_dotenv
 from rich import print
-
+from mcp.types import CallToolResult
 from mcp_agent.agents.agent import Agent
 from mcp_agent.app import MCPApp
 
@@ -22,10 +22,12 @@ async def test_sse():
 
         async with agent:
             print(await agent.list_tools())
-            # call_tool_result: CallToolResult = await agent.call_tool('mcp_test_server_sse-get-magic-number')
-            #
-            # assert call_tool_result.text == "42"
-            # print("SSE test passed!")
+            call_tool_result: CallToolResult = await agent.call_tool(
+                "mcp_test_server_sse_get-magic-number"
+            )
+
+            assert call_tool_result.content[0].text == "42"
+            print("SSE test passed!")
 
 
 if __name__ == "__main__":
