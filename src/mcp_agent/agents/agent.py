@@ -26,7 +26,6 @@ from mcp_agent.human_input.types import (
 )
 
 from mcp_agent.logging.logger import get_logger
-from mcp_agent.logging.tracing import telemetry
 
 if TYPE_CHECKING:
     from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
@@ -159,20 +158,28 @@ class Agent(BaseModel):
         Returns:
             An instance of AugmentedLLM or one of its subclasses.
         """
-        if llm:
-            self.llm = llm
-        elif llm_factory:
-            self.llm = llm_factory(agent=self)
-        else:
-            raise ValueError("Either llm_factory or llm must be provided")
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(f"agent.{self.name}.attach_llm") as span:
+            if llm:
+                self.llm = llm
+            elif llm_factory:
+                self.llm = llm_factory(agent=self)
+            else:
+                raise ValueError("Either llm_factory or llm must be provided")
 
-        return self.llm
+            span.set_attribute("llm.class", self.llm.__class__.__name__)
+
+            for attr in ["name", "provider"]:
+                value = getattr(self.llm, attr, None)
+                if value is not None:
+                    span.set_attribute(f"llm.{attr}", value)
+            return self.llm
 
     async def initialize(self, force: bool = False):
         """Initialize the agent."""
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span(f"agent.initialize.{self.name}") as span:
-            span.set_attribute("name", self.name)
+        with tracer.start_as_current_span(f"agent.{self.name}.initialize") as span:
+            span.set_attribute("agent_name", self.name)
             span.set_attribute("server_names", self.server_names)
             span.set_attribute("connection_persistence", self.connection_persistence)
             span.set_attribute("force", force)
@@ -227,8 +234,8 @@ class Agent(BaseModel):
         logger.debug(f"Shutting down agent {self.name}...")
 
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span(f"agent.shutdown.{self.name}") as span:
-            span.set_attribute("name", self.name)
+        with tracer.start_as_current_span(f"agent.{self.name}.shutdown") as span:
+            span.set_attribute("agent_name", self.name)
             span.add_event("agent_shutdown_start")
 
             executor = self.context.executor
@@ -255,17 +262,16 @@ class Agent(BaseModel):
         await self.shutdown()
 
     async def get_capabilities(
-        self, server_name: str | None
+        self, server_name: str | None = None
     ) -> ServerCapabilities | Dict[str, ServerCapabilities]:
         """
         Get the capabilities of a specific server.
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
-            f"agent.get_capabilities.{self.name}"
+            f"agent.{self.name}.get_capabilities"
         ) as span:
-            span.set_attribute("name", self.name)
-            span.set_attribute("server_name", server_name)
+            span.set_attribute("agent_name", self.name)
             span.set_attribute("initialized", self.initialized)
 
             if not self.initialized:
@@ -279,6 +285,7 @@ class Agent(BaseModel):
 
             # If server_name is None, return all server capabilities
             if server_name is None:
+                span.set_attribute("server_name", server_name)
                 for server, capabilities in result.items():
                     for attr in ["logging", "prompts", "tools", "experimental"]:
                         value = getattr(capabilities, attr, None)
@@ -303,9 +310,8 @@ class Agent(BaseModel):
 
     async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span(f"agent.list_tools.{self.name}") as span:
-            span.set_attribute("name", self.name)
-            span.set_attribute("server_name", server_name)
+        with tracer.start_as_current_span(f"agent.{self.name}.list_tools") as span:
+            span.set_attribute("agent_name", self.name)
             span.set_attribute("initialized", self.initialized)
             span.set_attribute(
                 "human_input_callback", self.human_input_callback is not None
@@ -315,6 +321,7 @@ class Agent(BaseModel):
                 await self.initialize()
 
             if server_name:
+                span.set_attribute("server_name", server_name)
                 result = ListToolsResult(
                     tools=[
                         namespaced_tool.tool.model_copy(
@@ -412,35 +419,93 @@ class Agent(BaseModel):
             return result
 
     async def list_prompts(self, server_name: str | None = None) -> ListPromptsResult:
-        if not self.initialized:
-            await self.initialize()
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(f"agent.{self.name}.list_prompts") as span:
+            span.set_attribute("agent_name", self.name)
+            span.set_attribute("initialized", self.initialized)
 
-        executor = self.context.executor
-        result: ListPromptsResult = await executor.execute(
-            self._agent_tasks.list_prompts_task,
-            ListToolsRequest(agent_name=self.name, server_name=server_name),
-        )
+            if server_name:
+                span.set_attribute("server_name", server_name)
 
-        return result
+            # Check if the agent is initialized
+            if not self.initialized:
+                await self.initialize()
+
+            executor = self.context.executor
+            result: ListPromptsResult = await executor.execute(
+                self._agent_tasks.list_prompts_task,
+                ListToolsRequest(agent_name=self.name, server_name=server_name),
+            )
+
+            span.set_attribute("prompts", [prompt.name for prompt in result.prompts])
+
+            for prompt in result.prompts:
+                span.set_attribute(
+                    f"prompt.{prompt.name}.description", prompt.description
+                )
+                for arg in prompt.arguments:
+                    for attr in [
+                        "description",
+                        "required",
+                    ]:
+                        value = getattr(arg, attr, None)
+                        if value is not None:
+                            span.set_attribute(
+                                f"prompt.{prompt.name}.arguments.{arg.name}.{attr}",
+                                value,
+                            )
+
+            return result
 
     async def get_prompt(
         self, name: str, arguments: dict[str, str] | None = None
     ) -> GetPromptResult:
-        if not self.initialized:
-            await self.initialize()
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(f"agent.{self.name}.get_prompt") as span:
+            span.set_attribute("name", name)
+            span.set_attribute("agent_name", self.name)
+            span.set_attribute("initialized", self.initialized)
 
-        executor = self.context.executor
-        result: GetPromptResult = await executor.execute(
-            self._agent_tasks.get_prompt_task,
-            GetPromptRequest(agent_name=self.name, name=name, arguments=arguments),
-        )
+            if arguments is not None:
+                for i, arg in enumerate(arguments):
+                    if isinstance(arg, (str, int, float, bool)):
+                        span.set_attribute(f"arguments.{i}", str(arg))
 
-        return result
+            if not self.initialized:
+                await self.initialize()
+
+            executor = self.context.executor
+            result: GetPromptResult = await executor.execute(
+                self._agent_tasks.get_prompt_task,
+                GetPromptRequest(agent_name=self.name, name=name, arguments=arguments),
+            )
+
+            if getattr(result, "isError", False):
+                # TODO: Should we remove isError to conform to spec and raise or return ErrorData code -32602
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                span.record_exception(
+                    Exception(result.description or "Error getting prompt")
+                )
+
+            if result.description:
+                span.set_attribute("prompt.description", result.description)
+
+            for idx, message in enumerate(result.messages):
+                span.set_attribute(f"prompt.message.{idx}.role", message.role)
+                span.set_attribute(
+                    f"prompt.message.{idx}.content.type", message.content.type
+                )
+                if message.content.type == "text":
+                    span.set_attribute(
+                        f"prompt.message.{idx}.content.text", message.content.text
+                    )
+
+            return result
 
     async def request_human_input(
         self,
         request: HumanInputRequest,
-    ) -> str:
+    ) -> HumanInputResponse:
         """
         Request input from a human user. Pauses the workflow until input is received.
 
@@ -454,43 +519,86 @@ class Agent(BaseModel):
             TimeoutError: If the timeout is exceeded
             ValueError: If human_input_callback is not set or doesn't have the right signature
         """
-        if not self.human_input_callback:
-            raise ValueError("Human input callback not set")
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"agent.{self.name}.request_human_input"
+        ) as span:
+            span.set_attribute("agent_name", self.name)
+            span.set_attribute("initialized", self.initialized)
+            span.set_attribute("request.prompt", request.prompt)
 
-        # Generate a unique ID for this request to avoid signal collisions
-        request_id = f"{HUMAN_INPUT_SIGNAL_NAME}_{self.name}_{uuid.uuid4()}"
-        request.request_id = request_id
+            for attr in [
+                "description",
+                "request_id",
+                "workflow_id",
+                "timeout_seconds",
+            ]:
+                value = getattr(request, attr, None)
+                if value is not None:
+                    span.set_attribute(f"request.{attr}", value)
 
-        logger.debug("Requesting human input:", data=request)
+            if request.metadata:
+                for key, value in request.metadata.items():
+                    if isinstance(value, (str, int, float, bool)):
+                        span.set_attribute(f"request.metadata.{key}", str(value))
 
-        async def call_callback_and_signal():
-            try:
-                user_input = await self.human_input_callback(request)
-                logger.debug("Received human input:", data=user_input)
-                await self.context.executor.signal(
-                    signal_name=request_id, payload=user_input
-                )
-            except Exception as e:
-                await self.context.executor.signal(
-                    request_id, payload=f"Error getting human input: {str(e)}"
-                )
+            if not self.human_input_callback:
+                raise ValueError("Human input callback not set")
 
-        asyncio.create_task(call_callback_and_signal())
+            # Generate a unique ID for this request to avoid signal collisions
+            request_id = f"{HUMAN_INPUT_SIGNAL_NAME}_{self.name}_{uuid.uuid4()}"
+            request.request_id = request_id
+            span.set_attribute("request_id", request_id)
 
-        logger.debug("Waiting for human input signal")
+            logger.debug("Requesting human input:", data=request)
 
-        # Wait for signal (workflow is paused here)
-        result = await self.context.executor.wait_for_signal(
-            signal_name=request_id,
-            request_id=request_id,
-            workflow_id=request.workflow_id,
-            signal_description=request.description or request.prompt,
-            timeout_seconds=request.timeout_seconds,
-            signal_type=HumanInputResponse,  # TODO: saqadri - should this be HumanInputResponse?
-        )
+            async def call_callback_and_signal():
+                try:
+                    user_input = await self.human_input_callback(request)
+                    logger.debug("Received human input:", data=user_input)
+                    span.add_event(
+                        "human_input_received",
+                        {
+                            request_id: user_input.request_id,
+                            "response": user_input.response,
+                            "metadata": json.dumps(user_input.metadata or {}),
+                        },
+                    )
+                    await self.context.executor.signal(
+                        signal_name=request_id, payload=user_input
+                    )
+                except Exception as e:
+                    await self.context.executor.signal(
+                        request_id, payload=f"Error getting human input: {str(e)}"
+                    )
 
-        logger.debug("Received human input signal", data=result)
-        return result
+            asyncio.create_task(call_callback_and_signal())
+
+            logger.debug("Waiting for human input signal")
+
+            # Wait for signal (workflow is paused here)
+            result = await self.context.executor.wait_for_signal(
+                signal_name=request_id,
+                request_id=request_id,
+                workflow_id=request.workflow_id,
+                signal_description=request.description or request.prompt,
+                timeout_seconds=request.timeout_seconds,
+                signal_type=HumanInputResponse,  # TODO: saqadri - should this be HumanInputResponse?
+            )
+
+            span.add_event(
+                "human_input_signal_received",
+                {
+                    "signal_name": request_id,
+                    "request_id": request.request_id,
+                    "workflow_id": request.workflow_id,
+                    "signal_description": request.description or request.prompt,
+                    "timeout_seconds": request.timeout_seconds,
+                    "response": result.response,
+                },
+            )
+            logger.debug("Received human input signal", data=result)
+            return result
 
     async def call_tool(
         self, name: str, arguments: dict | None = None, server_name: str | None = None

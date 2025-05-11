@@ -598,7 +598,7 @@ class MCPAggregator(ContextDependent):
             except Exception as e:
                 return GetPromptResult(
                     isError=True,
-                    description=f"Failed to call tool '{local_prompt_name}' on server '{server_name}': {str(e)}",
+                    description=f"Failed to get prompt '{local_prompt_name}' on server '{server_name}': {str(e)}",
                     messages=[],
                 )
 
@@ -641,6 +641,8 @@ class MCPAggregator(ContextDependent):
             # Store the arguments in the result for display purposes
             if arguments:
                 result.arguments = arguments
+        return result
+
         return result
 
     def _parse_capability_name(
@@ -857,7 +859,7 @@ class MCPCompoundServer(Server):
             return result
         except Exception as e:
             return GetPromptResult(
-                description=f"Error getting prompt: {e}", messages=[]
+                isError=True, description=f"Error getting prompt: {e}", messages=[]
             )
 
     async def run_stdio_async(self) -> None:
