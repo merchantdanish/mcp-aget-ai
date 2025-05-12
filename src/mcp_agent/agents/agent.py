@@ -188,7 +188,7 @@ class Agent(BaseModel):
                 if self.initialized and not force:
                     return
 
-                span.add_event("agent_initialize_start")
+                span.add_event("initialize_start")
                 logger.debug(f"Initializing agent {self.name}...")
 
                 executor = self.context.executor
@@ -223,7 +223,7 @@ class Agent(BaseModel):
                 self._server_to_prompt_map.update(result.server_to_prompt_map)
 
                 self.initialized = result.initialized
-                span.add_event("agent_initialize_complete")
+                span.add_event("initialize_complete")
                 logger.debug(f"Agent {self.name} initialized.")
 
     async def shutdown(self):
@@ -283,24 +283,30 @@ class Agent(BaseModel):
                 GetCapabilitiesRequest(agent_name=self.name, server_name=server_name),
             )
 
+            def _annotate_span_for_capabilities(
+                server_name: str, capabilities: ServerCapabilities
+            ):
+                for attr in [
+                    "experimental",
+                    "logging",
+                    "prompts",
+                    "resources",
+                    "tools",
+                ]:
+                    value = getattr(capabilities, attr, None)
+                    if value is not None:
+                        span.set_attribute(f"{server_name}.capabilities.{attr}", value)
+
             # If server_name is None, return all server capabilities
             if server_name is None:
                 span.set_attribute("server_name", server_name)
-                for server, capabilities in result.items():
-                    for attr in ["logging", "prompts", "tools", "experimental"]:
-                        value = getattr(capabilities, attr, None)
-                        span.set_attribute(
-                            f"{server}.capabilities.{attr}", value is not None
-                        )
+                for server_name, capabilities in result.items():
+                    _annotate_span_for_capabilities(server_name, capabilities)
                 return result
             # If server_name is provided, return the capabilities for that server
             elif server_name in result:
                 capabilities = result[server_name]
-                for attr in ["logging", "prompts", "tools", "experimental"]:
-                    value = getattr(capabilities, attr, None)
-                    span.set_attribute(
-                        f"{server_name}.capabilities.{attr}", value is not None
-                    )
+                _annotate_span_for_capabilities(server_name, capabilities)
                 return capabilities
             else:
                 raise ValueError(
