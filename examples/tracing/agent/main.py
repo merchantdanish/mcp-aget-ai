@@ -5,8 +5,6 @@ import time
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.human_input.types import HumanInputRequest, HumanInputResponse
-from mcp_agent.workflows.llm.augmented_llm import RequestParams
-from mcp_agent.workflows.llm.llm_selector import ModelPreferences
 from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
@@ -21,10 +19,10 @@ async def human_input_handler(request: HumanInputRequest) -> HumanInputResponse:
 
 
 # Settings loaded from mcp_agent.config.yaml/mcp_agent.secrets.yaml
-app = MCPApp(name="mcp_basic_agent", human_input_callback=human_input_handler)
+app = MCPApp(name="agent_tracing_example", human_input_callback=human_input_handler)
 
 
-async def example_usage():
+async def agent_tracing():
     async with app.run() as agent_app:
         logger = agent_app.logger
         context = agent_app.context
@@ -100,25 +98,10 @@ async def example_usage():
             )
             logger.info(f"First 2 paragraphs of Model Context Protocol docs: {result}")
 
-            # Multi-turn conversations
-            result = await llm.generate_str(
-                message="Summarize those paragraphs in a 128 character tweet",
-                # You can configure advanced options by setting the request_params object
-                request_params=RequestParams(
-                    # See https://modelcontextprotocol.io/docs/concepts/sampling#model-preferences for more details
-                    modelPreferences=ModelPreferences(
-                        costPriority=0.1, speedPriority=0.2, intelligencePriority=0.7
-                    ),
-                    # You can also set the model directly using the 'model' field
-                    # Generally request_params type aligns with the Sampling API type in MCP
-                ),
-            )
-            logger.info(f"Paragraph as a tweet: {result}")
-
 
 if __name__ == "__main__":
     start = time.time()
-    asyncio.run(example_usage())
+    asyncio.run(agent_tracing())
     end = time.time()
     t = end - start
 

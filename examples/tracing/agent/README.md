@@ -1,10 +1,12 @@
 # MCP Agent example
 
+```bash
+uv run scripts/example.py run tracing/agent
+```
+
 This example shows tracing integration in a basic "finder" Agent which has access to the 'fetch' and 'filesystem' MCP servers.
 
-You can ask it information about local files or URLs, and it will make the determination on what to use at what time to satisfy the request.
-
-The tracing implementation will log spans to the console.
+The tracing implementation will log spans to the console for all agent methods.
 
 ### Exporting to Collector
 
