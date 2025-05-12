@@ -521,3 +521,48 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         """Log a chat finished event"""
         data = {"progress_action": "Finished", "model": model, "agent_name": self.name}
         self.logger.debug("Chat finished", data=data)
+
+    def _annotate_span_with_request_params(
+        self, span: trace.Span, request_params: RequestParams
+    ):
+        """Annotate the span with request parameters"""
+        span.set_attribute("request_params.maxTokens", request_params.maxTokens)
+        span.set_attribute(
+            "request_params.max_iterations", request_params.max_iterations
+        )
+        span.set_attribute("request_params.temperature", request_params.temperature)
+        span.set_attribute("request_params.use_history", request_params.use_history)
+        span.set_attribute(
+            "request_params.parallel_tool_calls", request_params.parallel_tool_calls
+        )
+        if request_params.model:
+            span.set_attribute("request_params.model", request_params.model)
+        if request_params.modelPreferences:
+            for attr, value in request_params.modelPreferences.model_dump(
+                exclude_unset=True
+            ).items():
+                if attr == "hints" and value is not None:
+                    span.set_attribute(
+                        "request_params.modelPreferences.hints",
+                        [hint.name for hint in value],
+                    )
+                elif isinstance(value, (str, int, float, bool)):
+                    span.set_attribute(f"request_params.modelPreferences.{attr}", value)
+        if request_params.systemPrompt:
+            span.set_attribute(
+                "request_params.systemPrompt", request_params.systemPrompt
+            )
+        if request_params.includeContext:
+            span.set_attribute(
+                "request_params.includeContext",
+                request_params.includeContext,
+            )
+        if request_params.stopSequences:
+            span.set_attribute(
+                "request_params.stopSequences",
+                request_params.stopSequences,
+            )
+        if request_params.metadata:
+            for key, value in request_params.metadata.items():
+                if isinstance(value, (str, int, float, bool)):
+                    span.set_attribute(f"request_params.metadata.{key}", value)
