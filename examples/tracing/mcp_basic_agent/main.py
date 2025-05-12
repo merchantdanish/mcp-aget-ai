@@ -87,6 +87,11 @@ async def example_usage():
 
             logger.info(f"Human input: {human_input.response}")
 
+            tool_res = await finder_agent.call_tool(
+                "fetch_fetch", {"url": "https://modelcontextprotocol.io"}
+            )
+            logger.info(f"Tool result: {tool_res}")
+
             # Let's switch the same agent to a different LLM
             llm = await finder_agent.attach_llm(AnthropicAugmentedLLM)
 
