@@ -288,7 +288,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         If a model is specified in the request, it will override the model selection criteria.
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span("augmented_llm.select_model") as span:
+        with tracer.start_as_current_span(f"llm.{self.name}.select_model") as span:
             model_preferences = self.model_preferences
             if request_params is not None:
                 model_preferences = request_params.modelPreferences or model_preferences
@@ -299,7 +299,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                     return model
 
             if not self.model_selector:
-                self.model_selector = ModelSelector()
+                self.model_selector = ModelSelector(context=self.context)
 
             try:
                 model_info = self.model_selector.select_best_model(
@@ -405,7 +405,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     ) -> CallToolResult:
         """Call a tool with the given parameters and optional ID"""
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span("augmented_llm.call_tool") as span:
+        with tracer.start_as_current_span(f"llm.{self.name}.call_tool") as span:
             if tool_call_id:
                 span.set_attribute("tool_call_id", tool_call_id)
                 span.set_attribute("request.method", request.method)

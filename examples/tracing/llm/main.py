@@ -32,7 +32,7 @@ async def llm_tracing():
         # Direct LLM usage
         openai_llm = OpenAIAugmentedLLM(
             name="openai_llm",
-            default_request_params=RequestParams(model="o4-mini"),
+            default_request_params=RequestParams(maxTokens=1024),
         )
 
         result = await openai_llm.generate_str(

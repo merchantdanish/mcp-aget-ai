@@ -150,11 +150,22 @@ async def configure_otel(config: "Settings"):
 
     # Set up autoinstrumentation
     # pylint: disable=import-outside-toplevel (do not import if otel is not enabled)
-    from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
-    from opentelemetry.instrumentation.openai import OpenAIInstrumentor
+    try:
+        from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
 
-    AnthropicInstrumentor().instrument()
-    OpenAIInstrumentor().instrument()
+        AnthropicInstrumentor().instrument()
+    except ModuleNotFoundError:
+        logger.error(
+            "Anthropic otel instrumentation not available. Please install opentelemetry-instrumentation-anthropic."
+        )
+    try:
+        from opentelemetry.instrumentation.anthropic import OpenAIInstrumentor
+
+        OpenAIInstrumentor().instrument()
+    except ModuleNotFoundError:
+        logger.error(
+            "OpenAI otel instrumentation not available. Please install opentelemetry-instrumentation-anthropic."
+        )
 
 
 async def configure_logger(config: "Settings", session_id: str | None = None):
