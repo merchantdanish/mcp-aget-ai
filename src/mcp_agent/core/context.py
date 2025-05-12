@@ -159,7 +159,7 @@ async def configure_otel(config: "Settings"):
             "Anthropic otel instrumentation not available. Please install opentelemetry-instrumentation-anthropic."
         )
     try:
-        from opentelemetry.instrumentation.anthropic import OpenAIInstrumentor
+        from opentelemetry.instrumentation.openai import OpenAIInstrumentor
 
         OpenAIInstrumentor().instrument()
     except ModuleNotFoundError:
