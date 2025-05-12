@@ -595,7 +595,7 @@ class MCPAggregator(ContextDependent):
             span.add_event("request_tool_call", event_metadata)
 
             def _annotate_span_for_result(result: CallToolResult):
-                span.set_attribute("isError", result.isError)
+                span.set_attribute("result.isError", result.isError)
                 if result.isError:
                     span.set_status(trace.Status(trace.StatusCode.ERROR))
                     error_message = (

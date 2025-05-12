@@ -51,7 +51,7 @@ class Agent(BaseModel):
     name: str
     """Agent name."""
 
-    instruction: str | Callable[[Dict], str] = "You are a helpful agent."
+    instruction: Optional[str | Callable[[Dict], str]] = "You are a helpful agent."
     """
     Instruction for the agent. This can be a string or a callable that takes a dictionary
     and returns a string. The callable can be used to generate dynamic instructions based
@@ -294,8 +294,9 @@ class Agent(BaseModel):
                     "tools",
                 ]:
                     value = getattr(capabilities, attr, None)
-                    if value is not None:
-                        span.set_attribute(f"{server_name}.capabilities.{attr}", value)
+                    span.set_attribute(
+                        f"{server_name}.capabilities.{attr}", value is not None
+                    )
 
             # If server_name is None, return all server capabilities
             if server_name is None:
@@ -629,7 +630,7 @@ class Agent(BaseModel):
                 await self.initialize()
 
             def _annotate_span_for_result(result: CallToolResult):
-                span.set_attribute("isError", result.isError)
+                span.set_attribute("result.isError", result.isError)
                 if result.isError:
                     span.set_status(trace.Status(trace.StatusCode.ERROR))
                     error_message = (

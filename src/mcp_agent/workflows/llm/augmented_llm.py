@@ -11,6 +11,7 @@ from typing import (
     TYPE_CHECKING,
 )
 
+from opentelemetry import trace
 from pydantic import BaseModel, ConfigDict, Field
 
 from mcp.types import (
@@ -286,28 +287,38 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         Select an LLM based on the request parameters.
         If a model is specified in the request, it will override the model selection criteria.
         """
-        model_preferences = self.model_preferences
-        if request_params is not None:
-            model_preferences = request_params.modelPreferences or model_preferences
-            model = request_params.model
-            if model:
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span("augmented_llm.select_model") as span:
+            model_preferences = self.model_preferences
+            if request_params is not None:
+                model_preferences = request_params.modelPreferences or model_preferences
+                model = request_params.model
+                if model:
+                    span.set_attribute("request_params.model", model)
+                    span.set_attribute("model", model)
+                    return model
+
+            if not self.model_selector:
+                self.model_selector = ModelSelector()
+
+            try:
+                model_info = self.model_selector.select_best_model(
+                    model_preferences=model_preferences, provider=self.provider
+                )
+
+                span.set_attribute("model", model_info.name)
+                return model_info.name
+            except ValueError as e:
+                span.record_exception(e)
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                model = (
+                    self.default_request_params.model
+                    if self.default_request_params
+                    else None
+                )
+                if model:
+                    span.set_attribute("model", model)
                 return model
-
-        if not self.model_selector:
-            self.model_selector = ModelSelector()
-
-        try:
-            model_info = self.model_selector.select_best_model(
-                model_preferences=model_preferences, provider=self.provider
-            )
-
-            return model_info.name
-        except ValueError:
-            return (
-                self.default_request_params.model
-                if self.default_request_params
-                else None
-            )
 
     def get_request_params(
         self,
@@ -393,48 +404,98 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         tool_call_id: str | None = None,
     ) -> CallToolResult:
         """Call a tool with the given parameters and optional ID"""
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span("augmented_llm.call_tool") as span:
+            if tool_call_id:
+                span.set_attribute("tool_call_id", tool_call_id)
+                span.set_attribute("request.method", request.method)
 
-        try:
-            preprocess = await self.pre_tool_call(
-                tool_call_id=tool_call_id,
-                request=request,
-            )
+            span.set_attribute("request.params.name", request.params.name)
+            for key, value in request.params.arguments.items():
+                if isinstance(value, (str, int, float, bool)):
+                    span.set_attribute(f"request.params.arguments.{key}", value)
 
-            if isinstance(preprocess, bool):
-                if not preprocess:
-                    return CallToolResult(
-                        isError=True,
-                        content=[
-                            TextContent(
-                                text=f"Error: Tool '{request.params.name}' was not allowed to run."
+            try:
+                preprocess = await self.pre_tool_call(
+                    tool_call_id=tool_call_id,
+                    request=request,
+                )
+
+                if isinstance(preprocess, bool):
+                    if not preprocess:
+                        span.set_attribute("preprocess", False)
+                        span.set_status(trace.Status(trace.StatusCode.ERROR))
+
+                        res = CallToolResult(
+                            isError=True,
+                            content=[
+                                TextContent(
+                                    text=f"Error: Tool '{request.params.name}' was not allowed to run."
+                                )
+                            ],
+                        )
+                        span.record_exception(Exception(res.content[0].text))
+                        return res
+                else:
+                    request = preprocess
+
+                tool_name = request.params.name
+                tool_args = request.params.arguments
+
+                span.set_attribute("processed.request.tool_name", tool_name)
+                for key, value in tool_args.items():
+                    if isinstance(value, (str, int, float, bool)):
+                        span.set_attribute(f"processed.request.tool_args.{key}", value)
+
+                def _annotate_span_for_result(
+                    result: CallToolResult, processed: bool = False
+                ):
+                    prefix = "processed.result" if processed else "result"
+                    span.set_attribute(f"{prefix}.isError", result.isError)
+                    if result.isError:
+                        span.set_status(trace.Status(trace.StatusCode.ERROR))
+                        error_message = (
+                            result.content[0].text
+                            if len(result.content) > 0
+                            and result.content[0].type == "text"
+                            else "Error calling tool"
+                        )
+                        span.record_exception(Exception(error_message))
+                    else:
+                        for idx, content in enumerate(result.content):
+                            span.set_attribute(
+                                f"{prefix}.content.{idx}.type", content.type
                             )
-                        ],
-                    )
-            else:
-                request = preprocess
+                            if content.type == "text":
+                                span.set_attribute(
+                                    f"{prefix}.content.{idx}.text",
+                                    result.content[idx].text,
+                                )
 
-            tool_name = request.params.name
-            tool_args = request.params.arguments
-            result = await self.agent.call_tool(tool_name, tool_args)
+                result = await self.agent.call_tool(tool_name, tool_args)
+                _annotate_span_for_result(result)
 
-            postprocess = await self.post_tool_call(
-                tool_call_id=tool_call_id, request=request, result=result
-            )
+                postprocess = await self.post_tool_call(
+                    tool_call_id=tool_call_id, request=request, result=result
+                )
 
-            if isinstance(postprocess, CallToolResult):
-                result = postprocess
+                if isinstance(postprocess, CallToolResult):
+                    result = postprocess
+                    _annotate_span_for_result(result, processed=True)
 
-            return result
-        except Exception as e:
-            return CallToolResult(
-                isError=True,
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"Error executing tool '{request.params.name}': {str(e)}",
-                    )
-                ],
-            )
+                return result
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                return CallToolResult(
+                    isError=True,
+                    content=[
+                        TextContent(
+                            type="text",
+                            text=f"Error executing tool '{request.params.name}': {str(e)}",
+                        )
+                    ],
+                )
 
     def message_param_str(self, message: MessageParamT) -> str:
         """Convert an input message to a string representation."""
