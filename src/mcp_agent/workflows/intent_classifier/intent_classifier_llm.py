@@ -103,7 +103,7 @@ class LLMIntentClassifier(IntentClassifier):
         self, request: str, top_k: int = 1
     ) -> List[LLMIntentClassificationResult]:
         if not self.initialized:
-            self.initialize()
+            await self.initialize()
 
         classification_instruction = (
             self.classification_instruction or DEFAULT_INTENT_CLASSIFICATION_INSTRUCTION
