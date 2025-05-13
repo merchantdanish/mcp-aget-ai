@@ -574,7 +574,7 @@ class OpenAIAugmentedLLM(
     def _annotate_span_for_completion_request(
         self, span: trace.Span, request: RequestCompletionRequest, turn: int
     ) -> None:
-        """Annotate the span with the completion request."""
+        """Annotate the span with the completion request as an event."""
         event_data = {
             "config.reasoning_effort": request.config.reasoning_effort,
         }
@@ -694,7 +694,7 @@ class OpenAIAugmentedLLM(
     def _annotate_span_for_completion_response(
         self, span: trace.Span, response: ChatCompletion, turn: int
     ) -> None:
-        """Annotate the span with the completion response."""
+        """Annotate the span with the completion response as an event."""
         event_data = {
             "id": response.id,
             "model": response.model,

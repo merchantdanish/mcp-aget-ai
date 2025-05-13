@@ -1,4 +1,4 @@
-from typing import Iterable, List, Type, Union
+from typing import Iterable, List, Optional, Type, Union, cast
 
 from pydantic import BaseModel
 
@@ -20,6 +20,7 @@ from anthropic.types import (
     ThinkingBlockParam,
     RedactedThinkingBlockParam,
 )
+from opentelemetry import trace
 from mcp.types import (
     CallToolRequestParams,
     CallToolRequest,
@@ -35,6 +36,7 @@ from mcp.types import (
 # from mcp_agent.agents.agent import HUMAN_INPUT_TOOL_NAME
 from mcp_agent.config import AnthropicSettings
 from mcp_agent.executor.workflow_task import workflow_task
+from mcp_agent.logging.tracing import is_otel_serializable
 from mcp_agent.utils.common import ensure_serializable, typed_dict_extras, to_string
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
@@ -62,6 +64,20 @@ MessageParamContent = Union[
         ]
     ],
 ]
+
+
+class RequestCompletionRequest(BaseModel):
+    config: AnthropicSettings
+    payload: dict
+
+
+class RequestStructuredCompletionRequest(BaseModel):
+    config: AnthropicSettings
+    params: RequestParams
+    # response_model: Type[ModelT]
+    model_path: str
+    response_str: str
+    model: str
 
 
 class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
@@ -114,151 +130,184 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         The default implementation uses Claude as the LLM.
         Override this method to use a different LLM.
         """
-        config = self.context.config
-        messages: List[MessageParam] = []
-        params = self.get_request_params(request_params)
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"llm_anthropic.{self.name}.generate"
+        ) as span:
+            self._annotate_span_for_generation_message(span, message)
 
-        if params.use_history:
-            messages.extend(self.history.get())
+            config = self.context.config
+            messages: List[MessageParam] = []
+            params = self.get_request_params(request_params)
+            self._annotate_span_with_request_params(span, params)
 
-        if isinstance(message, str):
-            messages.append({"role": "user", "content": message})
-        elif isinstance(message, list):
-            messages.extend(message)
-        else:
-            messages.append(message)
+            if params.use_history:
+                messages.extend(self.history.get())
 
-        response = await self.agent.list_tools()
-        available_tools: List[ToolParam] = [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "input_schema": tool.inputSchema,
-            }
-            for tool in response.tools
-        ]
+            if isinstance(message, str):
+                messages.append({"role": "user", "content": message})
+            elif isinstance(message, list):
+                messages.extend(message)
+            else:
+                messages.append(message)
 
-        responses: List[Message] = []
-        model = await self.select_model(params)
+            response = await self.agent.list_tools()
+            available_tools: List[ToolParam] = [
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "input_schema": tool.inputSchema,
+                }
+                for tool in response.tools
+            ]
 
-        for i in range(params.max_iterations):
-            if i == params.max_iterations - 1 and response.stop_reason == "tool_use":
-                final_prompt_message = MessageParam(
-                    role="user",
-                    content="""We've reached the maximum number of iterations. 
-                    Please stop using tools now and provide your final comprehensive answer based on all tool results so far. 
-                    At the beginning of your response, clearly indicate that your answer may be incomplete due to reaching the maximum number of tool usage iterations, 
-                    and explain what additional information you would have needed to provide a more complete answer.""",
-                )
-                messages.append(final_prompt_message)
+            responses: List[Message] = []
+            model = await self.select_model(params)
 
-            arguments = {
-                "model": model,
-                "max_tokens": params.maxTokens,
-                "messages": messages,
-                "system": self.instruction or params.systemPrompt,
-                "stop_sequences": params.stopSequences,
-                "tools": available_tools,
-            }
+            if model:
+                span.set_attribute("model", model)
 
-            if params.metadata:
-                arguments = {**arguments, **params.metadata}
+            total_completion_tokens = 0
+            total_prompt_tokens = 0
 
-            self.logger.debug(f"{arguments}")
-            self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
+            for i in range(params.max_iterations):
+                if (
+                    i == params.max_iterations - 1
+                    and response.stop_reason == "tool_use"
+                ):
+                    final_prompt_message = MessageParam(
+                        role="user",
+                        content="""We've reached the maximum number of iterations. 
+                        Please stop using tools now and provide your final comprehensive answer based on all tool results so far. 
+                        At the beginning of your response, clearly indicate that your answer may be incomplete due to reaching the maximum number of tool usage iterations, 
+                        and explain what additional information you would have needed to provide a more complete answer.""",
+                    )
+                    messages.append(final_prompt_message)
 
-            request = ensure_serializable(
-                RequestCompletionRequest(
+                arguments = {
+                    "model": model,
+                    "max_tokens": params.maxTokens,
+                    "messages": messages,
+                    "system": self.instruction or params.systemPrompt,
+                    "stop_sequences": params.stopSequences,
+                    "tools": available_tools,
+                }
+
+                if params.metadata:
+                    arguments = {**arguments, **params.metadata}
+
+                self.logger.debug(f"{arguments}")
+                self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
+
+                request = RequestCompletionRequest(
                     config=config.anthropic,
                     payload=arguments,
                 )
+
+                self._annotate_span_for_completion_request(span, request, i)
+
+                response: Message = await self.executor.execute(
+                    AnthropicCompletionTasks.request_completion_task,
+                    ensure_serializable(request),
+                )
+
+                if isinstance(response, BaseException):
+                    self.logger.error(f"Error: {response}")
+                    span.record_exception(response)
+                    span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    break
+
+                self.logger.debug(
+                    f"{model} response:",
+                    data=response,
+                )
+
+                self._annotate_span_for_completion_response(span, response, i)
+
+                total_completion_tokens += response.usage.output_tokens
+                total_prompt_tokens += response.usage.input_tokens
+
+                response_as_message = self.convert_message_to_message_param(response)
+                messages.append(response_as_message)
+                responses.append(response)
+
+                if response.stop_reason == "end_turn":
+                    self.logger.debug(
+                        f"Iteration {i}: Stopping because finish_reason is 'end_turn'"
+                    )
+                    span.set_attribute("stop_reason", "end_turn")
+                    break
+                elif response.stop_reason == "stop_sequence":
+                    # We have reached a stop sequence
+                    self.logger.debug(
+                        f"Iteration {i}: Stopping because finish_reason is 'stop_sequence'"
+                    )
+                    span.set_attribute("stop_reason", "stop_sequence")
+                    break
+                elif response.stop_reason == "max_tokens":
+                    # We have reached the max tokens limit
+                    self.logger.debug(
+                        f"Iteration {i}: Stopping because finish_reason is 'max_tokens'"
+                    )
+                    span.set_attribute("stop_reason", "max_tokens")
+                    # TODO: saqadri - would be useful to return the reason for stopping to the caller
+                    break
+                else:  # response.stop_reason == "tool_use":
+                    for content in response.content:
+                        if content.type == "tool_use":
+                            tool_name = content.name
+                            tool_args = content.input
+                            tool_use_id = content.id
+
+                            # TODO -- productionize this
+                            # if tool_name == HUMAN_INPUT_TOOL_NAME:
+                            #     # Get the message from the content list
+                            #     message_text = ""
+                            #     for block in response_as_message["content"]:
+                            #         if (
+                            #             isinstance(block, dict)
+                            #             and block.get("type") == "text"
+                            #         ):
+                            #             message_text += block.get("text", "")
+                            #         elif hasattr(block, "type") and block.type == "text":
+                            #             message_text += block.text
+
+                            # panel = Panel(
+                            #     message_text,
+                            #     title="MESSAGE",
+                            #     style="green",
+                            #     border_style="bold white",
+                            #     padding=(1, 2),
+                            # )
+                            # console.console.print(panel)
+
+                            tool_call_request = CallToolRequest(
+                                method="tools/call",
+                                params=CallToolRequestParams(
+                                    name=tool_name, arguments=tool_args
+                                ),
+                            )
+
+                            result = await self.call_tool(
+                                request=tool_call_request, tool_call_id=tool_use_id
+                            )
+
+                            message = self.from_mcp_tool_result(result, tool_use_id)
+
+                            messages.append(message)
+
+            if params.use_history:
+                self.history.set(messages)
+
+            self._log_chat_finished(model=model)
+
+            span.set_attribute("usage.completion_tokens", total_completion_tokens)
+            span.set_attribute("usage.prompt_tokens", total_prompt_tokens)
+            span.set_attribute(
+                "usage.total_tokens", total_completion_tokens + total_prompt_tokens
             )
 
-            response: Message = await self.executor.execute(
-                AnthropicCompletionTasks.request_completion_task, request
-            )
-
-            if isinstance(response, BaseException):
-                self.logger.error(f"Error: {response}")
-                break
-
-            self.logger.debug(
-                f"{model} response:",
-                data=response,
-            )
-
-            response_as_message = self.convert_message_to_message_param(response)
-            messages.append(response_as_message)
-            responses.append(response)
-
-            if response.stop_reason == "end_turn":
-                self.logger.debug(
-                    f"Iteration {i}: Stopping because finish_reason is 'end_turn'"
-                )
-                break
-            elif response.stop_reason == "stop_sequence":
-                # We have reached a stop sequence
-                self.logger.debug(
-                    f"Iteration {i}: Stopping because finish_reason is 'stop_sequence'"
-                )
-                break
-            elif response.stop_reason == "max_tokens":
-                # We have reached the max tokens limit
-                self.logger.debug(
-                    f"Iteration {i}: Stopping because finish_reason is 'max_tokens'"
-                )
-                # TODO: saqadri - would be useful to return the reason for stopping to the caller
-                break
-            else:  # response.stop_reason == "tool_use":
-                for content in response.content:
-                    if content.type == "tool_use":
-                        tool_name = content.name
-                        tool_args = content.input
-                        tool_use_id = content.id
-
-                        # TODO -- productionize this
-                        # if tool_name == HUMAN_INPUT_TOOL_NAME:
-                        #     # Get the message from the content list
-                        #     message_text = ""
-                        #     for block in response_as_message["content"]:
-                        #         if (
-                        #             isinstance(block, dict)
-                        #             and block.get("type") == "text"
-                        #         ):
-                        #             message_text += block.get("text", "")
-                        #         elif hasattr(block, "type") and block.type == "text":
-                        #             message_text += block.text
-
-                        # panel = Panel(
-                        #     message_text,
-                        #     title="MESSAGE",
-                        #     style="green",
-                        #     border_style="bold white",
-                        #     padding=(1, 2),
-                        # )
-                        # console.console.print(panel)
-
-                        tool_call_request = CallToolRequest(
-                            method="tools/call",
-                            params=CallToolRequestParams(
-                                name=tool_name, arguments=tool_args
-                            ),
-                        )
-
-                        result = await self.call_tool(
-                            request=tool_call_request, tool_call_id=tool_use_id
-                        )
-
-                        message = self.from_mcp_tool_result(result, tool_use_id)
-
-                        messages.append(message)
-
-        if params.use_history:
-            self.history.set(messages)
-
-        self._log_chat_finished(model=model)
-
-        return responses
+            return responses
 
     async def generate_str(
         self,
@@ -389,19 +438,165 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
         return str(message)
 
+    def _annotate_span_for_generation_message(
+        self,
+        span: trace.Span,
+        message: str | MessageParam | List[MessageParam],
+    ) -> None:
+        """Annotate the span with the message content."""
 
-class RequestCompletionRequest(BaseModel):
-    config: AnthropicSettings
-    payload: dict
+        def _annotate_message_param(
+            message_param: MessageParam, index: Optional[int] = None
+        ):
+            message_prefix = f"message.{index}" if index is not None else "message"
+            span.set_attribute(f"{message_prefix}.role", message_param.get("role"))
+            message_content = message_param.get("content")
+            if isinstance(message_content, str):
+                span.set_attribute(f"{message_prefix}.content", message_content)
 
+            elif isinstance(message_content, list):
+                for j, part in enumerate(message_content):
+                    if isinstance(part, str):
+                        span.set_attribute(f"{message_prefix}.{j}.content", part)
+                    else:
+                        span.set_attribute(f"{message_prefix}.{j}.type", part.type)
+                        match part.type:
+                            case "text":
+                                span.set_attribute(
+                                    f"{message_prefix}.{j}.text", part.text
+                                )
+                            case "image":
+                                span.set_attribute(
+                                    f"{message_prefix}.{j}.source.type",
+                                    part.source.type,
+                                )
+                                if part.source.type == "base64":
+                                    span.set_attribute(
+                                        f"{message_prefix}.{j}.source.media_type",
+                                        part.source.media_type,
+                                    )
+                                elif part.source.type == "url":
+                                    span.set_attribute(
+                                        f"{message_prefix}.{j}.source.url",
+                                        part.source.url,
+                                    )
+                            case "tool_use":
+                                span.set_attribute(f"{message_prefix}.{j}.id", part.id)
+                                span.set_attribute(
+                                    f"{message_prefix}.{j}.name", part.name
+                                )
+                            case "tool_result":
+                                span.set_attribute(
+                                    f"{message_prefix}.{j}.tool_use_id",
+                                    part.tool_use_id,
+                                )
+                                span.set_attribute(
+                                    f"{message_prefix}.{j}.is_error", part.is_error
+                                )
+                                if isinstance(part.content, str):
+                                    span.set_attribute(
+                                        f"{message_prefix}.{j}.content", part.content
+                                    )
+                                elif isinstance(part.content, list):
+                                    for k, sub_part in enumerate(part.content):
+                                        if sub_part.type == "text":
+                                            span.set_attribute(
+                                                f"{message_prefix}.{j}.content.{k}.text",
+                                                sub_part.text,
+                                            )
+                                        elif sub_part.type == "image":
+                                            span.set_attribute(
+                                                f"{message_prefix}.{j}.content.{k}.source.type",
+                                                sub_part.source.type,
+                                            )
+                                            if sub_part.source.type == "base64":
+                                                span.set_attribute(
+                                                    f"{message_prefix}.{j}.content.{k}.source.media_type",
+                                                    sub_part.source.media_type,
+                                                )
+                                            elif sub_part.source.type == "url":
+                                                span.set_attribute(
+                                                    f"{message_prefix}.{j}.content.{k}.source.url",
+                                                    sub_part.source.url,
+                                                )
+                            case "document":
+                                if part.context is not None:
+                                    span.set_attribute(
+                                        f"{message_prefix}.{j}.context", part.context
+                                    )
+                                if part.title is not None:
+                                    span.set_attribute(
+                                        f"{message_prefix}.{j}.title", part.title
+                                    )
+                                if part.citations is not None:
+                                    span.set_attribute(
+                                        f"{message_prefix}.{j}.citations.enabled",
+                                        part.citations.enabled,
+                                    )
+                                span.set_attribute(
+                                    f"{message_prefix}.{j}.source.type",
+                                    part.source.type,
+                                )
+                                if part.source.type == "text":
+                                    span.set_attribute(
+                                        f"{message_prefix}.{j}.source.data",
+                                        part.source.data,
+                                    )
+                                elif part.source.type == "url":
+                                    span.set_attribute(
+                                        f"{message_prefix}.{j}.source.url",
+                                        part.source.url,
+                                    )
+                            case "thinking":
+                                span.set_attribute(
+                                    f"{message_prefix}.{j}.thinking", part.thinking
+                                )
+                                span.set_attribute(
+                                    f"{message_prefix}.{j}.signature", part.signature
+                                )
+                            case "redacted_thinking":
+                                span.set_attribute(
+                                    f"{message_prefix}.{j}.redacted_thinking",
+                                    part.data,
+                                )
 
-class RequestStructuredCompletionRequest(BaseModel):
-    config: AnthropicSettings
-    params: RequestParams
-    # response_model: Type[ModelT]
-    model_path: str
-    response_str: str
-    model: str
+        if isinstance(message, str):
+            span.set_attribute("message.content", message)
+        elif isinstance(message, list):
+            for i, msg in enumerate(message):
+                _annotate_message_param(msg, i)
+        else:
+            _annotate_message_param(message)
+
+    def _annotate_span_for_completion_request(
+        self, span: trace.Span, request: RequestCompletionRequest, turn: int
+    ):
+        """Annotate the span with the completion request as an event."""
+        event_data = {}
+        for key, value in request.payload.items():
+            if key == "messages":
+                for i, message in enumerate(cast(List[MessageParam], value)):
+                    role = message.get("role")
+                    event_data[f"messages.{i}.role"] = role
+                    message_content = message.get("content")
+
+                    if isinstance(message_content, str):
+                        event_data[f"messages.{i}.content"] = message_content
+
+            elif key == "tools":
+                if value is not None:
+                    event_data["tools"] = [tool.get("name") for tool in value]
+
+            elif is_otel_serializable(value):
+                event_data[key] = value
+
+        span.add_event(f"completion.request.{turn}", event_data)
+
+    def _annotate_span_for_completion_response(
+        self, span: trace.Span, response: Message, turn: int
+    ):
+        """Annotate the span with the completion response as an event."""
+        span.add_event(f"completion.response.{turn}")
 
 
 class AnthropicCompletionTasks:
