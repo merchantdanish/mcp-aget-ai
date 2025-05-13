@@ -3,9 +3,8 @@ import time
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
-from mcp_agent.mcp.gen_client import gen_client
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
-from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager, ServerConnection
+from mcp_agent.mcp.mcp_connection_manager import ServerConnection
 
 
 # Settings can either be specified programmatically,
