@@ -22,6 +22,7 @@ from azure.ai.inference.models import (
     ChatRole,
 )
 from azure.core.credentials import AzureKeyCredential
+from azure.identity import DefaultAzureCredential
 
 from pydantic import BaseModel
 

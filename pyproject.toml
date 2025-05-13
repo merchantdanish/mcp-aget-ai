@@ -46,6 +46,7 @@ openai = [
 ]
 azure = [
     "azure-ai-inference>=1.0.0b9",
+    "azure-identity>=1.22.0"
 ]
 google = [
     "google-genai>=1.10.0",
