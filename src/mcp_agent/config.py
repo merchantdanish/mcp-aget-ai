@@ -144,7 +144,7 @@ class AzureSettings(BaseModel):
     Settings for using Azure models in the MCP Agent application.
     """
 
-    api_key: str
+    api_key: str | None = None
 
     endpoint: str
 
