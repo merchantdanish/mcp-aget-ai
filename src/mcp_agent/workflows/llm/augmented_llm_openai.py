@@ -451,7 +451,9 @@ class OpenAICompletionTasks:
         openai_client = OpenAI(
             api_key=request.config.api_key,
             base_url=request.config.base_url,
-            http_client=request.config.http_client,
+            http_client=request.config.http_client
+            if hasattr(request.config, "http_client")
+            else None,
         )
 
         payload = request.payload
@@ -481,7 +483,9 @@ class OpenAICompletionTasks:
             OpenAI(
                 api_key=request.config.api_key,
                 base_url=request.config.base_url,
-                http_client=request.config.http_client,
+                http_client=request.config.http_client
+                if hasattr(request.config, "http_client")
+                else None,
             ),
             mode=instructor.Mode.TOOLS_STRICT,
         )
@@ -501,7 +505,9 @@ class OpenAICompletionTasks:
                 OpenAI(
                     api_key=request.config.api_key,
                     base_url=request.config.base_url,
-                    http_client=request.config.http_client,
+                    http_client=request.config.http_client
+                    if hasattr(request.config, "http_client")
+                    else None,
                 ),
                 mode=instructor.Mode.JSON,
             )

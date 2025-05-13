@@ -23,6 +23,7 @@ from mcp.client.stdio import (
 )
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
+from mcp.client.streamable_http import streamablehttp_client, MCP_SESSION_ID
 from mcp.client.websocket import websocket_client
 from mcp.types import JSONRPCMessage, ServerCapabilities
 
@@ -163,7 +164,16 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
     try:
         transport_context = server_conn._transport_context_factory()
 
-        async with transport_context as (read_stream, write_stream):
+        async with transport_context as (read_stream, write_stream, *extras):
+            # If the transport provides a session ID callback (streamable_http does),
+            # store it in the server connection
+            if (
+                len(extras) > 0
+                and callable(extras[0])
+                and isinstance(server_conn.session, MCPAgentClientSession)
+            ):
+                server_conn.session.set_session_id_callback(extras[0])
+
             # Build a session
             server_conn.create_session(read_stream, write_stream)
 
@@ -173,16 +183,29 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
 
                 # Wait until we're asked to shut down
                 await server_conn.wait_for_shutdown_request()
-
     except Exception as exc:
-        logger.error(
-            f"{server_name}: Lifecycle task encountered an error: {exc}",
-            exc_info=True,
-            data={
-                "progress_action": ProgressAction.FATAL_ERROR,
-                "server_name": server_name,
-            },
-        )
+        import traceback
+
+        if hasattr(
+            exc, "exceptions"
+        ):  # ExceptionGroup or BaseExceptionGroup in Python 3.11+
+            for i, subexc in enumerate(exc.exceptions):
+                tb_lines = traceback.format_exception(
+                    type(subexc), subexc, subexc.__traceback__
+                )
+                logger.error(
+                    f"{server_name}: Sub-error {i + 1} in lifecycle task:\n{''.join(tb_lines)}"
+                )
+        else:
+            logger.error(
+                f"{server_name}: Lifecycle task encountered an error: {exc}",
+                exc_info=True,
+                data={
+                    "progress_action": ProgressAction.FATAL_ERROR,
+                    "server_name": server_name,
+                },
+            )
+
         server_conn._error = True
         server_conn._error_message = str(exc)
         # If there's an error, we should also set the event so that
@@ -245,6 +268,7 @@ class MCPConnectionManager(ContextDependent):
             ClientSession,
         ],
         init_hook: Optional["InitHookCallable"] = None,
+        session_id: str | None = None,
     ) -> ServerConnection:
         """
         Connect to a server and return a RunningServer instance that will persist
@@ -276,11 +300,56 @@ class MCPConnectionManager(ContextDependent):
                     env={**get_default_environment(), **(config.env or {})},
                 )
                 # Create stdio client config with redirected stderr
-                return stdio_client(server_params)
+                return stdio_client(server=server_params)
+            elif config.transport in ["streamable_http", "streamable-http", "http"]:
+                if session_id:
+                    headers = config.headers.copy() if config.headers else {}
+                    headers[MCP_SESSION_ID] = session_id
+                else:
+                    headers = config.headers
+
+                kwargs = {
+                    "url": config.url,
+                    "headers": headers,
+                    "terminate_on_close": config.terminate_on_close,
+                }
+
+                timeout = (
+                    timedelta(seconds=config.http_timeout_seconds)
+                    if config.http_timeout_seconds
+                    else None
+                )
+
+                if timeout is not None:
+                    kwargs["timeout"] = timeout
+
+                sse_read_timeout = (
+                    timedelta(seconds=config.read_timeout_seconds)
+                    if config.read_timeout_seconds
+                    else None
+                )
+
+                if sse_read_timeout is not None:
+                    kwargs["sse_read_timeout"] = sse_read_timeout
+
+                return streamablehttp_client(
+                    **kwargs,
+                )
             elif config.transport == "sse":
-                return sse_client(config.url, config.headers)
+                kwargs = {
+                    "url": config.url,
+                    "headers": config.headers,
+                }
+
+                if config.http_timeout_seconds:
+                    kwargs["timeout"] = config.http_timeout_seconds
+
+                if config.read_timeout_seconds:
+                    kwargs["sse_read_timeout"] = config.read_timeout_seconds
+
+                return sse_client(**kwargs)
             elif config.transport == "websocket":
-                return websocket_client(config.url)
+                return websocket_client(url=config.url)
             else:
                 raise ValueError(f"Unsupported transport: {config.transport}")
 
@@ -306,8 +375,12 @@ class MCPConnectionManager(ContextDependent):
     async def get_server(
         self,
         server_name: str,
-        client_session_factory: Callable,
+        client_session_factory: Callable[
+            [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
+            ClientSession,
+        ] = MCPAgentClientSession,
         init_hook: Optional["InitHookCallable"] = None,
+        session_id: str | None = None,
     ) -> ServerConnection:
         """
         Get a running server instance, launching it if needed.
@@ -330,6 +403,7 @@ class MCPConnectionManager(ContextDependent):
             server_name=server_name,
             client_session_factory=client_session_factory,
             init_hook=init_hook,
+            session_id=session_id,
         )
 
         # Wait until it's fully initialized, or an error occurs

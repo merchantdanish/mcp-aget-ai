@@ -20,6 +20,7 @@ async def gen_client(
         [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
         ClientSession,
     ] = MCPAgentClientSession,
+    session_id: str | None = None,
 ) -> AsyncGenerator[ClientSession, None]:
     """
     Create a client session to the specified server.
@@ -35,6 +36,7 @@ async def gen_client(
     async with server_registry.initialize_server(
         server_name=server_name,
         client_session_factory=client_session_factory,
+        session_id=session_id,
     ) as session:
         yield session
 
@@ -46,6 +48,7 @@ async def connect(
         [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
         ClientSession,
     ] = MCPAgentClientSession,
+    session_id: str | None = None,
 ) -> ClientSession:
     """
     Create a persistent client session to the specified server.
@@ -60,6 +63,7 @@ async def connect(
     server_connection = await server_registry.connection_manager.get_server(
         server_name=server_name,
         client_session_factory=client_session_factory,
+        session_id=session_id,
     )
 
     return server_connection.session
