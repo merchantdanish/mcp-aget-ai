@@ -117,7 +117,9 @@ class OpenAIAugmentedLLM(
         openai_client = OpenAI(
             api_key=config.openai.api_key,
             base_url=config.openai.base_url,
-            http_client=config.openai.http_client,
+            http_client=config.openai.http_client
+            if hasattr(config.openai, "http_client")
+            else None,
         )
         messages: List[ChatCompletionMessageParam] = []
         params = self.get_request_params(request_params)
@@ -324,6 +326,9 @@ class OpenAIAugmentedLLM(
             OpenAI(
                 api_key=self.context.config.openai.api_key,
                 base_url=self.context.config.openai.base_url,
+                http_client=self.context.config.openai.http_client
+                if hasattr(self.context.config.openai, "http_client")
+                else None,
             ),
         )
 
@@ -345,6 +350,9 @@ class OpenAIAugmentedLLM(
                 OpenAI(
                     api_key=self.context.config.openai.api_key,
                     base_url=self.context.config.openai.base_url,
+                    http_client=self.context.config.openai.http_client
+                    if hasattr(self.context.config.openai, "http_client")
+                    else None,
                 ),
                 mode=instructor.Mode.JSON,
             )

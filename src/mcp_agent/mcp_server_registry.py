@@ -19,6 +19,7 @@ from mcp.client.stdio import (
     get_default_environment,
 )
 from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamablehttp_client, MCP_SESSION_ID
 from mcp.client.websocket import websocket_client
 
 from mcp_agent.config import (
@@ -29,6 +30,7 @@ from mcp_agent.config import (
 )
 
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 
 logger = get_logger(__name__)
@@ -100,6 +102,7 @@ class ServerRegistry:
             [MemoryObjectReceiveStream, MemoryObjectSendStream, timedelta | None],
             ClientSession,
         ] = ClientSession,
+        session_id: str | None = None,
     ) -> AsyncGenerator[ClientSession, None]:
         """
         Starts the server process based on its configuration. To initialize, call initialize_server
@@ -150,13 +153,82 @@ class ServerRegistry:
                         yield session
                     finally:
                         logger.debug(f"{server_name}: Closed session to server")
+        elif config.transport in ["streamable_http", "streamable-http", "http"]:
+            if not config.url:
+                raise ValueError(
+                    f"URL is required for Streamable HTTP transport: {server_name}"
+                )
+
+            if session_id:
+                headers = config.headers.copy() if config.headers else {}
+                headers[MCP_SESSION_ID] = session_id
+            else:
+                headers = config.headers
+
+            kwargs = {
+                "url": config.url,
+                "headers": headers,
+                "terminate_on_close": config.terminate_on_close,
+            }
+
+            timeout = (
+                timedelta(seconds=config.http_timeout_seconds)
+                if config.http_timeout_seconds
+                else None
+            )
+
+            if timeout is not None:
+                kwargs["timeout"] = timeout
+
+            sse_read_timeout = (
+                timedelta(seconds=config.read_timeout_seconds)
+                if config.read_timeout_seconds
+                else None
+            )
+
+            if sse_read_timeout is not None:
+                kwargs["sse_read_timeout"] = sse_read_timeout
+
+            # For Streamable HTTP, we get an additional callback for session ID
+            async with streamablehttp_client(
+                **kwargs,
+            ) as (read_stream, write_stream, session_id_callback):
+                session = client_session_factory(
+                    read_stream,
+                    write_stream,
+                    read_timeout_seconds,
+                )
+
+                if session_id_callback and isinstance(session, MCPAgentClientSession):
+                    session.set_session_id_callback(session_id_callback)
+                    logger.debug(f"{server_name}: Session ID tracking enabled")
+
+                async with session:
+                    logger.info(
+                        f"{server_name}: Connected to server using Streamable HTTP transport."
+                    )
+                    try:
+                        yield session
+                    finally:
+                        logger.debug(f"{server_name}: Closed session to server")
 
         elif config.transport == "sse":
             if not config.url:
                 raise ValueError(f"URL is required for SSE transport: {server_name}")
 
+            kwargs = {
+                "url": config.url,
+                "headers": config.headers,
+            }
+
+            if config.http_timeout_seconds:
+                kwargs["timeout"] = config.http_timeout_seconds
+
+            if config.read_timeout_seconds:
+                kwargs["sse_read_timeout"] = config.read_timeout_seconds
+
             # Use sse_client to get the read and write streams
-            async with sse_client(url=config.url, headers=config.headers) as (
+            async with sse_client(**kwargs) as (
                 read_stream,
                 write_stream,
             ):
@@ -210,6 +282,7 @@ class ServerRegistry:
             ClientSession,
         ] = ClientSession,
         init_hook: InitHookCallable = None,
+        session_id: str | None = None,
     ) -> AsyncGenerator[ClientSession, None]:
         """
         Initialize a server based on its configuration.
@@ -232,7 +305,9 @@ class ServerRegistry:
         config = self.registry[server_name]
 
         async with self.start_server(
-            server_name, client_session_factory=client_session_factory
+            server_name,
+            client_session_factory=client_session_factory,
+            session_id=session_id,
         ) as session:
             try:
                 logger.info(f"{server_name}: Initializing server...")
