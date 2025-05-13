@@ -97,9 +97,9 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 self.azure_client = ChatCompletionsClient(
                     endpoint=self.context.config.azure.endpoint,
                     credential=DefaultAzureCredential(),
-                    credential_scopes=["https://cognitiveservices.azure.com/.default"],
+                    credential_scopes=self.context.config.azure.credential_scopes,
                     **self.context.config.azure.model_dump(
-                        exclude={"endpoint", "credential"}
+                        exclude={"endpoint", "credential", "credential_scopes"}
                     ),
                 )
         else:

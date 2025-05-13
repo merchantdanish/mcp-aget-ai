@@ -148,6 +148,10 @@ class AzureSettings(BaseModel):
 
     endpoint: str
 
+    credential_scopes: list[str] | None = Field(
+        default=["https://cognitiveservices.azure.com/.default"]
+    )
+
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
