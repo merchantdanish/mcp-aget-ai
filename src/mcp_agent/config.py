@@ -144,9 +144,13 @@ class AzureSettings(BaseModel):
     Settings for using Azure models in the MCP Agent application.
     """
 
-    api_key: str
+    api_key: str | None = None
 
     endpoint: str
+
+    credential_scopes: list[str] | None = Field(
+        default=["https://cognitiveservices.azure.com/.default"]
+    )
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
