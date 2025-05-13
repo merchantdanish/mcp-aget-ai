@@ -6,7 +6,6 @@ for the application configuration.
 from pathlib import Path
 from typing import Dict, List, Literal, Optional
 
-from httpx import Client
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -55,26 +54,43 @@ class MCPServerSettings(BaseModel):
     description: str | None = None
     """The description of the server."""
 
-    transport: Literal["stdio", "sse", "websocket"] = "stdio"
+    transport: Literal["stdio", "sse", "streamable_http", "websocket"] = "stdio"
     """The transport mechanism."""
 
     command: str | None = None
-    """The command to execute the server (e.g. npx)."""
+    """The command to execute the server (e.g. npx) in stdio mode."""
 
     args: List[str] = Field(default_factory=list)
-    """The arguments for the server command."""
-
-    read_timeout_seconds: int | None = None
-    """The timeout in seconds for the server connection."""
+    """The arguments for the server command in stdio mode."""
 
     url: str | None = None
-    """The URL for the server (e.g. for SSE transport)."""
+    """The URL for the server for SSE, Streamble HTTP or websocket transport."""
+
+    headers: Dict[str, str] | None = None
+    """HTTP headers for SSE or Streamable HTTP requests."""
+
+    http_timeout_seconds: int | None = None
+    """
+    HTTP request timeout in seconds for SSE or Streamable HTTP requests.
+
+    Note: This is different from read_timeout_seconds, which 
+    determines how long (in seconds) the client will wait for a new
+    event before disconnecting
+    """
+
+    read_timeout_seconds: int | None = None
+    """
+    Timeout in seconds the client will wait for a new event before
+    disconnecting from an SSE or Streamable HTTP server connection.
+    """
+
+    terminate_on_close: bool = True
+    """
+    For Streamable HTTP transport, whether to terminate the session on connection close.
+    """
 
     auth: MCPServerAuthSettings | None = None
     """The authentication configuration for the server."""
-
-    headers: Dict[str, str] | None = None
-    """HTTP headers for sse or websocket requests."""
 
     roots: List[MCPRootSettings] | None = None
     """Root directories this server has access to."""
@@ -134,7 +150,10 @@ class OpenAISettings(BaseModel):
 
     base_url: str | None = None
 
-    http_client: Client | None = None
+    # NOTE: An http_client can be programmatically specified
+    # and will be used by the OpenAI client. However, since it is
+    # not a JSON-serializable object, it cannot be set via configuration.
+    # http_client: Client | None = None
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
@@ -148,7 +167,7 @@ class AzureSettings(BaseModel):
 
     endpoint: str
 
-    credential_scopes: list[str] | None = Field(
+    credential_scopes: List[str] | None = Field(
         default=["https://cognitiveservices.azure.com/.default"]
     )
 

@@ -12,12 +12,15 @@ from rich import print
 # Initialize MCP application
 app = MCPApp(name="linkedin_to_filesystem")
 
+
 # Main function that handles LinkedIn scraping and CSV export
-async def linkedin_to_filesystem(search_criteria: str, max_results: int, output_path: str):
+async def linkedin_to_filesystem(
+    search_criteria: str, max_results: int, output_path: str
+):
     """
     Automated workflow to search LinkedIn for candidates matching specific criteria,
     evaluate their fit, and output the candidate details in CSV format to a file.
-    
+
     Args:
         search_criteria: Search string for finding candidates.
         max_results: Maximum number of candidates to retrieve.
@@ -78,7 +81,9 @@ Do not stop after the first match or page. Confirm when saved.
 """
 
                 # Execute the workflow
-                print("🚀 Executing LinkedIn candidate search workflow and saving results as CSV...")
+                print(
+                    "🚀 Executing LinkedIn candidate search workflow and saving results as CSV..."
+                )
                 result = await llm.generate_str(prompt)
                 print("LLM Output:", result)
 
@@ -94,13 +99,26 @@ Do not stop after the first match or page. Confirm when saved.
                 # Clean up agent resources
                 await linkedin_scraper_agent.close()
 
+
 # Command line argument parsing
 def parse_args():
     parser = argparse.ArgumentParser(description="LinkedIn Candidate CSV Exporter")
-    parser.add_argument("--criteria", required=True, help="Search criteria string for LinkedIn candidates")
-    parser.add_argument("--max-results", type=int, default=10, help="Maximum number of candidates to find")
-    parser.add_argument("--output", default="candidates.csv", help="Output CSV file path")
+    parser.add_argument(
+        "--criteria",
+        required=True,
+        help="Search criteria string for LinkedIn candidates",
+    )
+    parser.add_argument(
+        "--max-results",
+        type=int,
+        default=10,
+        help="Maximum number of candidates to find",
+    )
+    parser.add_argument(
+        "--output", default="candidates.csv", help="Output CSV file path"
+    )
     return parser.parse_args()
+
 
 # Main execution block
 if __name__ == "__main__":
@@ -110,7 +128,9 @@ if __name__ == "__main__":
     # Track execution time and handle errors
     start = time.time()
     try:
-        asyncio.run(linkedin_to_filesystem(args.criteria, args.max_results, args.output))
+        asyncio.run(
+            linkedin_to_filesystem(args.criteria, args.max_results, args.output)
+        )
     except KeyboardInterrupt:
         print("\n🛑 Received keyboard interrupt, shutting down gracefully...")
     except Exception as e:
