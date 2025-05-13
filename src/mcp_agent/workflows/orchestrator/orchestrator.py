@@ -178,7 +178,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             if self.plan_type == "iterative":
                 # Get next plan/step
                 next_step = await self._get_next_step(
-                    objective=objective, plan_result=plan_result, model=params.model
+                    objective=objective, plan_result=plan_result, request_params=params
                 )
                 logger.debug(f"Iteration {iterations}: Iterative plan:", data=next_step)
                 plan = Plan(steps=[next_step], is_complete=next_step.is_complete)
@@ -337,7 +337,10 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         return plan
 
     async def _get_next_step(
-        self, objective: str, plan_result: PlanResult, model: str = None
+        self,
+        objective: str,
+        plan_result: PlanResult,
+        request_params: RequestParams | None = None,
     ) -> NextStep:
         """Generate just the next needed step"""
 
@@ -357,6 +360,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         next_step = await self.planner.generate_structured(
             message=prompt,
             response_model=NextStep,
+            request_params=request_params,
         )
         return next_step
 
