@@ -18,6 +18,7 @@ from mcp.types import (
 )
 
 from mcp_agent.core.context import Context
+from mcp_agent.logging.tracing import is_otel_serializable
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator, NamespacedPrompt, NamespacedTool
 from mcp_agent.human_input.types import (
     HumanInputRequest,
@@ -475,8 +476,8 @@ class Agent(BaseModel):
 
             if arguments is not None:
                 for key, value in arguments.items():
-                    if isinstance(value, (str, int, float, bool)):
-                        span.set_attribute(f"arguments.{key}", str(value))
+                    if is_otel_serializable(value):
+                        span.set_attribute(f"arguments.{key}", value)
 
             if not self.initialized:
                 await self.initialize()
@@ -546,8 +547,8 @@ class Agent(BaseModel):
 
             if request.metadata:
                 for key, value in request.metadata.items():
-                    if isinstance(value, (str, int, float, bool)):
-                        span.set_attribute(f"request.metadata.{key}", str(value))
+                    if is_otel_serializable(value):
+                        span.set_attribute(f"request.metadata.{key}", value)
 
             if not self.human_input_callback:
                 raise ValueError("Human input callback not set")
@@ -623,8 +624,8 @@ class Agent(BaseModel):
 
             if arguments is not None:
                 for key, value in arguments.items():
-                    if isinstance(value, (str, int, float, bool)):
-                        span.set_attribute(f"arguments.{key}", str(value))
+                    if is_otel_serializable(value):
+                        span.set_attribute(f"arguments.{key}", value)
 
             if not self.initialized:
                 await self.initialize()

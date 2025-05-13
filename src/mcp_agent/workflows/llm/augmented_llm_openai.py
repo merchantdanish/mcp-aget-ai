@@ -1,7 +1,7 @@
 import json
 import re
 import functools
-from typing import Iterable, List, Type
+from typing import Iterable, List, Type, cast
 
 from pydantic import BaseModel
 
@@ -11,6 +11,8 @@ from openai.types.chat import (
     ChatCompletionContentPartParam,
     ChatCompletionContentPartTextParam,
     ChatCompletionContentPartRefusalParam,
+    ChatCompletionDeveloperMessageParam,
+    ChatCompletionFunctionMessageParam,
     ChatCompletionMessage,
     ChatCompletionMessageParam,
     ChatCompletionMessageToolCall,
@@ -35,6 +37,7 @@ from mcp.types import (
 
 from mcp_agent.config import OpenAISettings
 from mcp_agent.executor.workflow_task import workflow_task
+from mcp_agent.logging.tracing import is_otel_serializable
 from mcp_agent.utils.common import ensure_serializable, typed_dict_extras
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
@@ -45,6 +48,18 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
 )
 from mcp_agent.logging.logger import get_logger
+
+
+class RequestCompletionRequest(BaseModel):
+    config: OpenAISettings
+    payload: dict
+
+
+class RequestStructuredCompletionRequest(BaseModel):
+    config: OpenAISettings
+    model_path: str
+    response_str: str
+    model: str
 
 
 class OpenAIAugmentedLLM(
@@ -173,7 +188,12 @@ class OpenAIAugmentedLLM(
 
             responses: List[ChatCompletionMessage] = []
             model = await self.select_model(params)
-            span.set_attribute("model", model)
+            if model:
+                span.set_attribute("model", model)
+
+            total_completion_tokens = 0
+            total_prompt_tokens = 0
+            total_tokens = 0
 
             for i in range(params.max_iterations):
                 arguments = {
@@ -201,18 +221,18 @@ class OpenAIAugmentedLLM(
                 self.logger.debug(f"{arguments}")
                 self._log_chat_progress(chat_turn=len(messages) // 2, model=model)
 
-                request = ensure_serializable(
-                    RequestCompletionRequest(
-                        config=self.context.config.openai,
-                        payload=arguments,
-                    ),
+                request = RequestCompletionRequest(
+                    config=self.context.config.openai,
+                    payload=arguments,
                 )
-                span.add_event(f"completion_request.{i}", request.model_dump())
+
+                self._annotate_span_for_completion_request(span, request, i)
 
                 response: ChatCompletion = await self.executor.execute(
-                    OpenAICompletionTasks.request_completion_task, request
+                    OpenAICompletionTasks.request_completion_task,
+                    ensure_serializable(request),
                 )
-                span.add_event(f"completion_response.{i}", response.model_dump())
+
                 self.logger.debug(
                     "OpenAI ChatCompletion response:",
                     data=response,
@@ -223,6 +243,12 @@ class OpenAIAugmentedLLM(
                     span.record_exception(response)
                     span.set_status(trace.Status(trace.StatusCode.ERROR))
                     break
+
+                self._annotate_span_for_completion_response(span, response, i)
+
+                total_completion_tokens += response.usage.completion_tokens
+                total_prompt_tokens += response.usage.prompt_tokens
+                total_tokens += response.usage.total_tokens
 
                 if not response.choices or len(response.choices) == 0:
                     # No response from the model, we're done
@@ -274,6 +300,7 @@ class OpenAIAugmentedLLM(
                     self.logger.debug(
                         f"Iteration {i}: Stopping because finish_reason is 'length'"
                     )
+                    span.set_attribute("finish_reason", "length")
                     # TODO: saqadri - would be useful to return the reason for stopping to the caller
                     break
                 elif choice.finish_reason == "content_filter":
@@ -281,12 +308,14 @@ class OpenAIAugmentedLLM(
                     self.logger.debug(
                         f"Iteration {i}: Stopping because finish_reason is 'content_filter'"
                     )
+                    span.set_attribute("finish_reason", "content_filter")
                     # TODO: saqadri - would be useful to return the reason for stopping to the caller
                     break
                 elif choice.finish_reason == "stop":
                     self.logger.debug(
                         f"Iteration {i}: Stopping because finish_reason is 'stop'"
                     )
+                    span.set_attribute("finish_reason", "stop")
                     break
 
             if params.use_history:
@@ -294,6 +323,48 @@ class OpenAIAugmentedLLM(
 
             self._log_chat_finished(model=model)
 
+            span.set_attribute("usage.completion_tokens", total_completion_tokens)
+            span.set_attribute("usage.prompt_tokens", total_prompt_tokens)
+            span.set_attribute("usage.total_tokens", total_tokens)
+
+            for i, response in enumerate(responses):
+                span.set_attribute(f"response.{i}.role", response.role)
+                if response.content:
+                    span.set_attribute(f"response.{i}.content", response.content)
+                if response.refusal:
+                    span.set_attribute(f"response.{i}.refusal", response.refusal)
+                if response.audio:
+                    span.set_attribute(f"response.{i}.audio.id", response.audio.id)
+                    span.set_attribute(
+                        f"response.{i}.audio.expires_at",
+                        response.audio.expires_at,
+                    )
+                    span.set_attribute(
+                        f"response.{i}.audio.transcript",
+                    )
+                if response.function_call:
+                    span.set_attribute(
+                        f"response.{i}.function_call.name",
+                        response.function_call.name,
+                    )
+                    span.set_attribute(
+                        f"response.{i}.function_call.arguments",
+                        response.function_call.arguments,
+                    )
+                if response.tool_calls:
+                    for j, tool_call in enumerate(response.tool_calls):
+                        span.set_attribute(
+                            f"response.{i}.tool_calls.{j}.id",
+                            tool_call.id,
+                        )
+                        span.set_attribute(
+                            f"response.{i}.tool_calls.{j}.function.name",
+                            tool_call.function.name,
+                        )
+                        span.set_attribute(
+                            f"response.{i}.tool_calls.{j}.function.arguments",
+                            tool_call.function.arguments,
+                        )
             return responses
 
     async def generate_str(
@@ -380,40 +451,52 @@ class OpenAIAugmentedLLM(
         Execute a single tool call and return the result message.
         Returns None if there's no content to add to messages.
         """
-        tool_name = tool_call.function.name
-        tool_args_str = tool_call.function.arguments
-        tool_call_id = tool_call.id
-        tool_args = {}
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"llm_openai.{self.name}.execute_tool_call"
+        ) as span:
+            tool_name = tool_call.function.name
+            tool_args_str = tool_call.function.arguments
+            tool_call_id = tool_call.id
+            tool_args = {}
 
-        try:
-            if tool_args_str:
-                tool_args = json.loads(tool_args_str)
-        except json.JSONDecodeError as e:
-            return ChatCompletionToolMessageParam(
-                role="tool",
-                tool_call_id=tool_call_id,
-                content=f"Invalid JSON provided in tool call arguments for '{tool_name}'. Failed to load JSON: {str(e)}",
+            span.set_attribute("tool_call_id", tool_call_id)
+            span.set_attribute("tool_name", tool_name)
+            span.set_attribute("tool_args", tool_args_str)
+
+            try:
+                if tool_args_str:
+                    tool_args = json.loads(tool_args_str)
+            except json.JSONDecodeError as e:
+                span.record_exception(e)
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                return ChatCompletionToolMessageParam(
+                    role="tool",
+                    tool_call_id=tool_call_id,
+                    content=f"Invalid JSON provided in tool call arguments for '{tool_name}'. Failed to load JSON: {str(e)}",
+                )
+
+            tool_call_request = CallToolRequest(
+                method="tools/call",
+                params=CallToolRequestParams(name=tool_name, arguments=tool_args),
             )
 
-        tool_call_request = CallToolRequest(
-            method="tools/call",
-            params=CallToolRequestParams(name=tool_name, arguments=tool_args),
-        )
-
-        result = await self.call_tool(
-            request=tool_call_request, tool_call_id=tool_call_id
-        )
-
-        if result.content:
-            return ChatCompletionToolMessageParam(
-                role="tool",
-                tool_call_id=tool_call_id,
-                content="\n".join(
-                    str(mcp_content_to_openai_content(c)) for c in result.content
-                ),
+            result = await self.call_tool(
+                request=tool_call_request, tool_call_id=tool_call_id
             )
 
-        return None
+            self._annotate_span_for_call_tool_result(span, result)
+
+            if result.content:
+                return ChatCompletionToolMessageParam(
+                    role="tool",
+                    tool_call_id=tool_call_id,
+                    content="\n".join(
+                        str(mcp_content_to_openai_content(c)) for c in result.content
+                    ),
+                )
+
+            return None
 
     def message_param_str(self, message: ChatCompletionMessageParam) -> str:
         """Convert an input message to a string representation."""
@@ -459,17 +542,184 @@ class OpenAIAugmentedLLM(
         else:
             span.set_attribute("message", str(message))
 
+    def _annotate_span_for_completion_request(
+        self, span: trace.Span, request: RequestCompletionRequest, turn: int
+    ) -> None:
+        """Annotate the span with the completion request."""
+        event_data = {
+            "config.reasoning_effort": request.config.reasoning_effort,
+        }
 
-class RequestCompletionRequest(BaseModel):
-    config: OpenAISettings
-    payload: dict
+        if request.config.base_url:
+            event_data["config.base_url"] = request.config.base_url
 
+        for key, value in request.payload.items():
+            if key == "messages":
+                for i, message in enumerate(
+                    cast(List[ChatCompletionMessageParam], value)
+                ):
+                    role = message.get("role")
+                    event_data[f"messages.{i}.role"] = role
+                    message_content = message.get("content")
 
-class RequestStructuredCompletionRequest(BaseModel):
-    config: OpenAISettings
-    model_path: str
-    response_str: str
-    model: str
+                    match role:
+                        case "developer" | "system" | "user":
+                            if isinstance(message_content, str):
+                                event_data[f"messages.{i}.content"] = message_content
+                            elif message_content is not None:
+                                for j, part in enumerate(message_content):
+                                    event_data[f"messages.{i}.content.{j}.type"] = (
+                                        part.type
+                                    )
+                                    if part.type == "text":
+                                        event_data[f"messages.{i}.content.{j}.text"] = (
+                                            part.text
+                                        )
+                                    elif part.type == "image_url":
+                                        event_data[
+                                            f"messages.{i}.content.{j}.image_url.url"
+                                        ] = part.image_url.url
+                                        event_data[
+                                            f"messages.{i}.content.{j}.image_url.detail"
+                                        ] = part.image_url.detail
+                                    elif part.type == "input_audio":
+                                        event_data[
+                                            f"messages.{i}.content.{j}.input_audio.format"
+                                        ] = part.input_audio.format
+                        case "assistant":
+                            if isinstance(message_content, str):
+                                event_data[f"messages.{i}.content"] = message_content
+                            elif message_content is not None:
+                                for j, part in enumerate(message_content):
+                                    event_data[f"messages.{i}.content.{j}.type"] = (
+                                        part.type
+                                    )
+                                    if part.type == "text":
+                                        event_data[f"messages.{i}.content.{j}.text"] = (
+                                            part.text
+                                        )
+                                    elif part.type == "refusal":
+                                        event_data[
+                                            f"messages.{i}.content.{j}.refusal"
+                                        ] = part.refusal
+                            if message.get("audio") is not None:
+                                event_data[f"messages.{i}.audio.id"] = message.get(
+                                    "audio"
+                                ).get("id")
+                            if message.get("function_call") is not None:
+                                event_data[f"messages.{i}.function_call.name"] = (
+                                    message.get("function_call").get("name")
+                                )
+                                event_data[f"messages.{i}.function_call.arguments"] = (
+                                    message.get("function_call").get("arguments")
+                                )
+                            if message.get("name") is not None:
+                                event_data[f"messages.{i}.name"] = message.get("name")
+                            if message.get("refusal") is not None:
+                                event_data[f"messages.{i}.refusal"] = message.get(
+                                    "refusal"
+                                )
+                            if message.get("tool_calls") is not None:
+                                for j, tool_call in enumerate(
+                                    message.get("tool_calls")
+                                ):
+                                    event_data[f"messages.{i}.tool_calls.{j}.id"] = (
+                                        tool_call.id
+                                    )
+                                    event_data[
+                                        f"messages.{i}.tool_calls.{j}.function.name"
+                                    ] = tool_call.function.name
+                                    event_data[
+                                        f"messages.{i}.tool_calls.{j}.function.arguments"
+                                    ] = tool_call.function.arguments
+
+                        case "tool":
+                            event_data[f"messages.{i}.tool_call_id"] = message.get(
+                                "tool_call_id"
+                            )
+                            if isinstance(message_content, str):
+                                event_data[f"messages.{i}.content"] = message_content
+                            elif message_content is not None:
+                                for j, part in enumerate(message_content):
+                                    event_data[f"messages.{i}.content.{j}.type"] = (
+                                        part.type
+                                    )
+                                    if part.type == "text":
+                                        event_data[f"messages.{i}.content.{j}.text"] = (
+                                            part.text
+                                        )
+                        case "function":
+                            event_data[f"messages.{i}.name"] = message.get("name")
+                            event_data[f"messages.{i}.content"] = message_content
+
+            elif key == "tools":
+                if value is not None:
+                    event_data["tools"] = [
+                        tool.get("function", {}).get("name") for tool in value
+                    ]
+            elif is_otel_serializable(value):
+                event_data[key] = value
+
+        span.add_event(f"completion.request.{turn}", event_data)
+
+    def _annotate_span_for_completion_response(
+        self, span: trace.Span, response: ChatCompletion, turn: int
+    ) -> None:
+        """Annotate the span with the completion response."""
+        event_data = {
+            "id": response.id,
+            "model": response.model,
+            "object": response.object,
+            "created": response.created,
+        }
+
+        if response.service_tier:
+            event_data["service_tier"] = response.service_tier
+
+        if response.system_fingerprint:
+            event_data["system_fingerprint"] = response.system_fingerprint
+
+        if response.usage:
+            event_data["usage.completion_tokens"] = response.usage.completion_tokens
+            event_data["usage.prompt_tokens"] = response.usage.prompt_tokens
+            event_data["usage.total_tokens"] = response.usage.total_tokens
+
+        for i, choice in enumerate(response.choices):
+            event_data[f"choices.{i}.index"] = choice.index
+            event_data[f"choices.{i}.finish_reason"] = choice.finish_reason
+
+            event_data[f"choices.{i}.message.role"] = choice.message.role
+            if choice.message.content is not None:
+                event_data[f"choices.{i}.message.content"] = choice.message.content
+
+            if choice.message.refusal:
+                event_data[f"choices.{i}.message.refusal"] = choice.message.refusal
+            if choice.message.audio is not None:
+                event_data[f"choices.{i}.message.audio.id"] = choice.message.audio.id
+                event_data[f"choices.{i}.message.audio.expires_at"] = (
+                    choice.message.audio.expires_at
+                )
+                event_data[f"choices.{i}.message.audio.transcript"] = (
+                    choice.message.audio.transcript
+                )
+            if choice.message.function_call is not None:
+                event_data[f"choices.{i}.message.function_call.name"] = (
+                    choice.message.function_call.name
+                )
+                event_data[f"choices.{i}.message.function_call.arguments"] = (
+                    choice.message.function_call.arguments
+                )
+            if choice.message.tool_calls:
+                for j, tool_call in enumerate(choice.message.tool_calls):
+                    event_data[f"choices.{i}.message.tool_calls.{j}.id"] = tool_call.id
+                    event_data[f"choices.{i}.message.tool_calls.{j}.function.name"] = (
+                        tool_call.function.name
+                    )
+                    event_data[
+                        f"choices.{i}.message.tool_calls.{j}.function.arguments"
+                    ] = tool_call.function.arguments
+
+        span.add_event(f"completion.response.{turn}", event_data)
 
 
 class OpenAICompletionTasks:

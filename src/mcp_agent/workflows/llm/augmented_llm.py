@@ -24,6 +24,7 @@ from mcp.types import (
 )
 
 from mcp_agent.core.context_dependent import ContextDependent
+from mcp_agent.logging.tracing import is_otel_serializable
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 
 if TYPE_CHECKING:
@@ -412,7 +413,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
             span.set_attribute("request.params.name", request.params.name)
             for key, value in request.params.arguments.items():
-                if isinstance(value, (str, int, float, bool)):
+                if is_otel_serializable(value):
                     span.set_attribute(f"request.params.arguments.{key}", value)
 
             try:
@@ -444,36 +445,11 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
                 span.set_attribute("processed.request.tool_name", tool_name)
                 for key, value in tool_args.items():
-                    if isinstance(value, (str, int, float, bool)):
+                    if is_otel_serializable(value):
                         span.set_attribute(f"processed.request.tool_args.{key}", value)
 
-                def _annotate_span_for_result(
-                    result: CallToolResult, processed: bool = False
-                ):
-                    prefix = "processed.result" if processed else "result"
-                    span.set_attribute(f"{prefix}.isError", result.isError)
-                    if result.isError:
-                        span.set_status(trace.Status(trace.StatusCode.ERROR))
-                        error_message = (
-                            result.content[0].text
-                            if len(result.content) > 0
-                            and result.content[0].type == "text"
-                            else "Error calling tool"
-                        )
-                        span.record_exception(Exception(error_message))
-                    else:
-                        for idx, content in enumerate(result.content):
-                            span.set_attribute(
-                                f"{prefix}.content.{idx}.type", content.type
-                            )
-                            if content.type == "text":
-                                span.set_attribute(
-                                    f"{prefix}.content.{idx}.text",
-                                    result.content[idx].text,
-                                )
-
                 result = await self.agent.call_tool(tool_name, tool_args)
-                _annotate_span_for_result(result)
+                self._annotate_span_for_call_tool_result(span, result)
 
                 postprocess = await self.post_tool_call(
                     tool_call_id=tool_call_id, request=request, result=result
@@ -481,7 +457,9 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
                 if isinstance(postprocess, CallToolResult):
                     result = postprocess
-                    _annotate_span_for_result(result, processed=True)
+                    self._annotate_span_for_call_tool_result(
+                        span, result, processed=True
+                    )
 
                 return result
             except Exception as e:
@@ -546,7 +524,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                         "request_params.modelPreferences.hints",
                         [hint.name for hint in value],
                     )
-                elif isinstance(value, (str, int, float, bool)):
+                elif is_otel_serializable(value):
                     span.set_attribute(f"request_params.modelPreferences.{attr}", value)
         if request_params.systemPrompt:
             span.set_attribute(
@@ -564,5 +542,30 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
             )
         if request_params.metadata:
             for key, value in request_params.metadata.items():
-                if isinstance(value, (str, int, float, bool)):
+                if is_otel_serializable(value):
                     span.set_attribute(f"request_params.metadata.{key}", value)
+
+    def _annotate_span_for_call_tool_result(
+        self,
+        span: trace.Span,
+        result: CallToolResult,
+        processed: bool = False,
+    ):
+        prefix = "processed.result" if processed else "result"
+        span.set_attribute(f"{prefix}.isError", result.isError)
+        if result.isError:
+            span.set_status(trace.Status(trace.StatusCode.ERROR))
+            error_message = (
+                result.content[0].text
+                if len(result.content) > 0 and result.content[0].type == "text"
+                else "Error calling tool"
+            )
+            span.record_exception(Exception(error_message))
+        else:
+            for idx, content in enumerate(result.content):
+                span.set_attribute(f"{prefix}.content.{idx}.type", content.type)
+                if content.type == "text":
+                    span.set_attribute(
+                        f"{prefix}.content.{idx}.text",
+                        result.content[idx].text,
+                    )

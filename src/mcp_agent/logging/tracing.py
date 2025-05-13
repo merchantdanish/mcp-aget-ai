@@ -4,6 +4,7 @@ for the Logger module for MCP Agent
 """
 
 import asyncio
+from collections.abc import Sequence
 import functools
 from typing import Any, Dict, Callable, Optional, Tuple, TYPE_CHECKING
 
@@ -91,10 +92,10 @@ class TelemetryManager(ContextDependent):
     def _record_args(self, span, args, kwargs):
         """Optionally record primitive args as span attributes."""
         for i, arg in enumerate(args):
-            if isinstance(arg, (str, int, float, bool)):
+            if is_otel_serializable(arg):
                 span.set_attribute(f"arg_{i}", str(arg))
         for k, v in kwargs.items():
-            if isinstance(v, (str, int, float, bool)):
+            if is_otel_serializable(v):
                 span.set_attribute(k, str(v))
 
 
@@ -135,6 +136,18 @@ class MCPRequestTrace:
         arguments["_meta"] = _meta
 
         return arguments
+
+
+def is_otel_serializable(value: Any) -> bool:
+    """
+    Check if a value is serializable by OpenTelemetry
+    """
+    allowed_types = (bool, str, bytes, int, float)
+    if isinstance(value, allowed_types):
+        return True
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return all(isinstance(item, allowed_types) for item in value)
+    return False
 
 
 telemetry = TelemetryManager()

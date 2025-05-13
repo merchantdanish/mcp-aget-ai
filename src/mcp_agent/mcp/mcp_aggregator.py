@@ -19,6 +19,7 @@ from mcp.types import (
 
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.logging.tracing import is_otel_serializable
 from mcp_agent.mcp.gen_client import gen_client
 
 from mcp_agent.core.context_dependent import ContextDependent
@@ -556,8 +557,8 @@ class MCPAggregator(ContextDependent):
 
             if arguments is not None:
                 for key, value in arguments.items():
-                    if isinstance(value, (str, int, float, bool)):
-                        span.set_attribute(f"arguments.{key}", str(value))
+                    if is_otel_serializable(value):
+                        span.set_attribute(f"arguments.{key}", value)
 
             if not self.initialized:
                 await self.load_servers()
@@ -750,8 +751,8 @@ class MCPAggregator(ContextDependent):
 
             if arguments is not None:
                 for key, value in arguments.items():
-                    if isinstance(value, (str, int, float, bool)):
-                        span.set_attribute(f"arguments.{key}", str(value))
+                    if is_otel_serializable(value):
+                        span.set_attribute(f"arguments.{key}", value)
 
             if not self.initialized:
                 await self.load_servers()
