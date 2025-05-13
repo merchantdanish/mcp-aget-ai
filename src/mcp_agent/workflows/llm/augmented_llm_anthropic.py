@@ -1,4 +1,4 @@
-from typing import Iterable, List, Optional, Type, Union, cast
+from typing import Any, Iterable, List, Optional, Type, Union, cast
 
 from pydantic import BaseModel
 
@@ -167,8 +167,8 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             if model:
                 span.set_attribute("model", model)
 
-            total_completion_tokens = 0
-            total_prompt_tokens = 0
+            total_input_tokens = 0
+            total_output_tokens = 0
 
             for i in range(params.max_iterations):
                 if (
@@ -224,8 +224,8 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
                 self._annotate_span_for_completion_response(span, response, i)
 
-                total_completion_tokens += response.usage.output_tokens
-                total_prompt_tokens += response.usage.input_tokens
+                total_input_tokens += response.usage.input_tokens
+                total_output_tokens += response.usage.output_tokens
 
                 response_as_message = self.convert_message_to_message_param(response)
                 messages.append(response_as_message)
@@ -301,10 +301,11 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             self._log_chat_finished(model=model)
 
-            span.set_attribute("usage.completion_tokens", total_completion_tokens)
-            span.set_attribute("usage.prompt_tokens", total_prompt_tokens)
+            span.set_attribute("gen_ai.usage.input_tokens", total_input_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", total_output_tokens)
             span.set_attribute(
-                "usage.total_tokens", total_completion_tokens + total_prompt_tokens
+                "gen_ai.usage.total_tokens",
+                total_input_tokens + total_output_tokens,
             )
 
             return responses
@@ -438,6 +439,106 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
         return str(message)
 
+    def _extract_message_attributes_for_tracing(
+        self, message_param: MessageParam, prefix: str = "message"
+    ) -> dict[str, Any]:
+        """Return a flat dict of span attributes for a given message param."""
+        attrs = {}
+        attrs[f"{prefix}.role"] = message_param.get("role")
+        message_content = message_param.get("content")
+
+        if isinstance(message_content, str):
+            attrs[f"{prefix}.content"] = message_content
+
+        elif isinstance(message_content, list):
+            for j, part in enumerate(message_content):
+                message_content_prefix = f"{prefix}.content.{j}"
+                attrs[f"{message_content_prefix}.type"] = part.get("type")
+
+                match part.get("type"):
+                    case "text":
+                        attrs[f"{message_content_prefix}.text"] = part.get("text")
+                    case "image":
+                        source_type = part.get("source", {}).get("type")
+                        attrs[f"{message_content_prefix}.source.type"] = source_type
+                        if source_type == "base64":
+                            attrs[f"{message_content_prefix}.source.media_type"] = (
+                                part.get("source", {}).get("media_type")
+                            )
+                        elif source_type == "url":
+                            attrs[f"{message_content_prefix}.source.url"] = part.get(
+                                "source", {}
+                            ).get("url")
+                    case "tool_use":
+                        attrs[f"{message_content_prefix}.id"] = part.get("id")
+                        attrs[f"{message_content_prefix}.name"] = part.get("name")
+                    case "tool_result":
+                        attrs[f"{message_content_prefix}.tool_use_id"] = part.get(
+                            "tool_use_id"
+                        )
+                        attrs[f"{message_content_prefix}.is_error"] = part.get(
+                            "is_error"
+                        )
+                        part_content = part.get("content")
+                        if isinstance(part_content, str):
+                            attrs[f"{message_content_prefix}.content"] = part_content
+                        elif isinstance(part_content, list):
+                            for k, sub_part in enumerate(part_content):
+                                sub_part_type = sub_part.get("type")
+                                if sub_part_type == "text":
+                                    attrs[
+                                        f"{message_content_prefix}.content.{k}.text"
+                                    ] = sub_part.get("text")
+                                elif sub_part_type == "image":
+                                    sub_part_source = sub_part.get("source")
+                                    sub_part_source_type = sub_part_source.get("type")
+                                    attrs[
+                                        f"{message_content_prefix}.content.{k}.source.type"
+                                    ] = sub_part_source_type
+                                    if sub_part_source_type == "base64":
+                                        attrs[
+                                            f"{message_content_prefix}.content.{k}.source.media_type"
+                                        ] = sub_part_source.get("media_type")
+                                    elif sub_part_source_type == "url":
+                                        attrs[
+                                            f"{message_content_prefix}.content.{k}.source.url"
+                                        ] = sub_part_source.get("url")
+                    case "document":
+                        if part.get("context") is not None:
+                            attrs[f"{message_content_prefix}.context"] = part.get(
+                                "context"
+                            )
+                        if part.get("title") is not None:
+                            attrs[f"{message_content_prefix}.title"] = part.get("title")
+                        if part.get("citations") is not None:
+                            attrs[f"{message_content_prefix}.citations.enabled"] = (
+                                part.get("citations").get("enabled")
+                            )
+                        part_source_type = part.get("source", {}).get("type")
+                        attrs[f"{message_content_prefix}.source.type"] = (
+                            part_source_type
+                        )
+                        if part_source_type == "text":
+                            attrs[f"{message_content_prefix}.source.data"] = part.get(
+                                "source", {}
+                            ).get("data")
+                        elif part_source_type == "url":
+                            attrs[f"{message_content_prefix}.source.url"] = part.get(
+                                "source", {}
+                            ).get("url")
+                    case "thinking":
+                        attrs[f"{message_content_prefix}.thinking"] = part.get(
+                            "thinking"
+                        )
+                        attrs[f"{message_content_prefix}.signature"] = part.get(
+                            "signature"
+                        )
+                    case "redacted_thinking":
+                        attrs[f"{message_content_prefix}.redacted_thinking"] = part.get(
+                            "data"
+                        )
+        return attrs
+
     def _annotate_span_for_generation_message(
         self,
         span: trace.Span,
@@ -445,143 +546,36 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
     ) -> None:
         """Annotate the span with the message content."""
 
-        def _annotate_message_param(
-            message_param: MessageParam, index: Optional[int] = None
-        ):
-            message_prefix = f"message.{index}" if index is not None else "message"
-            span.set_attribute(f"{message_prefix}.role", message_param.get("role"))
-            message_content = message_param.get("content")
-            if isinstance(message_content, str):
-                span.set_attribute(f"{message_prefix}.content", message_content)
-
-            elif isinstance(message_content, list):
-                for j, part in enumerate(message_content):
-                    if isinstance(part, str):
-                        span.set_attribute(f"{message_prefix}.{j}.content", part)
-                    else:
-                        span.set_attribute(f"{message_prefix}.{j}.type", part.type)
-                        match part.type:
-                            case "text":
-                                span.set_attribute(
-                                    f"{message_prefix}.{j}.text", part.text
-                                )
-                            case "image":
-                                span.set_attribute(
-                                    f"{message_prefix}.{j}.source.type",
-                                    part.source.type,
-                                )
-                                if part.source.type == "base64":
-                                    span.set_attribute(
-                                        f"{message_prefix}.{j}.source.media_type",
-                                        part.source.media_type,
-                                    )
-                                elif part.source.type == "url":
-                                    span.set_attribute(
-                                        f"{message_prefix}.{j}.source.url",
-                                        part.source.url,
-                                    )
-                            case "tool_use":
-                                span.set_attribute(f"{message_prefix}.{j}.id", part.id)
-                                span.set_attribute(
-                                    f"{message_prefix}.{j}.name", part.name
-                                )
-                            case "tool_result":
-                                span.set_attribute(
-                                    f"{message_prefix}.{j}.tool_use_id",
-                                    part.tool_use_id,
-                                )
-                                span.set_attribute(
-                                    f"{message_prefix}.{j}.is_error", part.is_error
-                                )
-                                if isinstance(part.content, str):
-                                    span.set_attribute(
-                                        f"{message_prefix}.{j}.content", part.content
-                                    )
-                                elif isinstance(part.content, list):
-                                    for k, sub_part in enumerate(part.content):
-                                        if sub_part.type == "text":
-                                            span.set_attribute(
-                                                f"{message_prefix}.{j}.content.{k}.text",
-                                                sub_part.text,
-                                            )
-                                        elif sub_part.type == "image":
-                                            span.set_attribute(
-                                                f"{message_prefix}.{j}.content.{k}.source.type",
-                                                sub_part.source.type,
-                                            )
-                                            if sub_part.source.type == "base64":
-                                                span.set_attribute(
-                                                    f"{message_prefix}.{j}.content.{k}.source.media_type",
-                                                    sub_part.source.media_type,
-                                                )
-                                            elif sub_part.source.type == "url":
-                                                span.set_attribute(
-                                                    f"{message_prefix}.{j}.content.{k}.source.url",
-                                                    sub_part.source.url,
-                                                )
-                            case "document":
-                                if part.context is not None:
-                                    span.set_attribute(
-                                        f"{message_prefix}.{j}.context", part.context
-                                    )
-                                if part.title is not None:
-                                    span.set_attribute(
-                                        f"{message_prefix}.{j}.title", part.title
-                                    )
-                                if part.citations is not None:
-                                    span.set_attribute(
-                                        f"{message_prefix}.{j}.citations.enabled",
-                                        part.citations.enabled,
-                                    )
-                                span.set_attribute(
-                                    f"{message_prefix}.{j}.source.type",
-                                    part.source.type,
-                                )
-                                if part.source.type == "text":
-                                    span.set_attribute(
-                                        f"{message_prefix}.{j}.source.data",
-                                        part.source.data,
-                                    )
-                                elif part.source.type == "url":
-                                    span.set_attribute(
-                                        f"{message_prefix}.{j}.source.url",
-                                        part.source.url,
-                                    )
-                            case "thinking":
-                                span.set_attribute(
-                                    f"{message_prefix}.{j}.thinking", part.thinking
-                                )
-                                span.set_attribute(
-                                    f"{message_prefix}.{j}.signature", part.signature
-                                )
-                            case "redacted_thinking":
-                                span.set_attribute(
-                                    f"{message_prefix}.{j}.redacted_thinking",
-                                    part.data,
-                                )
-
         if isinstance(message, str):
             span.set_attribute("message.content", message)
         elif isinstance(message, list):
             for i, msg in enumerate(message):
-                _annotate_message_param(msg, i)
+                for k, v in self._extract_message_attributes_for_tracing(
+                    msg, prefix=f"message.{i}"
+                ).items():
+                    span.set_attribute(k, v)
         else:
-            _annotate_message_param(message)
+            for k, v in self._extract_message_attributes_for_tracing(
+                message, prefix="message"
+            ).items():
+                span.set_attribute(k, v)
 
     def _annotate_span_for_completion_request(
         self, span: trace.Span, request: RequestCompletionRequest, turn: int
     ):
         """Annotate the span with the completion request as an event."""
-        event_data = {}
+        event_data = {
+            "completion.request.turn": turn,
+        }
+
         for key, value in request.payload.items():
             if key == "messages":
                 for i, message in enumerate(cast(List[MessageParam], value)):
-                    role = message.get("role")
-                    event_data[f"messages.{i}.role"] = role
-                    message_content = message.get("content")
-
-                    if isinstance(message_content, str):
-                        event_data[f"messages.{i}.content"] = message_content
+                    event_data.update(
+                        self._extract_message_attributes_for_tracing(
+                            message, prefix=f"messages.{i}"
+                        )
+                    )
 
             elif key == "tools":
                 if value is not None:
@@ -590,7 +584,14 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             elif is_otel_serializable(value):
                 event_data[key] = value
 
-        span.add_event(f"completion.request.{turn}", event_data)
+        # Event name is based on the latest message role
+        event_name = f"completion.request.{turn}"
+        latest_message_role = request.payload.get("messages", [{}])[-1].get("role")
+
+        if latest_message_role:
+            event_name = f"gen_ai.{latest_message_role}.message"
+
+        span.add_event(event_name, event_data)
 
     def _annotate_span_for_completion_response(
         self, span: trace.Span, response: Message, turn: int

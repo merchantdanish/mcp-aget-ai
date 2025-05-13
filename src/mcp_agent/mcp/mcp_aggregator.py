@@ -130,7 +130,7 @@ class MCPAggregator(ContextDependent):
             span.set_attribute("server_names", self.server_names)
             span.set_attribute("force", force)
             span.set_attribute("connection_persistence", self.connection_persistence)
-            span.set_attribute("agent_name", self.agent_name)
+            span.set_attribute("gen_ai.agent.name", self.agent_name)
             span.set_attribute("initialized", self.initialized)
 
             if self.initialized and not force:
@@ -177,7 +177,7 @@ class MCPAggregator(ContextDependent):
         with tracer.start_as_current_span("mcp_aggregator.close") as span:
             span.set_attribute("server_names", self.server_names)
             span.set_attribute("connection_persistence", self.connection_persistence)
-            span.set_attribute("agent_name", self.agent_name)
+            span.set_attribute("gen_ai.agent.name", self.agent_name)
 
             # TODO: saqadri (FA1) - Verify implementation
             if (
@@ -294,7 +294,7 @@ class MCPAggregator(ContextDependent):
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span("mcp_aggregator.load_server") as span:
             span.set_attribute("server_name", server_name)
-            span.set_attribute("agent_name", self.agent_name)
+            span.set_attribute("gen_ai.agent.name", self.agent_name)
 
             if server_name not in self.server_names:
                 raise ValueError(f"Server '{server_name}' not found in server list")
@@ -368,7 +368,7 @@ class MCPAggregator(ContextDependent):
             span.set_attribute("server_names", self.server_names)
             span.set_attribute("force", force)
             span.set_attribute("connection_persistence", self.connection_persistence)
-            span.set_attribute("agent_name", self.agent_name)
+            span.set_attribute("gen_ai.agent.name", self.agent_name)
             span.set_attribute("initialized", self.initialized)
 
             if self.initialized and not force:

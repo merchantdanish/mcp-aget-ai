@@ -191,8 +191,8 @@ class OpenAIAugmentedLLM(
             if model:
                 span.set_attribute("model", model)
 
-            total_completion_tokens = 0
-            total_prompt_tokens = 0
+            total_input_tokens = 0
+            total_output_tokens = 0
             total_tokens = 0
 
             for i in range(params.max_iterations):
@@ -246,8 +246,8 @@ class OpenAIAugmentedLLM(
 
                 self._annotate_span_for_completion_response(span, response, i)
 
-                total_completion_tokens += response.usage.completion_tokens
-                total_prompt_tokens += response.usage.prompt_tokens
+                total_input_tokens += response.usage.prompt_tokens
+                total_output_tokens += response.usage.completion_tokens
                 total_tokens += response.usage.total_tokens
 
                 if not response.choices or len(response.choices) == 0:
@@ -323,9 +323,9 @@ class OpenAIAugmentedLLM(
 
             self._log_chat_finished(model=model)
 
-            span.set_attribute("usage.completion_tokens", total_completion_tokens)
-            span.set_attribute("usage.prompt_tokens", total_prompt_tokens)
-            span.set_attribute("usage.total_tokens", total_tokens)
+            span.set_attribute("gen_ai.usage.input_tokens", total_input_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", total_output_tokens)
+            span.set_attribute("gen_ai.usage.total_tokens", total_tokens)
 
             for i, response in enumerate(responses):
                 span.set_attribute(f"response.{i}.role", response.role)
@@ -576,6 +576,7 @@ class OpenAIAugmentedLLM(
     ) -> None:
         """Annotate the span with the completion request as an event."""
         event_data = {
+            "completion.request.turn": turn,
             "config.reasoning_effort": request.config.reasoning_effort,
         }
 
@@ -689,13 +690,21 @@ class OpenAIAugmentedLLM(
             elif is_otel_serializable(value):
                 event_data[key] = value
 
-        span.add_event(f"completion.request.{turn}", event_data)
+        # Event name is based on the latest message role
+        event_name = f"completion.request.{turn}"
+        latest_message_role = request.payload.get("messages", [{}])[-1].get("role")
+
+        if latest_message_role:
+            event_name = f"gen_ai.{latest_message_role}.message"
+
+        span.add_event(event_name, event_data)
 
     def _annotate_span_for_completion_response(
         self, span: trace.Span, response: ChatCompletion, turn: int
     ) -> None:
         """Annotate the span with the completion response as an event."""
         event_data = {
+            "completion.response.turn": turn,
             "id": response.id,
             "model": response.model,
             "object": response.object,
@@ -709,9 +718,9 @@ class OpenAIAugmentedLLM(
             event_data["system_fingerprint"] = response.system_fingerprint
 
         if response.usage:
-            event_data["usage.completion_tokens"] = response.usage.completion_tokens
-            event_data["usage.prompt_tokens"] = response.usage.prompt_tokens
-            event_data["usage.total_tokens"] = response.usage.total_tokens
+            event_data["gen_ai.usage.input_tokens"] = response.usage.prompt_tokens
+            event_data["gen_ai.usage.output_tokens"] = response.usage.completion_tokens
+            event_data["gen_ai.usage.total_tokens"] = response.usage.total_tokens
 
         for i, choice in enumerate(response.choices):
             event_data[f"choices.{i}.index"] = choice.index
@@ -748,7 +757,13 @@ class OpenAIAugmentedLLM(
                         f"choices.{i}.message.tool_calls.{j}.function.arguments"
                     ] = tool_call.function.arguments
 
-        span.add_event(f"completion.response.{turn}", event_data)
+        # Event name is based on the first choice for now
+        event_name = f"completion.response.{turn}"
+        if response.choices and len(response.choices) > 0:
+            latest_message_role = response.choices[0].message.role
+            event_name = f"gen_ai.{latest_message_role}.message"
+
+        span.add_event(event_name, event_data)
 
 
 class OpenAICompletionTasks:
