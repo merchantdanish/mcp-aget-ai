@@ -37,6 +37,7 @@ from mcp.types import (
 from mcp_agent.config import AnthropicSettings
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.tracing.semconv import (
+    GEN_AI_RESPONSE_FINISH_REASONS,
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
@@ -173,6 +174,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             total_input_tokens = 0
             total_output_tokens = 0
+            finish_reasons = []
 
             for i in range(params.max_iterations):
                 if (
@@ -234,26 +236,27 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 response_as_message = self.convert_message_to_message_param(response)
                 messages.append(response_as_message)
                 responses.append(response)
+                finish_reasons.append(response.stop_reason)
 
                 if response.stop_reason == "end_turn":
                     self.logger.debug(
                         f"Iteration {i}: Stopping because finish_reason is 'end_turn'"
                     )
-                    span.set_attribute("stop_reason", "end_turn")
+                    span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, ["end_turn"])
                     break
                 elif response.stop_reason == "stop_sequence":
                     # We have reached a stop sequence
                     self.logger.debug(
                         f"Iteration {i}: Stopping because finish_reason is 'stop_sequence'"
                     )
-                    span.set_attribute("stop_reason", "stop_sequence")
+                    span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, ["stop_sequence"])
                     break
                 elif response.stop_reason == "max_tokens":
                     # We have reached the max tokens limit
                     self.logger.debug(
                         f"Iteration {i}: Stopping because finish_reason is 'max_tokens'"
                     )
-                    span.set_attribute("stop_reason", "max_tokens")
+                    span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, ["max_tokens"])
                     # TODO: saqadri - would be useful to return the reason for stopping to the caller
                     break
                 else:  # response.stop_reason == "tool_use":
@@ -307,6 +310,10 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)
             span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
+            span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
+
+            for i, response in enumerate(responses):
+
 
             return responses
 
@@ -597,7 +604,36 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         self, span: trace.Span, response: Message, turn: int
     ):
         """Annotate the span with the completion response as an event."""
-        span.add_event(f"completion.response.{turn}")
+        event_data = {
+            "completion.response.turn": turn,
+            "id": response.id,
+            "model": response.model,
+            "role": response.role,
+        }
+
+        if response.stop_reason:
+            event_data[GEN_AI_RESPONSE_FINISH_REASONS] = [response.stop_reason]
+        if response.stop_sequence:
+            event_data["stop_sequence"] = response.stop_sequence
+        if response.usage:
+            event_data[GEN_AI_USAGE_INPUT_TOKENS] = response.usage.input_tokens
+            event_data[GEN_AI_USAGE_OUTPUT_TOKENS] = response.usage.output_tokens
+
+        for i, block in enumerate(response.content):
+            event_data[f"content.{i}.type"] = block.type
+            match block.type:
+                case "text":
+                    event_data[f"content.{i}.text"] = block.text
+                case "tool_use":
+                    event_data[f"content.{i}.tool_use_id"] = block.id
+                    event_data[f"content.{i}.name"] = block.name
+                case "thinking":
+                    event_data[f"content.{i}.thinking"] = block.thinking
+                    event_data[f"content.{i}.signature"] = block.signature
+                case "redacted_thinking":
+                    event_data[f"content.{i}.redacted_thinking"] = block.data
+
+        span.add_event(f"gen_ai.{response.role}.message", event_data)
 
 
 class AnthropicCompletionTasks:

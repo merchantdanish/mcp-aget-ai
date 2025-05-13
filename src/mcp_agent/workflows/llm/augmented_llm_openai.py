@@ -36,6 +36,7 @@ from mcp.types import (
 from mcp_agent.config import OpenAISettings
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.tracing.semconv import (
+    GEN_AI_RESPONSE_FINISH_REASONS,
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
@@ -195,6 +196,7 @@ class OpenAIAugmentedLLM(
 
             total_input_tokens = 0
             total_output_tokens = 0
+            finish_reasons = []
 
             for i in range(params.max_iterations):
                 arguments = {
@@ -259,6 +261,7 @@ class OpenAIAugmentedLLM(
                 choice = response.choices[0]
                 message = choice.message
                 responses.append(message)
+                finish_reasons.append(choice.finish_reason)
 
                 # Fixes an issue with openai validation that does not allow non alphanumeric characters, dashes, and underscores
                 sanitized_name = (
@@ -325,6 +328,7 @@ class OpenAIAugmentedLLM(
 
             span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)
             span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
+            span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
 
             for i, response in enumerate(responses):
                 span.set_attribute(f"response.{i}.role", response.role)
@@ -720,9 +724,11 @@ class OpenAIAugmentedLLM(
             event_data[GEN_AI_USAGE_INPUT_TOKENS] = response.usage.prompt_tokens
             event_data[GEN_AI_USAGE_OUTPUT_TOKENS] = response.usage.completion_tokens
 
+        finish_reasons = []
         for i, choice in enumerate(response.choices):
             event_data[f"choices.{i}.index"] = choice.index
             event_data[f"choices.{i}.finish_reason"] = choice.finish_reason
+            finish_reasons.append(choice.finish_reason)
 
             event_data[f"choices.{i}.message.role"] = choice.message.role
             if choice.message.content is not None:
@@ -754,6 +760,8 @@ class OpenAIAugmentedLLM(
                     event_data[
                         f"choices.{i}.message.tool_calls.{j}.function.arguments"
                     ] = tool_call.function.arguments
+
+        event_data[GEN_AI_RESPONSE_FINISH_REASONS] = finish_reasons
 
         # Event name is based on the first choice for now
         event_name = f"completion.response.{turn}"
