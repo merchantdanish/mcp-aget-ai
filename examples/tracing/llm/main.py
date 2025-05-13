@@ -46,6 +46,15 @@ async def llm_tracing():
         )
         logger.info(f"openai_llm result: {result}")
 
+        structured = await openai_llm.generate_structured(
+            MessageParam(
+                role="user",
+                content="Give JSON representing the the capitals and populations of the following countries: France, Ireland, Italy",
+            ),
+            response_model=CountryInfo,
+        )
+        logger.info(f"openai_llm structured result: {structured}")
+
         # Agent-integrated LLM
         llm_agent = Agent(name="llm_agent")
         async with llm_agent:

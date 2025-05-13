@@ -377,23 +377,33 @@ class OpenAIAugmentedLLM(
         The default implementation uses OpenAI's ChatCompletion as the LLM.
         Override this method to use a different LLM.
         """
-        responses = await self.generate(
-            message=message,
-            request_params=request_params,
-        )
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"llm_openai.{self.name}.generate_str"
+        ) as span:
+            self._annotate_span_for_generation_message(span, message)
+            if request_params:
+                self._annotate_span_with_request_params(span, request_params)
 
-        final_text: List[str] = []
+            responses = await self.generate(
+                message=message,
+                request_params=request_params,
+            )
 
-        for response in responses:
-            content = response.content
-            if not content:
-                continue
+            final_text: List[str] = []
 
-            if isinstance(content, str):
-                final_text.append(content)
-                continue
+            for response in responses:
+                content = response.content
+                if not content:
+                    continue
 
-        return "\n".join(final_text)
+                if isinstance(content, str):
+                    final_text.append(content)
+                    continue
+
+            res = "\n".join(final_text)
+            span.set_attribute("response.content", res)
+            return res
 
     async def generate_structured(
         self,
@@ -405,35 +415,54 @@ class OpenAIAugmentedLLM(
         # We need to do this in a two-step process because Instructor doesn't
         # know how to invoke MCP tools via call_tool, so we'll handle all the
         # processing first and then pass the final response through Instructor
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"llm_openai.{self.name}.generate_structured"
+        ) as span:
+            self._annotate_span_for_generation_message(span, message)
 
-        response = await self.generate_str(
-            message=message,
-            request_params=request_params,
-        )
+            params = self.get_request_params(request_params)
+            self._annotate_span_with_request_params(span, params)
 
-        params = self.get_request_params(request_params)
-        model = await self.select_model(params) or "gpt-4o"
+            response = await self.generate_str(
+                message=message,
+                request_params=params,
+            )
 
-        # TODO: saqadri (MAC) - this is brittle, make it more robust by serializing response_model
-        # Get the import path for the class
-        model_path = f"{response_model.__module__}.{response_model.__name__}"
+            model = await self.select_model(params) or "gpt-4o"
+            span.set_attribute("model", model)
 
-        structured_response = await self.executor.execute(
-            OpenAICompletionTasks.request_structured_completion_task,
-            RequestStructuredCompletionRequest(
-                config=self.context.config.openai,
-                model_path=model_path,
-                response_str=response,
-                model=model,
-            ),
-        )
+            # TODO: saqadri (MAC) - this is brittle, make it more robust by serializing response_model
+            # Get the import path for the class
+            model_path = f"{response_model.__module__}.{response_model.__name__}"
+            span.set_attribute("response_model", model_path)
 
-        # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
-        # Convert dict back to the proper model instance if needed
-        if isinstance(structured_response, dict):
-            structured_response = response_model.model_validate(structured_response)
+            structured_response = await self.executor.execute(
+                OpenAICompletionTasks.request_structured_completion_task,
+                RequestStructuredCompletionRequest(
+                    config=self.context.config.openai,
+                    model_path=model_path,
+                    response_str=response,
+                    model=model,
+                ),
+            )
 
-        return structured_response
+            # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
+            # Convert dict back to the proper model instance if needed
+            if isinstance(structured_response, dict):
+                structured_response = response_model.model_validate(structured_response)
+
+            try:
+                span.set_attribute(
+                    "structured_response_json",
+                    json.dumps(structured_response, default=str)[
+                        :1000
+                    ],  # truncate to avoid massive strings
+                )
+            except Exception:
+                span.set_attribute("unstructured_response", response)
+
+            return structured_response
 
     async def pre_tool_call(self, tool_call_id: str | None, request: CallToolRequest):
         return request
