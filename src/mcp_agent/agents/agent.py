@@ -18,7 +18,8 @@ from mcp.types import (
 )
 
 from mcp_agent.core.context import Context
-from mcp_agent.logging.tracing import is_otel_serializable
+from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME
+from mcp_agent.tracing.telemetry import is_otel_serializable
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator, NamespacedPrompt, NamespacedTool
 from mcp_agent.human_input.types import (
     HumanInputRequest,
@@ -180,7 +181,7 @@ class Agent(BaseModel):
         """Initialize the agent."""
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(f"agent.{self.name}.initialize") as span:
-            span.set_attribute("gen_ai.agent.name", self.name)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("server_names", self.server_names)
             span.set_attribute("connection_persistence", self.connection_persistence)
             span.set_attribute("force", force)
@@ -236,7 +237,7 @@ class Agent(BaseModel):
 
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(f"agent.{self.name}.shutdown") as span:
-            span.set_attribute("gen_ai.agent.name", self.name)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.add_event("agent_shutdown_start")
 
             executor = self.context.executor
@@ -272,7 +273,7 @@ class Agent(BaseModel):
         with tracer.start_as_current_span(
             f"agent.{self.name}.get_capabilities"
         ) as span:
-            span.set_attribute("gen_ai.agent.name", self.name)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("initialized", self.initialized)
 
             if not self.initialized:
@@ -319,7 +320,7 @@ class Agent(BaseModel):
     async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(f"agent.{self.name}.list_tools") as span:
-            span.set_attribute("gen_ai.agent.name", self.name)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("initialized", self.initialized)
             span.set_attribute(
                 "human_input_callback", self.human_input_callback is not None
@@ -429,7 +430,7 @@ class Agent(BaseModel):
     async def list_prompts(self, server_name: str | None = None) -> ListPromptsResult:
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(f"agent.{self.name}.list_prompts") as span:
-            span.set_attribute("gen_ai.agent.name", self.name)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("initialized", self.initialized)
 
             if server_name:
@@ -471,7 +472,7 @@ class Agent(BaseModel):
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(f"agent.{self.name}.get_prompt") as span:
             span.set_attribute("name", name)
-            span.set_attribute("gen_ai.agent.name", self.name)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("initialized", self.initialized)
 
             if arguments is not None:
@@ -531,7 +532,7 @@ class Agent(BaseModel):
         with tracer.start_as_current_span(
             f"agent.{self.name}.request_human_input"
         ) as span:
-            span.set_attribute("gen_ai.agent.name", self.name)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("initialized", self.initialized)
             span.set_attribute("request.prompt", request.prompt)
 
@@ -615,7 +616,7 @@ class Agent(BaseModel):
 
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(f"agent.{self.name}.call_tool") as span:
-            span.set_attribute("gen_ai.agent.name", self.name)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("name", name)
             span.set_attribute("initialized", self.initialized)
 

@@ -11,8 +11,6 @@ from openai.types.chat import (
     ChatCompletionContentPartParam,
     ChatCompletionContentPartTextParam,
     ChatCompletionContentPartRefusalParam,
-    ChatCompletionDeveloperMessageParam,
-    ChatCompletionFunctionMessageParam,
     ChatCompletionMessage,
     ChatCompletionMessageParam,
     ChatCompletionMessageToolCall,
@@ -37,7 +35,11 @@ from mcp.types import (
 
 from mcp_agent.config import OpenAISettings
 from mcp_agent.executor.workflow_task import workflow_task
-from mcp_agent.logging.tracing import is_otel_serializable
+from mcp_agent.tracing.semconv import (
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
+from mcp_agent.tracing.telemetry import is_otel_serializable
 from mcp_agent.utils.common import ensure_serializable, typed_dict_extras
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
@@ -193,7 +195,6 @@ class OpenAIAugmentedLLM(
 
             total_input_tokens = 0
             total_output_tokens = 0
-            total_tokens = 0
 
             for i in range(params.max_iterations):
                 arguments = {
@@ -248,7 +249,6 @@ class OpenAIAugmentedLLM(
 
                 total_input_tokens += response.usage.prompt_tokens
                 total_output_tokens += response.usage.completion_tokens
-                total_tokens += response.usage.total_tokens
 
                 if not response.choices or len(response.choices) == 0:
                     # No response from the model, we're done
@@ -323,9 +323,8 @@ class OpenAIAugmentedLLM(
 
             self._log_chat_finished(model=model)
 
-            span.set_attribute("gen_ai.usage.input_tokens", total_input_tokens)
-            span.set_attribute("gen_ai.usage.output_tokens", total_output_tokens)
-            span.set_attribute("gen_ai.usage.total_tokens", total_tokens)
+            span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)
+            span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
 
             for i, response in enumerate(responses):
                 span.set_attribute(f"response.{i}.role", response.role)
@@ -718,9 +717,8 @@ class OpenAIAugmentedLLM(
             event_data["system_fingerprint"] = response.system_fingerprint
 
         if response.usage:
-            event_data["gen_ai.usage.input_tokens"] = response.usage.prompt_tokens
-            event_data["gen_ai.usage.output_tokens"] = response.usage.completion_tokens
-            event_data["gen_ai.usage.total_tokens"] = response.usage.total_tokens
+            event_data[GEN_AI_USAGE_INPUT_TOKENS] = response.usage.prompt_tokens
+            event_data[GEN_AI_USAGE_OUTPUT_TOKENS] = response.usage.completion_tokens
 
         for i, choice in enumerate(response.choices):
             event_data[f"choices.{i}.index"] = choice.index

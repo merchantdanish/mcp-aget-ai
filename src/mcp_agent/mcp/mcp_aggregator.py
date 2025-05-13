@@ -19,7 +19,8 @@ from mcp.types import (
 
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
-from mcp_agent.logging.tracing import is_otel_serializable
+from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME
+from mcp_agent.tracing.telemetry import is_otel_serializable
 from mcp_agent.mcp.gen_client import gen_client
 
 from mcp_agent.core.context_dependent import ContextDependent
@@ -130,7 +131,7 @@ class MCPAggregator(ContextDependent):
             span.set_attribute("server_names", self.server_names)
             span.set_attribute("force", force)
             span.set_attribute("connection_persistence", self.connection_persistence)
-            span.set_attribute("gen_ai.agent.name", self.agent_name)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
             span.set_attribute("initialized", self.initialized)
 
             if self.initialized and not force:
@@ -177,7 +178,7 @@ class MCPAggregator(ContextDependent):
         with tracer.start_as_current_span("mcp_aggregator.close") as span:
             span.set_attribute("server_names", self.server_names)
             span.set_attribute("connection_persistence", self.connection_persistence)
-            span.set_attribute("gen_ai.agent.name", self.agent_name)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
 
             # TODO: saqadri (FA1) - Verify implementation
             if (
@@ -294,7 +295,7 @@ class MCPAggregator(ContextDependent):
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span("mcp_aggregator.load_server") as span:
             span.set_attribute("server_name", server_name)
-            span.set_attribute("gen_ai.agent.name", self.agent_name)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
 
             if server_name not in self.server_names:
                 raise ValueError(f"Server '{server_name}' not found in server list")
@@ -368,7 +369,7 @@ class MCPAggregator(ContextDependent):
             span.set_attribute("server_names", self.server_names)
             span.set_attribute("force", force)
             span.set_attribute("connection_persistence", self.connection_persistence)
-            span.set_attribute("gen_ai.agent.name", self.agent_name)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
             span.set_attribute("initialized", self.initialized)
 
             if self.initialized and not force:

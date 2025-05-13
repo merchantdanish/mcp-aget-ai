@@ -36,7 +36,11 @@ from mcp.types import (
 # from mcp_agent.agents.agent import HUMAN_INPUT_TOOL_NAME
 from mcp_agent.config import AnthropicSettings
 from mcp_agent.executor.workflow_task import workflow_task
-from mcp_agent.logging.tracing import is_otel_serializable
+from mcp_agent.tracing.semconv import (
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
+from mcp_agent.tracing.telemetry import is_otel_serializable
 from mcp_agent.utils.common import ensure_serializable, typed_dict_extras, to_string
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
@@ -301,12 +305,8 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             self._log_chat_finished(model=model)
 
-            span.set_attribute("gen_ai.usage.input_tokens", total_input_tokens)
-            span.set_attribute("gen_ai.usage.output_tokens", total_output_tokens)
-            span.set_attribute(
-                "gen_ai.usage.total_tokens",
-                total_input_tokens + total_output_tokens,
-            )
+            span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)
+            span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
 
             return responses
 

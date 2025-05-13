@@ -24,7 +24,7 @@ from mcp.types import (
 )
 
 from mcp_agent.core.context_dependent import ContextDependent
-from mcp_agent.logging.tracing import is_otel_serializable
+from mcp_agent.tracing.telemetry import is_otel_serializable
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 
 if TYPE_CHECKING:
