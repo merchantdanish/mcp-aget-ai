@@ -67,10 +67,10 @@ To run tests with coverage reports:
 pytest tests/workflows/llm/ --cov=src/mcp_agent/workflows/llm
 
 # Generate coverage for a specific provider
-pytest tests/workflows/llm/test_augmented_llm_openai.py --cov=src/mcp_agent/workflows/llm/augmented_llm_openai.py
+pytest --cov=src/mcp_agent/workflows/llm --cov-report=term tests/workflows/llm/test_augmented_llm_openai.py
 
 # Generate an HTML coverage report
-pytest tests/workflows/llm/ --cov=src/mcp_agent/workflows/llm --cov-report=html
+pytest --cov=src/mcp_agent/workflows/llm --cov-report=html tests/workflows/llm/test_augmented_llm_openai.py
 ```
 
 ## Adding New Provider Tests
