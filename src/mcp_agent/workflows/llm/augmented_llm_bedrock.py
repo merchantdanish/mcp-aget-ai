@@ -141,8 +141,10 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
                 "messages": messages,
                 "system": system_content,
                 "inferenceConfig": inference_config,
-                "toolConfig": tool_config,
             }
+
+            if isinstance(tool_config["tools"], list) and len(tool_config["tools"]) > 0:
+                arguments["toolConfig"] = tool_config
 
             if params.metadata:
                 arguments = {
