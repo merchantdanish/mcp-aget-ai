@@ -387,7 +387,7 @@ class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ResponseMessage
         return MCPMessageResult(
             role=result.role,
             content=TextContent(type="text", text=result.content),
-            model=None,
+            model="",
             stopReason=None,
         )
 
