@@ -17,6 +17,8 @@ from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.llm.llm_selector import ModelPreferences
 from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 
 # Initialize logging
@@ -102,6 +104,73 @@ class BasicAgentWorkflow(Workflow[str]):
             )
             logger.info(f"Paragraph as a tweet: {result}")
             return WorkflowResult(value=result)
+
+
+@app.workflow
+class ParallelWorkflow(Workflow[str]):
+    """
+    This workflow can be used to grade a student's short story submission and generate a report.
+    It uses multiple agents to perform different tasks in parallel.
+    The agents include:
+    - Proofreader: Reviews the story for grammar, spelling, and punctuation errors.
+    - Fact Checker: Verifies the factual consistency within the story.
+    - Style Enforcer: Analyzes the story for adherence to style guidelines.
+    - Grader: Compiles the feedback from the other agents into a structured report.
+    """
+
+    @app.workflow_run
+    async def run(self, input: str) -> WorkflowResult[str]:
+        """
+        Run the workflow, processing the input data.
+
+        Args:
+            input_data: The data to process
+
+        Returns:
+            A WorkflowResult containing the processed data
+        """
+
+        proofreader = Agent(
+            name="proofreader",
+            instruction=""""Review the short story for grammar, spelling, and punctuation errors.
+            Identify any awkward phrasing or structural issues that could improve clarity. 
+            Provide detailed feedback on corrections.""",
+        )
+
+        fact_checker = Agent(
+            name="fact_checker",
+            instruction="""Verify the factual consistency within the story. Identify any contradictions,
+            logical inconsistencies, or inaccuracies in the plot, character actions, or setting. 
+            Highlight potential issues with reasoning or coherence.""",
+        )
+
+        style_enforcer = Agent(
+            name="style_enforcer",
+            instruction="""Analyze the story for adherence to style guidelines.
+            Evaluate the narrative flow, clarity of expression, and tone. Suggest improvements to 
+            enhance storytelling, readability, and engagement.""",
+        )
+
+        grader = Agent(
+            name="grader",
+            instruction="""Compile the feedback from the Proofreader, Fact Checker, and Style Enforcer
+            into a structured report. Summarize key issues and categorize them by type. 
+            Provide actionable recommendations for improving the story, 
+            and give an overall grade based on the feedback.""",
+        )
+
+        parallel = ParallelLLM(
+            fan_in_agent=grader,
+            fan_out_agents=[proofreader, fact_checker, style_enforcer],
+            llm_factory=OpenAIAugmentedLLM,
+            context=app.context,
+        )
+
+        result = await parallel.generate_str(
+            message=f"Student short story submission: {input}",
+        )
+
+        return WorkflowResult(value=result)
 
 
 async def main():
