@@ -22,8 +22,8 @@ The tests cover the following functionality:
 Make sure you have installed all the required dependencies:
 
 ```bash
-# Install the package with development dependencies
-pip install -e ".[dev]"
+# Install required packages
+uv sync --all-extras
 ```
 
 ### Running All Tests
