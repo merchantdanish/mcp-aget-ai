@@ -19,7 +19,7 @@ from mcp.types import (
 
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
-from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME
+from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME, GEN_AI_TOOL_NAME
 from mcp_agent.tracing.telemetry import is_otel_serializable
 from mcp_agent.mcp.gen_client import gen_client
 
@@ -426,6 +426,7 @@ class MCPAggregator(ContextDependent):
         """Get server capabilities if available."""
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span("mcp_aggregator.get_capabilitites") as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
             span.set_attribute("server_names", self.server_names)
             span.set_attribute("connection_persistence", self.connection_persistence)
             span.set_attribute("server_name", server_name)
@@ -491,6 +492,7 @@ class MCPAggregator(ContextDependent):
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span("mcp_aggregator.refresh") as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
             if server_name:
                 span.set_attribute("server_name", server_name)
                 await self.load_server(server_name)
@@ -501,6 +503,7 @@ class MCPAggregator(ContextDependent):
         """Return the list of server names aggregated by this agent."""
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span("mcp_aggregator.list_servers") as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
             span.set_attribute("initialized", self.initialized)
             if not self.initialized:
                 await self.load_servers()
@@ -514,6 +517,7 @@ class MCPAggregator(ContextDependent):
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span("mcp_aggregator.list_tools") as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
             span.set_attribute("initialized", self.initialized)
             if not self.initialized:
                 await self.load_servers()
@@ -554,7 +558,8 @@ class MCPAggregator(ContextDependent):
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span("mcp_aggregator.call_tool") as span:
-            span.set_attribute("name", name)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+            span.set_attribute(GEN_AI_TOOL_NAME, name)
 
             if arguments is not None:
                 for key, value in arguments.items():
@@ -584,17 +589,23 @@ class MCPAggregator(ContextDependent):
                     content=[TextContent(type="text", text=f"Tool '{name}' not found")],
                 )
 
-            event_metadata = {
-                "tool_name": local_tool_name,
-                "server_name": server_name,
-                "agent_name": self.agent_name,
-            }
-
             logger.info(
                 "Requesting tool call",
-                data={"progress_action": ProgressAction.CALLING_TOOL, **event_metadata},
+                data={
+                    "progress_action": ProgressAction.CALLING_TOOL,
+                    "tool_name": local_tool_name,
+                    "server_name": server_name,
+                    "agent_name": self.agent_name,
+                },
             )
-            span.add_event("request_tool_call", event_metadata)
+            span.add_event(
+                "request_tool_call",
+                {
+                    GEN_AI_AGENT_NAME: self.agent_name,
+                    GEN_AI_TOOL_NAME: local_tool_name,
+                    "server_name": server_name,
+                },
+            )
 
             def _annotate_span_for_result(result: CallToolResult):
                 span.set_attribute("result.isError", result.isError)
@@ -654,7 +665,7 @@ class MCPAggregator(ContextDependent):
                 )
                 span.add_event(
                     "temporary_connection_created",
-                    {"server_name": server_name, "agent_name": self.agent_name},
+                    {"server_name": server_name, GEN_AI_AGENT_NAME: self.agent_name},
                 )
                 async with gen_client(
                     server_name, server_registry=self.context.server_registry
@@ -670,7 +681,10 @@ class MCPAggregator(ContextDependent):
                     )
                     span.add_event(
                         "temporary_connection_closed",
-                        {"server_name": server_name, "agent_name": self.agent_name},
+                        {
+                            "server_name": server_name,
+                            GEN_AI_AGENT_NAME: self.agent_name,
+                        },
                     )
                     _annotate_span_for_result(result)
                     return result
@@ -681,6 +695,7 @@ class MCPAggregator(ContextDependent):
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span("mcp_aggregator.list_prompts") as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
             span.set_attribute("initialized", self.initialized)
             if not self.initialized:
                 await self.load_servers()
@@ -747,6 +762,7 @@ class MCPAggregator(ContextDependent):
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span("mcp_aggregator.get_prompt") as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
             span.set_attribute("name", name)
             span.set_attribute("initialized", self.initialized)
 

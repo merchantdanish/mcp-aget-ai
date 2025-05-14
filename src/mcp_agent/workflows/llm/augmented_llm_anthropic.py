@@ -249,7 +249,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                     self.logger.debug(
                         f"Iteration {i}: Stopping because finish_reason is 'stop_sequence'"
                     )
-                    span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, ["stop_sequence"])
+                    span.set_attribute(
+                        GEN_AI_RESPONSE_FINISH_REASONS, ["stop_sequence"]
+                    )
                     break
                 elif response.stop_reason == "max_tokens":
                     # We have reached the max tokens limit
@@ -313,7 +315,10 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
 
             for i, response in enumerate(responses):
-
+                response_data = self._extract_message_attributes_for_tracing(
+                    response, prefix=f"response.{i}"
+                )
+                span.set_attributes(response_data)
 
             return responses
 
@@ -446,10 +451,10 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
         return str(message)
 
-    def _extract_message_attributes_for_tracing(
+    def _extract_message_param_attributes_for_tracing(
         self, message_param: MessageParam, prefix: str = "message"
     ) -> dict[str, Any]:
-        """Return a flat dict of span attributes for a given message param."""
+        """Return a flat dict of span attributes for a given MessageParam."""
         attrs = {}
         attrs[f"{prefix}.role"] = message_param.get("role")
         message_content = message_param.get("content")
@@ -546,26 +551,65 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                         )
         return attrs
 
+    def _extract_message_attributes_for_tracing(
+        self, message: Message, prefix: str | None = None
+    ) -> dict[str, Any]:
+        """Return a flat dict of span attributes for a given Message."""
+        attr_prefix = f"{prefix}." if prefix else ""
+        attrs = {
+            f"{attr_prefix}id": message.id,
+            f"{attr_prefix}model": message.model,
+            f"{attr_prefix}role": message.role,
+        }
+
+        if message.stop_reason:
+            attrs[f"{attr_prefix}{GEN_AI_RESPONSE_FINISH_REASONS}"] = [
+                message.stop_reason
+            ]
+        if message.stop_sequence:
+            attrs[f"{attr_prefix}stop_sequence"] = message.stop_sequence
+        if message.usage:
+            attrs[f"{attr_prefix}{GEN_AI_USAGE_INPUT_TOKENS}"] = (
+                message.usage.input_tokens
+            )
+            attrs[f"{attr_prefix}{GEN_AI_USAGE_OUTPUT_TOKENS}"] = (
+                message.usage.output_tokens
+            )
+
+        for i, block in enumerate(message.content):
+            attrs[f"{attr_prefix}content.{i}.type"] = block.type
+            match block.type:
+                case "text":
+                    attrs[f"{attr_prefix}content.{i}.text"] = block.text
+                case "tool_use":
+                    attrs[f"{attr_prefix}content.{i}.tool_use_id"] = block.id
+                    attrs[f"{attr_prefix}content.{i}.name"] = block.name
+                case "thinking":
+                    attrs[f"{attr_prefix}content.{i}.thinking"] = block.thinking
+                    attrs[f"{attr_prefix}content.{i}.signature"] = block.signature
+                case "redacted_thinking":
+                    attrs[f"{attr_prefix}content.{i}.redacted_thinking"] = block.data
+        return attrs
+
     def _annotate_span_for_generation_message(
         self,
         span: trace.Span,
         message: str | MessageParam | List[MessageParam],
     ) -> None:
         """Annotate the span with the message content."""
-
         if isinstance(message, str):
             span.set_attribute("message.content", message)
         elif isinstance(message, list):
             for i, msg in enumerate(message):
-                for k, v in self._extract_message_attributes_for_tracing(
+                attributes = self._extract_message_param_attributes_for_tracing(
                     msg, prefix=f"message.{i}"
-                ).items():
-                    span.set_attribute(k, v)
+                )
+                span.set_attributes(attributes)
         else:
-            for k, v in self._extract_message_attributes_for_tracing(
+            attributes = self._extract_message_param_attributes_for_tracing(
                 message, prefix="message"
-            ).items():
-                span.set_attribute(k, v)
+            )
+            span.set_attributes(attributes)
 
     def _annotate_span_for_completion_request(
         self, span: trace.Span, request: RequestCompletionRequest, turn: int
@@ -579,7 +623,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             if key == "messages":
                 for i, message in enumerate(cast(List[MessageParam], value)):
                     event_data.update(
-                        self._extract_message_attributes_for_tracing(
+                        self._extract_message_param_attributes_for_tracing(
                             message, prefix=f"messages.{i}"
                         )
                     )
@@ -606,33 +650,8 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         """Annotate the span with the completion response as an event."""
         event_data = {
             "completion.response.turn": turn,
-            "id": response.id,
-            "model": response.model,
-            "role": response.role,
         }
-
-        if response.stop_reason:
-            event_data[GEN_AI_RESPONSE_FINISH_REASONS] = [response.stop_reason]
-        if response.stop_sequence:
-            event_data["stop_sequence"] = response.stop_sequence
-        if response.usage:
-            event_data[GEN_AI_USAGE_INPUT_TOKENS] = response.usage.input_tokens
-            event_data[GEN_AI_USAGE_OUTPUT_TOKENS] = response.usage.output_tokens
-
-        for i, block in enumerate(response.content):
-            event_data[f"content.{i}.type"] = block.type
-            match block.type:
-                case "text":
-                    event_data[f"content.{i}.text"] = block.text
-                case "tool_use":
-                    event_data[f"content.{i}.tool_use_id"] = block.id
-                    event_data[f"content.{i}.name"] = block.name
-                case "thinking":
-                    event_data[f"content.{i}.thinking"] = block.thinking
-                    event_data[f"content.{i}.signature"] = block.signature
-                case "redacted_thinking":
-                    event_data[f"content.{i}.redacted_thinking"] = block.data
-
+        event_data.update(self._extract_message_attributes_for_tracing(response))
         span.add_event(f"gen_ai.{response.role}.message", event_data)
 
 

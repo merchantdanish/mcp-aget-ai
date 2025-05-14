@@ -24,6 +24,11 @@ from mcp.types import (
 )
 
 from mcp_agent.core.context_dependent import ContextDependent
+from mcp_agent.tracing.semconv import (
+    GEN_AI_AGENT_NAME,
+    GEN_AI_TOOL_CALL_ID,
+    GEN_AI_TOOL_NAME,
+)
 from mcp_agent.tracing.telemetry import is_otel_serializable
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 
@@ -290,6 +295,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(f"llm.{self.name}.select_model") as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             model_preferences = self.model_preferences
             if request_params is not None:
                 model_preferences = request_params.modelPreferences or model_preferences
@@ -407,8 +413,9 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         """Call a tool with the given parameters and optional ID"""
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(f"llm.{self.name}.call_tool") as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             if tool_call_id:
-                span.set_attribute("tool_call_id", tool_call_id)
+                span.set_attribute(GEN_AI_TOOL_CALL_ID, tool_call_id)
                 span.set_attribute("request.method", request.method)
 
             span.set_attribute("request.params.name", request.params.name)
@@ -443,7 +450,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                 tool_name = request.params.name
                 tool_args = request.params.arguments
 
-                span.set_attribute("processed.request.tool_name", tool_name)
+                span.set_attribute(f"processed.request.{GEN_AI_TOOL_NAME}", tool_name)
                 for key, value in tool_args.items():
                     if is_otel_serializable(value):
                         span.set_attribute(f"processed.request.tool_args.{key}", value)

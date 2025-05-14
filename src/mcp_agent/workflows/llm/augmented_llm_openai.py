@@ -37,6 +37,8 @@ from mcp_agent.config import OpenAISettings
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.tracing.semconv import (
     GEN_AI_RESPONSE_FINISH_REASONS,
+    GEN_AI_TOOL_CALL_ID,
+    GEN_AI_TOOL_NAME,
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
@@ -492,8 +494,8 @@ class OpenAIAugmentedLLM(
             tool_call_id = tool_call.id
             tool_args = {}
 
-            span.set_attribute("tool_call_id", tool_call_id)
-            span.set_attribute("tool_name", tool_name)
+            span.set_attribute(GEN_AI_TOOL_CALL_ID, tool_call_id)
+            span.set_attribute(GEN_AI_TOOL_NAME, tool_name)
             span.set_attribute("tool_args", tool_args_str)
 
             try:
@@ -656,9 +658,9 @@ class OpenAIAugmentedLLM(
                                 for j, tool_call in enumerate(
                                     message.get("tool_calls")
                                 ):
-                                    event_data[f"messages.{i}.tool_calls.{j}.id"] = (
-                                        tool_call.id
-                                    )
+                                    event_data[
+                                        f"messages.{i}.tool_calls.{j}.{GEN_AI_TOOL_CALL_ID}"
+                                    ] = tool_call.id
                                     event_data[
                                         f"messages.{i}.tool_calls.{j}.function.name"
                                     ] = tool_call.function.name
@@ -667,8 +669,8 @@ class OpenAIAugmentedLLM(
                                     ] = tool_call.function.arguments
 
                         case "tool":
-                            event_data[f"messages.{i}.tool_call_id"] = message.get(
-                                "tool_call_id"
+                            event_data[f"messages.{i}.{GEN_AI_TOOL_CALL_ID}"] = (
+                                message.get("tool_call_id")
                             )
                             if isinstance(message_content, str):
                                 event_data[f"messages.{i}.content"] = message_content
@@ -753,7 +755,9 @@ class OpenAIAugmentedLLM(
                 )
             if choice.message.tool_calls:
                 for j, tool_call in enumerate(choice.message.tool_calls):
-                    event_data[f"choices.{i}.message.tool_calls.{j}.id"] = tool_call.id
+                    event_data[
+                        f"choices.{i}.message.tool_calls.{j}.{GEN_AI_TOOL_CALL_ID}"
+                    ] = tool_call.id
                     event_data[f"choices.{i}.message.tool_calls.{j}.function.name"] = (
                         tool_call.function.name
                     )

@@ -18,7 +18,7 @@ from mcp.types import (
 )
 
 from mcp_agent.core.context import Context
-from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME
+from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME, GEN_AI_TOOL_NAME
 from mcp_agent.tracing.telemetry import is_otel_serializable
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator, NamespacedPrompt, NamespacedTool
 from mcp_agent.human_input.types import (
@@ -617,7 +617,7 @@ class Agent(BaseModel):
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(f"agent.{self.name}.call_tool") as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.name)
-            span.set_attribute("name", name)
+            span.set_attribute(GEN_AI_TOOL_NAME, name)
             span.set_attribute("initialized", self.initialized)
 
             if server_name:
