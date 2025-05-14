@@ -611,6 +611,7 @@ class MCPAggregator(ContextDependent):
             # Store the arguments in the result for display purposes
             if arguments:
                 result.arguments = arguments
+        return result
 
     def _parse_capability_name(
         self, name: str, capability: Literal["tool", "prompt"]
