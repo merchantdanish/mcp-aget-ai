@@ -13,8 +13,6 @@ from openai.types.chat import (
 from pydantic import BaseModel
 
 from mcp.types import (
-    CallToolRequest,
-    CallToolResult,
     TextContent,
     SamplingMessage,
 )
