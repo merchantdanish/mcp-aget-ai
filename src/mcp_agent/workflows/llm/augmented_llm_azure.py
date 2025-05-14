@@ -369,12 +369,21 @@ class AzureCompletionTasks:
         """
         Request a completion from Azure's API.
         """
-
-        azure_client = ChatCompletionsClient(
-            endpoint=request.config.endpoint,
-            credential=AzureKeyCredential(request.config.api_key),
-            **request.config.model_dump(exclude={"endpoint", "credential"}),
-        )
+        if request.config.api_key:
+            azure_client = ChatCompletionsClient(
+                endpoint=request.config.endpoint,
+                credential=AzureKeyCredential(request.config.api_key),
+                **request.config.model_dump(exclude={"endpoint", "credential"}),
+            )
+        else:
+            azure_client = ChatCompletionsClient(
+                endpoint=request.config.endpoint,
+                credential=DefaultAzureCredential(),
+                credential_scopes=request.config.credential_scopes,
+                **request.config.model_dump(
+                    exclude={"endpoint", "credential", "credential_scopes"}
+                ),
+            )
 
         payload = request.payload
         response = azure_client.complete(**payload)
