@@ -5,19 +5,12 @@ A central context object to store global state that is shared across the applica
 import asyncio
 import concurrent.futures
 from typing import Any, Optional, TYPE_CHECKING
-import uuid
 
 from pydantic import BaseModel, ConfigDict
 
 from mcp import ServerSession
 
 from opentelemetry import trace
-from opentelemetry.propagate import set_global_textmap
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 from mcp_agent.config import get_settings
 from mcp_agent.config import Settings
@@ -35,6 +28,7 @@ from mcp_agent.logging.events import EventFilter
 from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.logging.transport import create_transport
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
+from mcp_agent.tracing.tracer import TracingConfig
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 from mcp_agent.logging.logger import get_logger
 
@@ -84,88 +78,14 @@ class Context(BaseModel):
     )
 
 
-async def configure_otel(config: "Settings"):
+async def configure_otel(config: "Settings", session_id: str | None = None):
     """
     Configure OpenTelemetry based on the application config.
     """
     if not config.otel.enabled:
         return
 
-    # Check if a provider is already set to avoid re-initialization
-    if isinstance(trace.get_tracer_provider(), TracerProvider):
-        logger.info(
-            f"Otel tracer provider already set: {trace.get_tracer_provider().__class__.__name__}"
-        )
-        return
-
-    # Set up global textmap propagator first
-    set_global_textmap(TraceContextTextMapPropagator())
-
-    # pylint: disable=import-outside-toplevel (do not import if otel is not enabled)
-    from importlib.metadata import version
-
-    service_version = config.otel.service_version
-    if not service_version:
-        try:
-            service_version = version("mcp-agent")
-        # pylint: disable=broad-exception-caught
-        except Exception:
-            service_version = "unknown"
-
-    service_name = config.otel.service_name
-    service_instance_id = config.otel.service_instance_id or str(uuid.uuid4())[:6]
-
-    # Create resource identifying this service
-    resource = Resource.create(
-        attributes={
-            key: value
-            for key, value in {
-                "service.name": service_name,
-                "service.instance.id": service_instance_id,
-                "service.version": service_version,
-            }.items()
-            if value is not None
-        }
-    )
-
-    # Create provider with resource
-    tracer_provider = TracerProvider(resource=resource)
-
-    # Add exporters based on config
-    otlp_endpoint = config.otel.otlp_endpoint
-    if otlp_endpoint:
-        exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
-        tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
-
-        if config.otel.console_debug:
-            tracer_provider.add_span_processor(
-                BatchSpanProcessor(ConsoleSpanExporter())
-            )
-    else:
-        # Default to console exporter in development
-        tracer_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
-
-    # Set as global tracer provider
-    trace.set_tracer_provider(tracer_provider)
-
-    # Set up autoinstrumentation
-    # pylint: disable=import-outside-toplevel (do not import if otel is not enabled)
-    try:
-        from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
-
-        AnthropicInstrumentor().instrument()
-    except ModuleNotFoundError:
-        logger.error(
-            "Anthropic otel instrumentation not available. Please install opentelemetry-instrumentation-anthropic."
-        )
-    try:
-        from opentelemetry.instrumentation.openai import OpenAIInstrumentor
-
-        OpenAIInstrumentor().instrument()
-    except ModuleNotFoundError:
-        logger.error(
-            "OpenAI otel instrumentation not available. Please install opentelemetry-instrumentation-anthropic."
-        )
+    await TracingConfig.configure(settings=config.otel, session_id=session_id)
 
 
 async def configure_logger(config: "Settings", session_id: str | None = None):
@@ -235,7 +155,7 @@ async def initialize_context(
     context.workflow_registry = WorkflowRegistry()
 
     # Configure logging and telemetry
-    await configure_otel(config)
+    await configure_otel(config, context.session_id)
     await configure_logger(config, context.session_id)
     await configure_usage_telemetry(config)
 

@@ -636,13 +636,53 @@
       "title": "OpenAISettings",
       "type": "object"
     },
+    "TracePathSettings": {
+      "description": "Settings for configuring trace file paths with dynamic elements like timestamps or session IDs.",
+      "properties": {
+        "path_pattern": {
+          "default": "traces/mcp-agent-{unique_id}.jsonl",
+          "title": "Path Pattern",
+          "type": "string"
+        },
+        "unique_id": {
+          "default": "timestamp",
+          "enum": [
+            "timestamp",
+            "session_id"
+          ],
+          "title": "Unique Id",
+          "type": "string"
+        },
+        "timestamp_format": {
+          "default": "%Y%m%d_%H%M%S",
+          "title": "Timestamp Format",
+          "type": "string"
+        }
+      },
+      "title": "TracePathSettings",
+      "type": "object"
+    },
     "OpenTelemetrySettings": {
       "description": "OTEL settings for the MCP Agent application.",
       "properties": {
         "enabled": {
-          "default": true,
+          "default": false,
           "title": "Enabled",
           "type": "boolean"
+        },
+        "exporters": {
+          "default": [],
+          "items": {
+            "enum": [
+              "console",
+              "file",
+              "otlp"
+            ],
+            "type": "string"
+          },
+          "title": "Exporters",
+          "type": "array",
+          "description": "List of exporters to use (can enable multiple simultaneously)"
         },
         "service_name": {
           "default": "mcp-agent",
@@ -673,6 +713,12 @@
           "default": null,
           "title": "Service Version"
         },
+        "sample_rate": {
+          "default": 1.0,
+          "title": "Sample Rate",
+          "type": "number",
+          "description": "Sample rate for tracing (1.0 = sample everything)"
+        },
         "otlp_endpoint": {
           "anyOf": [
             {
@@ -686,17 +732,16 @@
           "title": "Otlp Endpoint",
           "description": "OTLP endpoint for OpenTelemetry tracing"
         },
-        "console_debug": {
-          "default": false,
-          "title": "Console Debug",
-          "type": "boolean",
-          "description": "Log spans to console"
-        },
-        "sample_rate": {
-          "default": 1.0,
-          "title": "Sample Rate",
-          "type": "number",
-          "description": "Sample rate for tracing (1.0 = sample everything)"
+        "path_settings": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TracePathSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "title": "OpenTelemetrySettings",
@@ -892,12 +937,12 @@
         }
       ],
       "default": {
-        "enabled": true,
+        "enabled": false,
+        "exporters": [],
         "service_name": "mcp-agent",
         "service_instance_id": null,
         "service_version": null,
         "otlp_endpoint": null,
-        "console_debug": false,
         "sample_rate": 1.0
       },
       "description": "OpenTelemetry logging settings for the MCP Agent application"

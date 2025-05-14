@@ -19,6 +19,3 @@ mcp:
     filesystem:
       command: "npx"
       args: ["-y", "@modelcontextprotocol/server-filesystem"]
-
-otel:
-  enabled: false

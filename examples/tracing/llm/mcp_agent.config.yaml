@@ -25,8 +25,8 @@ openai:
   default_model: "gpt-4o-mini"
 
 otel:
-  enable: true
+  enabled: true
+  exporters: ["console", "otlp"]
   # If running jaeger locally, uncomment the following lines
   otlp_endpoint: "http://localhost:4318/v1/traces"
-  console_debug: true
-  service_name: "BasicTracingExample"
+  service_name: "BasicTracingLLMExample"
