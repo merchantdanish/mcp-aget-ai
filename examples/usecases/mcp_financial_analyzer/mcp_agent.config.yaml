@@ -3,17 +3,6 @@ $schema: ../../schema/mcp-agent.config.schema.json
 # Configuration for Stock Analyzer with g-search-mcp
 execution_engine: asyncio
 
-# Logger configuration
-logger:
-  type: console
-  level: debug
-  batch_size: 100
-  flush_interval: 2
-  max_queue_size: 2048
-  http_endpoint:
-  http_headers:
-  http_timeout: 5
-
 # MCP server configurations
 mcp:
   servers:
