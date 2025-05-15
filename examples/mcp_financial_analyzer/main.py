@@ -16,7 +16,7 @@ from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.orchestrator.orchestrator import Orchestrator
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-from mcp_agent.workflows.llm.augmented_llm import RequestParams
+# Removed the unused import: from mcp_agent.workflows.llm.augmented_llm import RequestParams
 
 # Configuration values
 OUTPUT_DIR = "company_reports"
@@ -104,27 +104,12 @@ async def main():
             server_names=["filesystem"],
         )
         
-        # Create orchestrator
-        orchestrator = Orchestrator(
-            llm_factory=OpenAIAugmentedLLM,
-            available_agents=[
-                finder_agent,
-                analyst_agent,
-                report_writer_agent,
-            ],
-            plan_type="full",
-        )
-        
-        # Define task
-        task = f"""Use Google Search to analyze {COMPANY_NAME}:
-        
-        1. Find current stock price and performance
-        2. Find latest earnings results
-        3. Find any major recent news
-        4. Create a brief analysis report
-        5. Save to "{output_file}" in "{OUTPUT_DIR}"
-        
-        Keep everything extremely simple and factual."""
+        # Create the agents list directly without using intermediate variables
+        agents = [
+            finder_agent,
+            analyst_agent,
+            report_writer_agent,
+        ]
         
         # Try with multiple retries if needed
         success = False
@@ -134,14 +119,21 @@ async def main():
                 
             console.print("[bold yellow]Searching and analyzing...[/bold yellow]")
             try:
-                # Execute the orchestrator - without capturing the unused result
-                await orchestrator.generate_str(
-                    message=task,
-                    request_params=RequestParams(
-                        model="gpt-4o", 
-                        temperature=0.1,
-                        max_tokens=800
-                    )
+                # Execute search and analysis without intermediate variables
+                await Orchestrator(
+                    llm_factory=OpenAIAugmentedLLM,
+                    available_agents=agents,
+                    plan_type="full",
+                ).generate_str(
+                    message=f"""Use Google Search to analyze {COMPANY_NAME}:
+        
+                    1. Find current stock price and performance
+                    2. Find latest earnings results
+                    3. Find any major recent news
+                    4. Create a brief analysis report
+                    5. Save to "{output_file}" in "{OUTPUT_DIR}"
+                    
+                    Keep everything extremely simple and factual."""
                 )
                 
                 # Check if output file exists to confirm success
