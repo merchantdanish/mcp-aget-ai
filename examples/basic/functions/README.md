@@ -31,7 +31,7 @@ Install the UV tool (if you don’t have it) to manage dependencies:
 ```bash
 pip install uv
 
-uv add "mcp-agent"
+uv pip install -r requirements.txt
 ```
 
 ## `2` Set up secrets and environment variables
@@ -51,8 +51,6 @@ Run your MCP Agent app:
 ```bash
 uv run main.py
 ```
-
-You’ll see logs initializing the `MCPApp`, calling the `math_agent`, and the agent will call the functions - `add_numbers` and `multiply_numbers` to solve the problem - "Add 2 and 3, then multiply the result by 4."
 
 ## Deploy your MCP Agent app
 
