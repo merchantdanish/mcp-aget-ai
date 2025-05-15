@@ -1,6 +1,6 @@
 # MCP Financial Analyzer with Google Search
 
-This MCP Agent app uses an orchestrator to coordinate multiple specialized agents that work with the [g-search server](https://github.com/jae-jae/g-search-mcp), [fetch server](https://github.com/modelcontextprotocol/servers/tree/main/src/fetch), and [filesystem server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) to generate comprehensive financial reports for companies.
+This MCP Agent app uses an orchestrator with smart data verification to coordinate specialized agents that generate comprehensive financial reports for companies.
 
 ```plaintext
 ┌──────────────┐      ┌──────────────┐
@@ -15,12 +15,12 @@ This MCP Agent app uses an orchestrator to coordinate multiple specialized agent
    │     │        └──▶│  Filesystem  │
    │     │            │  MCP Server  │
    │     │            └──────────────┘
-   ▼     ▼                    
-┌─────┐ ┌─────┐ ┌─────────┐
-│Find │ │Anal-│ │Report   │
-│Agent│ │yst  │ │Writer   │
-│     │ │Agent│ │Agent    │
-└─────┘ └─────┘ └─────────┘
+   ▼     ▼     ▼    ▼         
+┌─────┐ ┌─────┐ ┌─────┐ ┌─────────┐
+│Find │ │Veri-│ │Anal-│ │Report   │
+│Agent│ │fier │ │yst  │ │Writer   │
+│     │ │Agent│ │     │ │         │
+└─────┘ └─────┘ └─────┘ └─────────┘
 ```
 
 ## `1` App set up
@@ -77,26 +77,30 @@ uv run main.py "Microsoft"
 
 The program will:
 1. Use Google Search to find current stock price and financial data
-2. Analyze the company's performance and recent news
-3. Generate a comprehensive report in the `company_reports` directory
+2. Verify the completeness of the data before proceeding
+3. Collect additional information for any missing data points
+4. Analyze the financial data and generate a professional report
+5. Save the report to the `company_reports` directory
 
 ## How It Works
 
-The financial analyzer demonstrates the power of multi-agent orchestration:
+The financial analyzer uses a smart verification process instead of blind retries:
 
-1. **Finder Agent**: Uses Google Search to gather real-time financial data
-2. **Analyst Agent**: Evaluates the financial metrics and identifies key trends
-3. **Report Writer Agent**: Compiles findings into a well-structured markdown report
+1. **Finder Agent**: Uses Google Search to gather financial data with precise instructions
+2. **Verifier Agent**: Checks if the data is complete and flags specific missing information
+3. **Targeted Improvement**: Collects additional data only for the missing items
+4. **Analyst Agent**: Evaluates the financial metrics and identifies key trends
+5. **Report Writer**: Compiles findings into a well-structured markdown report
 
-The orchestrator coordinates these agents, handling the workflow and error recovery.
+This approach ensures high-quality reports by focusing on data completeness rather than simply retrying on failure.
 
 ## Customizing the Analysis
 
 You can modify the agent instructions in `main.py` to focus on different aspects of financial analysis:
 
-- Change search queries to target specific financial metrics
-- Adjust analysis criteria for different industries
-- Customize the report format and content focus
+- Add specific financial metrics to the finder agent instructions
+- Change the verification criteria in the verifier agent
+- Customize the report format and content in the writer agent
 
 ## Deploy your MCP Agent app
 
