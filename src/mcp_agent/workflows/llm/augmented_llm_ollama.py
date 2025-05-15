@@ -1,6 +1,6 @@
 from typing import Type
 
-from openai import OpenAI
+import openai
 
 from mcp_agent.workflows.llm.augmented_llm import (
     ModelT,
@@ -47,7 +47,7 @@ class OllamaAugmentedLLM(OpenAIAugmentedLLM):
 
         # Next we pass the text through instructor to extract structured data
         client = instructor.from_openai(
-            OpenAI(
+            openai.OpenAI(
                 api_key=self.context.config.openai.api_key,
                 base_url=self.context.config.openai.base_url,
             ),
