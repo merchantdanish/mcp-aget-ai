@@ -20,7 +20,9 @@ class FileSpanExporter(SpanExporter):
         self,
         service_name: Optional[str] = None,
         session_id: Optional[str] = None,
-        formatter: Callable[[ReadableSpan], str] = lambda span: span.to_json()
+        formatter: Callable[[ReadableSpan], str] = lambda span: span.to_json(
+            indent=None
+        )
         + linesep,
         path_settings: Optional[TracePathSettings] = None,
     ):
