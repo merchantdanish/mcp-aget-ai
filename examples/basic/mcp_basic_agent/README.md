@@ -30,8 +30,8 @@ Install the UV tool (if you don’t have it) to manage dependencies:
 
 ```bash
 pip install uv
-# then navigate to the mcp_hello_world directory, and inside the example:
-uv add "mcp-agent"
+
+uv pip install -r requirements.txt
 ```
 
 ## `2` Set up environment variables
@@ -45,8 +45,6 @@ Run your MCP Agent app:
 ```bash
 uv run main.py
 ```
-
-You’ll see logs initializing the `MCPApp`, calling the `finder_agent`, and the agent will call tool calls from `fetch` and `filesystem` to summarize the first 2 paragraphs from https://modelcontextprotocol.io/introduction.
 
 ## Deploy your MCP Agent app
 
