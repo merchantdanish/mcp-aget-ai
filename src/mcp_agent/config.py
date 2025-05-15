@@ -224,11 +224,11 @@ class TracePathSettings(BaseModel):
     Settings for configuring trace file paths with dynamic elements like timestamps or session IDs.
     """
 
-    path_pattern: str = "traces/mcp-agent-{unique_id}.jsonl"
+    path_pattern: str = "traces/mcp-agent-trace-{unique_id}.jsonl"
     """
     Path pattern for trace files with a {unique_id} placeholder.
     The placeholder will be replaced according to the unique_id setting.
-    Example: "traces/mcp-agent-{unique_id}.jsonl"
+    Example: "traces/mcp-agent-trace-{unique_id}.jsonl"
     """
 
     unique_id: Literal["timestamp", "session_id"] = "timestamp"

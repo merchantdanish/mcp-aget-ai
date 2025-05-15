@@ -640,7 +640,7 @@
       "description": "Settings for configuring trace file paths with dynamic elements like timestamps or session IDs.",
       "properties": {
         "path_pattern": {
-          "default": "traces/mcp-agent-{unique_id}.jsonl",
+          "default": "traces/mcp-agent-trace-{unique_id}.jsonl",
           "title": "Path Pattern",
           "type": "string"
         },
