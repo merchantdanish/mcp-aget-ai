@@ -12,7 +12,6 @@ import sys
 from datetime import datetime
 from rich.console import Console
 from rich.panel import Panel
-
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.orchestrator.orchestrator import Orchestrator
@@ -98,23 +97,12 @@ async def main():
             1. Start with a very brief company description (1 sentence)
             2. Include current stock price and performance
             3. Summarize latest earnings results
-            4.List All of the news articles that are relevant to the company in the past month
+            4. List All of the news articles that are relevant to the company in the past month
             5. Add a 1-2 sentence outlook on how the company is doing
             
             Format as simple markdown and keep under 600 words total.""",
             server_names=["filesystem"],
         )
-        
-        # Define a ultra-minimal task to reduce token usage
-        task = f"""Use Google Search to analyze {COMPANY_NAME}:
-        
-        1. Find current stock price and performance
-        2. Find latest earnings results
-        3. Find any major recent news
-        4. Create a brief analysis report
-        5. Save to "{output_file}" in "{OUTPUT_DIR}"
-        
-        Keep everything extremely simple and factual."""
         
         # Create orchestrator
         orchestrator = Orchestrator(
@@ -127,6 +115,17 @@ async def main():
             plan_type="full",
         )
         
+        # Define task
+        task = f"""Use Google Search to analyze {COMPANY_NAME}:
+        
+        1. Find current stock price and performance
+        2. Find latest earnings results
+        3. Find any major recent news
+        4. Create a brief analysis report
+        5. Save to "{output_file}" in "{OUTPUT_DIR}"
+        
+        Keep everything extremely simple and factual."""
+        
         # Try with multiple retries if needed
         success = False
         for attempt in range(MAX_RETRIES + 1):
@@ -134,7 +133,17 @@ async def main():
                 console.print(f"[yellow]Retry attempt {attempt}/{MAX_RETRIES}...[/yellow]")
                 
             console.print("[bold yellow]Searching and analyzing...[/bold yellow]")
-            try:   
+            try:
+                # Execute the orchestrator - without capturing the unused result
+                await orchestrator.generate_str(
+                    message=task,
+                    request_params=RequestParams(
+                        model="gpt-4o", 
+                        temperature=0.1,
+                        max_tokens=800
+                    )
+                )
+                
                 # Check if output file exists to confirm success
                 if os.path.exists(output_path):
                     success = True
