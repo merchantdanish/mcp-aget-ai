@@ -1,3 +1,4 @@
+import json
 from typing import Any, Iterable, List, Optional, Type, Union, cast
 
 from pydantic import BaseModel
@@ -37,6 +38,7 @@ from mcp.types import (
 from mcp_agent.config import AnthropicSettings
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.tracing.semconv import (
+    GEN_AI_REQUEST_MODEL,
     GEN_AI_RESPONSE_FINISH_REASONS,
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
@@ -170,7 +172,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             model = await self.select_model(params)
 
             if model:
-                span.set_attribute("model", model)
+                span.set_attribute(GEN_AI_REQUEST_MODEL, model)
 
             total_input_tokens = 0
             total_output_tokens = 0
@@ -332,23 +334,33 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         The default implementation uses Claude as the LLM.
         Override this method to use a different LLM.
         """
-        responses: List[Message] = await self.generate(
-            message=message,
-            request_params=request_params,
-        )
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"llm_anthropic.{self.name}.generate_str"
+        ) as span:
+            self._annotate_span_for_generation_message(span, message)
+            if request_params:
+                self._annotate_span_with_request_params(span, request_params)
 
-        final_text: List[str] = []
+            responses: List[Message] = await self.generate(
+                message=message,
+                request_params=request_params,
+            )
 
-        for response in responses:
-            for content in response.content:
-                if content.type == "text":
-                    final_text.append(content.text)
-                elif content.type == "tool_use":
-                    final_text.append(
-                        f"[Calling tool {content.name} with args {content.input}]"
-                    )
+            final_text: List[str] = []
 
-        return "\n".join(final_text)
+            for response in responses:
+                for content in response.content:
+                    if content.type == "text":
+                        final_text.append(content.text)
+                    elif content.type == "tool_use":
+                        final_text.append(
+                            f"[Calling tool {content.name} with args {content.input}]"
+                        )
+
+            res = "\n".join(final_text)
+            span.set_attribute("response.content", res)
+            return res
 
     async def generate_structured(
         self,
@@ -360,36 +372,56 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         # We need to do this in a two-step process because Instructor doesn't
         # know how to invoke MCP tools via call_tool, so we'll handle all the
         # processing first and then pass the final response through Instructor
-        response = await self.generate_str(
-            message=message,
-            request_params=request_params,
-        )
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"llm_anthropic.{self.name}.generate_structured"
+        ) as span:
+            self._annotate_span_for_generation_message(span, message)
 
-        params = self.get_request_params(request_params)
-        model = await self.select_model(params)
+            response = await self.generate_str(
+                message=message,
+                request_params=request_params,
+            )
 
-        # TODO: saqadri (MAC) - this is brittle, make it more robust by serializing response_model
-        # Get the import path for the class
-        model_path = f"{response_model.__module__}.{response_model.__name__}"
+            params = self.get_request_params(request_params)
+            self._annotate_span_with_request_params(span, params)
 
-        structured_response: ModelT = await self.executor.execute(
-            AnthropicCompletionTasks.request_structured_completion_task,
-            RequestStructuredCompletionRequest(
-                config=self.context.config.anthropic,
-                params=params,
-                # response_model=response_model,
-                model_path=model_path,
-                response_str=response,
-                model=model,
-            ),
-        )
+            model = await self.select_model(params)
+            span.set_attribute(GEN_AI_REQUEST_MODEL, model)
 
-        # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
-        # Convert dict back to the proper model instance if needed
-        if isinstance(structured_response, dict):
-            structured_response = response_model.model_validate(structured_response)
+            # TODO: saqadri (MAC) - this is brittle, make it more robust by serializing response_model
+            # Get the import path for the class
+            model_path = f"{response_model.__module__}.{response_model.__name__}"
+            span.set_attribute("response_model", model_path)
 
-        return structured_response
+            structured_response: ModelT = await self.executor.execute(
+                AnthropicCompletionTasks.request_structured_completion_task,
+                RequestStructuredCompletionRequest(
+                    config=self.context.config.anthropic,
+                    params=params,
+                    # response_model=response_model,
+                    model_path=model_path,
+                    response_str=response,
+                    model=model,
+                ),
+            )
+
+            # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
+            # Convert dict back to the proper model instance if needed
+            if isinstance(structured_response, dict):
+                structured_response = response_model.model_validate(structured_response)
+
+            try:
+                span.set_attribute(
+                    "structured_response_json",
+                    json.dumps(structured_response, default=str, indent=2)[
+                        :1000
+                    ],  # truncate to avoid massive strings
+                )
+            except Exception:
+                span.set_attribute("unstructured_response", response)
+
+            return structured_response
 
     @classmethod
     def convert_message_to_message_param(

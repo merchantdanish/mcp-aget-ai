@@ -36,6 +36,7 @@ from mcp.types import (
 from mcp_agent.config import OpenAISettings
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.tracing.semconv import (
+    GEN_AI_REQUEST_MODEL,
     GEN_AI_RESPONSE_FINISH_REASONS,
     GEN_AI_TOOL_CALL_ID,
     GEN_AI_TOOL_NAME,
@@ -194,7 +195,7 @@ class OpenAIAugmentedLLM(
             responses: List[ChatCompletionMessage] = []
             model = await self.select_model(params)
             if model:
-                span.set_attribute("model", model)
+                span.set_attribute(GEN_AI_REQUEST_MODEL, model)
 
             total_input_tokens = 0
             total_output_tokens = 0
@@ -405,7 +406,7 @@ class OpenAIAugmentedLLM(
             )
 
             model = await self.select_model(params) or "gpt-4o"
-            span.set_attribute("model", model)
+            span.set_attribute(GEN_AI_REQUEST_MODEL, model)
 
             # TODO: saqadri (MAC) - this is brittle, make it more robust by serializing response_model
             # Get the import path for the class
@@ -430,7 +431,7 @@ class OpenAIAugmentedLLM(
             try:
                 span.set_attribute(
                     "structured_response_json",
-                    json.dumps(structured_response, default=str)[
+                    json.dumps(structured_response, default=str, indent=2)[
                         :1000
                     ],  # truncate to avoid massive strings
                 )

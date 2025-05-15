@@ -62,6 +62,11 @@ async def llm_tracing():
             result = await llm.generate("What is the capital of Germany?")
             logger.info(f"llm_agent result: {result}")
 
+            result = await llm.generate_str(
+                message="What is the capital of Italy?",
+            )
+            logger.info(f"llm_agent result: {result}")
+
             structured = await llm.generate_structured(
                 MessageParam(
                     role="user",
