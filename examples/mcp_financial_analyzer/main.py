@@ -209,4 +209,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         console.print("\n[bold red]🛑 Interrupted[/bold red]")
     except Exception as e:
-        console.print(f"[bold red]❌ Error: {e}[/bold red]")
+        console.print(f"[bold red]❌ Error: {e}[/bold red]")# Updated file
