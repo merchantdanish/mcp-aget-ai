@@ -34,15 +34,9 @@ pip install uv
 uv add "mcp-agent"
 ```
 
-## `2` Set up secrets and environment variables
+## `2` Set up environment variables
 
-Copy and configure your secrets and env variables:
-
-```bash
-cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
-```
-
-Then open `mcp_agent.secrets.yaml` and add your api key for your preferred LLM and keys/tokens for your MCP servers.
+In `main.py`, set your `api_key` in `OpenAISettings` and/or `AnthropicSettings`. 
 
 ## `3` Run locally
 
