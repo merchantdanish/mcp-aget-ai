@@ -15,18 +15,19 @@ This MCP Agent app uses a client to connect to the [fetch server](https://github
 
 ## `1` App set up
 
-First, clone the repo and navigate to the basic‑agent example:
+First, clone the repo and navigate to the hello world example:
 
 ```bash
 git clone https://github.com/lastmile-ai/mcp-agent.git
-cd mcp-agent/examples/basic/mcp_basic_agent
+cd mcp-agent/examples/basic/mcp_hello_world
 ```
 
 Install the UV tool (if you don’t have it) to manage dependencies:
 
 ```bash
 pip install uv
-# then navigate to the mcp_hello_world directory, and inside the example:
+
+# inside the example:
 uv add "mcp-agent"
 ```
 
