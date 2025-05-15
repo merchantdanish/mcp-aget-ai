@@ -27,7 +27,7 @@ First, clone the repo and navigate to the mcp_model_selector example:
 
 ```bash
 git clone https://github.com/lastmile-ai/mcp-agent.git
-cd mcp-agent/examples/basic/mcp_server_selector
+cd mcp-agent/examples/basic/mcp_model_selector
 ```
 
 Install the UV tool (if you don’t have it) to manage dependencies:
