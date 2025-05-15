@@ -28,7 +28,7 @@ Install the UV tool (if you don’t have it) to manage dependencies:
 pip install uv
 
 # inside the example:
-uv add "mcp-agent"
+uv pip install -r requirements.txt
 ```
 
 ## `2` Set up secrets and environment variables
@@ -48,8 +48,6 @@ Run your MCP Agent app:
 ```bash
 uv run main.py
 ```
-
-You’ll see logs initializing the `MCPApp`, listing the `fetch` and `filesystem` tools, and running the “finder” agent.
 
 ## Deploy your MCP Agent app
 
