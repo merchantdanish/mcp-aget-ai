@@ -10,7 +10,6 @@ import os
 import time
 import sys
 from datetime import datetime
-from rich import print
 from rich.console import Console
 from rich.panel import Panel
 
@@ -135,17 +134,7 @@ async def main():
                 console.print(f"[yellow]Retry attempt {attempt}/{MAX_RETRIES}...[/yellow]")
                 
             console.print("[bold yellow]Searching and analyzing...[/bold yellow]")
-            try:
-                # Use conservative request params
-                result = await orchestrator.generate_str(
-                    message=task,
-                    request_params=RequestParams(
-                        model="gpt-4o", 
-                        temperature=0.1,
-                        max_tokens=800
-                    )
-                )
-                
+            try:   
                 # Check if output file exists to confirm success
                 if os.path.exists(output_path):
                     success = True
