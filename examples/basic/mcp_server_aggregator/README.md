@@ -27,7 +27,7 @@ Install the UV tool (if you don’t have it) to manage dependencies:
 ```bash
 pip install uv
 
-uv add "mcp-agent"
+uv pip install -r requirements.txt
 ```
 
 ## `2` Set up secrets and environment variables
