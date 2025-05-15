@@ -2,5 +2,8 @@
 mcp-agent @ file://../../../  # Link to the local mcp-agent project root
 
 # Additional dependencies specific to this example
-mcp-agent[anthropic]
-mcp-agent[openai]
+
+# For server-side mcp tracing
+opentelemetry-distro
+opentelemetry-exporter-otlp-proto-http
+openinference-instrumentation-mcp

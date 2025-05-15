@@ -32,6 +32,7 @@ dependencies = [
     "temporalio>=1.10.0",
     "opentelemetry-instrumentation-openai>=0.39.3",
     "opentelemetry-instrumentation-anthropic>=0.39.3",
+    "openinference-instrumentation-mcp>=1.2.1",
 ]
 
 [project.optional-dependencies]

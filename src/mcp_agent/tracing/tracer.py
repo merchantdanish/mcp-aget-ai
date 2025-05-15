@@ -138,6 +138,14 @@ class TracingConfig:
             logger.error(
                 "OpenAI otel instrumentation not available. Please install opentelemetry-instrumentation-anthropic."
             )
+        try:
+            from openinference.instrumentation.mcp import MCPInstrumentor
+
+            MCPInstrumentor().instrument()
+        except ModuleNotFoundError:
+            logger.error(
+                "MCP otel instrumentation not available. Please install openinference-instrumentation-mcp."
+            )
 
         cls._initialized = True
 

@@ -1055,6 +1055,7 @@ dependencies = [
     { name = "instructor" },
     { name = "mcp" },
     { name = "numpy" },
+    { name = "openinference-instrumentation-mcp" },
     { name = "opentelemetry-distro" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-instrumentation-anthropic" },
@@ -1121,6 +1122,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.8.1" },
     { name = "numpy", specifier = ">=2.1.3" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.58.1" },
+    { name = "openinference-instrumentation-mcp", specifier = ">=1.2.1" },
     { name = "opentelemetry-distro", specifier = ">=0.50b0" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.29.0" },
     { name = "opentelemetry-instrumentation-anthropic", specifier = ">=0.39.3" },
@@ -1358,6 +1360,44 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/27/3c/b1ecce430ed56fa3ac1b0676966d3250aab9c70a408232b71e419ea62148/openai-1.58.1.tar.gz", hash = "sha256:f5a035fd01e141fc743f4b0e02c41ca49be8fab0866d3b67f5f29b4f4d3c0973", size = 343411 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8e/5a/d22cd07f1a99b9e8b3c92ee0c1959188db4318828a3d88c9daac120bdd69/openai-1.58.1-py3-none-any.whl", hash = "sha256:e2910b1170a6b7f88ef491ac3a42c387f08bd3db533411f7ee391d166571d63c", size = 454279 },
+]
+
+[[package]]
+name = "openinference-instrumentation"
+version = "0.1.29"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "openinference-semantic-conventions" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-sdk" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/30/c6/6579ce3554a34ea5ea64f1ded0af90b209e8701ed9ce5e8e4603a1e93447/openinference_instrumentation-0.1.29.tar.gz", hash = "sha256:0ec6f009e7a071ea558af1f4649f34f348ba484258205a2ab43cbed547c8245e", size = 20090 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e0/7d/2966d5a33e4f06a03d9e36bfddafb67dd8647f501deaad0b77e4c96aec73/openinference_instrumentation-0.1.29-py3-none-any.whl", hash = "sha256:f103dfcb9b77adc44258c6b8aeb89c6455d3b4ea781d392a4882bd1714347da4", size = 25513 },
+]
+
+[[package]]
+name = "openinference-instrumentation-mcp"
+version = "1.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "openinference-instrumentation" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9b/46/d4343455392e21b5f406917ae0deb06736a82569243b052323c0d3e98b6c/openinference_instrumentation_mcp-1.2.1.tar.gz", hash = "sha256:8d130e449b1dfd6be6f8b4c157223fdc31f37490425c0209ec9aabe85006a1e4", size = 7144 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ac/6a/bb9215b8ba177b0de3736e183a229f3e2f6ad98c37944b71912679f7b1ad/openinference_instrumentation_mcp-1.2.1-py3-none-any.whl", hash = "sha256:24f1e05383f463177178a2f266b55c3c8a29cd5528f5991f14e23fbed1635ec5", size = 8417 },
+]
+
+[[package]]
+name = "openinference-semantic-conventions"
+version = "0.1.17"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/c1/851eed629ee65d38395f586eb4d82d9cc7c61c31de4c523394cc84ee4940/openinference_semantic_conventions-0.1.17.tar.gz", hash = "sha256:8c382f756344887c77f03c8def1702318d8d8cc8b4055f46924aabb7c89ed8bd", size = 9635 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fb/99/306c007c3a2accafcf47fc5c20ea81648c039292ca6770c9c1ab7914dd6b/openinference_semantic_conventions-0.1.17-py3-none-any.whl", hash = "sha256:919b7f2c0b0bdd406377288337d77046efb84866ad4805ad7a73a09368147398", size = 9384 },
 ]
 
 [[package]]

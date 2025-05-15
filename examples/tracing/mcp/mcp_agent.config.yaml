@@ -1,0 +1,28 @@
+$schema: ../../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio
+logger:
+  transports: [file]
+  level: debug
+  progress_display: true
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp" # Options: "timestamp" or "session_id"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+mcp:
+  servers:
+    mcp_test_server_sse:
+      transport: sse
+      url: http://localhost:8000/sse
+
+openai:
+  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
+  default_model: gpt-4o
+
+otel:
+  enabled: true
+  exporters: ["console", "file", "otlp"]
+  # If running jaeger locally, uncomment the following lines
+  otlp_endpoint: "http://localhost:4318/v1/traces"
+  service_name: "BasicTracingMCPSSEExample"
