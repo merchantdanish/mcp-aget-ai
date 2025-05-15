@@ -47,7 +47,3 @@ In another terminal, run:
 ```bash
 uv run main.py
 ```
-
-## Deploy your MCP Agent app
-
-Coming soon

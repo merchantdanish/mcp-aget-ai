@@ -33,6 +33,7 @@ Copy and configure your secrets and env variables:
 ```bash
 cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
 ```
+
 Then open `mcp_agent.secrets.yaml` and add your api key for your preferred LLM and keys/tokens for your MCP servers.
 
 ## `3` Run locally
@@ -42,8 +43,3 @@ Run your MCP Agent app:
 ```bash
 uv run main.py
 ```
-
-## Deploy your MCP Agent app
-
-Coming soon
-

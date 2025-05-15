@@ -53,7 +53,3 @@ Run your MCP Agent app:
 ```bash
 uv run interactive.py
 ```
-
-## Deploy your MCP Agent app
-
-Coming soon

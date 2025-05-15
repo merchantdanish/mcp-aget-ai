@@ -36,7 +36,7 @@ uv pip install -r requirements.txt
 
 ## `2` Set up environment variables
 
-In `main.py`, set your `api_key` in `OpenAISettings` and/or `AnthropicSettings`. 
+In `main.py`, set your `api_key` in `OpenAISettings` and/or `AnthropicSettings`.
 
 ## `3` Run locally
 
@@ -45,7 +45,3 @@ Run your MCP Agent app:
 ```bash
 uv run main.py
 ```
-
-## Deploy your MCP Agent app
-
-Coming soon

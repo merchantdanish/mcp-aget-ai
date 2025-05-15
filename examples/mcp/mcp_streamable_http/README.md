@@ -44,7 +44,3 @@ In a new CLI terminal, run the mcp-agent application:
 ```bash
 uv run main.py
 ```
-
-## Deploy your MCP Agent app
-
-Coming soon
