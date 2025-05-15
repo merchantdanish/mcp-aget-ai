@@ -412,6 +412,7 @@
       "type": "object"
     },
     "MCPServerSettings": {
+      "additionalProperties": true,
       "description": "Represents the configuration for an individual server.",
       "properties": {
         "name": {
@@ -636,32 +637,6 @@
       "title": "OpenAISettings",
       "type": "object"
     },
-    "TracePathSettings": {
-      "description": "Settings for configuring trace file paths with dynamic elements like timestamps or session IDs.",
-      "properties": {
-        "path_pattern": {
-          "default": "traces/mcp-agent-trace-{unique_id}.jsonl",
-          "title": "Path Pattern",
-          "type": "string"
-        },
-        "unique_id": {
-          "default": "timestamp",
-          "enum": [
-            "timestamp",
-            "session_id"
-          ],
-          "title": "Unique Id",
-          "type": "string"
-        },
-        "timestamp_format": {
-          "default": "%Y%m%d_%H%M%S",
-          "title": "Timestamp Format",
-          "type": "string"
-        }
-      },
-      "title": "TracePathSettings",
-      "type": "object"
-    },
     "OpenTelemetrySettings": {
       "description": "OTEL settings for the MCP Agent application.",
       "properties": {
@@ -730,7 +705,7 @@
           ],
           "default": null,
           "title": "Otlp Endpoint",
-          "description": "OTLP endpoint for OpenTelemetry tracing"
+          "description": "OTLP endpoint for OpenTelemetry tracing. Required if using otlp exporter."
         },
         "path_settings": {
           "anyOf": [
@@ -773,8 +748,7 @@
             }
           ],
           "default": null,
-          "title": "Max Concurrent Activities",
-          "type": "integer"
+          "title": "Max Concurrent Activities"
         },
         "api_key": {
           "anyOf": [
@@ -787,6 +761,18 @@
           ],
           "default": null,
           "title": "Api Key"
+        },
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 60,
+          "title": "Timeout Seconds"
         }
       },
       "required": [
@@ -794,6 +780,32 @@
         "task_queue"
       ],
       "title": "TemporalSettings",
+      "type": "object"
+    },
+    "TracePathSettings": {
+      "description": "Settings for configuring trace file paths with dynamic elements like timestamps or session IDs.",
+      "properties": {
+        "path_pattern": {
+          "default": "traces/mcp-agent-trace-{unique_id}.jsonl",
+          "title": "Path Pattern",
+          "type": "string"
+        },
+        "unique_id": {
+          "default": "timestamp",
+          "enum": [
+            "timestamp",
+            "session_id"
+          ],
+          "title": "Unique Id",
+          "type": "string"
+        },
+        "timestamp_format": {
+          "default": "%Y%m%d_%H%M%S",
+          "title": "Timestamp Format",
+          "type": "string"
+        }
+      },
+      "title": "TracePathSettings",
       "type": "object"
     },
     "UsageTelemetrySettings": {
@@ -942,8 +954,9 @@
         "service_name": "mcp-agent",
         "service_instance_id": null,
         "service_version": null,
+        "sample_rate": 1.0,
         "otlp_endpoint": null,
-        "sample_rate": 1.0
+        "path_settings": null
       },
       "description": "OpenTelemetry logging settings for the MCP Agent application"
     },
