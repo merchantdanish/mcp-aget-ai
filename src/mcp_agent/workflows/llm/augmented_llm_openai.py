@@ -1,7 +1,7 @@
 import json
 import re
 import functools
-from typing import Iterable, List, Type, cast
+from typing import Any, Dict, Iterable, List, Type, cast
 
 from pydantic import BaseModel
 
@@ -332,44 +332,14 @@ class OpenAIAugmentedLLM(
             span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
             span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
 
-            for i, response in enumerate(responses):
-                span.set_attribute(f"response.{i}.role", response.role)
-                if response.content:
-                    span.set_attribute(f"response.{i}.content", response.content)
-                if response.refusal:
-                    span.set_attribute(f"response.{i}.refusal", response.refusal)
-                if response.audio:
-                    span.set_attribute(f"response.{i}.audio.id", response.audio.id)
-                    span.set_attribute(
-                        f"response.{i}.audio.expires_at",
-                        response.audio.expires_at,
+            for i, res in enumerate(responses):
+                response_data = (
+                    self._extract_chat_completion_message_attributes_for_tracing(
+                        res, prefix=f"response.{i}"
                     )
-                    span.set_attribute(
-                        f"response.{i}.audio.transcript",
-                    )
-                if response.function_call:
-                    span.set_attribute(
-                        f"response.{i}.function_call.name",
-                        response.function_call.name,
-                    )
-                    span.set_attribute(
-                        f"response.{i}.function_call.arguments",
-                        response.function_call.arguments,
-                    )
-                if response.tool_calls:
-                    for j, tool_call in enumerate(response.tool_calls):
-                        span.set_attribute(
-                            f"response.{i}.tool_calls.{j}.id",
-                            tool_call.id,
-                        )
-                        span.set_attribute(
-                            f"response.{i}.tool_calls.{j}.function.name",
-                            tool_call.function.name,
-                        )
-                        span.set_attribute(
-                            f"response.{i}.tool_calls.{j}.function.arguments",
-                            tool_call.function.arguments,
-                        )
+                )
+                span.set_attributes(response_data)
+
             return responses
 
     async def generate_str(
@@ -710,62 +680,11 @@ class OpenAIAugmentedLLM(
         """Annotate the span with the completion response as an event."""
         event_data = {
             "completion.response.turn": turn,
-            "id": response.id,
-            "model": response.model,
-            "object": response.object,
-            "created": response.created,
         }
 
-        if response.service_tier:
-            event_data["service_tier"] = response.service_tier
-
-        if response.system_fingerprint:
-            event_data["system_fingerprint"] = response.system_fingerprint
-
-        if response.usage:
-            event_data[GEN_AI_USAGE_INPUT_TOKENS] = response.usage.prompt_tokens
-            event_data[GEN_AI_USAGE_OUTPUT_TOKENS] = response.usage.completion_tokens
-
-        finish_reasons = []
-        for i, choice in enumerate(response.choices):
-            event_data[f"choices.{i}.index"] = choice.index
-            event_data[f"choices.{i}.finish_reason"] = choice.finish_reason
-            finish_reasons.append(choice.finish_reason)
-
-            event_data[f"choices.{i}.message.role"] = choice.message.role
-            if choice.message.content is not None:
-                event_data[f"choices.{i}.message.content"] = choice.message.content
-
-            if choice.message.refusal:
-                event_data[f"choices.{i}.message.refusal"] = choice.message.refusal
-            if choice.message.audio is not None:
-                event_data[f"choices.{i}.message.audio.id"] = choice.message.audio.id
-                event_data[f"choices.{i}.message.audio.expires_at"] = (
-                    choice.message.audio.expires_at
-                )
-                event_data[f"choices.{i}.message.audio.transcript"] = (
-                    choice.message.audio.transcript
-                )
-            if choice.message.function_call is not None:
-                event_data[f"choices.{i}.message.function_call.name"] = (
-                    choice.message.function_call.name
-                )
-                event_data[f"choices.{i}.message.function_call.arguments"] = (
-                    choice.message.function_call.arguments
-                )
-            if choice.message.tool_calls:
-                for j, tool_call in enumerate(choice.message.tool_calls):
-                    event_data[
-                        f"choices.{i}.message.tool_calls.{j}.{GEN_AI_TOOL_CALL_ID}"
-                    ] = tool_call.id
-                    event_data[f"choices.{i}.message.tool_calls.{j}.function.name"] = (
-                        tool_call.function.name
-                    )
-                    event_data[
-                        f"choices.{i}.message.tool_calls.{j}.function.arguments"
-                    ] = tool_call.function.arguments
-
-        event_data[GEN_AI_RESPONSE_FINISH_REASONS] = finish_reasons
+        event_data.update(
+            self._extract_chat_completion_attributes_for_tracing(response)
+        )
 
         # Event name is based on the first choice for now
         event_name = f"completion.response.{turn}"
@@ -774,6 +693,90 @@ class OpenAIAugmentedLLM(
             event_name = f"gen_ai.{latest_message_role}.message"
 
         span.add_event(event_name, event_data)
+
+    def _extract_chat_completion_message_attributes_for_tracing(
+        self, message: ChatCompletionMessage, prefix: str | None = None
+    ) -> Dict[str, Any]:
+        """
+        Extract relevant attributes from the ChatCompletionMessage for tracing.
+        """
+        attr_prefix = f"{prefix}." if prefix else ""
+        attrs = {
+            f"{attr_prefix}role": message.role,
+        }
+
+        if message.content is not None:
+            attrs[f"{attr_prefix}content"] = message.content
+
+        if message.refusal:
+            attrs[f"{attr_prefix}refusal"] = message.refusal
+        if message.audio is not None:
+            attrs[f"{attr_prefix}audio.id"] = message.audio.id
+            attrs[f"{attr_prefix}audio.expires_at"] = message.audio.expires_at
+            attrs[f"{attr_prefix}audio.transcript"] = message.audio.transcript
+        if message.function_call is not None:
+            attrs[f"{attr_prefix}function_call.name"] = message.function_call.name
+            attrs[f"{attr_prefix}function_call.arguments"] = (
+                message.function_call.arguments
+            )
+        if message.tool_calls:
+            for j, tool_call in enumerate(message.tool_calls):
+                attrs[f"{attr_prefix}tool_calls.{j}.{GEN_AI_TOOL_CALL_ID}"] = (
+                    tool_call.id
+                )
+                attrs[f"{attr_prefix}tool_calls.{j}.function.name"] = (
+                    tool_call.function.name
+                )
+                attrs[f"{attr_prefix}tool_calls.{j}.function.arguments"] = (
+                    tool_call.function.arguments
+                )
+
+        return attrs
+
+    def _extract_chat_completion_attributes_for_tracing(
+        self, response: ChatCompletion, prefix: str | None = None
+    ) -> Dict[str, Any]:
+        """
+        Extract relevant attributes from the ChatCompletion response for tracing.
+        """
+        attr_prefix = f"{prefix}." if prefix else ""
+        attrs = {
+            f"{attr_prefix}id": response.id,
+            f"{attr_prefix}model": response.model,
+            f"{attr_prefix}object": response.object,
+            f"{attr_prefix}created": response.created,
+        }
+
+        if response.service_tier:
+            attrs[f"{attr_prefix}service_tier"] = response.service_tier
+
+        if response.system_fingerprint:
+            attrs[f"{attr_prefix}system_fingerprint"] = response.system_fingerprint
+
+        if response.usage:
+            attrs[f"{attr_prefix}{GEN_AI_USAGE_INPUT_TOKENS}"] = (
+                response.usage.prompt_tokens
+            )
+            attrs[f"{attr_prefix}{GEN_AI_USAGE_OUTPUT_TOKENS}"] = (
+                response.usage.completion_tokens
+            )
+
+        finish_reasons = []
+        for i, choice in enumerate(response.choices):
+            attrs[f"{attr_prefix}choices.{i}.index"] = choice.index
+            attrs[f"{attr_prefix}choices.{i}.finish_reason"] = choice.finish_reason
+            finish_reasons.append(choice.finish_reason)
+
+            message_attrs = (
+                self._extract_chat_completion_message_attributes_for_tracing(
+                    choice.message, f"{attr_prefix}choices.{i}.message"
+                )
+            )
+            attrs.update(message_attrs)
+
+        attrs[GEN_AI_RESPONSE_FINISH_REASONS] = finish_reasons
+
+        return attrs
 
 
 class OpenAICompletionTasks:
