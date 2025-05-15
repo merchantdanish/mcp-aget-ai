@@ -2,5 +2,6 @@
 mcp-agent @ file://../../../  # Link to the local mcp-agent project root
 
 # Additional dependencies specific to this example
-anthropic
-openai
+mcp-agent[anthropic]
+mcp-agent[azure]
+mcp-agent[openai]
