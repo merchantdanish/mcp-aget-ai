@@ -28,6 +28,7 @@ from mcp_agent.executor.workflow_signal import (
     SignalValueT,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.tracing.telemetry import telemetry
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -272,6 +273,7 @@ class AsyncioExecutor(Executor):
         else:
             return await run_task(task)
 
+    @telemetry.traced(name="AsyncioExecutor.execute")
     async def execute(
         self,
         task: Callable[..., R] | Coroutine[Any, Any, R],
@@ -297,6 +299,7 @@ class AsyncioExecutor(Executor):
                 **kwargs,
             )
 
+    @telemetry.traced(name="AsyncioExecutor.execute_many")
     async def execute_many(
         self,
         tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
@@ -327,6 +330,7 @@ class AsyncioExecutor(Executor):
                 return_exceptions=True,
             )
 
+    @telemetry.traced(name="AsyncioExecutor.execute_streaming")
     async def execute_streaming(
         self,
         tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
@@ -366,6 +370,7 @@ class AsyncioExecutor(Executor):
                 for future in done:
                     yield await future
 
+    @telemetry.traced(name="AsyncioExecutor.signal")
     async def signal(
         self,
         signal_name: str,
@@ -375,6 +380,7 @@ class AsyncioExecutor(Executor):
     ) -> None:
         await super().signal(signal_name, payload, signal_description, workflow_id)
 
+    @telemetry.traced(name="AsyncioExecutor.wait_for_signal")
     async def wait_for_signal(
         self,
         signal_name: str,

@@ -6,6 +6,7 @@ for the Logger module for MCP Agent
 import asyncio
 from collections.abc import Sequence
 import functools
+import inspect
 from typing import Any, Dict, Callable, Optional, Tuple, TYPE_CHECKING
 
 from opentelemetry import trace
@@ -29,9 +30,6 @@ class TelemetryManager(ContextDependent):
     """
 
     def __init__(self, context: Optional["Context"] = None, **kwargs):
-        # If needed, configure resources, exporters, etc.
-        # E.g.: from opentelemetry.sdk.trace import TracerProvider
-        # trace.set_tracer_provider(TracerProvider(...))
         super().__init__(context=context, **kwargs)
 
     def traced(
@@ -48,10 +46,12 @@ class TelemetryManager(ContextDependent):
         def decorator(func):
             span_name = name or f"{func.__module__}.{func.__qualname__}"
 
-            tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-
             @functools.wraps(func)
             async def async_wrapper(*args, **kwargs):
+                from mcp_agent.core.context import get_current_context
+
+                context = get_current_context() or self.context
+                tracer = context.tracer or trace.get_tracer("mcp-agent")
                 with tracer.start_as_current_span(span_name, kind=kind) as span:
                     if attributes:
                         for k, v in attributes.items():
@@ -68,6 +68,10 @@ class TelemetryManager(ContextDependent):
 
             @functools.wraps(func)
             def sync_wrapper(*args, **kwargs):
+                from mcp_agent.core.context import get_current_context
+
+                context = get_current_context() or self.context
+                tracer = context.tracer or trace.get_tracer("mcp-agent")
                 with tracer.start_as_current_span(span_name, kind=kind) as span:
                     if attributes:
                         for k, v in attributes.items():
@@ -90,13 +94,30 @@ class TelemetryManager(ContextDependent):
         return decorator
 
     def _record_args(self, span, args, kwargs):
-        """Optionally record primitive args as span attributes."""
+        """Optionally record primitive args and function/coroutine metadata as span attributes."""
         for i, arg in enumerate(args):
-            if is_otel_serializable(arg):
-                span.set_attribute(f"arg_{i}", str(arg))
+            self._record_attribute(span, f"arg_{i}", arg)
+
         for k, v in kwargs.items():
-            if is_otel_serializable(v):
-                span.set_attribute(k, str(v))
+            self._record_attribute(span, k, v)
+
+    def _record_attribute(self, span, key, value):
+        """Record a single value intelligently on the span."""
+        if is_otel_serializable(value):
+            span.set_attribute(key, str(value))
+        elif isinstance(value, Callable):
+            span.set_attribute(
+                f"{key}_callable_name", getattr(value, "__qualname__", str(value))
+            )
+            span.set_attribute(
+                f"{key}_callable_module", getattr(value, "__module__", "unknown")
+            )
+            span.set_attribute(
+                f"{key}_is_coroutine", asyncio.iscoroutinefunction(value)
+            )
+        elif inspect.iscoroutine(value):
+            span.set_attribute(f"{key}_coroutine", str(value))
+            span.set_attribute(f"{key}_is_coroutine", True)
 
 
 class MCPRequestTrace:
