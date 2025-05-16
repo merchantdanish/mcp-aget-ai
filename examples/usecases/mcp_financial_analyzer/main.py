@@ -147,7 +147,7 @@ async def main():
         logger.info(f"Initializing unified stock analysis workflow for {COMPANY_NAME}")
         
         # Create the evaluator-optimizer for research quality
-        research_eo = EvaluatorOptimizerLLM(
+        EvaluatorOptimizerLLM(
             optimizer=research_optimizer,
             evaluator=research_evaluator,
             llm_factory=OpenAIAugmentedLLM,
@@ -211,4 +211,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
