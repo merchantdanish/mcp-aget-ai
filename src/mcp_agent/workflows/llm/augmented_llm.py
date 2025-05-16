@@ -1,6 +1,7 @@
 from abc import abstractmethod
 
 from typing import (
+    Any,
     Generic,
     List,
     Optional,
@@ -551,6 +552,35 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
             for key, value in request_params.metadata.items():
                 if is_otel_serializable(value):
                     span.set_attribute(f"request_params.metadata.{key}", value)
+
+    def _annotate_span_for_generation_message(
+        self,
+        span: trace.Span,
+        message: str | MessageParamT | List[MessageParamT],
+    ) -> None:
+        """Annotate the span with the message content."""
+        if isinstance(message, str):
+            span.set_attribute("message.content", message)
+        elif isinstance(message, list):
+            for i, msg in enumerate(message):
+                attributes = self._extract_message_param_attributes_for_tracing(
+                    msg, prefix=f"message.{i}"
+                )
+                span.set_attributes(attributes)
+        else:
+            attributes = self._extract_message_param_attributes_for_tracing(
+                message, prefix="message"
+            )
+            span.set_attributes(attributes)
+
+    def _extract_message_param_attributes_for_tracing(
+        self, message_param: MessageParamT, prefix: str = "message"
+    ) -> dict[str, Any]:
+        """
+        Return a flat dict of span attributes for a given MessageParamT.
+        Override this for the AugmentedLLM subclass MessageParamT type.
+        """
+        return {}
 
     def _annotate_span_for_call_tool_result(
         self,

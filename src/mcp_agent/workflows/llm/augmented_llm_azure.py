@@ -40,6 +40,7 @@ from mcp.types import (
 from mcp_agent.config import AzureSettings
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.tracing.semconv import (
+    GEN_AI_AGENT_NAME,
     GEN_AI_REQUEST_MODEL,
     GEN_AI_RESPONSE_FINISH_REASONS,
     GEN_AI_USAGE_INPUT_TOKENS,
@@ -129,6 +130,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(f"llm_azure.{self.name}.generate") as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
 
             messages: list[MessageParam] = []
@@ -404,26 +406,6 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         if message.content:
             return message.content
         return str(message)
-
-    def _annotate_span_for_generation_message(
-        self, span: trace.Span, message: str | MessageParam | List[MessageParam]
-    ):
-        """
-        Annotate the span with the message content.
-        """
-        if isinstance(message, str):
-            span.set_attribute("message.content", message)
-        elif isinstance(message, list):
-            for i, msg in enumerate(message):
-                attributes = self._extract_message_param_attributes_for_tracing(
-                    msg, prefix=f"message.{i}"
-                )
-                span.set_attributes(attributes)
-        else:
-            attributes = self._extract_message_param_attributes_for_tracing(
-                message, prefix="message"
-            )
-            span.set_attributes(attributes)
 
     def _annotate_span_for_completion_request(
         self, span: trace.Span, request: RequestCompletionRequest, turn: int

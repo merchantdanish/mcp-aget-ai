@@ -38,6 +38,7 @@ from mcp.types import (
 from mcp_agent.config import AnthropicSettings
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.tracing.semconv import (
+    GEN_AI_AGENT_NAME,
     GEN_AI_REQUEST_MODEL,
     GEN_AI_RESPONSE_FINISH_REASONS,
     GEN_AI_USAGE_INPUT_TOKENS,
@@ -141,6 +142,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         with tracer.start_as_current_span(
             f"llm_anthropic.{self.name}.generate"
         ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
 
             config = self.context.config
@@ -338,6 +340,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         with tracer.start_as_current_span(
             f"llm_anthropic.{self.name}.generate_str"
         ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
             if request_params:
                 self._annotate_span_with_request_params(span, request_params)
@@ -376,6 +379,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         with tracer.start_as_current_span(
             f"llm_anthropic.{self.name}.generate_structured"
         ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
 
             response = await self.generate_str(
@@ -622,26 +626,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 case "redacted_thinking":
                     attrs[f"{attr_prefix}content.{i}.redacted_thinking"] = block.data
         return attrs
-
-    def _annotate_span_for_generation_message(
-        self,
-        span: trace.Span,
-        message: str | MessageParam | List[MessageParam],
-    ) -> None:
-        """Annotate the span with the message content."""
-        if isinstance(message, str):
-            span.set_attribute("message.content", message)
-        elif isinstance(message, list):
-            for i, msg in enumerate(message):
-                attributes = self._extract_message_param_attributes_for_tracing(
-                    msg, prefix=f"message.{i}"
-                )
-                span.set_attributes(attributes)
-        else:
-            attributes = self._extract_message_param_attributes_for_tracing(
-                message, prefix="message"
-            )
-            span.set_attributes(attributes)
 
     def _annotate_span_for_completion_request(
         self, span: trace.Span, request: RequestCompletionRequest, turn: int

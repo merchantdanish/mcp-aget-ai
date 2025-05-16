@@ -37,6 +37,7 @@ from mcp_agent.config import OpenAISettings
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.tracing.telemetry import telemetry
 from mcp_agent.tracing.semconv import (
+    GEN_AI_AGENT_NAME,
     GEN_AI_REQUEST_MODEL,
     GEN_AI_RESPONSE_FINISH_REASONS,
     GEN_AI_TOOL_CALL_ID,
@@ -147,6 +148,7 @@ class OpenAIAugmentedLLM(
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(f"llm_openai.{self.name}.generate") as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
 
             messages: List[ChatCompletionMessageParam] = []
@@ -358,6 +360,7 @@ class OpenAIAugmentedLLM(
         with tracer.start_as_current_span(
             f"llm_openai.{self.name}.generate_str"
         ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
             if request_params:
                 self._annotate_span_with_request_params(span, request_params)
@@ -396,6 +399,7 @@ class OpenAIAugmentedLLM(
         with tracer.start_as_current_span(
             f"llm_openai.{self.name}.generate_structured"
         ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
 
             params = self.get_request_params(request_params)
@@ -547,6 +551,14 @@ class OpenAIAugmentedLLM(
                     span.set_attribute(f"message.{i}", str(msg))
         else:
             span.set_attribute("message", str(message))
+
+    def _extract_message_param_attributes_for_tracing(
+        self, message_param: ChatCompletionMessageParam, prefix: str = "message"
+    ) -> dict[str, Any]:
+        """Return a flat dict of span attributes for a given ChatCompletionMessageParam."""
+        attrs = {}
+        # TODO: rholinshead - serialize MessageParam dict
+        return attrs
 
     def _annotate_span_for_completion_request(
         self, span: trace.Span, request: RequestCompletionRequest, turn: int
