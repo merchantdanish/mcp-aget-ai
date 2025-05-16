@@ -2,7 +2,36 @@
 
 This Streamlit example shows a RAG Agent that is able to augment its responses using data from Qdrant vector database.
 
-## Usage
+<img width="834" alt="Image" src="https://github.com/user-attachments/assets/14072029-1f37-4ac5-bccf-a76e726ba9b2" />
+
+---
+
+```plaintext
+┌───────────┐      ┌─────────┐      ┌──────────────┐
+│ Streamlit │─────▶│  Agent  │─────▶│  Qdrant      │
+│ App       │      │         │      │  MCP Server  │
+└───────────┘      └─────────┘      └──────────────┘
+```
+
+## `1` App set up
+
+First, clone the repo and navigate to the streamlit mcp rag agent example:
+
+```bash
+git clone https://github.com/lastmile-ai/mcp-agent.git
+cd mcp-agent/examples/usecase/streamlit_mcp_rag_agent
+```
+
+Install the UV tool (if you don’t have it) to manage dependencies:
+
+```bash
+pip install uv
+
+# inside the example:
+uv pip install -r requirements.txt
+```
+
+## `1.1` Install Qdrant
 
 Download latest Qdrant image from Dockerhub:
 
@@ -16,11 +45,20 @@ Then, run the Qdrant server locally with docker:
 docker run -p 6333:6333 -v $(pwd)/qdrant_storage:/qdrant/storage qdrant/qdrant
 ```
 
-Finally, run the example:
+## `2` Set up secrets and environment variables
+
+Copy and configure your secrets and env variables:
 
 ```bash
-uv pip install -r requirements.txt
-uv run streamlit run main.py
+cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
 ```
 
-<img width="834" alt="Image" src="https://github.com/user-attachments/assets/14072029-1f37-4ac5-bccf-a76e726ba9b2" />
+Then open `mcp_agent.secrets.yaml` and add your api key for your preferred LLM.
+
+## `3` Run locally
+
+Run your MCP Agent app:
+
+```bash
+uv run streamlit run main.py
+```

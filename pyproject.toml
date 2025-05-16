@@ -1,6 +1,6 @@
 [project]
 name = "mcp-agent"
-version = "0.0.22"
+version = "0.0.23"
 description = "Build effective agents with Model Context Protocol (MCP) using simple, composable patterns."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -16,7 +16,7 @@ requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115.6",
     "instructor>=1.7.9",
-    "mcp>=1.8.1",
+    "mcp>=1.9.0",
     "opentelemetry-distro>=0.50b0",
     "opentelemetry-exporter-otlp-proto-http>=1.29.0",
     "pydantic-settings>=2.7.0",

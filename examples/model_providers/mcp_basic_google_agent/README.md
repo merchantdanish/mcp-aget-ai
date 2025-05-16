@@ -2,7 +2,24 @@
 
 This example demonstrates how to create and run a basic "Finder" Agent using Google's Gemini models and MCP. The Agent has access to the `fetch` MCP server, enabling it to retrieve information from URLs.
 
-## Setup
+## `1` App set up
+
+First, clone the repo and navigate to the MCP Google Finder Agent example:
+
+```bash
+git clone https://github.com/lastmile-ai/mcp-agent.git
+cd mcp-agent/examples/model_providers/mcp_basic_google_agent
+```
+
+Install the UV tool (if you don’t have it) to manage dependencies:
+
+```bash
+pip install uv
+
+uv pip install -r requirements.txt
+```
+
+## `2` Set up secrets and environment variables
 
 Before running the agent, ensure you have your Gemini Developer API or Vertex AI configuration details set up:
 
@@ -22,6 +39,7 @@ You can provide these in one of the following ways:
 Configuration Options
 
 1. Via `mcp_agent.secrets.yaml` or `mcp_agent.config.yaml`:
+
    ```yaml
    google:
      api_key: "your-google-api-key"
@@ -30,9 +48,10 @@ Configuration Options
      # project: "your-google-cloud-project"
      # location: "us-central1"
    ```
+
 2. Via environment variables (e.g., GOOGLE_API_KEY)
 
-## Running the Agent
+## `3` Run locally
 
 To run the "Finder" agent, navigate to the example directory and execute:
 
