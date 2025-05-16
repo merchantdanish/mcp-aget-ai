@@ -91,7 +91,10 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             )
         )
 
-        self.plan_type: Literal["full", "iterative"] = plan_type
+        if plan_type not in ["full", "iterative"]:
+            raise ValueError("plan_type must be 'full' or 'iterative'")
+        else:
+            self.plan_type: Literal["full", "iterative"] = plan_type
         self.server_registry = self.context.server_registry
         self.agents = {agent.name: agent for agent in available_agents or []}
 
