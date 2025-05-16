@@ -2,7 +2,25 @@
 
 This example demonstrates how to create and run a basic "Finder" Agent using Azure OpenAI model and MCP. The Agent has access to the `fetch` MCP server, enabling it to retrieve information from URLs.
 
-## Setup
+
+## `1` App set up
+
+First, clone the repo and navigate to the mcp_basic_azure_agent example:
+
+```bash
+git clone https://github.com/lastmile-ai/mcp-agent.git
+cd mcp-agent/examples/model_providers/mcp_basic_azure_agent
+```
+
+Install the UV tool (if you don’t have it) to manage dependencies:
+
+```bash
+pip install uv
+
+uv add "mcp-agent"
+```
+
+## `2` Set up Azure OpenAI
 
 Check out the [Azure Python SDK docs](https://learn.microsoft.com/en-us/python/api/overview/azure/ai-inference-readme?view=azure-python-preview#getting-started) to obtain the following values:
 
@@ -32,7 +50,7 @@ To return structured outputs for Azure OpenAI endpoints, you might need to inclu
 
 Attach these values in `mcp_agent.secrets.yaml` or `mcp_agent.config.yaml`
 
-## Running the Agent
+## `3` Run locally
 
 To run the "Finder" agent, navigate to the example directory and execute:
 
@@ -41,3 +59,7 @@ cd examples/model_providers/mcp_basic_azure_agent
 
 uv run --extra azure main.py
 ```
+
+## Deploy your MCP Agent app
+
+Coming soon
