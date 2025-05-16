@@ -7,7 +7,7 @@ This MCP Agent app uses a client to connect to the [fetch server](https://github
 │  Client  │──┬──▶│  Fetch       │
 └──────────┘  │   │  MCP Server  │
               │   └──────────────┘
-              |   ┌──────────────┐
+              │   ┌──────────────┐
               └──▶│  Filesystem  │
                   │  MCP Server  │
                   └──────────────┘

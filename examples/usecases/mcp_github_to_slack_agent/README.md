@@ -39,20 +39,19 @@ This application creates an MCP Agent that monitors GitHub pull requests and sub
 4. In the app view, go to **OAuth & Permissions** on the left-hand navigation
 
 5. Copy the **Bot User OAuth Token**
-   
-6. *[Optional] In OAuth & Permissions, add chat:write, users:read, im:history, chat:write.public to the Bot Token Scopes*
+6. _[Optional] In OAuth & Permissions, add chat:write, users:read, im:history, chat:write.public to the Bot Token Scopes_
 
 7. For **Team ID**, go to the browser and log into your workspace.
-   
 8. In the browser, take the **TEAM ID** from the url: `https://app.slack.com/client/TEAM_ID`
 
 9. Add the **OAuth Token** and the **Team ID** to your `mcp_agent.secrets.yaml` file
 
-10. *[Optional] Make sure to launch and install your Slack bot to your workspace. And, invite the new bot to the channel you want to interact with.*
+10. _[Optional] Make sure to launch and install your Slack bot to your workspace. And, invite the new bot to the channel you want to interact with._
 
 ### Installation
 
 1. Install dependencies:
+
 ```
 uv sync --dev
 ```
@@ -64,6 +63,7 @@ uv sync --dev
 ### Usage
 
 Run the application with:
+
 ```
 uv run main.py --owner <github-owner> --repo <repository-name> --channel <slack-channel>
 ```

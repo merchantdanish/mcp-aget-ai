@@ -2,7 +2,6 @@
 
 This example demonstrates how to create and run a basic "Finder" Agent using Azure OpenAI model and MCP. The Agent has access to the `fetch` MCP server, enabling it to retrieve information from URLs.
 
-
 ## `1` App set up
 
 First, clone the repo and navigate to the mcp_basic_azure_agent example:
@@ -59,7 +58,3 @@ cd examples/model_providers/mcp_basic_azure_agent
 
 uv run --extra azure main.py
 ```
-
-## Deploy your MCP Agent app
-
-Coming soon
