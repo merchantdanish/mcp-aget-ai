@@ -15,6 +15,7 @@ from mcp.shared.session import (
     SendNotificationT,
     SendRequestT,
     SendResultT,
+    ProgressFnT,
 )
 
 from mcp.shared.context import RequestContext
@@ -120,11 +121,12 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         result_type: type[ReceiveResultT],
         request_read_timeout_seconds: timedelta | None = None,
         metadata: MessageMetadata = None,
+        progress_callback: ProgressFnT | None = None,
     ) -> ReceiveResultT:
         logger.debug("send_request: request=", data=request.model_dump())
         try:
             result = await super().send_request(
-                request, result_type, request_read_timeout_seconds, metadata
+                request, result_type, request_read_timeout_seconds, metadata, progress_callback
             )
             logger.debug("send_request: response=", data=result.model_dump())
             return result
