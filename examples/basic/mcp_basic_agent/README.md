@@ -34,7 +34,7 @@ pip install uv
 uv pip install -r requirements.txt
 ```
 
-## `2` Set up environment variables
+## `2` Set up api keys
 
 In `main.py`, set your `api_key` in `OpenAISettings` and/or `AnthropicSettings`.
 
