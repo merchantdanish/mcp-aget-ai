@@ -48,10 +48,7 @@ class TelemetryManager(ContextDependent):
 
             @functools.wraps(func)
             async def async_wrapper(*args, **kwargs):
-                from mcp_agent.core.context import get_current_context
-
-                context = get_current_context() or self.context
-                tracer = context.tracer or trace.get_tracer("mcp-agent")
+                tracer = self.context.tracer or trace.get_tracer("mcp-agent")
                 with tracer.start_as_current_span(span_name, kind=kind) as span:
                     if attributes:
                         for k, v in attributes.items():
@@ -68,10 +65,7 @@ class TelemetryManager(ContextDependent):
 
             @functools.wraps(func)
             def sync_wrapper(*args, **kwargs):
-                from mcp_agent.core.context import get_current_context
-
-                context = get_current_context() or self.context
-                tracer = context.tracer or trace.get_tracer("mcp-agent")
+                tracer = self.context.tracer or trace.get_tracer("mcp-agent")
                 with tracer.start_as_current_span(span_name, kind=kind) as span:
                     if attributes:
                         for k, v in attributes.items():
