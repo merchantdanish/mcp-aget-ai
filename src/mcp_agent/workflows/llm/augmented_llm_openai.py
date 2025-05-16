@@ -337,7 +337,7 @@ class OpenAIAugmentedLLM(
 
         try:
             # Extract structured data from natural language
-            structured_response = async_client.chat.completions.create(
+            structured_response = await async_client.chat.completions.create(
                 model=model or "gpt-4o",
                 response_model=response_model,
                 messages=[
@@ -357,7 +357,7 @@ class OpenAIAugmentedLLM(
                 mode=instructor.Mode.JSON,
             )
 
-            structured_response = async_client.chat.completions.create(
+            structured_response = await async_client.chat.completions.create(
                 model=model or "gpt-4o",
                 response_model=response_model,
                 messages=[
