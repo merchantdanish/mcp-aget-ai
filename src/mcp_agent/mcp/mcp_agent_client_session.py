@@ -4,21 +4,22 @@ It adds logging and supports sampling requests.
 """
 
 from datetime import timedelta
+from opentelemetry import trace
 from typing import Any, Callable, Optional
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from mcp import ClientSession
+from mcp import ClientRequest, ClientSession
 from mcp.shared.session import (
     ReceiveResultT,
     ReceiveNotificationT,
     RequestId,
     SendNotificationT,
-    SendRequestT,
     SendResultT,
+    ProgressFnT,
 )
 
 from mcp.shared.context import RequestContext
-from mcp.shared.message import MessageMetadata
+from mcp.shared.message import ClientMessageMetadata
 
 from mcp.client.session import (
     ListRootsFnT,
@@ -28,9 +29,11 @@ from mcp.client.session import (
 )
 
 from mcp.types import (
+    CallToolRequestParams,
     CreateMessageRequest,
     CreateMessageRequestParams,
     CreateMessageResult,
+    GetPromptRequestParams,
     ErrorData,
     Implementation,
     JSONRPCMessage,
@@ -43,6 +46,14 @@ from mcp.types import (
 from mcp_agent.config import MCPServerSettings
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.tracing.semconv import (
+    MCP_METHOD_NAME,
+    MCP_PROMPT_NAME,
+    MCP_REQUEST_ARGUMENT_KEY,
+    MCP_SESSION_ID,
+    MCP_TOOL_NAME,
+)
+from mcp_agent.tracing.telemetry import record_attributes
 
 logger = get_logger(__name__)
 
@@ -116,21 +127,63 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
 
     async def send_request(
         self,
-        request: SendRequestT,
+        request: ClientRequest,
         result_type: type[ReceiveResultT],
         request_read_timeout_seconds: timedelta | None = None,
-        metadata: MessageMetadata = None,
+        metadata: ClientMessageMetadata = None,
+        progress_callback: ProgressFnT | None = None,
     ) -> ReceiveResultT:
         logger.debug("send_request: request=", data=request.model_dump())
-        try:
-            result = await super().send_request(
-                request, result_type, request_read_timeout_seconds, metadata
-            )
-            logger.debug("send_request: response=", data=result.model_dump())
-            return result
-        except Exception as e:
-            logger.error(f"send_request failed: {e}")
-            raise
+        # tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.send_request", kind=trace.SpanKind.CLIENT
+        ) as span:
+            span.set_attribute(MCP_SESSION_ID, self.get_session_id() or "unknown")
+            span.set_attribute("result_type", str(result_type))
+            span.set_attribute(MCP_METHOD_NAME, request.root.method)
+
+            params = request.root.params
+            if params:
+                if isinstance(params, GetPromptRequestParams):
+                    span.set_attribute(MCP_PROMPT_NAME, params.name)
+                    record_attributes(
+                        span, params.arguments or {}, MCP_REQUEST_ARGUMENT_KEY
+                    )
+                elif isinstance(params, CallToolRequestParams):
+                    span.set_attribute(MCP_TOOL_NAME, params.name)
+                    record_attributes(
+                        span, params.arguments or {}, MCP_REQUEST_ARGUMENT_KEY
+                    )
+                else:
+                    record_attributes(
+                        span, params.model_dump(), MCP_REQUEST_ARGUMENT_KEY
+                    )
+
+            if metadata and metadata.resumption_token:
+                span.set_attribute(
+                    "metadata.resumption_token", metadata.resumption_token
+                )
+            if request_read_timeout_seconds is not None:
+                span.set_attribute(
+                    "request_read_timeout_seconds", str(request_read_timeout_seconds)
+                )
+
+            try:
+                result = await super().send_request(
+                    request,
+                    result_type,
+                    request_read_timeout_seconds,
+                    metadata,
+                    progress_callback,
+                )
+                logger.debug("send_request: response=", data=result.model_dump())
+
+                record_attributes(span, result.model_dump(), "result")
+                return result
+            except Exception as e:
+                logger.error(f"send_request failed: {e}")
+                raise
 
     async def send_notification(
         self,

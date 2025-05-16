@@ -30,7 +30,10 @@ from mcp_agent.tracing.semconv import (
     GEN_AI_TOOL_CALL_ID,
     GEN_AI_TOOL_NAME,
 )
-from mcp_agent.tracing.telemetry import is_otel_serializable
+from mcp_agent.tracing.telemetry import (
+    record_attribute,
+    record_attributes,
+)
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 
 if TYPE_CHECKING:
@@ -420,9 +423,10 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                 span.set_attribute("request.method", request.method)
 
             span.set_attribute("request.params.name", request.params.name)
-            for key, value in request.params.arguments.items():
-                if is_otel_serializable(value):
-                    span.set_attribute(f"request.params.arguments.{key}", value)
+            if request.params.arguments:
+                record_attributes(
+                    span, request.params.arguments, "request.params.arguments"
+                )
 
             try:
                 preprocess = await self.pre_tool_call(
@@ -452,9 +456,8 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                 tool_args = request.params.arguments
 
                 span.set_attribute(f"processed.request.{GEN_AI_TOOL_NAME}", tool_name)
-                for key, value in tool_args.items():
-                    if is_otel_serializable(value):
-                        span.set_attribute(f"processed.request.tool_args.{key}", value)
+                if tool_args:
+                    record_attributes(span, tool_args, "processed.request.tool_args")
 
                 result = await self.agent.call_tool(tool_name, tool_args)
                 self._annotate_span_for_call_tool_result(span, result)
@@ -532,8 +535,10 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                         "request_params.modelPreferences.hints",
                         [hint.name for hint in value],
                     )
-                elif is_otel_serializable(value):
-                    span.set_attribute(f"request_params.modelPreferences.{attr}", value)
+                else:
+                    record_attribute(
+                        span, f"request_params.modelPreferences.{attr}", value
+                    )
         if request_params.systemPrompt:
             span.set_attribute(
                 "request_params.systemPrompt", request_params.systemPrompt
@@ -549,9 +554,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                 request_params.stopSequences,
             )
         if request_params.metadata:
-            for key, value in request_params.metadata.items():
-                if is_otel_serializable(value):
-                    span.set_attribute(f"request_params.metadata.{key}", value)
+            record_attributes(span, request_params.metadata, "request_params.metadata")
 
     def _annotate_span_for_generation_message(
         self,

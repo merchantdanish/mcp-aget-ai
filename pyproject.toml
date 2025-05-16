@@ -16,7 +16,6 @@ requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115.6",
     "instructor>=1.7.9",
-    "mcp>=1.8.1",
     "opentelemetry-distro>=0.50b0",
     "opentelemetry-exporter-otlp-proto-http>=1.29.0",
     "pydantic-settings>=2.7.0",
@@ -32,6 +31,7 @@ dependencies = [
     "temporalio>=1.10.0",
     "opentelemetry-instrumentation-openai>=0.39.3",
     "opentelemetry-instrumentation-anthropic>=0.39.3",
+    "mcp>=1.9.0",
 ]
 
 [project.optional-dependencies]

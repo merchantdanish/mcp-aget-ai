@@ -90,28 +90,38 @@ class TelemetryManager(ContextDependent):
     def _record_args(self, span, args, kwargs):
         """Optionally record primitive args and function/coroutine metadata as span attributes."""
         for i, arg in enumerate(args):
-            self._record_attribute(span, f"arg_{i}", arg)
+            record_attribute(span, f"arg_{i}", arg)
 
-        for k, v in kwargs.items():
-            self._record_attribute(span, k, v)
+        record_attributes(span, kwargs)
 
-    def _record_attribute(self, span, key, value):
-        """Record a single value intelligently on the span."""
-        if is_otel_serializable(value):
-            span.set_attribute(key, str(value))
-        elif isinstance(value, Callable):
-            span.set_attribute(
-                f"{key}_callable_name", getattr(value, "__qualname__", str(value))
-            )
-            span.set_attribute(
-                f"{key}_callable_module", getattr(value, "__module__", "unknown")
-            )
-            span.set_attribute(
-                f"{key}_is_coroutine", asyncio.iscoroutinefunction(value)
-            )
-        elif inspect.iscoroutine(value):
-            span.set_attribute(f"{key}_coroutine", str(value))
-            span.set_attribute(f"{key}_is_coroutine", True)
+
+def record_attribute(span, key, value):
+    """Record a single serializable value on the span."""
+    if is_otel_serializable(value):
+        span.set_attribute(key, str(value))
+    elif isinstance(value, dict):
+        for k, v in value.items():
+            record_attribute(span, f"{key}.{k}", v)
+    elif isinstance(value, Callable):
+        span.set_attribute(
+            f"{key}_callable_name", getattr(value, "__qualname__", str(value))
+        )
+        span.set_attribute(
+            f"{key}_callable_module", getattr(value, "__module__", "unknown")
+        )
+        span.set_attribute(f"{key}_is_coroutine", asyncio.iscoroutinefunction(value))
+    elif inspect.iscoroutine(value):
+        span.set_attribute(f"{key}_coroutine", str(value))
+        span.set_attribute(f"{key}_is_coroutine", True)
+
+
+def record_attributes(span, attributes: Dict[str, Any], prefix: str = ""):
+    """
+    Record attributes on the span, prefixing keys with the provided prefix.
+    """
+    prefix = f"{prefix}." if prefix else ""
+    for key, value in attributes.items():
+        record_attribute(span, f"{prefix}{key}", value)
 
 
 class MCPRequestTrace:

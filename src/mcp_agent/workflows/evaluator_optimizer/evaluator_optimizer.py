@@ -1,5 +1,6 @@
 import contextlib
 from enum import Enum
+import uuid
 from opentelemetry import trace
 from typing import Callable, List, Optional, Type, TYPE_CHECKING
 from pydantic import BaseModel, Field
@@ -90,7 +91,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             llm_factory: Optional factory to create LLMs from agents
         """
         super().__init__(
-            name=f"evaluator-optimizer-{str(context.executor.uuid())}",
+            name=f"evaluator-optimizer-{str(context.uuid() if context else uuid.uuid4())}",
             instruction="You are an evaluator-optimizer workflow that generates responses and evaluates them iteratively until they achieve a necessary quality criteria.",
             context=context,
         )

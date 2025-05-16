@@ -20,7 +20,7 @@ from mcp.types import (
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME, GEN_AI_TOOL_NAME
-from mcp_agent.tracing.telemetry import is_otel_serializable
+from mcp_agent.tracing.telemetry import record_attributes
 from mcp_agent.mcp.gen_client import gen_client
 
 from mcp_agent.core.context_dependent import ContextDependent
@@ -562,9 +562,7 @@ class MCPAggregator(ContextDependent):
             span.set_attribute(GEN_AI_TOOL_NAME, name)
 
             if arguments is not None:
-                for key, value in arguments.items():
-                    if is_otel_serializable(value):
-                        span.set_attribute(f"arguments.{key}", value)
+                record_attributes(span, arguments, "arguments")
 
             if not self.initialized:
                 await self.load_servers()
@@ -767,9 +765,7 @@ class MCPAggregator(ContextDependent):
             span.set_attribute("initialized", self.initialized)
 
             if arguments is not None:
-                for key, value in arguments.items():
-                    if is_otel_serializable(value):
-                        span.set_attribute(f"arguments.{key}", value)
+                record_attributes(span, arguments, "arguments")
 
             if not self.initialized:
                 await self.load_servers()
