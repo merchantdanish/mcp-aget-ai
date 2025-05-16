@@ -35,6 +35,7 @@ from mcp.types import (
 
 from mcp_agent.config import OpenAISettings
 from mcp_agent.executor.workflow_task import workflow_task
+from mcp_agent.tracing.telemetry import telemetry
 from mcp_agent.tracing.semconv import (
     GEN_AI_REQUEST_MODEL,
     GEN_AI_RESPONSE_FINISH_REASONS,
@@ -783,6 +784,7 @@ class OpenAIAugmentedLLM(
 class OpenAICompletionTasks:
     @staticmethod
     @workflow_task
+    @telemetry.traced("llm_openai.request_completion_task")
     async def request_completion_task(
         request: RequestCompletionRequest,
     ) -> ChatCompletion:
@@ -805,6 +807,7 @@ class OpenAICompletionTasks:
 
     @staticmethod
     @workflow_task
+    @telemetry.traced("llm_openai.request_structured_completion_task")
     async def request_structured_completion_task(
         request: RequestStructuredCompletionRequest,
     ) -> ModelT:

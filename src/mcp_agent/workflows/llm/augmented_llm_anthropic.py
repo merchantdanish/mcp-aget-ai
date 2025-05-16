@@ -43,7 +43,7 @@ from mcp_agent.tracing.semconv import (
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
-from mcp_agent.tracing.telemetry import is_otel_serializable
+from mcp_agent.tracing.telemetry import is_otel_serializable, telemetry
 from mcp_agent.utils.common import ensure_serializable, typed_dict_extras, to_string
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
@@ -690,6 +690,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 class AnthropicCompletionTasks:
     @staticmethod
     @workflow_task
+    @telemetry.traced("llm_anthropic.request_completion_task")
     async def request_completion_task(
         request: RequestCompletionRequest,
     ) -> Message:
@@ -706,6 +707,7 @@ class AnthropicCompletionTasks:
 
     @staticmethod
     @workflow_task
+    @telemetry.traced("llm_anthropic.request_structured_completion_task")
     async def request_structured_completion_task(
         request: RequestStructuredCompletionRequest,
     ):
