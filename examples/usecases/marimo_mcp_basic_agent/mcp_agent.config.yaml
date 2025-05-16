@@ -24,7 +24,7 @@ mcp:
         [
           "-y",
           "@modelcontextprotocol/server-filesystem",
-          "/Users/andrew_lastmile_ai/Documents/GitHub/mcp-agent",
+          "."
         ]
 
 openai:
