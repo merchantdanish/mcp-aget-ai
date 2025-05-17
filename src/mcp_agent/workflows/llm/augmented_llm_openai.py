@@ -612,14 +612,18 @@ def openai_content_to_mcp_content(
             elif (
                 c["type"] == "image_url"
             ):  # isinstance(c, ChatCompletionContentPartImageParam):
-                raise NotImplementedError("Image content conversion not implemented")
-                # TODO: saqadri - need to download the image into a base64-encoded string
-                # Download image from c.image_url
-                # return ImageContent(
-                #     type="image",
-                #     data=downloaded_image,
-                #     **c
-                # )
+                if c["image_url"].startswith("data:"):
+                    mime_type, base64_data = image_url_to_mime_and_base64(
+                        c["image_url"]
+                    )
+                    mcp_content.append(
+                        ImageContent(type="image", data=base64_data, mimeType=mime_type)
+                    )
+                else:
+                    # TODO: saqadri - need to download the image into a base64-encoded string
+                    raise NotImplementedError(
+                        "Image content conversion not implemented"
+                    )
             elif (
                 c["type"] == "input_audio"
             ):  # isinstance(c, ChatCompletionContentPartInputAudioParam):
