@@ -601,14 +601,16 @@ def openai_content_to_mcp_content(
     else:
         # TODO: saqadri - this is a best effort conversion, we should handle all possible content types
         for c in content:
-            if c.type == "text":  # isinstance(c, ChatCompletionContentPartTextParam):
+            if (
+                c["type"] == "text"
+            ):  # isinstance(c, ChatCompletionContentPartTextParam):
                 mcp_content.append(
                     TextContent(
-                        type="text", text=c.text, **typed_dict_extras(c, ["text"])
+                        type="text", text=c["text"], **typed_dict_extras(c, ["text"])
                     )
                 )
             elif (
-                c.type == "image_url"
+                c["type"] == "image_url"
             ):  # isinstance(c, ChatCompletionContentPartImageParam):
                 raise NotImplementedError("Image content conversion not implemented")
                 # TODO: saqadri - need to download the image into a base64-encoded string
@@ -619,19 +621,21 @@ def openai_content_to_mcp_content(
                 #     **c
                 # )
             elif (
-                c.type == "input_audio"
+                c["type"] == "input_audio"
             ):  # isinstance(c, ChatCompletionContentPartInputAudioParam):
                 raise NotImplementedError("Audio content conversion not implemented")
             elif (
-                c.type == "refusal"
+                c["type"] == "refusal"
             ):  # isinstance(c, ChatCompletionContentPartRefusalParam):
                 mcp_content.append(
                     TextContent(
-                        type="text", text=c.refusal, **typed_dict_extras(c, ["refusal"])
+                        type="text",
+                        text=c["refusal"],
+                        **typed_dict_extras(c, ["refusal"]),
                     )
                 )
             else:
-                raise ValueError(f"Unexpected content type: {c.type}")
+                raise ValueError(f"Unexpected content type: {c["type"]}")
 
     return mcp_content
 
@@ -639,3 +643,16 @@ def openai_content_to_mcp_content(
 def typed_dict_extras(d: dict, exclude: List[str]):
     extras = {k: v for k, v in d.items() if k not in exclude}
     return extras
+
+
+def image_url_to_mime_and_base64(image_url: str) -> tuple[str, str]:
+    """
+    Extract mime type and base64 data from ImageUrl
+    """
+    import re
+
+    match = re.match(r"data:(image/\w+);base64,(.*)", image_url)
+    if not match:
+        raise ValueError(f"Invalid image data URI: {image_url[:30]}...")
+    mime_type, base64_data = match.groups()
+    return mime_type, base64_data
