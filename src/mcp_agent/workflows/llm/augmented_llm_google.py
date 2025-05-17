@@ -241,8 +241,10 @@ class GoogleAugmentedLLM(
             request_params=request_params,
         )
 
-        client = instructor.from_genai(
-            self.google_client, mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS
+        client = await instructor.from_genai(
+            self.google_client,
+            mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS,
+            async_mode=True,
         )
 
         params = self.get_request_params(request_params)
@@ -251,6 +253,7 @@ class GoogleAugmentedLLM(
         structured_response = client.chat.completions.create(
             model=model,
             response_model=response_model,
+            system="Convert the provided text into the required response model. Do not change the text or add any additional text. Just convert it into the required response model.",
             messages=[
                 {"role": "user", "content": response},
             ],
