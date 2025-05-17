@@ -7,6 +7,7 @@ from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionContentPartParam,
     ChatCompletionContentPartTextParam,
+    ChatCompletionContentPartImageParam,
     ChatCompletionContentPartRefusalParam,
     ChatCompletionMessage,
     ChatCompletionMessageParam,
@@ -412,7 +413,7 @@ class OpenAIAugmentedLLM(
                 role="tool",
                 tool_call_id=tool_call_id,
                 content="\n".join(
-                    str(mcp_content_to_openai_content(c)) for c in result.content
+                    str(mcp_content_to_openai_content_part(c)) for c in result.content
                 ),
             )
 
@@ -490,14 +491,14 @@ class MCPOpenAITypeConverter(
             extras = param.model_dump(exclude={"role", "content"})
             return ChatCompletionAssistantMessageParam(
                 role="assistant",
-                content=mcp_content_to_openai_content(param.content),
+                content=[mcp_content_to_openai_content_part(param.content)],
                 **extras,
             )
         elif param.role == "user":
             extras = param.model_dump(exclude={"role", "content"})
             return ChatCompletionUserMessageParam(
                 role="user",
-                content=mcp_content_to_openai_content(param.content),
+                content=[mcp_content_to_openai_content_part(param.content)],
                 **extras,
             )
         else:
@@ -555,22 +556,14 @@ class MCPOpenAITypeConverter(
             )
 
 
-def mcp_content_to_openai_content(
+def mcp_content_to_openai_content_part(
     content: TextContent | ImageContent | EmbeddedResource,
-) -> ChatCompletionContentPartTextParam:
-    if isinstance(content, list):
-        # Handle list of content items
-        return ChatCompletionContentPartTextParam(
-            type="text",
-            text="\n".join(mcp_content_to_openai_content(c) for c in content),
-        )
-
+) -> ChatCompletionContentPartParam:
     if isinstance(content, TextContent):
         return ChatCompletionContentPartTextParam(type="text", text=content.text)
     elif isinstance(content, ImageContent):
-        # Best effort to convert an image to text
-        return ChatCompletionContentPartTextParam(
-            type="text", text=f"{content.mimeType}:{content.data}"
+        return ChatCompletionContentPartImageParam(
+            type="image_url", image_url=f"data:{content.mimeType};base64,{content.data}"
         )
     elif isinstance(content, EmbeddedResource):
         if isinstance(content.resource, TextResourceContents):
@@ -578,9 +571,17 @@ def mcp_content_to_openai_content(
                 type="text", text=content.resource.text
             )
         else:  # BlobResourceContents
-            return ChatCompletionContentPartTextParam(
-                type="text", text=f"{content.resource.mimeType}:{content.resource.blob}"
-            )
+            if content.resource.mimeType.startswith("image/"):
+                return ChatCompletionContentPartImageParam(
+                    type="image_url",
+                    image_url=f"data:{content.resource.mimeType};base64,{content.resource.blob}",
+                )
+            else:
+                # Best effort if mime type is unknown
+                return ChatCompletionContentPartTextParam(
+                    type="text",
+                    text=f"{content.resource.mimeType}:{content.resource.blob}",
+                )
     else:
         # Last effort to convert the content to a string
         return ChatCompletionContentPartTextParam(type="text", text=str(content))
