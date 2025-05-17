@@ -8,10 +8,45 @@ This example demonstrates a multi-agent setup for handling different customer se
 
 https://github.com/user-attachments/assets/b314d75d-7945-4de6-965b-7f21eb14a8bd
 
-## Agents
+### Agents
 
 1. **Triage Agent**: Determines the type of request and transfers to the appropriate agent.
 2. **Flight Modification Agent**: Handles requests related to flight modifications, further triaging them into:
    - **Flight Cancel Agent**: Manages flight cancellation requests.
    - **Flight Change Agent**: Manages flight change requests.
 3. **Lost Baggage Agent**: Handles lost baggage inquiries.
+
+## `1` App set up
+
+First, clone the repo and navigate to the workflow swarm example:
+
+```bash
+git clone https://github.com/lastmile-ai/mcp-agent.git
+cd mcp-agent/examples/workflows/workflow_swarm
+```
+
+Install the UV tool (if you don’t have it) to manage dependencies:
+
+```bash
+pip install uv
+
+uv pip install -r requirements.txt
+```
+
+## `2` Set up environment variables
+
+Copy and configure your secrets and env variables:
+
+```bash
+cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
+```
+
+Then open `mcp_agent.secrets.yaml` and add your api key for your preferred LLM.
+
+## `3` Run locally
+
+Run your MCP Agent app:
+
+```bash
+uv run main.py
+```

@@ -25,16 +25,40 @@
       "description": "Settings for using Azure models in the MCP Agent application.",
       "properties": {
         "api_key": {
-          "title": "Api Key",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
         },
         "endpoint": {
           "title": "Endpoint",
           "type": "string"
+        },
+        "credential_scopes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": [
+            "https://cognitiveservices.azure.com/.default"
+          ],
+          "title": "Credential Scopes"
         }
       },
       "required": [
-        "api_key",
         "endpoint"
       ],
       "title": "AzureSettings",
@@ -421,6 +445,7 @@
           "enum": [
             "stdio",
             "sse",
+            "streamable_http",
             "websocket"
           ],
           "title": "Transport",
@@ -438,36 +463,15 @@
           ],
           "default": null,
           "title": "Command",
-          "description": "The command to execute the server (e.g. npx)."
+          "description": "The command to execute the server (e.g. npx) in stdio mode."
         },
         "args": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
+          "items": {
+            "type": "string"
+          },
           "title": "Args",
-          "description": "The arguments for the server command."
-        },
-        "read_timeout_seconds": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Read Timeout Seconds",
-          "description": "The timeout in seconds for the server connection."
+          "type": "array",
+          "description": "The arguments for the server command in stdio mode."
         },
         "url": {
           "anyOf": [
@@ -480,19 +484,7 @@
           ],
           "default": null,
           "title": "Url",
-          "description": "The URL for the server (e.g. for SSE transport)."
-        },
-        "auth": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/MCPServerAuthSettings"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The authentication configuration for the server."
+          "description": "The URL for the server for SSE, Streamble HTTP or websocket transport."
         },
         "headers": {
           "anyOf": [
@@ -508,7 +500,48 @@
           ],
           "default": null,
           "title": "Headers",
-          "description": "HTTP headers for sse or websocket requests."
+          "description": "HTTP headers for SSE or Streamable HTTP requests."
+        },
+        "http_timeout_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Http Timeout Seconds"
+        },
+        "read_timeout_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Read Timeout Seconds"
+        },
+        "terminate_on_close": {
+          "default": true,
+          "title": "Terminate On Close",
+          "type": "boolean"
+        },
+        "auth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MCPServerAuthSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The authentication configuration for the server."
         },
         "roots": {
           "anyOf": [
@@ -554,7 +587,6 @@
           "additionalProperties": {
             "$ref": "#/$defs/MCPServerSettings"
           },
-          "default": {},
           "title": "Servers",
           "type": "object"
         }

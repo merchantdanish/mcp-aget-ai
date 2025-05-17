@@ -4,7 +4,7 @@ It adds logging and supports sampling requests.
 """
 
 from datetime import timedelta
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientSession
@@ -15,9 +15,11 @@ from mcp.shared.session import (
     SendNotificationT,
     SendRequestT,
     SendResultT,
+    ProgressFnT,
 )
 
 from mcp.shared.context import RequestContext
+from mcp.shared.message import MessageMetadata
 
 from mcp.client.session import (
     ListRootsFnT,
@@ -83,18 +85,48 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
             message_handler=message_handler,
             client_info=client_info,
         )
+
         self.server_config: Optional[MCPServerSettings] = None
+
+        # Session ID handling for Streamable HTTP transport
+        self._get_session_id_callback: Optional[Callable[[], str | None]] = None
+
+    def set_session_id_callback(self, callback: Callable[[], str | None]) -> None:
+        """
+        Set the callback for retrieving the session ID.
+        This is used by transports that support session IDs, like Streamable HTTP.
+
+        Args:
+            callback: A function that returns the current session ID or None
+        """
+        self._get_session_id_callback = callback
+        logger.debug("Session ID callback set")
+
+    def get_session_id(self) -> str | None:
+        """
+        Get the current session ID if available for this session's transport.
+
+        Returns:
+            The session ID if available, None otherwise
+        """
+        if self._get_session_id_callback:
+            session_id = self._get_session_id_callback()
+            logger.debug(f"Retrieved session ID: {session_id}")
+            return session_id
+        return None
 
     async def send_request(
         self,
         request: SendRequestT,
         result_type: type[ReceiveResultT],
         request_read_timeout_seconds: timedelta | None = None,
+        metadata: MessageMetadata = None,
+        progress_callback: ProgressFnT | None = None,
     ) -> ReceiveResultT:
         logger.debug("send_request: request=", data=request.model_dump())
         try:
             result = await super().send_request(
-                request, result_type, request_read_timeout_seconds
+                request, result_type, request_read_timeout_seconds, metadata, progress_callback
             )
             logger.debug("send_request: response=", data=result.model_dump())
             return result
@@ -102,10 +134,14 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
             logger.error(f"send_request failed: {e}")
             raise
 
-    async def send_notification(self, notification: SendNotificationT) -> None:
+    async def send_notification(
+        self,
+        notification: SendNotificationT,
+        related_request_id: RequestId | None = None,
+    ) -> None:
         logger.debug("send_notification:", data=notification.model_dump())
         try:
-            return await super().send_notification(notification)
+            return await super().send_notification(notification, related_request_id)
         except Exception as e:
             logger.error("send_notification failed", data=e)
             raise

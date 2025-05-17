@@ -21,6 +21,7 @@ from azure.ai.inference.models import (
     ChatRole,
 )
 from azure.core.credentials import AzureKeyCredential
+from azure.identity import DefaultAzureCredential
 from mcp.types import (
     CallToolRequestParams,
     CallToolRequest,
@@ -84,13 +85,23 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 default_model = self.context.config.azure.default_model
 
         if self.context.config.azure:
-            self.azure_client = ChatCompletionsClient(
-                endpoint=self.context.config.azure.endpoint,
-                credential=AzureKeyCredential(self.context.config.azure.api_key),
-                **self.context.config.azure.model_dump(
-                    exclude={"endpoint", "credential"}
-                ),
-            )
+            if self.context.config.azure.api_key:
+                self.azure_client = ChatCompletionsClient(
+                    endpoint=self.context.config.azure.endpoint,
+                    credential=AzureKeyCredential(self.context.config.azure.api_key),
+                    **self.context.config.azure.model_dump(
+                        exclude={"endpoint", "credential"}
+                    ),
+                )
+            else:
+                self.azure_client = ChatCompletionsClient(
+                    endpoint=self.context.config.azure.endpoint,
+                    credential=DefaultAzureCredential(),
+                    credential_scopes=self.context.config.azure.credential_scopes,
+                    **self.context.config.azure.model_dump(
+                        exclude={"endpoint", "credential", "credential_scopes"}
+                    ),
+                )
         else:
             self.logger.error(
                 "Azure configuration not found. Please provide Azure configuration."

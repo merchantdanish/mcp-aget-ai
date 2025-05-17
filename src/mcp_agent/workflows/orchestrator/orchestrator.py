@@ -383,10 +383,20 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         if not agent:
             return ""
 
+        if isinstance(agent, AugmentedLLM):
+            server_names = agent.aggregator.server_names
+        elif isinstance(agent, Agent):
+            server_names = agent.server_names
+        else:
+            logger.warning(
+                f"_format_agent_info: Agent {agent_name} is not an instance of Agent or AugmentedLLM. Skipping."
+            )
+            return ""
+
         servers = "\n".join(
             [
                 f"- {self._format_server_info(server_name)}"
-                for server_name in agent.server_names
+                for server_name in server_names
             ]
         )
 

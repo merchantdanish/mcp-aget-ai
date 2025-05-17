@@ -121,13 +121,13 @@ async def handle_list_tools() -> list[types.Tool]:
                         },
                         "required": ["agent_name", "instruction", "server_names"],
                     },
-                    "required": [
-                        "agent_names",
-                        "instructions",
-                        "message",
-                        "aggregator_agent",
-                    ],
                 },
+                "required": [
+                    "agent_names",
+                    "instructions",
+                    "message",
+                    "aggregator_agent",
+                ],
             },
         ),
         types.Tool(

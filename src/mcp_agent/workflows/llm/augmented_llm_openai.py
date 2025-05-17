@@ -2,7 +2,7 @@ import json
 import re
 from typing import Iterable, List, Type
 
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionContentPartParam,
@@ -117,7 +117,9 @@ class OpenAIAugmentedLLM(
         openai_client = OpenAI(
             api_key=config.openai.api_key,
             base_url=config.openai.base_url,
-            http_client=config.openai.http_client,
+            http_client=config.openai.http_client
+            if hasattr(config.openai, "http_client")
+            else None,
         )
         messages: List[ChatCompletionMessageParam] = []
         params = self.get_request_params(request_params)
@@ -320,10 +322,13 @@ class OpenAIAugmentedLLM(
         )
 
         # Next we pass the text through instructor to extract structured data
-        client = instructor.from_openai(
-            OpenAI(
+        async_client = instructor.from_openai(
+            AsyncOpenAI(
                 api_key=self.context.config.openai.api_key,
                 base_url=self.context.config.openai.base_url,
+                http_client=self.context.config.openai.http_client
+                if hasattr(self.context.config.openai, "http_client")
+                else None,
             ),
         )
 
@@ -332,7 +337,7 @@ class OpenAIAugmentedLLM(
 
         try:
             # Extract structured data from natural language
-            structured_response = client.chat.completions.create(
+            structured_response = await async_client.chat.completions.create(
                 model=model or "gpt-4o",
                 response_model=response_model,
                 messages=[
@@ -341,15 +346,18 @@ class OpenAIAugmentedLLM(
             )
         except InstructorRetryException:
             # Retry the request with JSON mode
-            client = instructor.from_openai(
-                OpenAI(
+            async_client = instructor.from_openai(
+                AsyncOpenAI(
                     api_key=self.context.config.openai.api_key,
                     base_url=self.context.config.openai.base_url,
+                    http_client=self.context.config.openai.http_client
+                    if hasattr(self.context.config.openai, "http_client")
+                    else None,
                 ),
                 mode=instructor.Mode.JSON,
             )
 
-            structured_response = client.chat.completions.create(
+            structured_response = await async_client.chat.completions.create(
                 model=model or "gpt-4o",
                 response_model=response_model,
                 messages=[
