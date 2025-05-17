@@ -241,7 +241,7 @@ class GoogleAugmentedLLM(
             request_params=request_params,
         )
 
-        client = await instructor.from_genai(
+        client = instructor.from_genai(
             self.google_client,
             mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS,
             async_mode=True,
@@ -250,7 +250,7 @@ class GoogleAugmentedLLM(
         params = self.get_request_params(request_params)
         model = await self.select_model(params) or "gemini-2.0-flash"
 
-        structured_response = client.chat.completions.create(
+        structured_response = await client.chat.completions.create(
             model=model,
             response_model=response_model,
             system="Convert the provided text into the required response model. Do not change the text or add any additional text. Just convert it into the required response model.",
