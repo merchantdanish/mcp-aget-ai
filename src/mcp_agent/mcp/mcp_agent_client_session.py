@@ -8,7 +8,7 @@ from opentelemetry import trace
 from typing import Any, Callable, Optional, TYPE_CHECKING
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from mcp import ClientRequest, ClientSession
+from mcp import ClientNotification, ClientRequest, ClientSession
 from mcp.shared.session import (
     ReceiveResultT,
     ReceiveNotificationT,
@@ -50,6 +50,7 @@ from mcp_agent.tracing.semconv import (
     MCP_METHOD_NAME,
     MCP_PROMPT_NAME,
     MCP_REQUEST_ARGUMENT_KEY,
+    MCP_REQUEST_ID,
     MCP_SESSION_ID,
     MCP_TOOL_NAME,
 )
@@ -193,15 +194,28 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
 
     async def send_notification(
         self,
-        notification: SendNotificationT,
+        notification: ClientNotification,
         related_request_id: RequestId | None = None,
     ) -> None:
         logger.debug("send_notification:", data=notification.model_dump())
-        try:
-            return await super().send_notification(notification, related_request_id)
-        except Exception as e:
-            logger.error("send_notification failed", data=e)
-            raise
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.send_notification", kind=trace.SpanKind.CLIENT
+        ) as span:
+            span.set_attribute(MCP_SESSION_ID, self.get_session_id() or "unknown")
+            span.set_attribute(MCP_METHOD_NAME, notification.root.method)
+            if related_request_id:
+                span.set_attribute(MCP_REQUEST_ID, str(related_request_id))
+            if notification.root.params:
+                record_attributes(
+                    span, notification.root.parms.model_dump(), MCP_REQUEST_ARGUMENT_KEY
+                )
+
+            try:
+                return await super().send_notification(notification, related_request_id)
+            except Exception as e:
+                logger.error("send_notification failed", data=e)
+                raise
 
     async def _send_response(
         self, request_id: RequestId, response: SendResultT | ErrorData
@@ -224,18 +238,40 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         return await super()._received_notification(notification)
 
     async def send_progress_notification(
-        self, progress_token: str | int, progress: float, total: float | None = None
+        self,
+        progress_token: str | int,
+        progress: float,
+        total: float | None = None,
+        message: str | None = None,
     ) -> None:
         """
         Sends a progress notification for a request that is currently being
         processed.
         """
         logger.debug(
-            "send_progress_notification: progress_token={progress_token}, progress={progress}, total={total}"
+            "send_progress_notification: progress_token={progress_token}, progress={progress}, total={total}, message={message}"
         )
-        return await super().send_progress_notification(
-            progress_token=progress_token, progress=progress, total=total
-        )
+
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.send_progress_notification",
+            kind=trace.SpanKind.CLIENT,
+        ) as span:
+            span.set_attribute(MCP_SESSION_ID, self.get_session_id() or "unknown")
+            span.set_attribute(MCP_METHOD_NAME, "notifications/progress")
+            span.set_attribute("progress_token", progress_token)
+            span.set_attribute("progress", progress)
+            if total is not None:
+                span.set_attribute("total", total)
+            if message:
+                span.set_attribute("message", message)
+
+            return await super().send_progress_notification(
+                progress_token=progress_token,
+                progress=progress,
+                total=total,
+                message=message,
+            )
 
     async def _handle_sampling_callback(
         self,
