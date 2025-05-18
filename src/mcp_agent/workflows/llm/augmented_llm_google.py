@@ -244,7 +244,7 @@ class GoogleAugmentedLLM(
         client = instructor.from_genai(
             self.google_client,
             mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS,
-            async_mode=True,
+            use_async=True,
         )
 
         params = self.get_request_params(request_params)
