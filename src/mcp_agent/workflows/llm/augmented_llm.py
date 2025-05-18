@@ -609,3 +609,12 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                         f"{prefix}.content.{idx}.text",
                         result.content[idx].text,
                     )
+
+    def extract_response_message_attributes_for_tracing(
+        self, response_message: MessageT, prefix: str | None = None
+    ) -> dict[str, Any]:
+        """
+        Return a flat dict of span attributes for a given MessageT.
+        Override this for the AugmentedLLM subclass MessageT type.
+        """
+        return {}

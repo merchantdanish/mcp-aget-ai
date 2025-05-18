@@ -749,7 +749,7 @@ class CallToolRequest(BaseModel):
     server_name: Optional[str] = None
 
     name: str
-    arguments: Optional[dict[str, str]] = None
+    arguments: Optional[dict[str, Any]] = None
 
 
 class ListPromptsRequest(BaseModel):

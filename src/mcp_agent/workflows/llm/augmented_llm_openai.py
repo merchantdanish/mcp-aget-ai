@@ -337,10 +337,8 @@ class OpenAIAugmentedLLM(
             span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
 
             for i, res in enumerate(responses):
-                response_data = (
-                    self._extract_chat_completion_message_attributes_for_tracing(
-                        res, prefix=f"response.{i}"
-                    )
+                response_data = self.extract_response_message_attributes_for_tracing(
+                    res, prefix=f"response.{i}"
                 )
                 span.set_attributes(response_data)
 
@@ -708,7 +706,7 @@ class OpenAIAugmentedLLM(
 
         span.add_event(event_name, event_data)
 
-    def _extract_chat_completion_message_attributes_for_tracing(
+    def extract_response_message_attributes_for_tracing(
         self, message: ChatCompletionMessage, prefix: str | None = None
     ) -> Dict[str, Any]:
         """
@@ -781,10 +779,8 @@ class OpenAIAugmentedLLM(
             attrs[f"{attr_prefix}choices.{i}.finish_reason"] = choice.finish_reason
             finish_reasons.append(choice.finish_reason)
 
-            message_attrs = (
-                self._extract_chat_completion_message_attributes_for_tracing(
-                    choice.message, f"{attr_prefix}choices.{i}.message"
-                )
+            message_attrs = self.extract_response_message_attributes_for_tracing(
+                choice.message, f"{attr_prefix}choices.{i}.message"
             )
             attrs.update(message_attrs)
 

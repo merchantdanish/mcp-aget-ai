@@ -6,6 +6,7 @@ from typing import Callable, List, Optional, Type, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME
+from mcp_agent.tracing.telemetry import record_attributes
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -162,7 +163,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         """Generate an optimized response through evaluation-guided refinement"""
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
-            f"EvaluatorOptimizerLLM.{self.name}.generate"
+            f"{self.__class__.__name__}.{self.name}.generate"
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
@@ -186,6 +187,14 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                 )
 
             best_response = response
+            if isinstance(response, list) and len(response) > 0:
+                record_attributes(
+                    span,
+                    self.optimizer_llm.extract_response_message_attributes_for_tracing(
+                        response[0]
+                    ),
+                    "initial_response",
+                )
 
             while refinement_count < self.max_refinements:
                 logger.debug("Optimizer result:", data=response)
@@ -217,6 +226,26 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                         "response": response,
                         "evaluation_result": evaluation_result,
                     }
+                )
+
+                eval_response_attributes = (
+                    self.evaluator_llm.extract_response_message_attributes_for_tracing(
+                        response[0], "response"
+                    )
+                    if isinstance(response, list) and len(response) > 0
+                    else {}
+                )
+
+                span.add_event(
+                    f"refinement.{refinement_count}.evaluation_result",
+                    {
+                        "attempt": refinement_count + 1,
+                        "rating": evaluation_result.rating,
+                        "feedback": evaluation_result.feedback,
+                        "needs_improvement": evaluation_result.needs_improvement,
+                        "focus_areas": evaluation_result.focus_areas,
+                        **eval_response_attributes,
+                    },
                 )
 
                 logger.debug("Evaluator result:", data=evaluation_result)
@@ -264,7 +293,30 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                         request_params=request_params,
                     )
 
+                optimizer_response_attributes = (
+                    self.optimizer_llm.extract_response_message_attributes_for_tracing(
+                        response[0], "response"
+                    )
+                    if isinstance(response, list) and len(response) > 0
+                    else {}
+                )
+                span.add_event(
+                    f"refinement.{refinement_count}.optimizer_response",
+                    {
+                        **optimizer_response_attributes,
+                    },
+                )
+
                 refinement_count += 1
+
+            if isinstance(best_response, list) and len(best_response) > 0:
+                record_attributes(
+                    span,
+                    self.optimizer_llm.extract_response_message_attributes_for_tracing(
+                        best_response[0]
+                    ),
+                    "best_response",
+                )
 
             return best_response
 

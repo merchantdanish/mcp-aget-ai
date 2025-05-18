@@ -319,7 +319,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
 
             for i, response in enumerate(responses):
-                response_data = self._extract_message_attributes_for_tracing(
+                response_data = self.extract_response_message_attributes_for_tracing(
                     response, prefix=f"response.{i}"
                 )
                 span.set_attributes(response_data)
@@ -587,7 +587,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                         )
         return attrs
 
-    def _extract_message_attributes_for_tracing(
+    def extract_response_message_attributes_for_tracing(
         self, message: Message, prefix: str | None = None
     ) -> dict[str, Any]:
         """Return a flat dict of span attributes for a given Message."""
@@ -667,7 +667,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         event_data = {
             "completion.response.turn": turn,
         }
-        event_data.update(self._extract_message_attributes_for_tracing(response))
+        event_data.update(
+            self.extract_response_message_attributes_for_tracing(response)
+        )
         span.add_event(f"gen_ai.{response.role}.message", event_data)
 
 

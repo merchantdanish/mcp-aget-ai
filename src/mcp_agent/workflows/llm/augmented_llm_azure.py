@@ -268,7 +268,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
 
             for i, res in enumerate(responses):
-                response_data = self._extract_response_message_attributes_for_tracing(
+                response_data = self.extract_response_message_attributes_for_tracing(
                     res, prefix=f"response.{i}"
                 )
                 span.set_attributes(response_data)
@@ -436,7 +436,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         }
 
         event_data.update(
-            self._extract_response_message_attributes_for_tracing(response)
+            self.extract_response_message_attributes_for_tracing(response)
         )
 
         # Event name is based on the first choice for now
@@ -455,7 +455,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         # TODO: rholinshead - serialize MessageParam dict
         return attrs
 
-    def _extract_response_message_attributes_for_tracing(
+    def extract_response_message_attributes_for_tracing(
         self, response_message: ResponseMessage, prefix: str | None = None
     ) -> dict[str, Any]:
         """Return a flat dict of span attributes for a given ResponseMessage."""
