@@ -5,7 +5,7 @@ It adds logging and supports sampling requests.
 
 from datetime import timedelta
 from opentelemetry import trace
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, TYPE_CHECKING
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientRequest, ClientSession
@@ -55,6 +55,9 @@ from mcp_agent.tracing.semconv import (
 )
 from mcp_agent.tracing.telemetry import record_attributes
 
+if TYPE_CHECKING:
+    from mcp_agent.core.context import Context
+
 logger = get_logger(__name__)
 
 
@@ -79,13 +82,17 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         logging_callback: LoggingFnT | None = None,
         message_handler: MessageHandlerFnT | None = None,
         client_info: Implementation | None = None,
+        context: Optional["Context"] = None,
     ):
+        ContextDependent.__init__(self, context=context)
+
         if sampling_callback is None:
             sampling_callback = self._handle_sampling_callback
         if list_roots_callback is None:
             list_roots_callback = self._handle_list_roots_callback
 
-        super().__init__(
+        ClientSession.__init__(
+            self,
             read_stream=read_stream,
             write_stream=write_stream,
             read_timeout_seconds=read_timeout_seconds,
@@ -134,8 +141,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         progress_callback: ProgressFnT | None = None,
     ) -> ReceiveResultT:
         logger.debug("send_request: request=", data=request.model_dump())
-        # tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        tracer = trace.get_tracer("mcp-agent")
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.send_request", kind=trace.SpanKind.CLIENT
         ) as span:
