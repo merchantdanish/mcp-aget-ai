@@ -5,7 +5,7 @@ from typing import Iterable, List, Type
 
 from pydantic import BaseModel
 
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionContentPartParam,
@@ -480,7 +480,7 @@ class OpenAICompletionTasks:
 
         # Next we pass the text through instructor to extract structured data
         client = instructor.from_openai(
-            OpenAI(
+            AsyncOpenAI(
                 api_key=request.config.api_key,
                 base_url=request.config.base_url,
                 http_client=request.config.http_client
@@ -492,7 +492,7 @@ class OpenAICompletionTasks:
 
         try:
             # Extract structured data from natural language
-            structured_response = client.chat.completions.create(
+            structured_response = await client.chat.completions.create(
                 model=request.model,
                 response_model=response_model,
                 messages=[
@@ -502,7 +502,7 @@ class OpenAICompletionTasks:
         except InstructorRetryException:
             # Retry the request with JSON mode
             client = instructor.from_openai(
-                OpenAI(
+                AsyncOpenAI(
                     api_key=request.config.api_key,
                     base_url=request.config.base_url,
                     http_client=request.config.http_client
@@ -512,22 +512,13 @@ class OpenAICompletionTasks:
                 mode=instructor.Mode.JSON,
             )
 
-            structured_response = client.chat.completions.create(
+            structured_response = await client.chat.completions.create(
                 model=request.model,
                 response_model=response_model,
                 messages=[
                     {"role": "user", "content": request.response_str},
                 ],
             )
-
-        # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
-            model=request.model,
-            response_model=response_model,
-            messages=[
-                {"role": "user", "content": request.response_str},
-            ],
-        )
 
         return structured_response
 

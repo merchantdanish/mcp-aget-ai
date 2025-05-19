@@ -357,6 +357,7 @@ class GoogleCompletionTasks:
         structured_response = client.chat.completions.create(
             model=request.model,
             response_model=request.response_model,
+            system="Convert the provided text into the required response model. Do not change the text or add any additional text. Just convert it into the required response model.",
             messages=[
                 {"role": "user", "content": request.response_str},
             ],
