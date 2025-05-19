@@ -113,7 +113,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
 
     @classmethod
     async def create(
-        cls, name: str | None = None, context: Optional["Context"] = None, **kwargs: Any
+        cls, name: str | None = None, context: Optional["Context"] = None, **kwargs
     ) -> "Workflow":
         """
         Factory method to create and initialize a workflow instance.
@@ -134,7 +134,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
         return workflow
 
     @abstractmethod
-    async def run(self, *args: Any, **kwargs: Any) -> "WorkflowResult[T]":
+    async def run(self, *args, **kwargs) -> "WorkflowResult[T]":
         """
         Main workflow implementation. Must be overridden by subclasses.
 
@@ -163,7 +163,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
         # The run task will be cancelled in the run_async method
         return signal
 
-    async def run_async(self, *args: Any, **kwargs: Any) -> str:
+    async def run_async(self, *args, **kwargs) -> str:
         """
         Run the workflow asynchronously and return a workflow ID.
 

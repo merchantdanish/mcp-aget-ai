@@ -37,13 +37,9 @@ class BasicAgentWorkflow(Workflow[str]):
     @app.workflow_signal(name="resume")
     def resumption(self, value: str | None = None) -> None:
         print(f"resume: Received signal resume..., value: {value}")
-        state = app.context.signal_registry.get_state("resume")
-        print(f"resume: State before signal: {state}")
-        state["completed"] = True
-        state["value"] = value
 
     @app.workflow_run
-    async def run(self) -> WorkflowResult[str]:
+    async def run(self, *args, **kwargs) -> WorkflowResult[str]:
         """
         Run the basic agent workflow.
 

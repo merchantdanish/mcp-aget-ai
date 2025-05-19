@@ -2,9 +2,9 @@ import asyncio
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, Callable, Dict, Generic, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, Generic, Optional, Sequence, TYPE_CHECKING
 
-from temporalio import workflow, exceptions
+from temporalio import common, exceptions, workflow
 
 from mcp_agent.executor.workflow_signal import BaseSignalHandler, Signal, SignalValueT
 from mcp_agent.logging.logger import get_logger
@@ -106,8 +106,12 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
         self._mailbox_ref.set(mb)
 
         # Register a single dynamic signal handler for all signals
+        # Dynamic signal handler MUST have 3 arguments: self, name (str), and args (Sequence[RawValue])
         @workflow.signal(dynamic=True)
-        async def _signal_receiver(name: str, payload: Any):
+        async def _signal_receiver(self, name: str, args: Sequence[common.RawValue]):
+            # For dynamic signals, the payload is typically the first element in args
+            payload = args[0] if args else None
+
             # Update the mailbox
             mb.push(name, payload)
 
@@ -226,7 +230,7 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
     def validate_signal(self, signal):
         super().validate_signal(signal)
         # Add TemporalSignalHandler-specific validation
-        if signal.workflow_id or signal.run_id is None:
+        if signal.workflow_id is None or signal.run_id is None:
             raise ValueError(
                 "No workflow_id or run_id provided on Signal. That is required for Temporal signals"
             )
