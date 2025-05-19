@@ -140,7 +140,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
-            f"llm_anthropic.{self.name}.generate"
+            f"{self.__class__.__name__}.{self.name}.generate"
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
@@ -338,7 +338,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
-            f"llm_anthropic.{self.name}.generate_str"
+            f"{self.__class__.__name__}.{self.name}.generate_str"
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
@@ -362,7 +362,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                         )
 
             res = "\n".join(final_text)
-            span.set_attribute("response.content", res)
+            span.set_attribute("response", res)
             return res
 
     async def generate_structured(
@@ -377,7 +377,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         # processing first and then pass the final response through Instructor
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
-            f"llm_anthropic.{self.name}.generate_structured"
+            f"{self.__class__.__name__}.{self.name}.generate_structured"
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
@@ -676,7 +676,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 class AnthropicCompletionTasks:
     @staticmethod
     @workflow_task
-    @telemetry.traced("llm_anthropic.request_completion_task")
+    @telemetry.traced()
     async def request_completion_task(
         request: RequestCompletionRequest,
     ) -> Message:
@@ -693,7 +693,7 @@ class AnthropicCompletionTasks:
 
     @staticmethod
     @workflow_task
-    @telemetry.traced("llm_anthropic.request_structured_completion_task")
+    @telemetry.traced()
     async def request_structured_completion_task(
         request: RequestStructuredCompletionRequest,
     ):

@@ -161,7 +161,9 @@ class Agent(BaseModel):
             An instance of AugmentedLLM or one of its subclasses.
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span(f"agent.{self.name}.attach_llm") as span:
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.attach_llm"
+        ) as span:
             if llm:
                 self.llm = llm
             elif llm_factory:
@@ -180,7 +182,9 @@ class Agent(BaseModel):
     async def initialize(self, force: bool = False):
         """Initialize the agent."""
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span(f"agent.{self.name}.initialize") as span:
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.initialize"
+        ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("server_names", self.server_names)
             span.set_attribute("connection_persistence", self.connection_persistence)
@@ -236,7 +240,9 @@ class Agent(BaseModel):
         logger.debug(f"Shutting down agent {self.name}...")
 
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span(f"agent.{self.name}.shutdown") as span:
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.shutdown"
+        ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.add_event("agent_shutdown_start")
 
@@ -271,7 +277,7 @@ class Agent(BaseModel):
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
-            f"agent.{self.name}.get_capabilities"
+            f"{self.__class__.__name__}.{self.name}.get_capabilities"
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("initialized", self.initialized)
@@ -319,7 +325,9 @@ class Agent(BaseModel):
 
     async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span(f"agent.{self.name}.list_tools") as span:
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.list_tools"
+        ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("initialized", self.initialized)
             span.set_attribute(
@@ -429,7 +437,9 @@ class Agent(BaseModel):
 
     async def list_prompts(self, server_name: str | None = None) -> ListPromptsResult:
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span(f"agent.{self.name}.list_prompts") as span:
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.list_prompts"
+        ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("initialized", self.initialized)
 
@@ -470,7 +480,9 @@ class Agent(BaseModel):
         self, name: str, arguments: dict[str, str] | None = None
     ) -> GetPromptResult:
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span(f"agent.{self.name}.get_prompt") as span:
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.get_prompt"
+        ) as span:
             span.set_attribute("name", name)
             span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("initialized", self.initialized)
@@ -526,7 +538,7 @@ class Agent(BaseModel):
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
-            f"agent.{self.name}.request_human_input"
+            f"{self.__class__.__name__}.{self.name}.request_human_input"
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("initialized", self.initialized)
@@ -609,7 +621,9 @@ class Agent(BaseModel):
         # Call the tool on the server
 
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span(f"agent.{self.name}.call_tool") as span:
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.call_tool"
+        ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute(GEN_AI_TOOL_NAME, name)
             span.set_attribute("initialized", self.initialized)

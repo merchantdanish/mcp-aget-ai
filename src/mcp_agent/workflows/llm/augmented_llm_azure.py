@@ -456,7 +456,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         return attrs
 
     def extract_response_message_attributes_for_tracing(
-        self, response_message: ResponseMessage, prefix: str | None = None
+        self, message: ResponseMessage, prefix: str | None = None
     ) -> dict[str, Any]:
         """Return a flat dict of span attributes for a given ResponseMessage."""
         attrs = {}

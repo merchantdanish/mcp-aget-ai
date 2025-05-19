@@ -147,7 +147,9 @@ class OpenAIAugmentedLLM(
         Override this method to use a different LLM.
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span(f"llm_openai.{self.name}.generate") as span:
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.generate"
+        ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
 
@@ -356,7 +358,7 @@ class OpenAIAugmentedLLM(
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
-            f"llm_openai.{self.name}.generate_str"
+            f"{self.__class__.__name__}.{self.name}.generate_str"
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
@@ -380,7 +382,7 @@ class OpenAIAugmentedLLM(
                     continue
 
             res = "\n".join(final_text)
-            span.set_attribute("response.content", res)
+            span.set_attribute("response", res)
             return res
 
     async def generate_structured(
@@ -395,7 +397,7 @@ class OpenAIAugmentedLLM(
         # processing first and then pass the final response through Instructor
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
-            f"llm_openai.{self.name}.generate_structured"
+            f"{self.__class__.__name__}.{self.name}.generate_structured"
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
@@ -461,7 +463,7 @@ class OpenAIAugmentedLLM(
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
-            f"llm_openai.{self.name}.execute_tool_call"
+            f"{self.__class__.__name__}.{self.name}.execute_tool_call"
         ) as span:
             tool_name = tool_call.function.name
             tool_args_str = tool_call.function.arguments
@@ -792,7 +794,7 @@ class OpenAIAugmentedLLM(
 class OpenAICompletionTasks:
     @staticmethod
     @workflow_task
-    @telemetry.traced("llm_openai.request_completion_task")
+    @telemetry.traced()
     async def request_completion_task(
         request: RequestCompletionRequest,
     ) -> ChatCompletion:
@@ -815,7 +817,7 @@ class OpenAICompletionTasks:
 
     @staticmethod
     @workflow_task
-    @telemetry.traced("llm_openai.request_structured_completion_task")
+    @telemetry.traced()
     async def request_structured_completion_task(
         request: RequestStructuredCompletionRequest,
     ) -> ModelT:

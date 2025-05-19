@@ -298,7 +298,9 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         If a model is specified in the request, it will override the model selection criteria.
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span(f"llm.{self.name}.select_model") as span:
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.select_model"
+        ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             model_preferences = self.model_preferences
             if request_params is not None:
@@ -416,7 +418,9 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     ) -> CallToolResult:
         """Call a tool with the given parameters and optional ID"""
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span(f"llm.{self.name}.call_tool") as span:
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.call_tool"
+        ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             if tool_call_id:
                 span.set_attribute(GEN_AI_TOOL_CALL_ID, tool_call_id)
@@ -611,7 +615,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                     )
 
     def extract_response_message_attributes_for_tracing(
-        self, response_message: MessageT, prefix: str | None = None
+        self, message: MessageT, prefix: str | None = None
     ) -> dict[str, Any]:
         """
         Return a flat dict of span attributes for a given MessageT.

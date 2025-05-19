@@ -1,5 +1,6 @@
 import contextlib
 from enum import Enum
+import json
 import uuid
 from opentelemetry import trace
 from typing import Callable, List, Optional, Type, TYPE_CHECKING
@@ -326,12 +327,24 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ) -> str:
         """Generate an optimized response and return it as a string"""
-        response = await self.generate(
-            message=message,
-            request_params=request_params,
-        )
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.generate_str"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+            self._annotate_span_for_generation_message(span, message)
 
-        return "\n".join(self.optimizer_llm.message_str(r) for r in response)
+            if request_params:
+                self._annotate_span_with_request_params(span, request_params)
+
+            response = await self.generate(
+                message=message,
+                request_params=request_params,
+            )
+
+            res = "\n".join(self.optimizer_llm.message_str(r) for r in response)
+            span.set_attribute("response", res)
+            return res
 
     async def generate_structured(
         self,
@@ -340,15 +353,41 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ) -> ModelT:
         """Generate an optimized structured response"""
-        response_str = await self.generate_str(
-            message=message, request_params=request_params
-        )
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.generate_structured"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+            self._annotate_span_for_generation_message(span, message)
 
-        return await self.optimizer.generate_structured(
-            message=response_str,
-            response_model=response_model,
-            request_params=request_params,
-        )
+            if request_params:
+                self._annotate_span_with_request_params(span, request_params)
+            span.set_attribute(
+                "response_model",
+                f"{response_model.__module__}.{response_model.__name__}",
+            )
+
+            response_str = await self.generate_str(
+                message=message, request_params=request_params
+            )
+
+            res = await self.optimizer.generate_structured(
+                message=response_str,
+                response_model=response_model,
+                request_params=request_params,
+            )
+
+            try:
+                span.set_attribute(
+                    "structured_response_json",
+                    json.dumps(res, default=str, indent=2)[
+                        :1000
+                    ],  # truncate to avoid massive strings
+                )
+            except Exception:
+                span.set_attribute("unstructured_response", response_str)
+
+            return res
 
     def _build_eval_prompt(
         self, original_request: str, current_response: str, iteration: int

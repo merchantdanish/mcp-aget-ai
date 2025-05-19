@@ -135,7 +135,9 @@ class ModelSelector(ContextDependent):
         Select the best model from a given list of models based on the given model preferences.
         """
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
-        with tracer.start_as_current_span("model_selector.select_best_model") as span:
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.select_best_model"
+        ) as span:
             if self.benchmark_weights:
                 for k, v in self.benchmark_weights.items():
                     span.set_attribute(f"benchmark_weights.{k}", v)
