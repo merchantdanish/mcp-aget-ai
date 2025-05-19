@@ -31,7 +31,7 @@ async def main():
         async with gen_client("basic_agent_server", context.server_registry) as server:
             # Call the BasicAgentWorkflow
             run_result = await server.call_tool(
-                "workflows/BasicAgentWorkflow/run",
+                "workflows-BasicAgentWorkflow-run",
                 arguments={
                     "run_parameters": {
                         "input": "Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction"

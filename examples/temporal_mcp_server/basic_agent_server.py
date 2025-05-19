@@ -8,15 +8,11 @@ This example demonstrates three approaches to creating agents and workflows:
 """
 
 import asyncio
-import os
 import logging
-from pydantic import BaseModel
 
 from mcp_agent.app import MCPApp
 from mcp_agent.executor.workflow_signal import Signal
 from mcp_agent.server.app_server import create_mcp_server_for_app
-from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 
 # Initialize logging
@@ -38,9 +34,11 @@ class BasicAgentWorkflow(Workflow[str]):
     This workflow is used as an example of a basic agent configuration.
     """
 
-    @app.workflow_signal
-    def resume(self, value: str | None = None) -> None:
+    @app.workflow_signal(name="resume")
+    def resumption(self, value: str | None = None) -> None:
+        print(f"resume: Received signal resume..., value: {value}")
         state = app.context.signal_registry.get_state("resume")
+        print(f"resume: State before signal: {state}")
         state["completed"] = True
         state["value"] = value
 
@@ -55,7 +53,10 @@ class BasicAgentWorkflow(Workflow[str]):
         Returns:
             WorkflowResult containing the processed data.
         """
+        print("Running BasicAgentWorkflow...")
+        print("About to wait for signal...")
         await app.context.executor.signal_bus.wait_for_signal(Signal(name="resume"))
+        print("Signal received, resuming workflow...")
         # finder_agent = Agent(
         #     name="finder",
         #     instruction="""You are a helpful assistant.""",

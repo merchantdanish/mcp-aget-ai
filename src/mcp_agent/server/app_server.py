@@ -473,6 +473,10 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         if not workflow:
             raise ToolError(f"Workflow with ID '{workflow_id}' not found.")
 
+        logger.info(
+            f"Resuming workflow {workflow_id} with signal '{signal_name}' and payload '{payload}'"
+        )
+
         # Resume the workflow directly
         return await workflow.resume(signal_name, payload)
 

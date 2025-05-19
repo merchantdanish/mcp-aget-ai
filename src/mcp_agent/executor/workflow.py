@@ -6,11 +6,8 @@ from typing import (
     Generic,
     Optional,
     TypeVar,
-    List,
     TYPE_CHECKING,
 )
-
-import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,134 +18,8 @@ from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
-    import asyncio
 
 T = TypeVar("T")
-
-
-class WorkflowRegistry:
-    """
-    Registry for tracking workflow instances.
-    Provides a central place to register, look up, and manage workflow instances.
-
-    TODO: saqadri (MAC) - How does this work with proper workflow orchestration?
-    For example, when using Temporal, this registry should interface with the
-    workflow service to manage workflow instances.
-    """
-
-    def __init__(self):
-        self._workflows: Dict[str, "Workflow"] = {}
-        self._tasks: Dict[str, "asyncio.Task"] = {}
-        self._logger = get_logger("workflow.registry")
-
-    def register(
-        self,
-        workflow_id: str,
-        workflow: "Workflow",
-        task: Optional["asyncio.Task"] = None,
-    ) -> None:
-        """
-        Register a workflow instance and its associated task.
-
-        Args:
-            workflow_id: The unique ID for the workflow
-            workflow: The workflow instance
-            task: The asyncio task running the workflow
-        """
-        self._workflows[workflow_id] = workflow
-        if task:
-            self._tasks[workflow_id] = task
-
-    def unregister(self, workflow_id: str) -> None:
-        """
-        Remove a workflow instance from the registry.
-
-        Args:
-            workflow_id: The unique ID for the workflow
-        """
-        self._workflows.pop(workflow_id, None)
-        self._tasks.pop(workflow_id, None)
-
-    def get_workflow(self, workflow_id: str) -> Optional["Workflow"]:
-        """
-        Get a workflow instance by ID.
-
-        Args:
-            workflow_id: The unique ID for the workflow
-
-        Returns:
-            The workflow instance, or None if not found
-        """
-        return self._workflows.get(workflow_id)
-
-    async def resume_workflow(
-        self,
-        workflow_id: str,
-        signal_name: str | None = "resume",
-        payload: str | None = None,
-    ) -> bool:
-        workflow = self.get_workflow(workflow_id)
-        if not workflow:
-            self._logger.error(
-                f"Cannot resume workflow {workflow_id}: workflow not found"
-            )
-            return False
-
-        return await workflow.resume(signal_name, payload)
-
-    async def cancel_workflow(self, workflow_id: str) -> bool:
-        workflow = self.get_workflow(workflow_id)
-        if not workflow:
-            self._logger.error(
-                f"Cannot cancel workflow {workflow_id}: workflow not found"
-            )
-            return False
-
-        return await workflow.cancel()
-
-    def get_workflow_status(self, workflow_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get the status of a workflow by ID.
-
-        Args:
-            workflow_id: The unique ID of the workflow to check
-
-        Returns:
-            The workflow status if found, None otherwise
-        """
-        workflow = self.get_workflow(workflow_id)
-        if not workflow:
-            return None
-
-        return workflow.get_status()
-
-    def list_workflow_statuses(self) -> List[Dict[str, Any]]:
-        """
-        List all registered workflow instances with their status.
-
-        Returns:
-            A list of dictionaries with workflow information
-        """
-        result = []
-        for workflow_id, workflow in self._workflows.items():
-            # Get the workflow status directly to have consistent behavior
-            status = workflow.get_status()
-            result.append(status)
-
-        return result
-
-    def list_workflows(self) -> list["Workflow"]:
-        """
-        List all registered workflow instances.
-
-        Returns:
-            A list of workflow instances
-        """
-        workflows = []
-
-        for workflow_id, workflow in self._workflows.items():
-            workflows.append(workflow)
-        return workflows
 
 
 class WorkflowState(BaseModel):
@@ -207,7 +78,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
         self.name = name or self.__class__.__name__
         self._logger = get_logger(f"workflow.{self.name}")
         self._initialized = False
-        self._workflow_id = None
+        self._run_id = None
         self._run_task = None
 
         # A simple workflow state object
@@ -229,7 +100,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
         Get the workflow ID if it has been assigned.
         NOTE: The run() method will assign a new workflow ID on every run.
         """
-        return self._workflow_id
+        return self._run_id  # TODO: saqadri - (MAC) - this should be a workflow ID
 
     @classmethod
     async def create(
@@ -273,11 +144,11 @@ class Workflow(ABC, Generic[T], ContextDependent):
         """
         signal = await self.executor.wait_for_signal(
             "cancel",
-            workflow_id=self._workflow_id,
+            workflow_id=self._run_id,  # TODO: saqadri - (MAC) - this should be a workflow ID
             signal_description="Waiting for cancel signal",
         )
 
-        self._logger.info(f"Cancel signal received for workflow {self._workflow_id}")
+        self._logger.info(f"Cancel signal received for workflow run {self._run_id}")
         self.update_status("cancelling")
 
         # The run task will be cancelled in the run_async method
@@ -307,8 +178,8 @@ class Workflow(ABC, Generic[T], ContextDependent):
         from concurrent.futures import CancelledError
 
         # Generate a unique ID for this workflow instance
-        if not self._workflow_id:
-            self._workflow_id = str(uuid.uuid4())
+        if not self._run_id:
+            self._run_id = str(self.executor.uuid())
 
         self.update_status("scheduled")
 
@@ -323,7 +194,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 if self.context.config.execution_engine == "temporal":
                     executor: TemporalExecutor = self.executor
                     run_task = asyncio.create_task(
-                        executor.execute_workflow(self._workflow_id, *args, **kwargs)
+                        executor.execute_workflow(self.name, *args, **kwargs)
                     )
                     # TODO: jerron - cancel task not working for temporal
                     tasks.append(run_task)
@@ -362,14 +233,14 @@ class Workflow(ABC, Generic[T], ContextDependent):
             except CancelledError:
                 # Handle cancellation gracefully
                 self._logger.info(
-                    f"Workflow {self.name} (ID: {self._workflow_id}) was cancelled"
+                    f"Workflow {self.name} (ID: {self._run_id}) was cancelled"
                 )
                 self.update_status("cancelled")
                 raise
             except Exception as e:
                 # Log and propagate exceptions
                 self._logger.error(
-                    f"Error in workflow {self.name} (ID: {self._workflow_id}): {str(e)}"
+                    f"Error in workflow {self.name} (ID: {self._run_id}): {str(e)}"
                 )
                 self.update_status("error")
                 self.state.record_error(e)
@@ -381,7 +252,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 except Exception as cleanup_error:
                     # Log but don't fail if cleanup fails
                     self._logger.error(
-                        f"Error cleaning up workflow {self.name} (ID: {self._workflow_id}): {str(cleanup_error)}"
+                        f"Error cleaning up workflow {self.name} (ID: {self._run_id}): {str(cleanup_error)}"
                     )
 
         # TODO: saqadri (MAC) - figure out how to do this for different executors.
@@ -390,11 +261,9 @@ class Workflow(ABC, Generic[T], ContextDependent):
 
         # Register this workflow with the registry
         if self.context and self.context.workflow_registry:
-            self.context.workflow_registry.register(
-                self._workflow_id, self, self._run_task
-            )
+            self.context.workflow_registry.register(self._run_id, self, self._run_task)
 
-        return self._workflow_id
+        return self._run_id
 
     async def resume(
         self, signal_name: str | None = "resume", payload: str | None = None
@@ -409,23 +278,22 @@ class Workflow(ABC, Generic[T], ContextDependent):
         Returns:
             bool: True if the resume signal was sent successfully, False otherwise
         """
-        if not self._workflow_id:
+        if not self._run_id:
             self._logger.error("Cannot resume workflow with no ID")
             return False
 
         try:
-            signal = Signal(
-                name=signal_name, workflow_id=self._workflow_id, payload=payload
-            )
-            await self.executor.signal_bus.signal(signal)
             self._logger.info(
-                f"{signal_name} signal sent to workflow {self._workflow_id}"
+                f"About to send {signal_name} signal sent to workflow {self._run_id}"
             )
+            signal = Signal(name=signal_name, workflow_id=self._run_id, payload=payload)
+            await self.executor.signal_bus.signal(signal)
+            self._logger.info(f"{signal_name} signal sent to workflow {self._run_id}")
             self.update_status("running")
             return True
         except Exception as e:
             self._logger.error(
-                f"Error sending resume signal to workflow {self._workflow_id}: {e}"
+                f"Error sending resume signal to workflow {self._run_id}: {e}"
             )
             return False
 
@@ -436,21 +304,21 @@ class Workflow(ABC, Generic[T], ContextDependent):
         Returns:
             bool: True if the workflow was cancelled successfully, False otherwise
         """
-        if not self._workflow_id:
+        if not self._run_id:
             self._logger.error("Cannot cancel workflow with no ID")
             return False
 
         try:
             # First signal the workflow to cancel - this allows for graceful cancellation
             # when the workflow checks for cancellation
-            self._logger.info(f"Sending cancel signal to workflow {self._workflow_id}")
-            await self.executor.signal("cancel", workflow_id=self._workflow_id)
+            self._logger.info(f"Sending cancel signal to workflow {self._run_id}")
+            await self.executor.signal("cancel", workflow_id=self._run_id)
             return True
         except Exception as e:
-            self._logger.error(f"Error cancelling workflow {self._workflow_id}: {e}")
+            self._logger.error(f"Error cancelling workflow {self._run_id}: {e}")
             return False
 
-    def get_status(self) -> Dict[str, Any]:
+    async def get_status(self) -> Dict[str, Any]:
         """
         Get the current status of the workflow.
 
@@ -458,7 +326,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
             Dict[str, Any]: A dictionary with workflow status information
         """
         status = {
-            "id": self._workflow_id,
+            "id": self._run_id,
             "name": self.name,
             "status": self.state.status,
             "running": self._run_task is not None and not self._run_task.done()

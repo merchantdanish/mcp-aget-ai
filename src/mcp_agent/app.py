@@ -198,7 +198,7 @@ class MCPApp:
 
         self._initialized = True
         self.logger.info(
-            "MCPAgent initialized",
+            "MCPApp initialized",
             data={
                 "progress_action": "Running",
                 "target": self.name,
@@ -214,7 +214,7 @@ class MCPApp:
 
         # Updatre progress display before logging is shut down
         self.logger.info(
-            "MCPAgent cleanup",
+            "MCPApp cleanup",
             data={
                 "progress_action": ProgressAction.FINISHED,
                 "target": self.name or "mcp_app",
@@ -281,35 +281,55 @@ class MCPApp:
             self._workflows[workflow_id] = cls
             return cls
 
-    def workflow_signal(self, fn: Callable[..., R]) -> Callable[..., R]:
+    def workflow_signal(
+        self, fn: Callable[..., R] | None = None, *, name: str | None = None
+    ) -> Callable[..., R]:
         """
         Decorator for a workflow's signal handler.
         Different executors can use this to customize behavior for workflow signal handling.
 
+        Args:
+            fn: The function to decorate (optional, for use with direct application)
+            name: Optional custom name for the signal. If not provided, uses the function name.
+
         Example:
             If Temporal is in use, this gets converted to @workflow.signal.
         """
-        # Apply the engine-specific decorator if available
-        engine_type = self.config.execution_engine
-        signal_decorator = self._decorator_registry.get_workflow_signal_decorator(
-            engine_type
-        )
 
-        # TODO: jerron - use a unique name in the event of multiple similar workflows.
-        decorated_fn = (
-            signal_decorator(fn, name=fn.__name__) if signal_decorator else fn
-        )
+        def decorator(func):
+            # Determine the signal name to use
+            signal_name = name or func.__name__
 
-        @functools.wraps(decorated_fn)
-        async def wrapper(*args, **kwargs):
-            signal_handler_args = args[1:]
-            return decorated_fn(*signal_handler_args, **kwargs)
+            # Get the engine-specific signal decorator
+            engine_type = self.config.execution_engine
+            signal_decorator = self._decorator_registry.get_workflow_signal_decorator(
+                engine_type
+            )
 
-        self._signal_registry.register(
-            fn.__name__, wrapper, state={"completed": False, "value": None}
-        )
+            # Apply the engine-specific decorator if available
+            # Important: We need to correctly pass the name parameter to the Temporal decorator
+            if signal_decorator:
+                # For Temporal, ensure we're passing name as a keyword argument
+                decorated_fn = signal_decorator(name=signal_name)(func)
+            else:
+                decorated_fn = func
 
-        return wrapper
+            @functools.wraps(decorated_fn)
+            async def wrapper(*args, **kwargs):
+                signal_handler_args = args[1:]
+                return decorated_fn(*signal_handler_args, **kwargs)
+
+            # Register with the signal registry using the custom name
+            self._signal_registry.register(
+                signal_name, wrapper, state={"completed": False, "value": None}
+            )
+
+            return wrapper
+
+        # Handle both @app.workflow_signal and @app.workflow_signal(name="custom_name")
+        if fn is None:
+            return decorator
+        return decorator(fn)
 
     def workflow_run(self, fn: Callable[..., R], **kwargs) -> Callable[..., R]:
         """

@@ -153,6 +153,7 @@ class Executor(ABC, ContextDependent):
         payload: SignalValueT = None,
         signal_description: str | None = None,
         workflow_id: str | None = None,
+        run_id: str | None = None,
     ) -> None:
         """
         Emit a signal.
@@ -161,13 +162,15 @@ class Executor(ABC, ContextDependent):
             signal_name: The name of the signal to emit
             payload: Optional data to include with the signal
             signal_description: Optional human-readable description
-            workflow_id: Optional workflow ID to target the signal to
+            workflow_id: Optional workflow ID to send the signal
+            workflow_id: Optional run ID of the workflow instance to signal
         """
         signal = Signal[SignalValueT](
             name=signal_name,
             payload=payload,
             description=signal_description,
             workflow_id=workflow_id,
+            run_id=run_id,
         )
         await self.signal_bus.signal(signal)
 
@@ -176,6 +179,7 @@ class Executor(ABC, ContextDependent):
         signal_name: str,
         request_id: str | None = None,
         workflow_id: str | None = None,
+        run_id: str | None = None,
         signal_description: str | None = None,
         timeout_seconds: int | None = None,
         signal_type: Type[SignalValueT] = str,
@@ -191,6 +195,7 @@ class Executor(ABC, ContextDependent):
                 signal_name=signal_name,
                 request_id=request_id,
                 workflow_id=workflow_id,
+                run_id=run_id,
                 metadata={
                     "description": signal_description,
                     "timeout_seconds": timeout_seconds,
@@ -199,7 +204,10 @@ class Executor(ABC, ContextDependent):
             )
 
         signal = Signal[signal_type](
-            name=signal_name, description=signal_description, workflow_id=workflow_id
+            name=signal_name,
+            description=signal_description,
+            workflow_id=workflow_id,
+            run_id=run_id,
         )
         return await self.signal_bus.wait_for_signal(signal)
 
@@ -372,14 +380,18 @@ class AsyncioExecutor(Executor):
         payload: SignalValueT = None,
         signal_description: str | None = None,
         workflow_id: str | None = None,
+        run_id: str | None = None,
     ) -> None:
-        await super().signal(signal_name, payload, signal_description, workflow_id)
+        await super().signal(
+            signal_name, payload, signal_description, workflow_id, run_id
+        )
 
     async def wait_for_signal(
         self,
         signal_name: str,
         request_id: str | None = None,
         workflow_id: str | None = None,
+        run_id: str | None = None,
         signal_description: str | None = None,
         timeout_seconds: int | None = None,
         signal_type: Type[SignalValueT] = str,
@@ -388,6 +400,7 @@ class AsyncioExecutor(Executor):
             signal_name,
             request_id,
             workflow_id,
+            run_id,
             signal_description,
             timeout_seconds,
             signal_type,

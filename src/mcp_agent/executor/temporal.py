@@ -23,8 +23,9 @@ import inspect
 
 from pydantic import ConfigDict
 from temporalio import activity, workflow, exceptions
-from temporalio.client import Client as TemporalClient
+from temporalio.client import Client as TemporalClient, WorkflowHandle
 from temporalio.contrib.pydantic import pydantic_data_converter
+from temporalio.common import WorkflowIDReusePolicy
 from temporalio.worker import Worker
 
 from mcp_agent.config import TemporalSettings
@@ -35,6 +36,7 @@ from mcp_agent.executor.workflow_signal import (
     SignalHandler,
     SignalValueT,
 )
+from mcp_agent.logging.logger import get_logger
 from mcp_agent.utils.common import unwrap
 
 if TYPE_CHECKING:
@@ -42,6 +44,8 @@ if TYPE_CHECKING:
     from mcp_agent.core.context import Context
     from random import Random
     from uuid import UUID
+
+logger = get_logger(__name__)
 
 
 class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
@@ -80,11 +84,16 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
             # Create the actual handler that will be registered with Temporal
             @workflow.signal(name=unique_signal_name)
             async def wrapped(signal_value: SignalValueT):
+                # Get current workflow context
+                workflow_id = workflow.info().workflow_id
+                run_id = workflow.info().run_id
+
                 # Create a signal object to pass to the handler
                 signal = Signal(
                     name=signal_name,
                     payload=signal_value,
-                    workflow_id=workflow.info().workflow_id,
+                    workflow_id=workflow_id,
+                    run_id=run_id,
                 )
                 if asyncio.iscoroutinefunction(func):
                     await func(signal)
@@ -101,22 +110,33 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
 
     async def signal(self, signal):
         """Sends a signal"""
-        self.validate_signal(signal)
+        # self.validate_signal(signal)ß
 
         try:
+            logger.debug("Looking for external workflow handle")
             workflow_handle = workflow.get_external_workflow_handle(
-                workflow_id=signal.workflow_id
+                workflow_id=signal.workflow_id,
+                run_id=signal.run_id,
             )
+            logger.debug("External workflow handle=", data=workflow_handle)
         except workflow._NotInWorkflowEventLoopError:
             if not self._executor:
                 raise RuntimeError(
                     "Cannot signal workflow outside of workflow context: "
                     "No executor reference available in TemporalSignalHandler"
                 )
+            logger.debug(
+                "_NotInWorkflowEventLoopError: Trying to get workflow handle from Client"
+            )
             await self._executor.ensure_client()
             workflow_handle = self._executor.client.get_workflow_handle(
-                workflow_id=signal.workflow_id
+                workflow_id=signal.workflow_id,
+                run_id=signal.run_id,
             )
+            logger.debug("Client workflow handle=", data=workflow_handle)
+
+        state = self._executor.context.signal_registry.get_state(signal.name)
+        logger.debug("Signal state=", data=state)
 
         await workflow_handle.signal(signal.name, signal.payload)
 
@@ -349,40 +369,25 @@ class TemporalExecutor(Executor):
 
         return self.client
 
-    async def start_workflow(self, workflow_id: str, input: any):
+    async def start_workflow(
+        self,
+        workflow_id: str,
+        *args: Any,
+        wait_for_result: bool = False,
+        **kwargs: Any,
+    ) -> WorkflowHandle:
         """
-        Starts a workflow with the given workflow ID and input.
-
-        Note:
-            The `input` is a single parameter (typically a dictionary or dataclass)
-            that encapsulates all required input fields for the workflow.
+        Starts a workflow with the given workflow ID and arguments.
 
         Args:
             workflow_id (str): Identifier of the workflow to be started.
-            input (any): A single object containing all necessary input parameters for the workflow.
+            *workflow_args: Positional arguments to pass to the workflow.
+            wait_for_result: Whether to wait for the workflow to complete and return the result.
+            **workflow_kwargs: Keyword arguments to pass to the workflow.
 
         Returns:
-            WorkflowHandle: A handle to the started workflow, which can be used for tracking or interaction.
-        """
-        await self.ensure_client()
-        wf = self.context.app.workflows.get(workflow_id)
-        handle = await self.client.start_workflow(
-            wf,
-            input,
-            id=workflow_id,
-            task_queue=self.config.task_queue,
-        )
-        return handle
-
-    async def execute_workflow(
-        self,
-        workflow_id: str,
-        *workflow_args: Any,
-        **workflow_kwargs: Any,
-    ) -> Any:
-        """
-        Dynamically bind *workflow_args / **workflow_kwargs to the workflow.run()
-        signature, then dispatch to Temporal's client.execute_workflow.
+            If wait_for_result is True, returns the workflow result.
+            Otherwise, returns a WorkflowHandle for the started workflow.
         """
         await self.ensure_client()
 
@@ -398,10 +403,10 @@ class TemporalExecutor(Executor):
         # Bind args in declaration order
         bound_args = []
         for idx, param in enumerate(params):
-            if idx < len(workflow_args):
-                bound_args.append(workflow_args[idx])
-            elif param.name in workflow_kwargs:
-                bound_args.append(workflow_kwargs[param.name])
+            if idx < len(args):
+                bound_args.append(args[idx])
+            elif param.name in kwargs:
+                bound_args.append(kwargs[param.name])
             elif param.default is not inspect.Parameter.empty:
                 # optional param, skip if not provided
                 continue
@@ -409,22 +414,73 @@ class TemporalExecutor(Executor):
                 raise ValueError(f"Missing required workflow argument '{param.name}'")
 
         # Too many positionals?
-        if len(workflow_args) > len(params):
+        if len(args) > len(params):
             raise ValueError(
-                f"Got {len(workflow_args)} positional args but run() only takes {len(params)}"
+                f"Got {len(args)} positional args but run() only takes {len(params)}"
             )
 
-        # Dispatch to Temporal SDK
-        common = dict(id=workflow_id, task_queue=self.config.task_queue)
+        # Determine what to pass to the start_workflow function
+        input_arg = None
         if not bound_args:
             # zero-arg workflow
-            return await self.client.execute_workflow(wf, **common)
+            pass
         elif len(bound_args) == 1:
-            # single-arg overload
-            return await self.client.execute_workflow(wf, bound_args[0], **common)
+            # single-arg workflow
+            input_arg = bound_args[0]
         else:
-            # multi-arg overload
-            return await self.client.execute_workflow(wf, args=bound_args, **common)
+            # multi-arg workflow - pack into a sequence
+            input_arg = bound_args
+
+        # Start the workflow
+        handle: WorkflowHandle = await self.client.start_workflow(
+            wf,
+            input_arg,
+            id=workflow_id,
+            task_queue=self.config.task_queue,
+            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+        )
+
+        # Wait for the result if requested
+        if wait_for_result:
+            return await handle.result()
+
+        return handle
+
+    async def execute_workflow(
+        self,
+        workflow_id: str,
+        *workflow_args: Any,
+        **workflow_kwargs: Any,
+    ) -> Any:
+        """
+        Execute a workflow and wait for its result.
+
+        This is a convenience wrapper around start_workflow with wait_for_result=True.
+        """
+        return await self.start_workflow(
+            workflow_id, *workflow_args, wait_for_result=True, **workflow_kwargs
+        )
+
+    async def terminate_workflow(
+        self,
+        workflow_id: str,
+        run_id: str | None = None,
+        reason: str | None = "Cancellation",
+    ) -> None:
+        """
+        Terminate a workflow execution.
+
+        Args:
+            workflow_id (str): Identifier of the workflow to terminate.
+            run_id (Optional[str]): If provided, terminates the specific run.
+                                Otherwise terminates the latest run.
+            reason (Optional[str]): A reason for the termination.
+        """
+        await self.ensure_client()
+        workflow_handle = self.client.get_workflow_handle(
+            workflow_id=workflow_id, run_id=run_id
+        )
+        await workflow_handle.terminate(reason=reason)
 
     def uuid(self) -> "UUID":
         """
