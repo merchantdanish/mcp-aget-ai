@@ -110,7 +110,7 @@ class LLMIntentClassifier(IntentClassifier):
             f"{self.__class__.__name__}.classify"
         ) as span:
             span.set_attribute("request", request)
-            span.set_attribute("intents", str(self.intents.keys()))
+            span.set_attribute("intents", list(self.intents.keys()))
             for intent in self.intents.values():
                 span.set_attribute(
                     f"intent.{intent.name}.description", intent.description

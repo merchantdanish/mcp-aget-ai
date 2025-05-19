@@ -1,8 +1,11 @@
 from typing import List, Optional, TYPE_CHECKING
 
 from numpy import mean
+from opentelemetry import trace
 from pydantic import ConfigDict
 
+from mcp_agent.tracing.semconv import GEN_AI_REQUEST_TOP_K
+from mcp_agent.tracing.telemetry import record_attributes
 from mcp_agent.workflows.embedding.embedding_base import (
     FloatArray,
     EmbeddingModel,
@@ -107,31 +110,63 @@ class EmbeddingIntentClassifier(IntentClassifier):
         Returns:
             List of classification results, ordered by confidence
         """
-        if not self.initialized:
-            await self.initialize()
-
-        # Get embedding for input
-        embeddings = await self.embedding_model.embed([request])
-        request_embedding = embeddings[0]  # Take first since we only embedded one text
-
-        results: List[IntentClassificationResult] = []
-        for intent_name, intent in self.intents.items():
-            if intent.embedding is None:
-                continue
-
-            similarity_scores = compute_similarity_scores(
-                request_embedding, intent.embedding
-            )
-
-            # Compute overall confidence score
-            confidence = compute_confidence(similarity_scores)
-
-            results.append(
-                IntentClassificationResult(
-                    intent=intent_name,
-                    p_score=confidence,
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.classify"
+        ) as span:
+            span.set_attribute("request", request)
+            span.set_attribute("intents", list(self.intents.keys()))
+            for intent in self.intents.values():
+                span.set_attribute(
+                    f"intent.{intent.name}.description", intent.description
                 )
-            )
+                if intent.examples:
+                    span.set_attribute(
+                        f"intent.{intent.name}.examples", intent.examples
+                    )
+                if intent.metadata:
+                    record_attributes(
+                        span, intent.metadata, f"intent.{intent.name}.metadata"
+                    )
+            span.set_attribute(GEN_AI_REQUEST_TOP_K, top_k)
 
-        results.sort(key=lambda x: x.p_score, reverse=True)
-        return results[:top_k]
+            if not self.initialized:
+                await self.initialize()
+
+            # Get embedding for input
+            embeddings = await self.embedding_model.embed([request])
+            request_embedding = embeddings[
+                0
+            ]  # Take first since we only embedded one text
+
+            results: List[IntentClassificationResult] = []
+            for intent_name, intent in self.intents.items():
+                if intent.embedding is None:
+                    continue
+
+                similarity_scores = compute_similarity_scores(
+                    request_embedding, intent.embedding
+                )
+
+                # Compute overall confidence score
+                confidence = compute_confidence(similarity_scores)
+
+                span.set_attribute(f"classification.{intent_name}.p_score", confidence)
+                for metric, score in similarity_scores.items():
+                    span.set_attribute(f"classification.{intent_name}.{metric}", score)
+
+                results.append(
+                    IntentClassificationResult(
+                        intent=intent_name,
+                        p_score=confidence,
+                    )
+                )
+
+            results.sort(key=lambda x: x.p_score, reverse=True)
+            top_results = results[:top_k]
+
+            for i, result in enumerate(top_results):
+                span.set_attribute(f"result.{i}.intent", result.intent)
+                span.set_attribute(f"result.{i}.p_score", result.p_score)
+
+            return top_results

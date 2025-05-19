@@ -2,7 +2,15 @@ from typing import List, Optional, TYPE_CHECKING
 
 from numpy import array, float32, stack
 from openai import OpenAI
+from opentelemetry import trace
 
+from mcp_agent.tracing.semconv import (
+    GEN_AI_OPERATION_NAME,
+    GEN_AI_REQUEST_MODEL,
+    GEN_AI_RESPONSE_MODEL,
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
 from mcp_agent.workflows.embedding.embedding_base import EmbeddingModel, FloatArray
 
 if TYPE_CHECKING:
@@ -25,21 +33,32 @@ class OpenAIEmbeddingModel(EmbeddingModel):
         }[model]
 
     async def embed(self, data: List[str]) -> FloatArray:
-        response = self.client.embeddings.create(
-            model=self.model, input=data, encoding_format="float"
-        )
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(f"{self.__class__.__name__}.embed") as span:
+            span.set_attribute(GEN_AI_REQUEST_MODEL, self.model)
+            span.set_attribute(GEN_AI_OPERATION_NAME, "embeddings")
+            span.set_attribute("data", data)
+            span.set_attribute("embedding_dim", self.embedding_dim)
 
-        # Sort the embeddings by their index to ensure correct order
-        sorted_embeddings = sorted(response.data, key=lambda x: x.index)
+            response = self.client.embeddings.create(
+                model=self.model, input=data, encoding_format="float"
+            )
 
-        # Stack all embeddings into a single array
-        embeddings = stack(
-            [
-                array(embedding.embedding, dtype=float32)
-                for embedding in sorted_embeddings
-            ]
-        )
-        return embeddings
+            span.set_attribute(GEN_AI_RESPONSE_MODEL, response.model)
+            span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, response.usage.prompt_tokens)
+            span.set_attribute("gen_ai.usage.total_tokens", response.usage.total_tokens)
+
+            # Sort the embeddings by their index to ensure correct order
+            sorted_embeddings = sorted(response.data, key=lambda x: x.index)
+
+            # Stack all embeddings into a single array
+            embeddings = stack(
+                [
+                    array(embedding.embedding, dtype=float32)
+                    for embedding in sorted_embeddings
+                ]
+            )
+            return embeddings
 
     @property
     def embedding_dim(self) -> int:
