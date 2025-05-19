@@ -100,8 +100,7 @@ def record_attribute(span, key, value):
     if is_otel_serializable(value):
         span.set_attribute(key, str(value))
     elif isinstance(value, dict):
-        for k, v in value.items():
-            record_attribute(span, f"{key}.{k}", v)
+        record_attributes(span, value, key)
     elif isinstance(value, Callable):
         span.set_attribute(
             f"{key}_callable_name", getattr(value, "__qualname__", str(value))

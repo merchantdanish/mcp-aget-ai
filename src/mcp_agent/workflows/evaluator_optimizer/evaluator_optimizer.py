@@ -93,7 +93,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             llm_factory: Optional factory to create LLMs from agents
         """
         super().__init__(
-            name=f"evaluator-optimizer-{str(context.uuid() if context else uuid.uuid4())}",
+            name=f"evaluator-optimizer-{str(context.executor.uuid() if context else uuid.uuid4())}",
             instruction="You are an evaluator-optimizer workflow that generates responses and evaluates them iteratively until they achieve a necessary quality criteria.",
             context=context,
         )

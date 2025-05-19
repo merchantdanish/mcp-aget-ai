@@ -51,11 +51,6 @@ This attribute specifies the output modality and not the actual output format. F
 Additional output format details may be recorded in the future in the `gen_ai.output.{type}.*` attributes.
 """
 
-GEN_AI_PROMPT = "gen_ai.prompt"
-"""
-Deprecated: Removed, no replacement at this time.
-"""
-
 GEN_AI_REQUEST_CHOICE_COUNT = "gen_ai.request.choice.count"
 """
 The target number of candidate completions to return.

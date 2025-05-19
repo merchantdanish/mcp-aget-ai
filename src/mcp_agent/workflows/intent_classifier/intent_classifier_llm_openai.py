@@ -1,4 +1,5 @@
 from typing import List, Optional, TYPE_CHECKING
+import uuid
 
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.intent_classifier.intent_classifier_base import Intent
@@ -29,7 +30,9 @@ class OpenAILLMIntentClassifier(LLMIntentClassifier):
         **kwargs,
     ):
         openai_llm = OpenAIAugmentedLLM(
-            instruction=CLASSIFIER_SYSTEM_INSTRUCTION, context=context
+            instruction=CLASSIFIER_SYSTEM_INSTRUCTION,
+            context=context,
+            name=f"intent-classifier-{str(context.executor.uuid() if context else uuid.uuid4())}",
         )
 
         super().__init__(

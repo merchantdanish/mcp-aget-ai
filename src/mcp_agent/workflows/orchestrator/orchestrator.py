@@ -81,7 +81,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             context: Application context
         """
         super().__init__(
-            name=f"orchestrator-{str(context.uuid() if context else uuid.uuid4())}",
+            name=f"orchestrator-{str(context.executor.uuid() if context else uuid.uuid4())}",
             instruction="You are an orchestrator-worker LLM that breaks down tasks into subtasks, delegates them to worker LLMs, and synthesizes their results.",
             context=context,
             **kwargs,
