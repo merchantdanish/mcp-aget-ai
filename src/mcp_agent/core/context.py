@@ -154,15 +154,15 @@ async def initialize_context(
 
     context.workflow_registry = WorkflowRegistry()
 
-    # Configure logging and telemetry
-    await configure_otel(config, context.session_id)
-    await configure_logger(config, context.session_id)
-    await configure_usage_telemetry(config)
-
     # Configure the executor
     context.executor = await configure_executor(config)
 
     context.session_id = str(context.executor.uuid())
+
+    # Configure logging and telemetry
+    await configure_otel(config, context.session_id)
+    await configure_logger(config, context.session_id)
+    await configure_usage_telemetry(config)
 
     context.task_registry = task_registry or ActivityRegistry()
 

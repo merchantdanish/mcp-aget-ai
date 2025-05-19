@@ -694,18 +694,17 @@
           "type": "number",
           "description": "Sample rate for tracing (1.0 = sample everything)"
         },
-        "otlp_endpoint": {
+        "otlp_settings": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/$defs/TraceOTLPSettings"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "title": "Otlp Endpoint",
-          "description": "OTLP endpoint for OpenTelemetry tracing. Required if using otlp exporter."
+          "description": "OTLP settings for OpenTelemetry tracing. Required if using otlp exporter."
         },
         "path_settings": {
           "anyOf": [
@@ -780,6 +779,21 @@
         "task_queue"
       ],
       "title": "TemporalSettings",
+      "type": "object"
+    },
+    "TraceOTLPSettings": {
+      "description": "Settings for OTLP exporter in OpenTelemetry.",
+      "properties": {
+        "endpoint": {
+          "title": "Endpoint",
+          "type": "string",
+          "description": "OTLP endpoint for exporting traces."
+        }
+      },
+      "required": [
+        "endpoint"
+      ],
+      "title": "TraceOTLPSettings",
       "type": "object"
     },
     "TracePathSettings": {
@@ -955,7 +969,7 @@
         "service_instance_id": null,
         "service_version": null,
         "sample_rate": 1.0,
-        "otlp_endpoint": null,
+        "otlp_settings": null,
         "path_settings": null
       },
       "description": "OpenTelemetry logging settings for the MCP Agent application"

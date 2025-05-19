@@ -243,6 +243,15 @@ class TracePathSettings(BaseModel):
     """
 
 
+class TraceOTLPSettings(BaseModel):
+    """
+    Settings for OTLP exporter in OpenTelemetry.
+    """
+
+    endpoint: str
+    """OTLP endpoint for exporting traces."""
+
+
 class OpenTelemetrySettings(BaseModel):
     """
     OTEL settings for the MCP Agent application.
@@ -260,8 +269,8 @@ class OpenTelemetrySettings(BaseModel):
     sample_rate: float = 1.0
     """Sample rate for tracing (1.0 = sample everything)"""
 
-    otlp_endpoint: str | None = None
-    """OTLP endpoint for OpenTelemetry tracing. Required if using otlp exporter."""
+    otlp_settings: TraceOTLPSettings | None = None
+    """OTLP settings for OpenTelemetry tracing. Required if using otlp exporter."""
 
     # Settings for advanced trace path configuration for file exporter
     path_settings: TracePathSettings | None = None

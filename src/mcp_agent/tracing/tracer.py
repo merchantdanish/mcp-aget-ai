@@ -91,15 +91,15 @@ class TracingConfig:
                     )
                 )
             elif exporter == "otlp":
-                if settings.otlp_endpoint:
+                if settings.otlp_settings:
                     tracer_provider.add_span_processor(
                         BatchSpanProcessor(
-                            OTLPSpanExporter(endpoint=settings.otlp_endpoint)
+                            OTLPSpanExporter(endpoint=settings.otlp_settings.endpoint)
                         )
                     )
                 else:
                     logger.error(
-                        "OTLP exporter is enabled but no endpoint is provided."
+                        "OTLP exporter is enabled but no OTLP settings endpoint is provided."
                     )
             elif exporter == "file":
                 tracer_provider.add_span_processor(
