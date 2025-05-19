@@ -30,12 +30,8 @@ from temporalio.worker import Worker
 
 from mcp_agent.config import TemporalSettings
 from mcp_agent.executor.executor import Executor, ExecutorConfig, R
-from mcp_agent.executor.workflow_signal import (
-    BaseSignalHandler,
-    Signal,
-    SignalHandler,
-    SignalValueT,
-)
+from mcp_agent.executor.temporal.workflow_signal import TemporalSignalHandler
+from mcp_agent.executor.workflow_signal import SignalHandler
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.utils.common import unwrap
 
@@ -46,107 +42,6 @@ if TYPE_CHECKING:
     from uuid import UUID
 
 logger = get_logger(__name__)
-
-
-class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
-    """Temporal-based signal handling using workflow signals"""
-
-    def __init__(self, executor: Optional["TemporalExecutor"] = None):
-        super().__init__()
-        self._executor = executor
-
-    async def wait_for_signal(self, signal, timeout_seconds=None) -> SignalValueT:
-        """Waits for a signal with an optional timeout."""
-        if not workflow._Runtime.current():
-            raise RuntimeError(
-                "TemporalSignalHandler.wait_for_signal must be called from within a workflow"
-            )
-
-        state = self._executor.context.signal_registry.get_state(signal.name)
-
-        # Wait for signal with optional timeout
-        await workflow.wait_condition(
-            lambda: state["completed"], timeout=timedelta(seconds=3600)
-        )
-
-        # TODO: jerron - cleanup properly
-        state["completed"] = False
-
-        return state["value"]
-
-    def on_signal(self, signal_name):
-        """Decorator to register a signal handler."""
-
-        def decorator(func: Callable) -> Callable:
-            # Create unique signal name for this handler
-            unique_signal_name = f"{signal_name}_{workflow.uuid4()}"
-
-            # Create the actual handler that will be registered with Temporal
-            @workflow.signal(name=unique_signal_name)
-            async def wrapped(signal_value: SignalValueT):
-                # Get current workflow context
-                workflow_id = workflow.info().workflow_id
-                run_id = workflow.info().run_id
-
-                # Create a signal object to pass to the handler
-                signal = Signal(
-                    name=signal_name,
-                    payload=signal_value,
-                    workflow_id=workflow_id,
-                    run_id=run_id,
-                )
-                if asyncio.iscoroutinefunction(func):
-                    await func(signal)
-                else:
-                    func(signal)
-
-            # Register the handler under the original signal name
-            self._handlers.setdefault(signal_name, []).append(
-                (unique_signal_name, wrapped)
-            )
-            return func
-
-        return decorator
-
-    async def signal(self, signal):
-        """Sends a signal"""
-        # self.validate_signal(signal)ß
-
-        try:
-            logger.debug("Looking for external workflow handle")
-            workflow_handle = workflow.get_external_workflow_handle(
-                workflow_id=signal.workflow_id,
-                run_id=signal.run_id,
-            )
-            logger.debug("External workflow handle=", data=workflow_handle)
-        except workflow._NotInWorkflowEventLoopError:
-            if not self._executor:
-                raise RuntimeError(
-                    "Cannot signal workflow outside of workflow context: "
-                    "No executor reference available in TemporalSignalHandler"
-                )
-            logger.debug(
-                "_NotInWorkflowEventLoopError: Trying to get workflow handle from Client"
-            )
-            await self._executor.ensure_client()
-            workflow_handle = self._executor.client.get_workflow_handle(
-                workflow_id=signal.workflow_id,
-                run_id=signal.run_id,
-            )
-            logger.debug("Client workflow handle=", data=workflow_handle)
-
-        state = self._executor.context.signal_registry.get_state(signal.name)
-        logger.debug("Signal state=", data=state)
-
-        await workflow_handle.signal(signal.name, signal.payload)
-
-    def validate_signal(self, signal):
-        super().validate_signal(signal)
-        # Add TemporalSignalHandler-specific validation
-        if signal.workflow_id is None:
-            raise ValueError(
-                "No workflow_id provided on Signal. That is required for Temporal signals"
-            )
 
 
 class TemporalExecutorConfig(ExecutorConfig, TemporalSettings):

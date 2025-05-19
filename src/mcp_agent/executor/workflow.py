@@ -13,6 +13,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.temporal import TemporalExecutor
+from mcp_agent.executor.temporal.workflow_signal import (
+    SignalMailbox,
+    TemporalSignalHandler,
+)
 from mcp_agent.executor.workflow_signal import Signal
 from mcp_agent.logging.logger import get_logger
 
@@ -85,6 +89,11 @@ class Workflow(ABC, Generic[T], ContextDependent):
         # If under Temporal, storing it as a field on this class
         # means it can be replayed automatically
         self.state = WorkflowState(metadata=metadata or {})
+
+        # Flag to prevent re-attaching signals
+        # Set in signal_handler.attach_to_workflow (done in workflow initialize())
+        self._signal_handler_attached = False
+        self._signal_mailbox: SignalMailbox = SignalMailbox()
 
     @property
     def executor(self):
@@ -395,6 +404,16 @@ class Workflow(ABC, Generic[T], ContextDependent):
 
         self.state.status = "initializing"
         self._logger.debug(f"Initializing workflow {self.name}")
+
+        if self.context.config.execution_engine == "temporal":
+            if isinstance(self.executor.signal_bus, TemporalSignalHandler):
+                # Attach the signal handler to the workflow
+                self.executor.signal_bus.attach_to_workflow(self)
+            else:
+                self._logger.warning(
+                    "Signal handler not attached: executor.signal_bus is not a TemporalSignalHandler"
+                )
+
         self._initialized = True
         self.state.updated_at = datetime.now(timezone.utc).timestamp()
 

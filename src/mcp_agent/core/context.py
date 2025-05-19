@@ -41,7 +41,7 @@ from mcp_agent.logging.logger import get_logger
 if TYPE_CHECKING:
     from mcp_agent.human_input.types import HumanInputCallback
     from mcp_agent.executor.workflow_signal import SignalWaitCallback
-    from mcp_agent.executor.workflow import WorkflowRegistry
+    from mcp_agent.executor.workflow_registry import WorkflowRegistry
     from mcp_agent.app import MCPApp
 else:
     # Runtime placeholders for the types
@@ -179,6 +179,23 @@ async def configure_executor(config: "Settings"):
         return executor
 
 
+async def configure_workflow_registry(config: "Settings", executor: Executor):
+    """
+    Configure the workflow registry based on the application config.
+    """
+    if config.execution_engine == "temporal":
+        from mcp_agent.executor.temporal.workflow_registry import (
+            TemporalWorkflowRegistry,
+        )
+
+        return TemporalWorkflowRegistry(executor=executor)
+    else:
+        # Default to local workflow registry
+        from mcp_agent.executor.workflow_registry import InMemoryWorkflowRegistry
+
+        return InMemoryWorkflowRegistry()
+
+
 async def initialize_context(
     config: Optional["Settings"] = None,
     task_registry: Optional[ActivityRegistry] = None,
@@ -196,11 +213,6 @@ async def initialize_context(
     context.config = config
     context.server_registry = ServerRegistry(config=config)
 
-    # Import here to avoid circular imports
-    from mcp_agent.executor.workflow import WorkflowRegistry
-
-    context.workflow_registry = WorkflowRegistry()
-
     # Configure logging and telemetry
     await configure_otel(config)
     await configure_logger(config, context.session_id)
@@ -208,6 +220,9 @@ async def initialize_context(
 
     # Configure the executor
     context.executor = await configure_executor(config)
+    context.workflow_registry = await configure_workflow_registry(
+        config, context.executor
+    )
 
     context.session_id = str(context.executor.uuid())
 

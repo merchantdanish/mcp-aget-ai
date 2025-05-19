@@ -3,7 +3,7 @@ name = "mcp-agent"
 version = "0.0.23"
 description = "Build effective agents with Model Context Protocol (MCP) using simple, composable patterns."
 readme = "README.md"
-license = { file = "LICEßNSE" }
+license = { file = "LICENSE" }
 authors = [
     { name = "Sarmad Qadri", email = "sarmad@lastmileai.dev" }
 ]

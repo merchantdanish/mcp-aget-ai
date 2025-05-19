@@ -22,7 +22,11 @@ from mcp_agent.agents.agent import Agent
 from mcp_agent.agents.agent_config import AgentConfig, create_agent
 from mcp_agent.config import MCPServerSettings
 from mcp_agent.core.context_dependent import ContextDependent
-from mcp_agent.executor.workflow import Workflow, WorkflowRegistry
+from mcp_agent.executor.workflow import Workflow
+from mcp_agent.executor.workflow_registry import (
+    WorkflowRegistry,
+    InMemoryWorkflowRegistry,
+)
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
 from mcp_agent.workflows.llm.augmented_llm import MessageParamT, RequestParams
@@ -43,7 +47,20 @@ class ServerContext(ContextDependent):
 
         # Initialize workflow registry if not already present
         if not self.context.workflow_registry:
-            self.context.workflow_registry = WorkflowRegistry()
+            if self.context.config.execution_engine == "asyncio":
+                self.context.workflow_registry = InMemoryWorkflowRegistry()
+            elif self.context.config.execution_engine == "temporal":
+                from mcp_agent.executor.temporal.workflow_registry import (
+                    TemporalWorkflowRegistry,
+                )
+
+                self.context.workflow_registry = TemporalWorkflowRegistry(
+                    executor=self.context.executor
+                )
+            else:
+                raise ValueError(
+                    f"Unsupported execution engine: {self.context.config.execution_engine}"
+                )
 
         # TODO: saqadri (MAC) - This shouldn't be needed here because
         # in app_specific_lifespan we'll call create_agent_specific_tools
@@ -385,7 +402,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         return result
 
     @mcp.tool(name="workflows-runs-list")
-    def list_workflow_runs(ctx: MCPContext) -> List[Dict[str, Any]]:
+    async def list_workflow_runs(ctx: MCPContext) -> List[Dict[str, Any]]:
         """
         List all workflow instances (runs) with their detailed status information.
 
@@ -399,7 +416,9 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         server_context: ServerContext = ctx.request_context.lifespan_context
 
         # Get all workflow statuses from the registry
-        workflow_statuses = server_context.workflow_registry.list_workflow_statuses()
+        workflow_statuses = (
+            await server_context.workflow_registry.list_workflow_statuses()
+        )
         return workflow_statuses
 
     @mcp.tool(name="workflows-run")
@@ -417,13 +436,15 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
                 workflows/list method will return the run_parameters schema for each workflow.
 
         Returns:
-            The workflow ID of the started workflow run, which can be passed to
+            The run ID of the started workflow run, which can be passed to
             workflows/get_status, workflows/resume, and workflows/cancel.
         """
         return await _workflow_run(ctx, workflow_name, run_parameters)
 
     @mcp.tool(name="workflows-get_status")
-    def get_workflow_status(ctx: MCPContext, workflow_id: str) -> Dict[str, Any]:
+    async def get_workflow_status(
+        ctx: MCPContext, workflow_name: str, run_id: str
+    ) -> Dict[str, Any]:
         """
         Get the status of a running workflow.
 
@@ -431,18 +452,20 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         whether it's running or completed, and any results or errors encountered.
 
         Args:
-            workflow_id: The ID of the workflow to check,
+            workflow_name: The name of the workflow to check.
+            run_id: The ID of the workflow instance to check,
                 received from workflows/run or workflows/runs/list.
 
         Returns:
             A dictionary with comprehensive information about the workflow status.
         """
-        return _workflow_status(ctx, workflow_id)
+        return await _workflow_status(ctx, run_id, workflow_name)
 
     @mcp.tool(name="workflows-resume")
     async def resume_workflow(
         ctx: MCPContext,
-        workflow_id: str,
+        run_id: str,
+        workflow_name: str | None = None,
         signal_name: str | None = "resume",
         payload: str | None = None,
     ) -> bool:
@@ -450,8 +473,9 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         Resume a paused workflow.
 
         Args:
-            workflow_id: The ID of the workflow to resume,
+            run_id: The ID of the workflow to resume,
                 received from workflows/run or workflows/runs/list.
+            workflow_name: The name of the workflow to resume.
             signal_name: Optional name of the signal to send to resume the workflow.
                 This will default to "resume", but can be a custom signal name
                 if the workflow was paused on a specific signal.
@@ -469,24 +493,32 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
             raise ToolError("Workflow registry not found for MCPApp Server.")
 
         # Get the workflow instance from the registry
-        workflow = workflow_registry.get_workflow(workflow_id)
+        workflow = await workflow_registry.get_workflow(
+            run_id=run_id, workflow_id=workflow_name
+        )
         if not workflow:
-            raise ToolError(f"Workflow with ID '{workflow_id}' not found.")
+            raise ToolError(
+                f"Workflow '{workflow_name}' with run ID '{run_id}' not found."
+            )
 
         logger.info(
-            f"Resuming workflow {workflow_id} with signal '{signal_name}' and payload '{payload}'"
+            f"Resuming workflow {workflow_name} with ID {run_id} with signal '{signal_name}' and payload '{payload}'"
         )
 
         # Resume the workflow directly
         return await workflow.resume(signal_name, payload)
 
     @mcp.tool(name="workflows-cancel")
-    async def cancel_workflow(ctx: MCPContext, workflow_id: str) -> bool:
+    async def cancel_workflow(
+        ctx: MCPContext, run_id: str, workflow_name: str | None = None
+    ) -> bool:
         """
         Cancel a running workflow.
 
         Args:
-            workflow_id: The ID of the workflow to cancel.
+            run_id: The ID of the workflow instance to cancel,
+                received from workflows/run or workflows/runs/list.
+            workflow_name: The name of the workflow to cancel.
 
         Returns:
             True if the workflow was cancelled, False otherwise.
@@ -495,9 +527,13 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         workflow_registry = server_context.workflow_registry
 
         # Get the workflow instance from the registry
-        workflow = workflow_registry.get_workflow(workflow_id)
+        workflow = await workflow_registry.get_workflow(
+            run_id=run_id, workflow_id=workflow_name
+        )
         if not workflow:
-            raise ValueError(f"Workflow with ID '{workflow_id}' not found.")
+            raise ValueError(
+                f"Workflow '{workflow_name}' with ID '{run_id}' not found."
+            )
 
         # Cancel the workflow directly
         return await workflow.cancel()
@@ -694,7 +730,7 @@ def create_workflow_specific_tools(
     @mcp.tool(
         name=f"workflows-{workflow_name}-run",
         description=f"""
-        Run the '{workflow_name}' workflow and get a workflow ID back.
+        Run the '{workflow_name}' workflow and get a run ID back.
         Workflow Description: {workflow_cls.__doc__}
 
         {run_fn_tool.description}
@@ -717,7 +753,7 @@ def create_workflow_specific_tools(
         Get the status of a running {workflow_name} workflow.
         
         Args:
-            workflow_id: The ID of the running workflow, received from workflows/{workflow_name}/run.
+            run_id: The run ID of the running workflow, received from workflows/{workflow_name}/run.
         """,
     )
     def get_status(ctx: MCPContext, workflow_id: str) -> Dict[str, Any]:
@@ -894,56 +930,53 @@ async def _agent_generate_structured(
 
 async def _workflow_run(
     ctx: MCPContext,
-    workflow_name: str,
+    workflow_id: str,
     run_parameters: Dict[str, Any] | None = None,
 ) -> str:
     server_context: ServerContext = ctx.request_context.lifespan_context
 
-    if workflow_name not in server_context.workflows:
-        raise ToolError(f"Workflow '{workflow_name}' not found.")
+    if workflow_id not in server_context.workflows:
+        raise ToolError(f"Workflow '{workflow_id}' not found.")
 
     # Get the workflow class
-    workflow_cls = server_context.workflows[workflow_name]
+    workflow_cls = server_context.workflows[workflow_id]
 
     # Create and initialize the workflow instance using the factory method
     try:
         # Create workflow instance
         workflow = await workflow_cls.create(
-            name=workflow_name, context=server_context.context
+            name=workflow_id, context=server_context.context
         )
 
         run_parameters = run_parameters or {}
 
         # Run the workflow asynchronously and get its ID
-        workflow_id = await workflow.run_async(**run_parameters)
-        return workflow_id
+        run_id = await workflow.run_async(**run_parameters)
+        return run_id
 
     except Exception as e:
-        logger.error(f"Error creating workflow {workflow_name}: {str(e)}")
-        raise ToolError(f"Error creating workflow {workflow_name}: {str(e)}") from e
+        logger.error(f"Error creating workflow {workflow_id}: {str(e)}")
+        raise ToolError(f"Error creating workflow {workflow_id}: {str(e)}") from e
 
 
-def _workflow_status(
-    ctx: MCPContext, workflow_id: str, workflow_name: str | None = None
+async def _workflow_status(
+    ctx: MCPContext, run_id: str, workflow_id: str | None = None
 ) -> Dict[str, Any]:
     server_context: ServerContext = ctx.request_context.lifespan_context
-    workflow_registry = server_context.workflow_registry
+    workflow_registry: WorkflowRegistry = server_context.workflow_registry
 
     if not workflow_registry:
         raise ToolError("Workflow registry not found for MCPApp Server.")
 
     # Get the workflow instance from the registry
-    workflow = workflow_registry.get_workflow(workflow_id)
+    workflow = await workflow_registry.get_workflow(
+        run_id=run_id, workflow_id=workflow_id
+    )
     if not workflow:
         raise ToolError(f"Workflow with ID '{workflow_id}' not found.")
 
-    if workflow_name and workflow.name != workflow_name:
-        raise ToolError(
-            f"Workflow with ID '{workflow_id}' is not a {workflow_name} workflow."
-        )
-
     # Get the status directly from the workflow instance
-    status = workflow.get_status()
+    status = await workflow.get_status()
 
     return status
 
