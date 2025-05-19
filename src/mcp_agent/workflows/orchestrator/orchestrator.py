@@ -1,4 +1,5 @@
 import contextlib
+import json
 from typing import (
     Callable,
     Coroutine,
@@ -8,8 +9,11 @@ from typing import (
     Type,
     TYPE_CHECKING,
 )
+import uuid
+from opentelemetry import trace
 
 from mcp_agent.agents.agent import Agent
+from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -77,7 +81,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             context: Application context
         """
         super().__init__(
-            name=f"orchestrator-{str(context.executor.uuid())}",
+            name=f"orchestrator-{str(context.uuid() if context else uuid.uuid4())}",
             instruction="You are an orchestrator-worker LLM that breaks down tasks into subtasks, delegates them to worker LLMs, and synthesizes their results.",
             context=context,
             **kwargs,
@@ -122,18 +126,60 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ) -> List[MessageT]:
         """Request an LLM generation, which may run multiple iterations, and return the result"""
-        params = self.get_request_params(request_params)
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.generate"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+            span.set_attribute("plan_type", self.plan_type)
+            span.set_attribute("available_agents", str(self.agents.keys()))
 
-        # TODO: saqadri - history tracking is complicated in this multi-step workflow, so we will ignore it for now
-        if params.use_history:
-            raise NotImplementedError(
-                "History tracking is not yet supported for orchestrator workflows"
-            )
+            params = self.get_request_params(request_params)
+            self._annotate_span_with_request_params(span, params)
 
-        objective = str(message)
-        plan_result = await self.execute(objective=objective, request_params=params)
+            # TODO: saqadri - history tracking is complicated in this multi-step workflow, so we will ignore it for now
+            if params.use_history:
+                raise NotImplementedError(
+                    "History tracking is not yet supported for orchestrator workflows"
+                )
 
-        return [plan_result.result]
+            objective = str(message)
+            plan_result = await self.execute(objective=objective, request_params=params)
+
+            span.set_attribute("is_complete", plan_result.is_complete)
+            span.set_attribute("objective", plan_result.objective)
+            if plan_result.plan:
+                span.set_attribute("plan.is_complete", plan_result.plan.is_complete)
+                for idx, step in enumerate(plan_result.plan.steps):
+                    span.set_attribute(
+                        f"plan.steps.{idx}.description", step.description
+                    )
+                    for tidx, task in enumerate(step.tasks):
+                        span.set_attribute(
+                            f"plan.steps.{idx}.tasks.{tidx}.description",
+                            task.description,
+                        )
+                        span.set_attribute(
+                            f"plan.steps.{idx}.tasks.{tidx}.agent", task.agent
+                        )
+            for idx, step_result in enumerate(plan_result.step_results):
+                span.set_attribute(
+                    f"plan.step_results.{idx}.step.description",
+                    step_result.step.description,
+                )
+                for tidx, task_result in enumerate(step_result.task_results):
+                    span.set_attribute(
+                        f"plan.step_results.{idx}.task_results.{tidx}.description",
+                        task_result.description,
+                    )
+                    span.set_attribute(
+                        f"plan.step_results.{idx}.task_results.{tidx}.result",
+                        task_result.result,
+                    )
+            if plan_result.result is not None:
+                span.set_attribute("result", plan_result.result)
+
+            return [plan_result.result]
 
     async def generate_str(
         self,
@@ -141,13 +187,25 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ) -> str:
         """Request an LLM generation and return the string representation of the result"""
-        params = self.get_request_params(request_params)
-        result = await self.generate(
-            message=message,
-            request_params=params,
-        )
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.generate_str"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+            span.set_attribute("plan_type", self.plan_type)
 
-        return str(result[0])
+            params = self.get_request_params(request_params)
+            self._annotate_span_with_request_params(span, params)
+
+            result = await self.generate(
+                message=message,
+                request_params=params,
+            )
+
+            res = str(result[0])
+            span.set_attribute("result", res)
+
+            return res
 
     async def generate_structured(
         self,
@@ -156,90 +214,180 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ) -> ModelT:
         """Request a structured LLM generation and return the result as a Pydantic model."""
-        params = self.get_request_params(request_params)
-        result_str = await self.generate_str(message=message, request_params=params)
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.generate_structured"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+            span.set_attribute("plan_type", self.plan_type)
 
-        llm = self.llm_factory(
-            agent=Agent(
-                name="Structured Output",
-                instruction="Produce a structured output given a message",
+            params = self.get_request_params(request_params)
+            self._annotate_span_with_request_params(span, params)
+
+            result_str = await self.generate_str(message=message, request_params=params)
+
+            llm = self.llm_factory(
+                agent=Agent(
+                    name="Structured Output",
+                    instruction="Produce a structured output given a message",
+                )
             )
-        )
 
-        structured_result = await llm.generate_structured(
-            message=result_str,
-            response_model=response_model,
-            request_params=params,
-        )
+            structured_result = await llm.generate_structured(
+                message=result_str,
+                response_model=response_model,
+                request_params=params,
+            )
 
-        return structured_result
+            try:
+                span.set_attribute(
+                    "structured_response_json",
+                    json.dumps(structured_result, default=str, indent=2)[
+                        :1000
+                    ],  # truncate to avoid massive strings
+                )
+            except Exception:
+                span.set_attribute("unstructured_response", result_str)
+
+            return structured_result
 
     async def execute(
         self, objective: str, request_params: RequestParams | None = None
     ) -> PlanResult:
         """Execute task with result chaining between steps"""
-        iterations = 0
-        params = self.get_request_params(
-            request_params,
-            default=RequestParams(
-                use_history=False, max_iterations=30, maxTokens=16384
-            ),
-        )
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.execute"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+            span.set_attribute("available_agents", str(self.agents.keys()))
+            span.set_attribute("objective", objective)
+            span.set_attribute("plan_type", self.plan_type)
 
-        plan_result = PlanResult(objective=objective, step_results=[])
-
-        while iterations < params.max_iterations:
-            if self.plan_type == "iterative":
-                # Get next plan/step
-                next_step = await self._get_next_step(
-                    objective=objective, plan_result=plan_result, request_params=params
-                )
-                logger.debug(f"Iteration {iterations}: Iterative plan:", data=next_step)
-                plan = Plan(steps=[next_step], is_complete=next_step.is_complete)
-            elif self.plan_type == "full":
-                plan = await self._get_full_plan(
-                    objective=objective, plan_result=plan_result, request_params=params
-                )
-                logger.debug(f"Iteration {iterations}: Full Plan:", data=plan)
-            else:
-                raise ValueError(f"Invalid plan type {self.plan_type}")
-
-            plan_result.plan = plan
-
-            if plan.is_complete:
-                plan_result.is_complete = True
-
-                # Synthesize final result into a single message
-                synthesis_prompt = SYNTHESIZE_PLAN_PROMPT_TEMPLATE.format(
-                    plan_result=format_plan_result(plan_result)
-                )
-
-                plan_result.result = await self.sythesizer.generate_str(
-                    message=synthesis_prompt,
-                    request_params=params.model_copy(update={"max_iterations": 1}),
-                )
-
-                return plan_result
-
-            # Execute each step, collecting results
-            # Note that in iterative mode this will only be a single step
-            for step in plan.steps:
-                step_result = await self._execute_step(
-                    step=step,
-                    previous_result=plan_result,
-                    request_params=params,
-                )
-
-                plan_result.add_step_result(step_result)
-
-            logger.debug(
-                f"Iteration {iterations}: Intermediate plan result:", data=plan_result
+            iterations = 0
+            params = self.get_request_params(
+                request_params,
+                default=RequestParams(
+                    use_history=False, max_iterations=30, maxTokens=16384
+                ),
             )
-            iterations += 1
+            self._annotate_span_with_request_params(span, params)
 
-        raise RuntimeError(
-            f"Task failed to complete in {params.max_iterations} iterations"
-        )
+            plan_result = PlanResult(objective=objective, step_results=[])
+
+            while iterations < params.max_iterations:
+                if self.plan_type == "iterative":
+                    # Get next plan/step
+                    next_step = await self._get_next_step(
+                        objective=objective,
+                        plan_result=plan_result,
+                        request_params=params,
+                    )
+                    logger.debug(
+                        f"Iteration {iterations}: Iterative plan:", data=next_step
+                    )
+                    plan = Plan(steps=[next_step], is_complete=next_step.is_complete)
+
+                    next_step_tasks_event_data = {}
+                    for idx, task in enumerate(next_step.tasks):
+                        next_step_tasks_event_data[f"tasks.{idx}.description"] = (
+                            task.description
+                        )
+                        next_step_tasks_event_data[f"tasks.{idx}.agent"] = task.agent
+
+                    span.add_event(
+                        f"plan.iterative.{iterations}",
+                        {
+                            "is_complete": next_step.is_complete,
+                            "description": next_step.description,
+                            **next_step_tasks_event_data,
+                        },
+                    )
+                elif self.plan_type == "full":
+                    plan = await self._get_full_plan(
+                        objective=objective,
+                        plan_result=plan_result,
+                        request_params=params,
+                    )
+                    logger.debug(f"Iteration {iterations}: Full Plan:", data=plan)
+
+                    plan_steps_event_data = {}
+                    for idx, step in enumerate(plan.steps):
+                        plan_steps_event_data[f"steps.{idx}.description"] = (
+                            step.description
+                        )
+                        for tidx, task in enumerate(step.tasks):
+                            plan_steps_event_data[
+                                f"steps.{idx}.tasks.{tidx}.description"
+                            ] = task.description
+                            plan_steps_event_data[f"steps.{idx}.tasks.{tidx}.agent"] = (
+                                task.agent
+                            )
+                    span.add_event(
+                        f"plan.full.{iterations}",
+                        {
+                            "is_complete": plan.is_complete,
+                            **plan_steps_event_data,
+                        },
+                    )
+                else:
+                    raise ValueError(f"Invalid plan type {self.plan_type}")
+
+                plan_result.plan = plan
+
+                if plan.is_complete:
+                    plan_result.is_complete = True
+
+                    # Synthesize final result into a single message
+                    synthesis_prompt = SYNTHESIZE_PLAN_PROMPT_TEMPLATE.format(
+                        plan_result=format_plan_result(plan_result)
+                    )
+
+                    plan_result.result = await self.sythesizer.generate_str(
+                        message=synthesis_prompt,
+                        request_params=params.model_copy(update={"max_iterations": 1}),
+                    )
+
+                    span.set_attribute("plan.is_complete", plan_result.is_complete)
+                    span.set_attribute("plan.result", plan_result.result)
+
+                    return plan_result
+
+                # Execute each step, collecting results
+                # Note that in iterative mode this will only be a single step
+                for idx, step in enumerate(plan.steps):
+                    step_result = await self._execute_step(
+                        step=step,
+                        previous_result=plan_result,
+                        request_params=params,
+                    )
+
+                    plan_result.add_step_result(step_result)
+
+                    step_result_event_data = {
+                        f"step_results.{idx}.result": step_result.result,
+                        f"step_results.{idx}.description": step_result.step.description,
+                    }
+                    for tidx, task_result in enumerate(step_result.task_results):
+                        step_result_event_data[
+                            f"step_results.{idx}.task_results.{tidx}.description"
+                        ] = task_result.description
+                        step_result_event_data[
+                            f"step_results.{idx}.task_results.{tidx}.result"
+                        ] = task_result.result
+                    span.add_event(
+                        f"plan.{iterations}.step.{idx}.result", step_result_event_data
+                    )
+
+                logger.debug(
+                    f"Iteration {iterations}: Intermediate plan result:",
+                    data=plan_result,
+                )
+                iterations += 1
+
+            raise RuntimeError(
+                f"Task failed to complete in {params.max_iterations} iterations"
+            )
 
     async def _execute_step(
         self,

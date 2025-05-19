@@ -25,7 +25,7 @@ openai:
   default_model: gpt-4o
 
 otel:
-  enable: true
+  enabled: false
   exporters: ["console"]
   # If running jaeger locally, uncomment the following lines and add "otlp" to the exporters list
   # otlp_settings:
