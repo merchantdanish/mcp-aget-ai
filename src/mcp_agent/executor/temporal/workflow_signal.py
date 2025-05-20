@@ -1,10 +1,9 @@
-import asyncio
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, Callable, Dict, Generic, Optional, Sequence, TYPE_CHECKING
+from typing import Any, Callable, Dict, Generic, Optional, TYPE_CHECKING
 
-from temporalio import common, exceptions, workflow
+from temporalio import exceptions, workflow
 
 from mcp_agent.executor.workflow_signal import BaseSignalHandler, Signal, SignalValueT
 from mcp_agent.logging.logger import get_logger
@@ -42,6 +41,10 @@ class SignalMailbox(Generic[SignalValueT]):
         rec.value = value
         rec.version += 1
 
+        logger.debug(
+            f"SignalMailbox.push: name={name}, value={value}, version={rec.version}"
+        )
+
     def version(self, name: str) -> int:
         """Get the current version counter for a signal name"""
         return self._store.get(name, _Record()).version
@@ -57,8 +60,14 @@ class SignalMailbox(Generic[SignalValueT]):
             ValueError: If no value exists for the signal
         """
         value = self._store.get(name, _Record()).value
+
         if value is None:
             raise ValueError(f"No value for signal {name}")
+
+        logger.debug(
+            f"SignalMailbox.value: name={name}, value={value}, version={self._store.get(name, _Record()).version}"
+        )
+
         return value
 
 
@@ -94,7 +103,12 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
         """
         # Avoid re-registering signals - set flag early for idempotency
         if getattr(wf_instance, "_signal_handler_attached", False):
+            logger.debug(
+                f"Signal handler already attached to {wf_instance.name}, skipping"
+            )
             return
+
+        logger.debug(f"Attaching signal handler to workflow {wf_instance.name}")
 
         # Mark as attached early to ensure idempotency even if an error occurs
         wf_instance._signal_handler_attached = True
@@ -104,31 +118,6 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
 
         # Store reference in ContextVar for wait_for_signal
         self._mailbox_ref.set(mb)
-
-        # Register a single dynamic signal handler for all signals
-        # Dynamic signal handler MUST have 3 arguments: self, name (str), and args (Sequence[RawValue])
-        @workflow.signal(dynamic=True)
-        async def _signal_receiver(self, name: str, args: Sequence[common.RawValue]):
-            # For dynamic signals, the payload is typically the first element in args
-            payload = args[0] if args else None
-
-            # Update the mailbox
-            mb.push(name, payload)
-
-            # Create a signal object for callbacks
-            sig_obj = Signal(
-                name=name,
-                payload=payload,
-                workflow_id=workflow.info().workflow_id,
-                run_id=workflow.info().run_id,
-            )
-
-            # Live lookup of handlers (enables callbacks added after attach_to_workflow)
-            for _, cb in self._handlers.get(name, ()):
-                if asyncio.iscoroutinefunction(cb):
-                    await cb(sig_obj)
-                else:
-                    cb(sig_obj)
 
     async def wait_for_signal(
         self,
@@ -169,12 +158,21 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
             min_version if min_version is not None else mailbox.version(signal.name)
         )
 
+        logger.debug(
+            f"SignalMailbox.wait_for_signal: name={signal.name}, current_ver={current_ver}, min_version={min_version}"
+        )
+
         # Wait for a new version (version > current_ver)
         try:
             await workflow.wait_condition(
                 lambda: mailbox.version(signal.name) > current_ver,
                 timeout=timedelta(seconds=timeout_seconds) if timeout_seconds else None,
             )
+
+            logger.debug(
+                f"SignalMailbox.wait_for_signal returned: name={signal.name}, val={mailbox.value(signal.name)}"
+            )
+
             return mailbox.value(signal.name)
         except exceptions.TimeoutError as e:
             raise TimeoutError(f"Timeout waiting for signal {signal.name}") from e

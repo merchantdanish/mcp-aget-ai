@@ -48,7 +48,7 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
     async def unregister(self, run_id: str, workflow_id: str | None = None) -> None:
         if run_id in self._local_workflows:
             workflow = self._local_workflows[run_id]
-            workflow_id = workflow.workflow_id
+            workflow_id = workflow.name if workflow_id is None else workflow_id
 
             # Remove from workflow_ids mapping
             if workflow_id in self._workflow_ids:
@@ -76,25 +76,28 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
         await self._executor.ensure_client()
 
         try:
-            # Get the workflow handle directly from Temporal
-            # In Temporal, we need both workflow_id and run_id to target a specific run
-            workflow = self.get_workflow(run_id)
-            if not workflow:
+            workflow = await self.get_workflow(run_id)
+            workflow_id = (
+                workflow.name if workflow and workflow_id is None else workflow_id
+            )
+
+            if not workflow_id:
+                # In Temporal, we need both workflow_id and run_id to target a specific run
                 logger.error(
-                    f"Workflow with run_id {run_id} not found in local registry"
+                    f"Workflow with run_id {run_id} not found in local registry and workflow_id not provided"
                 )
                 return False
-
-            workflow_id = workflow.workflow_id
 
             # Get the handle and send the signal
             handle = self._executor.client.get_workflow_handle(
                 workflow_id=workflow_id, run_id=run_id
             )
             await handle.signal(signal_name, payload)
+
             logger.info(
                 f"Sent signal {signal_name} to workflow {workflow_id} run {run_id}"
             )
+
             return True
         except Exception as e:
             logger.error(f"Error signaling workflow {run_id}: {e}")
@@ -108,14 +111,17 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
 
         try:
             # Get the workflow from local registry
-            workflow = self.get_workflow(run_id)
-            if not workflow:
+            workflow = await self.get_workflow(run_id)
+            workflow_id = (
+                workflow.name if workflow and workflow_id is None else workflow_id
+            )
+
+            if not workflow_id:
+                # In Temporal, we need both workflow_id and run_id to target a specific run
                 logger.error(
-                    f"Workflow with run_id {run_id} not found in local registry"
+                    f"Workflow with run_id {run_id} not found in local registry and workflow_id not provided"
                 )
                 return False
-
-            workflow_id = workflow.workflow_id
 
             # Get the handle and cancel the workflow
             handle = self._executor.client.get_workflow_handle(
@@ -127,6 +133,61 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
         except Exception as e:
             logger.error(f"Error cancelling workflow {run_id}: {e}")
             return False
+
+    async def get_workflow_status(
+        self, run_id: str, workflow_id: str | None = None
+    ) -> Optional[Dict[str, Any]]:
+        workflow = await self.get_workflow(run_id)
+        workflow_id = workflow.name if workflow and workflow_id is None else workflow_id
+
+        if not workflow_id:
+            # In Temporal, we need both workflow_id and run_id to target a specific run
+            logger.error(
+                f"Workflow with run_id {run_id} not found in local registry and workflow_id not provided"
+            )
+            return False
+
+        status_dict: Dict[str, Any] = {}
+
+        if workflow:
+            # If we have a local workflow, use its status, and merge with Temporal status
+            status_dict = await workflow.get_status()
+
+        # Query Temporal for the status
+        temporal_status = await self._get_temporal_workflow_status(
+            workflow_id=workflow_id, run_id=run_id
+        )
+
+        # Merge the local status with the Temporal status
+        status_dict["temporal"] = temporal_status
+
+        return status_dict
+
+    async def list_workflow_statuses(self) -> List[Dict[str, Any]]:
+        result = []
+        for run_id, workflow in self._local_workflows.items():
+            # Get the workflow status directly to have consistent behavior
+            status = await workflow.get_status()
+
+            # Query Temporal for the status
+            temporal_status = await self._get_temporal_workflow_status(
+                workflow_id=workflow.name, run_id=run_id
+            )
+
+            status["temporal"] = temporal_status
+
+            result.append(status)
+
+        return result
+
+    async def list_workflows(self) -> List["Workflow"]:
+        """
+        List all registered workflow instances.
+
+        Returns:
+            A list of workflow instances
+        """
+        return list(self._local_workflows.values())
 
     async def _get_temporal_workflow_status(
         self, workflow_id: str, run_id: str
@@ -156,8 +217,10 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
             # Convert to a dictionary with our standard format
             status = {
                 "id": workflow_id,
+                "workflow_id": workflow_id,
                 "run_id": run_id,
-                "name": describe.workflow_type.name,
+                "name": describe.id,
+                "type": describe.workflow_type,
                 "status": describe.status.name,
                 "start_time": describe.start_time.timestamp()
                 if describe.start_time
@@ -169,11 +232,8 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
                 if describe.close_time
                 else None,
                 "history_length": describe.history_length,
-                "parent_namespace": describe.parent_namespace,
-                "parent_workflow_id": describe.parent_workflow_id,
+                "parent_workflow_id": describe.parent_id,
                 "parent_run_id": describe.parent_run_id,
-                "search_attributes": describe.search_attributes,
-                "memo": describe.memo,
             }
 
             return status
@@ -182,87 +242,8 @@ class TemporalWorkflowRegistry(WorkflowRegistry):
             # Return basic status with error information
             return {
                 "id": workflow_id,
+                "workflow_id": workflow_id,
                 "run_id": run_id,
                 "status": "ERROR",
                 "error": str(e),
             }
-
-    async def get_workflow_status_2(
-        self, run_id: str, workflow_id: str | None = None
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Get the status of a workflow by run ID.
-
-        Args:
-            run_id: The unique ID of the workflow run to check
-
-        Returns:
-            The workflow status if found, None otherwise
-        """
-        workflow = self.get_workflow(run_id)
-        if not workflow:
-            return None
-
-        # For Temporal, we need to query the service for the latest status
-        # This is done asynchronously, so we need to create a task
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-        workflow_id = workflow.workflow_id
-
-        # If we're in an async context, use coroutine, otherwise run the coroutine in the loop
-        if loop.is_running():
-            # Create task and wait for it to complete
-            asyncio.create_task(self._get_temporal_workflow_status(workflow_id, run_id))
-            # We can't await here because we're in a synchronous method
-            # Return the local status, and clients should use the async version if possible
-            return workflow.get_status()
-        else:
-            # We're not in an async context, run the coroutine in the loop
-            return loop.run_until_complete(
-                self._get_temporal_workflow_status(workflow_id, run_id)
-            )
-
-    async def get_workflow_status(
-        self, run_id: str, workflow_id: str | None = None
-    ) -> Optional[Dict[str, Any]]:
-        workflow = self.get_workflow(run_id)
-        if not workflow:
-            return None
-
-        workflow_id = workflow.workflow_id
-        return await self._get_temporal_workflow_status(workflow_id, run_id)
-
-    async def list_workflow_statuses(self) -> List[Dict[str, Any]]:
-        result = []
-        for run_id, workflow in self._local_workflows.items():
-            workflow_id = workflow.workflow_id
-            status = await self._get_temporal_workflow_status(workflow_id, run_id)
-            result.append(status)
-
-        return result
-
-    def list_workflow_statuses2(self) -> List[Dict[str, Any]]:
-        """
-        List all registered workflow instances with their status.
-        For Temporal, this uses local status information.
-
-        Returns:
-            A list of dictionaries with workflow information
-        """
-        result = []
-        for run_id, workflow in self._local_workflows.items():
-            # Get the workflow status from the local instance
-            status = workflow.get_status()
-            result.append(status)
-
-        return result
-
-    async def list_workflows(self) -> List["Workflow"]:
-        """
-        List all registered workflow instances.
-
-        Returns:
-            A list of workflow instances
-        """
-        return list(self._local_workflows.values())

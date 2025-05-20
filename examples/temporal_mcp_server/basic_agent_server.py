@@ -34,12 +34,8 @@ class BasicAgentWorkflow(Workflow[str]):
     This workflow is used as an example of a basic agent configuration.
     """
 
-    @app.workflow_signal(name="resume")
-    def resumption(self, value: str | None = None) -> None:
-        print(f"resume: Received signal resume..., value: {value}")
-
     @app.workflow_run
-    async def run(self, *args, **kwargs) -> WorkflowResult[str]:
+    async def run(self) -> WorkflowResult[str]:
         """
         Run the basic agent workflow.
 
@@ -50,8 +46,12 @@ class BasicAgentWorkflow(Workflow[str]):
             WorkflowResult containing the processed data.
         """
         print("Running BasicAgentWorkflow...")
-        print("About to wait for signal...")
-        await app.context.executor.signal_bus.wait_for_signal(Signal(name="resume"))
+        print(
+            f"About to wait for signal..., workflow_id: {self.name}, run_id: {self.id}"
+        )
+        await app.context.executor.signal_bus.wait_for_signal(
+            Signal(name="resume", workflow_id=self.name, run_id=self.id),
+        )
         print("Signal received, resuming workflow...")
         # finder_agent = Agent(
         #     name="finder",

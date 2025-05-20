@@ -269,7 +269,7 @@ class MCPApp:
         )
 
         if workflow_defn_decorator:
-            # TODO: jerron - Setting sandboxed=False is a workaround to silence temporal's RestrictedWorkflowAccessError.
+            # TODO: jerron (MAC) - Setting sandboxed=False is a workaround to silence temporal's RestrictedWorkflowAccessError.
             # Can we make this work without having to run outside sandbox environment?
             # This is not ideal as it could lead to non-deterministic behavior.
             decorated_cls = workflow_defn_decorator(
@@ -351,6 +351,10 @@ class MCPApp:
 
             # Get the workflow class instance from the first argument
             instance = args[0]
+
+            # Ensure initialization happens
+            await instance.initialize()
+
             workflow_cls = instance.__class__
             method_name = fn.__name__
 

@@ -1,3 +1,6 @@
+import asyncio
+import sys
+
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import (
@@ -10,6 +13,7 @@ from typing import (
 )
 
 from pydantic import BaseModel, ConfigDict, Field
+from temporalio import workflow
 
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.temporal import TemporalExecutor
@@ -21,6 +25,7 @@ from mcp_agent.executor.workflow_signal import Signal
 from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
+    from temporalio.client import WorkflowHandle
     from mcp_agent.core.context import Context
 
 T = TypeVar("T")
@@ -106,7 +111,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
     @property
     def id(self) -> str | None:
         """
-        Get the workflow ID if it has been assigned.
+        Get the workflow run ID if it has been assigned.
         NOTE: The run() method will assign a new workflow ID on every run.
         """
         return self._run_id  # TODO: saqadri - (MAC) - this should be a workflow ID
@@ -186,11 +191,20 @@ class Workflow(ABC, Generic[T], ContextDependent):
         import asyncio
         from concurrent.futures import CancelledError
 
-        # Generate a unique ID for this workflow instance
-        if not self._run_id:
-            self._run_id = str(self.executor.uuid())
+        handle: "WorkflowHandle" | None = None
 
         self.update_status("scheduled")
+
+        if self.context.config.execution_engine == "asyncio":
+            # Generate a unique ID for this workflow instance
+            if not self._run_id:
+                self._run_id = str(self.executor.uuid())
+        elif self.context.config.execution_engine == "temporal":
+            # For Temporal workflows, we'll start the workflow immediately
+            executor: TemporalExecutor = self.executor
+            handle = await executor.start_workflow(self.name, *args, **kwargs)
+            self._run_id = handle.result_run_id or handle.run_id
+            self._logger.debug(f"Workflow started with run ID: {self._run_id}")
 
         # Define the workflow execution function
         async def _execute_workflow():
@@ -200,11 +214,8 @@ class Workflow(ABC, Generic[T], ContextDependent):
 
                 tasks = []
                 cancel_task = None
-                if self.context.config.execution_engine == "temporal":
-                    executor: TemporalExecutor = self.executor
-                    run_task = asyncio.create_task(
-                        executor.execute_workflow(self.name, *args, **kwargs)
-                    )
+                if self.context.config.execution_engine == "temporal" and handle:
+                    run_task = asyncio.create_task(handle.result())
                     # TODO: jerron - cancel task not working for temporal
                     tasks.append(run_task)
                 else:
@@ -270,7 +281,12 @@ class Workflow(ABC, Generic[T], ContextDependent):
 
         # Register this workflow with the registry
         if self.context and self.context.workflow_registry:
-            self.context.workflow_registry.register(self._run_id, self, self._run_task)
+            await self.context.workflow_registry.register(
+                workflow=self,
+                run_id=self._run_id,
+                workflow_id=self.name,
+                task=self._run_task,
+            )
 
         return self._run_id
 
@@ -295,7 +311,12 @@ class Workflow(ABC, Generic[T], ContextDependent):
             self._logger.info(
                 f"About to send {signal_name} signal sent to workflow {self._run_id}"
             )
-            signal = Signal(name=signal_name, workflow_id=self._run_id, payload=payload)
+            signal = Signal(
+                name=signal_name,
+                workflow_id=self.name,
+                run_id=self._run_id,
+                payload=payload,
+            )
             await self.executor.signal_bus.signal(signal)
             self._logger.info(f"{signal_name} signal sent to workflow {self._run_id}")
             self.update_status("running")
@@ -321,11 +342,49 @@ class Workflow(ABC, Generic[T], ContextDependent):
             # First signal the workflow to cancel - this allows for graceful cancellation
             # when the workflow checks for cancellation
             self._logger.info(f"Sending cancel signal to workflow {self._run_id}")
-            await self.executor.signal("cancel", workflow_id=self._run_id)
+            await self.executor.signal(
+                "cancel", workflow_id=self.name, run_id=self._run_id
+            )
             return True
         except Exception as e:
             self._logger.error(f"Error cancelling workflow {self._run_id}: {e}")
             return False
+
+    # Add the dynamic signal handler method in the case that the workflow is running under Temporal
+    if "temporalio.workflow" in sys.modules:
+        from temporalio import workflow
+        from temporalio.common import RawValue
+        from typing import Sequence
+
+        @workflow.signal(dynamic=True)
+        async def _signal_receiver(self, name: str, args: Sequence[RawValue]):
+            """Dynamic signal handler for Temporal workflows."""
+            self._logger.debug(f"Dynamic signal received: name={name}, args={args}")
+
+            # Extract payload and update mailbox
+            payload = args[0] if args else None
+
+            if hasattr(self, "_signal_mailbox"):
+                self._signal_mailbox.push(name, payload)
+                self._logger.debug(f"Updated mailbox for signal {name}")
+            else:
+                self._logger.warning("No _signal_mailbox found on workflow instance")
+
+            if hasattr(self, "_handlers"):
+                # Create a signal object for callbacks
+                sig_obj = Signal(
+                    name=name,
+                    payload=payload,
+                    workflow_id=workflow.info().workflow_id,
+                    run_id=workflow.info().run_id,
+                )
+
+                # Live lookup of handlers (enables callbacks added after attach_to_workflow)
+                for _, cb in self._handlers.get(name, ()):
+                    if asyncio.iscoroutinefunction(cb):
+                        await cb(sig_obj)
+                    else:
+                        cb(sig_obj)
 
     async def get_status(self) -> Dict[str, Any]:
         """

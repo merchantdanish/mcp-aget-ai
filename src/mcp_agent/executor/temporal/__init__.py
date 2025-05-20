@@ -327,13 +327,21 @@ class TemporalExecutor(Executor):
             input_arg = bound_args
 
         # Start the workflow
-        handle: WorkflowHandle = await self.client.start_workflow(
-            wf,
-            input_arg,
-            id=workflow_id,
-            task_queue=self.config.task_queue,
-            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-        )
+        if input_arg is not None:
+            handle: WorkflowHandle = await self.client.start_workflow(
+                wf,
+                input_arg,
+                id=workflow_id,
+                task_queue=self.config.task_queue,
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+            )
+        else:
+            handle: WorkflowHandle = await self.client.start_workflow(
+                wf,
+                id=workflow_id,
+                task_queue=self.config.task_queue,
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+            )
 
         # Wait for the result if requested
         if wait_for_result:
