@@ -254,9 +254,6 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         # Format previous results
         context = format_plan_result(previous_result)
 
-        # TODO: saqadri (MAC) - we should be able to execute the tasks in parallel,
-        # but something is breaking temporal's determinism guarantees
-        # We will run them sequentially for now
         # Execute subtasks in parallel
         futures: list[Coroutine[any, any, str]] = []
         results = []

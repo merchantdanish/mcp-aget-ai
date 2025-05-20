@@ -188,7 +188,6 @@ class ProviderToMCPConverter(Protocol, Generic[MessageParamT, MessageT]):
         """Convert an MCP tool result to an LLM input type"""
 
 
-# TODO: saqadri (MAC) - this likely needs to be converted to a Pydantic model
 class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, MessageT]):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
@@ -206,7 +205,6 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     def __init__(
         self,
         agent: Optional["Agent"] = None,
-        # TODO: saqadri (MAC) - Make this | None = None
         server_names: List[str] | None = None,
         instruction: str | None = None,
         name: str | None = None,

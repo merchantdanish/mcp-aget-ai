@@ -47,10 +47,10 @@ class BasicAgentWorkflow(Workflow[str]):
         """
         print("Running BasicAgentWorkflow...")
         print(
-            f"About to wait for signal..., workflow_id: {self.name}, run_id: {self.id}"
+            f"About to wait for signal..., workflow_id: {self.id}, run_id: {self.run_id}"
         )
         await app.context.executor.signal_bus.wait_for_signal(
-            Signal(name="resume", workflow_id=self.name, run_id=self.id),
+            Signal(name="resume", workflow_id=self.id, run_id=self.run_id),
         )
         print("Signal received, resuming workflow...")
         # finder_agent = Agent(

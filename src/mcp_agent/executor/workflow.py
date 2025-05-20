@@ -111,10 +111,17 @@ class Workflow(ABC, Generic[T], ContextDependent):
     @property
     def id(self) -> str | None:
         """
+        Get the workflow ID for this workflow.
+        """
+        return self.name
+
+    @property
+    def run_id(self) -> str | None:
+        """
         Get the workflow run ID if it has been assigned.
         NOTE: The run() method will assign a new workflow ID on every run.
         """
-        return self._run_id  # TODO: saqadri - (MAC) - this should be a workflow ID
+        return self._run_id
 
     @classmethod
     async def create(
@@ -158,7 +165,8 @@ class Workflow(ABC, Generic[T], ContextDependent):
         """
         signal = await self.executor.wait_for_signal(
             "cancel",
-            workflow_id=self._run_id,  # TODO: saqadri - (MAC) - this should be a workflow ID
+            workflow_id=self.id,
+            run_id=self.run_id,
             signal_description="Waiting for cancel signal",
         )
 
@@ -173,12 +181,8 @@ class Workflow(ABC, Generic[T], ContextDependent):
         Run the workflow asynchronously and return a workflow ID.
 
         This creates an async task that will be executed through the executor
-        and returns immediately with a workflow ID that can be used to
+        and returns immediately with a workflow run ID that can be used to
         check status, resume, or cancel.
-
-        TODO: saqadri - (MAC) - This needs to be updated to use
-        the executor for proper workflow orchestration. For example, asyncio vs. Temporal.
-        Current implementation only works with asyncio.
 
         Args:
             *args: Positional arguments to pass to the run method
@@ -275,8 +279,6 @@ class Workflow(ABC, Generic[T], ContextDependent):
                         f"Error cleaning up workflow {self.name} (ID: {self._run_id}): {str(cleanup_error)}"
                     )
 
-        # TODO: saqadri (MAC) - figure out how to do this for different executors.
-        # For Temporal, we would replace this with workflow.start() which also doesn't block
         self._run_task = asyncio.create_task(_execute_workflow())
 
         # Register this workflow with the registry
