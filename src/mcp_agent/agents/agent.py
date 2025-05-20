@@ -16,6 +16,7 @@ from mcp.types import (
 )
 
 from mcp_agent.core.context import Context
+from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator, NamespacedPrompt, NamespacedTool
 from mcp_agent.human_input.types import (
     HumanInputRequest,
@@ -270,6 +271,21 @@ class Agent(BaseModel):
                 f"Server '{server_name}' not found in agent '{self.name}'. "
                 f"Available servers: {list(result.keys())}"
             )
+
+    async def get_server_session(self, server_name: str):
+        """
+        Get the session data of a specific server.
+        """
+        if not self.initialized:
+            await self.initialize()
+
+        executor = self.context.executor
+        result: GetServerSessionResponse = await executor.execute(
+            self._agent_tasks.get_server_session,
+            GetServerSessionRequest(agent_name=self.name, server_name=server_name),
+        )
+
+        return result
 
     async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
         if not self.initialized:
@@ -548,6 +564,25 @@ class GetCapabilitiesRequest(BaseModel):
     server_name: Optional[str] = None
 
 
+class GetServerSessionRequest(BaseModel):
+    """
+    Request to get the session data of a specific server.
+    """
+
+    agent_name: str
+    server_name: str
+
+
+class GetServerSessionResponse(BaseModel):
+    """
+    Response to the get server session request.
+    """
+
+    session_id: str | None = None
+    session_data: dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
+
+
 class AgentTasks:
     """
     Agent tasks for executing agent-related activities.
@@ -725,3 +760,27 @@ class AgentTasks:
             )
 
         return server_capabilities
+
+    async def get_server_session(
+        self, request: GetServerSessionRequest
+    ) -> GetServerSessionResponse:
+        """
+        Get the session for a specific server.
+        """
+        agent_name = request.agent_name
+        server_name = request.server_name
+
+        # Get the MCPAggregator for the agent
+        aggregator = self.server_aggregators_for_agent.get(agent_name)
+        if not aggregator:
+            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
+
+        server_session: MCPAgentClientSession = await aggregator.get_server(
+            server_name=server_name
+        )
+
+        session_id = server_session.get_session_id()
+
+        return GetServerSessionResponse(
+            session_id=session_id,
+        )
