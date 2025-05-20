@@ -230,6 +230,13 @@ class Agent(BaseModel):
         self.initialized = False
         logger.debug(f"Agent {self.name} shutdown.")
 
+    async def close(self):
+        """
+        Close the agent and release all resources.
+        Synonymous with shutdown.
+        """
+        await self.shutdown()
+
     async def __aenter__(self):
         await self.initialize()
         return self
