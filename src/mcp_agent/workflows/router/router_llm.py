@@ -3,6 +3,7 @@ from typing import Callable, List, Literal, Optional, TYPE_CHECKING
 from pydantic import BaseModel
 
 from mcp_agent.agents.agent import Agent
+from mcp_agent.tracing.telemetry import telemetry
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 from mcp_agent.workflows.router.router_base import ResultT, Router, RouterResult
 from mcp_agent.logging.logger import get_logger
@@ -127,6 +128,7 @@ class LLMRouter(Router):
         await instance.initialize()
         return instance
 
+    @telemetry.traced()
     async def route(
         self, request: str, top_k: int = 1
     ) -> List[LLMRouterResult[str | Agent | Callable]]:
@@ -135,6 +137,7 @@ class LLMRouter(Router):
 
         return await self._route_with_llm(request, top_k)
 
+    @telemetry.traced()
     async def route_to_server(
         self, request: str, top_k: int = 1
     ) -> List[LLMRouterResult[str]]:
@@ -149,6 +152,7 @@ class LLMRouter(Router):
             include_functions=False,
         )
 
+    @telemetry.traced()
     async def route_to_agent(
         self, request: str, top_k: int = 1
     ) -> List[LLMRouterResult[Agent]]:
@@ -163,6 +167,7 @@ class LLMRouter(Router):
             include_functions=False,
         )
 
+    @telemetry.traced()
     async def route_to_function(
         self, request: str, top_k: int = 1
     ) -> List[LLMRouterResult[Callable]]:
