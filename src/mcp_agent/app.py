@@ -25,7 +25,6 @@ from mcp_agent.utils.common import unwrap
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 
 if TYPE_CHECKING:
-    from mcp_agent.agents.agent_config import AgentConfig
     from mcp_agent.executor.workflow import Workflow
 
 R = TypeVar("R")
@@ -102,10 +101,6 @@ class MCPApp:
         self._model_selector = model_selector
 
         self._workflows: Dict[str, Type["Workflow"]] = {}  # id to workflow class
-
-        self._agent_configs: Dict[
-            str, "AgentConfig"
-        ] = {}  # name to agent configuration
 
         self._logger = None
         self._context: Optional[Context] = None
@@ -449,24 +444,6 @@ class MCPApp:
         Check if a function is marked as a workflow task.
         This gets set for functions that are decorated with @workflow_task."""
         return bool(getattr(func, "is_workflow_task", False))
-
-    @property
-    def agent_configs(self) -> Dict[str, "AgentConfig"]:
-        """Get the dictionary of registered agent configurations."""
-        return self._agent_configs
-
-    def register_agent_config(self, config: "AgentConfig") -> "AgentConfig":
-        """
-        Register an agent configuration with the application.
-
-        Args:
-            config: The agent configuration to register
-
-        Returns:
-            The registered configuration
-        """
-        self._agent_configs[config.name] = config
-        return config
 
     def _register_global_workflow_tasks(self):
         """Register all statically defined workflow tasks with this app instance."""
