@@ -61,6 +61,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
     def __init__(
         self,
         llm_factory: Callable[[Agent], AugmentedLLM[MessageParamT, MessageT]],
+        name: str | None = None,
         planner: AugmentedLLM | None = None,
         synthesizer: AugmentedLLM | None = None,
         available_agents: List[Agent | AugmentedLLM] | None = None,
@@ -77,7 +78,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             context: Application context
         """
         super().__init__(
-            name=f"orchestrator-{str(context.executor.uuid())}",
+            name=name,
             instruction="You are an orchestrator-worker LLM that breaks down tasks into subtasks, delegates them to worker LLMs, and synthesizes their results.",
             context=context,
             **kwargs,

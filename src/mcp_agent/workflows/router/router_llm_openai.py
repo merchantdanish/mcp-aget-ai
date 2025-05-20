@@ -22,6 +22,7 @@ class OpenAILLMRouter(LLMRouter):
 
     def __init__(
         self,
+        name: str | None = None,
         server_names: List[str] | None = None,
         agents: List[Agent] | None = None,
         functions: List[Callable] | None = None,
@@ -30,7 +31,7 @@ class OpenAILLMRouter(LLMRouter):
         **kwargs,
     ):
         openai_llm = OpenAIAugmentedLLM(
-            name=f"openai_router-{str(context.executor.uuid())}",
+            name=name,
             instruction=ROUTING_SYSTEM_INSTRUCTION,
             context=context,
         )
