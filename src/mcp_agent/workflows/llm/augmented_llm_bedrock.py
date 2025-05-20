@@ -16,6 +16,7 @@ from mcp.types import (
 from mcp_agent.config import BedrockSettings
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.utils.common import typed_dict_extras
+from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -293,16 +294,31 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         params = self.get_request_params(request_params)
         model = await self.select_model(params) or "us.amazon.nova-lite-v1:0"
 
+        serialized_response_model: str | None = None
+
+        if self.executor and self.executor.execution_engine == "temporal":
+            # Serialize the response model to a string
+            serialized_response_model = serialize_model(response_model)
+
         structured_response = await self.executor.execute(
             BedrockCompletionTasks.request_structured_completion_task,
             RequestStructuredCompletionRequest(
                 config=self.context.config.bedrock,
-                params=params,
-                response_model=response_model,
+                response_model=response_model
+                if not serialized_response_model
+                else None,
+                serialized_response_model=serialized_response_model,
                 response_str=response,
+                params=params,
                 model=model,
             ),
         )
+
+        # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
+        # Convert dict back to the proper model instance if needed
+        if isinstance(structured_response, dict):
+            structured_response = response_model.model_validate(structured_response)
+
         return structured_response
 
     @classmethod
@@ -338,7 +354,8 @@ class RequestCompletionRequest(BaseModel):
 class RequestStructuredCompletionRequest(BaseModel):
     config: BedrockSettings
     params: RequestParams
-    response_model: Type[ModelT]
+    response_model: Type[ModelT] | None = None
+    serialized_response_model: str | None = None
     response_str: str
     model: str
 
@@ -380,6 +397,15 @@ class BedrockCompletionTasks:
         """
         import instructor
 
+        if request.response_model:
+            response_model = request.response_model
+        elif request.serialized_response_model:
+            response_model = deserialize_model(request.serialized_response_model)
+        else:
+            raise ValueError(
+                "Either response_model or serialized_response_model must be provided for structured completion."
+            )
+
         if request.config:
             session = Session(profile_name=request.config.profile)
             bedrock_client = session.client(
@@ -399,7 +425,7 @@ class BedrockCompletionTasks:
         structured_response = client.chat.completions.create(
             modelId=request.model,
             messages=[{"role": "user", "content": [{"text": request.response_str}]}],
-            response_model=request.response_model,
+            response_model=response_model,
         )
 
         return structured_response

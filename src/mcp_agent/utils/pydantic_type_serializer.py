@@ -7,10 +7,12 @@ such as in a distributed workflow system like Temporal.
 import json
 import inspect
 import importlib
+from enum import Enum
 from datetime import datetime, date, time
 import re
 import enum
 import uuid
+import logging
 from typing import (
     Any,
     Dict,
@@ -38,8 +40,37 @@ from pydantic import (
     create_model,
     ConfigDict,
 )
+from pydantic.fields import FieldInfo
+from pydantic._internal._utils import lenient_issubclass
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
+
+
+def is_pydantic_undefined(obj: Any) -> bool:
+    """Check if an object is a PydanticUndefinedType instance."""
+    if obj is None:
+        return False
+    return (
+        hasattr(obj, "__class__") and obj.__class__.__name__ == "PydanticUndefinedType"
+    )
+
+
+def make_serializable(value: Any) -> Any:
+    """Make a value serializable by handling PydanticUndefinedType and other special cases."""
+    if is_pydantic_undefined(value):
+        return None
+    if isinstance(value, (str, int, float, bool, type(None))):
+        return value
+    if value is ...:
+        return None
+    try:
+        json.dumps(value)  # Test if already serializable
+        return value
+    except (TypeError, OverflowError):
+        return str(value)
 
 
 class PydanticTypeSerializer(BaseModel):
@@ -92,6 +123,10 @@ class PydanticTypeSerializer(BaseModel):
         if typ is None:
             return {"kind": "none"}
 
+        # Handle PydanticUndefined
+        if is_pydantic_undefined(typ):
+            return {"kind": "none"}
+
         # Handle basic Python types
         if isinstance(typ, type):
             if issubclass(typ, BaseModel):
@@ -102,7 +137,7 @@ class PydanticTypeSerializer(BaseModel):
                     "module": typ.__module__,
                     "schema": typ.model_json_schema(),
                     "config": PydanticTypeSerializer._serialize_config(typ),
-                    "fields": PydanticTypeSerializer._serialize_fields(typ),
+                    "fields": PydanticTypeSerializer._get_all_fields(typ),
                     "validators": PydanticTypeSerializer._serialize_validators(typ),
                 }
             elif issubclass(typ, enum.Enum):
@@ -273,6 +308,35 @@ class PydanticTypeSerializer(BaseModel):
         return validators
 
     @staticmethod
+    def _get_all_fields(model_class: Type[BaseModel]) -> Dict[str, Dict[str, Any]]:
+        """
+        Get all field definitions for a model class, including fields from parent classes.
+
+        Args:
+            model_class: The Pydantic model class
+
+        Returns:
+            A dictionary of field definitions
+        """
+        fields = {}
+
+        # Get fields from the current class
+        fields.update(PydanticTypeSerializer._serialize_fields(model_class))
+
+        # Get fields from parent classes
+        for base in model_class.__bases__:
+            if base is BaseModel or not issubclass(base, BaseModel):
+                continue
+
+            parent_fields = PydanticTypeSerializer._get_all_fields(base)
+            # Only add fields that aren't already defined in the current class
+            for field_name, field_info in parent_fields.items():
+                if field_name not in fields and field_name != "__private_attrs__":
+                    fields[field_name] = field_info
+
+        return fields
+
+    @staticmethod
     def _serialize_fields(model_class: Type[BaseModel]) -> Dict[str, Dict[str, Any]]:
         """Serialize the field definitions of a model class."""
         fields = {}
@@ -295,21 +359,32 @@ class PydanticTypeSerializer(BaseModel):
                 if field_info is None:
                     continue
 
+                # Make default value serializable
+                default = getattr(field_info, "default", None)
+                default = make_serializable(default)
+
+                # Make default_factory serializable if it exists
+                default_factory = None
+                if (
+                    hasattr(field_info, "default_factory")
+                    and field_info.default_factory
+                ):
+                    try:
+                        default_factory = field_info.default_factory.__name__
+                    except (AttributeError, TypeError):
+                        default_factory = str(field_info.default_factory)
+
                 # Serialize the field
                 fields[field_name] = {
                     "type": PydanticTypeSerializer.serialize_type(annotation),
-                    "default": field_info.default
-                    if hasattr(field_info, "default")
-                    else None,
-                    "default_factory": field_info.default_factory.__name__
-                    if hasattr(field_info, "default_factory")
-                    and field_info.default_factory
-                    else None,
-                    "description": field_info.description
-                    if hasattr(field_info, "description")
-                    else None,
-                    "required": getattr(field_info, "required", True),
-                    # Add more field attributes as needed
+                    "default": default,
+                    "default_factory": default_factory,
+                    "description": make_serializable(
+                        getattr(field_info, "description", None)
+                    ),
+                    "required": make_serializable(
+                        getattr(field_info, "required", True)
+                    ),
                 }
 
                 # Add constraints if defined
@@ -324,19 +399,23 @@ class PydanticTypeSerializer(BaseModel):
                 ]:
                     value = getattr(field_info, constraint, None)
                     if value is not None:
-                        fields[field_name][constraint] = value
+                        fields[field_name][constraint] = make_serializable(value)
 
         # Handle private attributes
         private_attrs = {}
         if hasattr(model_class, "__private_attributes__"):
             for name, private_attr in model_class.__private_attributes__.items():
+                default = private_attr.default
+                if default is ...:
+                    default = None
+                else:
+                    default = make_serializable(default)
+
                 private_attrs[name] = {
                     "type": PydanticTypeSerializer.serialize_type(
                         private_attr.annotation
                     ),
-                    "default": str(private_attr.default)
-                    if private_attr.default is not ...
-                    else None,
+                    "default": default,
                 }
 
         if private_attrs:
@@ -531,6 +610,7 @@ class PydanticTypeSerializer(BaseModel):
         fields = serialized["fields"]
         validators = serialized.get("validators", [])
         config_dict = serialized.get("config", {})
+        _schema = serialized.get("schema", {})
 
         # Create field definitions for create_model
         field_definitions = {}
@@ -637,7 +717,7 @@ class PydanticTypeSerializer(BaseModel):
                                 )
                                 setattr(reconstructed_model, func_name, decorated_func)
                         except Exception as e:
-                            print(f"Error recreating validator: {e}")
+                            logger.error(f"Error recreating validator: {e}")
 
         # Add private attributes (simplified)
         if "__private_attrs__" in fields:
@@ -679,6 +759,126 @@ class PydanticTypeSerializer(BaseModel):
         return cls.deserialize_type(serialized)
 
 
+# Custom JSON encoder to handle Pydantic special types
+class PydanticTypeEncoder(json.JSONEncoder):
+    """Custom JSON encoder that can handle Pydantic special types like PydanticUndefinedType."""
+
+    def default(self, obj):
+        # Handle PydanticUndefinedType
+        if (
+            hasattr(obj, "__class__")
+            and obj.__class__.__name__ == "PydanticUndefinedType"
+        ):
+            return {"__pydantic_undefined__": True}
+
+        # Handle Pydantic FieldInfo
+        if isinstance(obj, FieldInfo):
+            return {
+                "__pydantic_field_info__": True,
+                "annotation": str(obj.annotation),
+                "default": obj.default
+                if obj.default is not ...
+                else {"__ellipsis__": True},
+                "description": obj.description,
+                "title": obj.title,
+                "metadata": {k: str(v) for k, v in obj.metadata.items()}
+                if hasattr(obj, "metadata")
+                else {},
+            }
+
+        # Handle types (classes)
+        if isinstance(obj, type):
+            if lenient_issubclass(obj, BaseModel):
+                return {
+                    "__pydantic_model__": True,
+                    "name": obj.__name__,
+                    "module": obj.__module__,
+                }
+            # Other types
+            return {
+                "__python_type__": True,
+                "name": obj.__name__,
+                "module": obj.__module__ if hasattr(obj, "__module__") else None,
+            }
+
+        # Handle Enum members
+        if isinstance(obj, Enum):
+            return {
+                "__enum_member__": True,
+                "name": obj.name,
+                "value": obj.value,
+                "enum_class": obj.__class__.__name__,
+                "enum_module": obj.__class__.__module__,
+            }
+
+        # Handle callables (functions)
+        if inspect.isfunction(obj) or inspect.ismethod(obj):
+            return {
+                "__callable__": True,
+                "name": obj.__name__,
+                "module": obj.__module__,
+            }
+
+        # Handle Pydantic models
+        if isinstance(obj, BaseModel):
+            return {
+                "__pydantic_model_instance__": True,
+                "class": obj.__class__.__name__,
+                "module": obj.__class__.__module__,
+                "data": obj.model_dump(),
+            }
+
+        # Handle other objects
+        try:
+            # Try using the object's __dict__
+            if hasattr(obj, "__dict__"):
+                return {
+                    "__custom_object__": True,
+                    "class": obj.__class__.__name__,
+                    "module": obj.__class__.__module__,
+                    "attributes": {
+                        k: v for k, v in obj.__dict__.items() if not k.startswith("_")
+                    },
+                }
+        except Exception:
+            pass
+
+        # Let the parent class handle it or raise TypeError
+        return super().default(obj)
+
+
+# Custom hook function to handle special types during JSON loading
+def json_object_hook(obj: Dict[str, Any]) -> Any:
+    """Handle special type markers in deserialized JSON."""
+    if "__pydantic_undefined__" in obj:
+        # Try to import dynamically to avoid circular imports
+        try:
+            from pydantic.fields import PydanticUndefined
+
+            return PydanticUndefined
+        except ImportError:
+            try:
+                from pydantic_core._pydantic_core import PydanticUndefinedType
+
+                return PydanticUndefinedType()
+            except ImportError:
+                return None
+
+    if "__ellipsis__" in obj:
+        return ...
+
+    # Handle model instances
+    if "__pydantic_model_instance__" in obj:
+        try:
+            module = importlib.import_module(obj["module"])
+            model_cls = getattr(module, obj["class"])
+            return model_cls.model_validate(obj["data"])
+        except (ImportError, AttributeError):
+            return obj["data"]
+
+    return obj
+
+
 def serialize_model(model_type: Type[BaseModel]) -> str:
     """
     Serialize a model type into a JSON string for transmission via Temporal.
@@ -690,7 +890,7 @@ def serialize_model(model_type: Type[BaseModel]) -> str:
         A JSON string representing the serialized model
     """
     serialized = PydanticTypeSerializer.serialize_model_type(model_type)
-    return json.dumps(serialized)
+    return json.dumps(serialized, cls=PydanticTypeEncoder)
 
 
 def deserialize_model(serialized_json: str) -> Type[BaseModel]:
@@ -703,5 +903,5 @@ def deserialize_model(serialized_json: str) -> Type[BaseModel]:
     Returns:
         The reconstructed Pydantic model class
     """
-    serialized = json.loads(serialized_json)
+    serialized = json.loads(serialized_json, object_hook=json_object_hook)
     return PydanticTypeSerializer.deserialize_model_type(serialized)

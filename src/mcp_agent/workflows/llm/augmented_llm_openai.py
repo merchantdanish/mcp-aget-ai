@@ -1,7 +1,7 @@
 import json
 import re
 import functools
-from typing import Iterable, List, Type
+from typing import Any, Iterable, List, Type
 
 from pydantic import BaseModel
 
@@ -35,6 +35,7 @@ from mcp.types import (
 from mcp_agent.config import OpenAISettings
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.utils.common import ensure_serializable, typed_dict_extras
+from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -326,15 +327,20 @@ class OpenAIAugmentedLLM(
         params = self.get_request_params(request_params)
         model = await self.select_model(params) or "gpt-4o"
 
-        # TODO: saqadri (MAC) - this is brittle, make it more robust by serializing response_model
-        # Get the import path for the class
-        model_path = f"{response_model.__module__}.{response_model.__name__}"
+        serialized_response_model: str | None = None
+
+        if self.executor and self.executor.execution_engine == "temporal":
+            # Serialize the response model to a string
+            serialized_response_model = serialize_model(response_model)
 
         structured_response = await self.executor.execute(
             OpenAICompletionTasks.request_structured_completion_task,
             RequestStructuredCompletionRequest(
                 config=self.context.config.openai,
-                model_path=model_path,
+                response_model=response_model
+                if not serialized_response_model
+                else None,
+                serialized_response_model=serialized_response_model,
                 response_str=response,
                 model=model,
             ),
@@ -433,7 +439,8 @@ class RequestCompletionRequest(BaseModel):
 
 class RequestStructuredCompletionRequest(BaseModel):
     config: OpenAISettings
-    model_path: str
+    response_model: Any | None = None
+    serialized_response_model: str | None = None
     response_str: str
     model: str
 
@@ -470,13 +477,16 @@ class OpenAICompletionTasks:
         Request a structured completion using Instructor's OpenAI API.
         """
         import instructor
-        import importlib
         from instructor.exceptions import InstructorRetryException
 
-        # Dynamically import the model class
-        module_path, class_name = request.model_path.rsplit(".", 1)
-        module = importlib.import_module(module_path)
-        response_model = getattr(module, class_name)
+        if request.response_model:
+            response_model = request.response_model
+        elif request.serialized_response_model:
+            response_model = deserialize_model(request.serialized_response_model)
+        else:
+            raise ValueError(
+                "Either response_model or serialized_response_model must be provided for structured completion."
+            )
 
         # Next we pass the text through instructor to extract structured data
         client = instructor.from_openai(
