@@ -2,6 +2,8 @@
 
 This example demonstrates a financial analysis Agent application that uses an orchestrator with smart data verification to coordinate specialized agents for generating comprehensive financial reports on companies.
 
+https://github.com/user-attachments/assets/d6049e1b-1afc-4f5d-bebf-ed9aece9acfc
+
 ## How It Works
 
 1. **Orchestrator**: Coordinates the entire workflow, managing the flow of data between agents and ensuring each step completes successfully
