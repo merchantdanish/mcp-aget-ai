@@ -144,6 +144,8 @@ class TracingConfig:
     @classmethod
     async def cleanup(cls):
         """Clean up resources used for tracing."""
+        if not cls._initialized:
+            return
         trace.get_tracer_provider().force_flush()
         trace.get_tracer_provider().shutdown()
 
