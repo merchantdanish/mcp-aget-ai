@@ -13,29 +13,29 @@ This example demonstrates a financial analysis Agent application that uses an or
 This approach ensures high-quality reports by focusing on data verification before proceeding with analysis. The Research Agent and Research Evaluator iterate until the EvaluatorOptimizer determines the data meets quality requirements.
 
 ```plaintext
-┌─────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│             │      │                 │      │                 │
-│ Orchestrator│─────▶ Research Quality │──────▶  Research Agent ◀── ┐
-│             │      │   Controller    │      │                 │   │
-└─────────────┘      └─────────────────┘      └─────────────────┘   │
-       │                                                │           │
-       │                                                │           │
-       │                                                ▼           │
-       │                                       ┌──────────────────┐ │
-       │                                       │                  │ │
-       │                                       │Research Evaluator ─┘
-       │                                       │     Agent        │
-       │                                       └──────────────────┘
-       │             ┌─────────────────┐
-       │             │                 │
-       └────────────▶│  Analyst Agent  │
-       │             │                 │
-       │             └─────────────────┘
-       │             ┌─────────────────┐
-       │             │                 │
-       └────────────▶│ Report Writer   │
-                     │     Agent       │
-                     └─────────────────┘
+┌──────────────┐
+│              │      ┌──────────────────┐      ┌────────────┐
+│ Orchestrator ├─────▶│ Research Quality ├─────▶│  Research  │◀─ ┐
+│              │      │    Controller    │      │    Agent   │   │
+└──────────────┘      └──────────────────┘      └────────────┘   │
+       │                                              │          │
+       │                                              │          │
+       │                                              ▼          │
+       │                                       ┌─────────────┐   │
+       │                                       │  Research   │   │
+       │                                       │  Evaluator  ├───┘
+       │                                       │    Agent    │
+       │                                       └─────────────┘
+       │             ┌───────────────┐
+       │             │               │
+       ├────────────▶│ Analyst Agent │
+       │             │               │
+       │             └───────────────┘
+       │
+       │             ┌───────────────┐
+       └────────────▶│ Report Writer │
+                     │     Agent     │
+                     └───────────────┘
 ```
 
 ## `1` App set up
@@ -54,6 +54,7 @@ pip install uv
 # inside the example:
 uv pip install -r requirements.txt
 ```
+
 Install the g-search-mcp server (from https://github.com/jae-jae/g-search-mcp):
 
 ```bash
@@ -89,3 +90,4 @@ Or run with a different company:
 uv run main.py "Microsoft"
 ```
 
+https://github.com/user-attachments/assets/d6049e1b-1afc-4f5d-bebf-ed9aece9acfc
