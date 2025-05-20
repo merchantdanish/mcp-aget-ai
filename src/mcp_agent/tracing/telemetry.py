@@ -44,7 +44,7 @@ class TelemetryManager(ContextDependent):
         """
 
         def decorator(func):
-            span_name = name or f"{func.__module__}.{func.__qualname__}"
+            span_name = name or f"{func.__qualname__}"
 
             @functools.wraps(func)
             async def async_wrapper(*args, **kwargs):

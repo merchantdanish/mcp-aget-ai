@@ -1,4 +1,5 @@
 from typing import Callable, List, Optional, TYPE_CHECKING
+import uuid
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
@@ -30,7 +31,7 @@ class AnthropicLLMRouter(LLMRouter):
         **kwargs,
     ):
         anthropic_llm = AnthropicAugmentedLLM(
-            name=f"anthropic_router-{str(context.executor.uuid())}",
+            name=f"anthropic_router-{str(context.executor.uuid() if context else uuid.uuid4())}",
             instruction=ROUTING_SYSTEM_INSTRUCTION,
             context=context,
         )

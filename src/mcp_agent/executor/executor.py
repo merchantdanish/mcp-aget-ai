@@ -299,7 +299,7 @@ class AsyncioExecutor(Executor):
                 **kwargs,
             )
 
-    @telemetry.traced(name="AsyncioExecutor.execute_many")
+    @telemetry.traced()
     async def execute_many(
         self,
         tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
@@ -330,7 +330,7 @@ class AsyncioExecutor(Executor):
                 return_exceptions=True,
             )
 
-    @telemetry.traced(name="AsyncioExecutor.execute_streaming")
+    @telemetry.traced()
     async def execute_streaming(
         self,
         tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
@@ -370,7 +370,7 @@ class AsyncioExecutor(Executor):
                 for future in done:
                     yield await future
 
-    @telemetry.traced(name="AsyncioExecutor.signal")
+    @telemetry.traced()
     async def signal(
         self,
         signal_name: str,
@@ -380,7 +380,7 @@ class AsyncioExecutor(Executor):
     ) -> None:
         await super().signal(signal_name, payload, signal_description, workflow_id)
 
-    @telemetry.traced(name="AsyncioExecutor.wait_for_signal")
+    @telemetry.traced()
     async def wait_for_signal(
         self,
         signal_name: str,

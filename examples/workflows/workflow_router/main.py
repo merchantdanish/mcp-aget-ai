@@ -62,7 +62,7 @@ async def example_usage():
         )
 
         # You can use any LLM with an LLMRouter
-        llm = OpenAIAugmentedLLM()
+        llm = OpenAIAugmentedLLM(name="router_openai_llm")
         router = LLMRouter(
             llm=llm,
             agents=[finder_agent, writer_agent, reasoning_agent],

@@ -1,8 +1,10 @@
 from typing import Callable, List, Literal, Optional, TYPE_CHECKING
 
+from opentelemetry import trace
 from pydantic import BaseModel
 
 from mcp_agent.agents.agent import Agent
+from mcp_agent.tracing.semconv import GEN_AI_REQUEST_TOP_K
 from mcp_agent.tracing.telemetry import telemetry
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 from mcp_agent.workflows.router.router_base import ResultT, Router, RouterResult
@@ -128,59 +130,120 @@ class LLMRouter(Router):
         await instance.initialize()
         return instance
 
-    @telemetry.traced()
     async def route(
         self, request: str, top_k: int = 1
     ) -> List[LLMRouterResult[str | Agent | Callable]]:
-        if not self.initialized:
-            await self.initialize()
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(f"{self.__class__.__name__}.route") as span:
+            self._annotate_span_for_route_request(span, request, top_k)
 
-        return await self._route_with_llm(request, top_k)
+            if not self.initialized:
+                await self.initialize()
 
-    @telemetry.traced()
+            res = await self._route_with_llm(request, top_k)
+            self._annotate_span_for_router_result(span, res)
+            return res
+
     async def route_to_server(
         self, request: str, top_k: int = 1
     ) -> List[LLMRouterResult[str]]:
-        if not self.initialized:
-            await self.initialize()
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.route_to_server"
+        ) as span:
+            self._annotate_span_for_route_request(span, request, top_k)
 
-        return await self._route_with_llm(
-            request,
-            top_k,
-            include_servers=True,
-            include_agents=False,
-            include_functions=False,
-        )
+            if not self.initialized:
+                await self.initialize()
 
-    @telemetry.traced()
+            res = await self._route_with_llm(
+                request,
+                top_k,
+                include_servers=True,
+                include_agents=False,
+                include_functions=False,
+            )
+            self._annotate_span_for_router_result(span, res)
+            return res
+
     async def route_to_agent(
         self, request: str, top_k: int = 1
     ) -> List[LLMRouterResult[Agent]]:
-        if not self.initialized:
-            await self.initialize()
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.route_to_agent"
+        ) as span:
+            self._annotate_span_for_route_request(span, request, top_k)
 
-        return await self._route_with_llm(
-            request,
-            top_k,
-            include_servers=False,
-            include_agents=True,
-            include_functions=False,
-        )
+            if not self.initialized:
+                await self.initialize()
 
-    @telemetry.traced()
+            res = await self._route_with_llm(
+                request,
+                top_k,
+                include_servers=False,
+                include_agents=True,
+                include_functions=False,
+            )
+            self._annotate_span_for_router_result(span, res)
+            return res
+
     async def route_to_function(
         self, request: str, top_k: int = 1
     ) -> List[LLMRouterResult[Callable]]:
-        if not self.initialized:
-            await self.initialize()
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.route_to_function"
+        ) as span:
+            self._annotate_span_for_route_request(span, request, top_k)
 
-        return await self._route_with_llm(
-            request,
-            top_k,
-            include_servers=False,
-            include_agents=False,
-            include_functions=True,
-        )
+            if not self.initialized:
+                await self.initialize()
+
+            res = await self._route_with_llm(
+                request,
+                top_k,
+                include_servers=False,
+                include_agents=False,
+                include_functions=True,
+            )
+            self._annotate_span_for_router_result(span, res)
+            return res
+
+    def _annotate_span_for_route_request(
+        self,
+        span: trace.Span,
+        request: str,
+        top_k: int,
+    ):
+        """Annotate the span with the request and top_k."""
+        span.set_attribute("request", request)
+        span.set_attribute(GEN_AI_REQUEST_TOP_K, top_k)
+        span.set_attribute("llm", self.llm.name)
+        span.set_attribute("agents", [a.name for a in self.agents])
+        span.set_attribute("servers", self.server_names)
+        span.set_attribute("functions", [f.__name__ for f in self.functions])
+
+    def _annotate_span_for_router_result(
+        self,
+        span: trace.Span,
+        result: List[LLMRouterResult],
+    ):
+        """Annotate the span with the router result."""
+        for i, res in enumerate(result):
+            span.set_attribute(f"result.{i}.confidence", res.confidence)
+            if res.reasoning:
+                span.set_attribute(f"result.{i}.reasoning", res.reasoning)
+            if res.p_score:
+                span.set_attribute(f"result.{i}.p_score", res.p_score)
+
+            result_key = f"result.{i}.result"
+            if isinstance(res.result, str):
+                span.set_attribute(result_key, res.result)
+            elif isinstance(res.result, Agent):
+                span.set_attribute(result_key, res.result.name)
+            elif callable(res.result):
+                span.set_attribute(result_key, res.result.__name__)
 
     async def _route_with_llm(
         self,
@@ -190,60 +253,85 @@ class LLMRouter(Router):
         include_agents: bool = True,
         include_functions: bool = True,
     ) -> List[LLMRouterResult]:
-        if not self.initialized:
-            await self.initialize()
+        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}._route_with_llm"
+        ) as span:
+            self._annotate_span_for_route_request(span, request, top_k)
 
-        routing_instruction = self.routing_instruction or DEFAULT_ROUTING_INSTRUCTION
+            if not self.initialized:
+                await self.initialize()
 
-        # Generate the categories context
-        context = self._generate_context(
-            include_servers=include_servers,
-            include_agents=include_agents,
-            include_functions=include_functions,
-        )
-
-        # logger.debug(
-        #     f"Requesting routing from LLM, \nrequest: {request} \ntop_k: {top_k} \nrouting_instruction: {routing_instruction} \ncontext={context}",
-        #     data={"progress_action": "Routing", "agent_name": "LLM Router"},
-        # )
-
-        # Format the prompt with all the necessary information
-        prompt = routing_instruction.format(
-            context=context, request=request, top_k=top_k
-        )
-
-        # Get routes from LLM
-        response = await self.llm.generate_structured(
-            message=prompt,
-            response_model=StructuredResponse,
-        )
-
-        # logger.debug(
-        #     "Routing Response received",
-        #     data={"progress_action": "Finished", "agent_name": "LLM Router"},
-        # )
-
-        # Construct the result
-        if not response or not response.categories:
-            return []
-
-        result: List[LLMRouterResult] = []
-        for r in response.categories:
-            router_category = self.categories.get(r.category)
-            if not router_category:
-                # Skip invalid categories
-                # TODO: saqadri - log or raise an error
-                continue
-
-            result.append(
-                LLMRouterResult(
-                    result=router_category.category,
-                    confidence=r.confidence,
-                    reasoning=r.reasoning,
-                )
+            routing_instruction = (
+                self.routing_instruction or DEFAULT_ROUTING_INSTRUCTION
             )
 
-        return result[:top_k]
+            # Generate the categories context
+            context = self._generate_context(
+                include_servers=include_servers,
+                include_agents=include_agents,
+                include_functions=include_functions,
+            )
+
+            # logger.debug(
+            #     f"Requesting routing from LLM, \nrequest: {request} \ntop_k: {top_k} \nrouting_instruction: {routing_instruction} \ncontext={context}",
+            #     data={"progress_action": "Routing", "agent_name": "LLM Router"},
+            # )
+
+            # Format the prompt with all the necessary information
+            prompt = routing_instruction.format(
+                context=context, request=request, top_k=top_k
+            )
+
+            # Get routes from LLM
+            response = await self.llm.generate_structured(
+                message=prompt,
+                response_model=StructuredResponse,
+            )
+
+            response_categories_data = {}
+            for i, r in enumerate(response.categories):
+                response_categories_data[f"category.{i}.category"] = r.category
+                response_categories_data[f"category.{i}.confidence"] = r.confidence
+                if r.reasoning:
+                    response_categories_data[f"category.{i}.reasoning"] = r.reasoning
+
+            span.add_event(
+                "routing.response",
+                {
+                    "prompt": prompt,
+                    **response_categories_data,
+                },
+            )
+
+            # logger.debug(
+            #     "Routing Response received",
+            #     data={"progress_action": "Finished", "agent_name": "LLM Router"},
+            # )
+
+            # Construct the result
+            if not response or not response.categories:
+                return []
+
+            result: List[LLMRouterResult] = []
+            for r in response.categories:
+                router_category = self.categories.get(r.category)
+                if not router_category:
+                    # Skip invalid categories
+                    # TODO: saqadri - log or raise an error
+                    continue
+
+                result.append(
+                    LLMRouterResult(
+                        result=router_category.category,
+                        confidence=r.confidence,
+                        reasoning=r.reasoning,
+                    )
+                )
+
+            self._annotate_span_for_router_result(span, result)
+
+            return result[:top_k]
 
     def _generate_context(
         self,

@@ -141,6 +141,12 @@ class TracingConfig:
 
         cls._initialized = True
 
+    @classmethod
+    async def cleanup(cls):
+        """Clean up resources used for tracing."""
+        trace.get_tracer_provider().force_flush()
+        trace.get_tracer_provider().shutdown()
+
 
 # TODO: Figure out how to implement this with agnostic context manager for sync/async
 # def start_traced_span(name: str, context: "Context"):
