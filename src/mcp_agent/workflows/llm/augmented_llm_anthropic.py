@@ -148,7 +148,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             config = self.context.config
             messages: List[MessageParam] = []
             params = self.get_request_params(request_params)
-            self._annotate_span_with_request_params(span, params)
+            AugmentedLLM.annotate_span_with_request_params(span, params)
 
             if params.use_history:
                 messages.extend(self.history.get())
@@ -343,7 +343,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
             if request_params:
-                self._annotate_span_with_request_params(span, request_params)
+                AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             responses: List[Message] = await self.generate(
                 message=message,
@@ -388,7 +388,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             )
 
             params = self.get_request_params(request_params)
-            self._annotate_span_with_request_params(span, params)
+            AugmentedLLM.annotate_span_with_request_params(span, params)
 
             model = await self.select_model(params)
             span.set_attribute(GEN_AI_REQUEST_MODEL, model)

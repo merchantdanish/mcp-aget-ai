@@ -95,32 +95,58 @@ class TelemetryManager(ContextDependent):
         record_attributes(span, kwargs)
 
 
+def serialize_attribute(key: str, value: Any) -> Dict[str, Any]:
+    """Serialize a single attribute value into a flat dict of OpenTelemetry-compatible values."""
+    serialized = {}
+
+    if is_otel_serializable(value):
+        serialized[key] = str(value)
+
+    elif isinstance(value, dict):
+        for sub_key, sub_value in value.items():
+            serialized.update(serialize_attribute(f"{key}.{sub_key}", sub_value))
+
+    elif isinstance(value, Callable):
+        serialized[f"{key}_callable_name"] = getattr(value, "__qualname__", str(value))
+        serialized[f"{key}_callable_module"] = getattr(value, "__module__", "unknown")
+        serialized[f"{key}_is_coroutine"] = asyncio.iscoroutinefunction(value)
+
+    elif inspect.iscoroutine(value):
+        serialized[f"{key}_coroutine"] = str(value)
+        serialized[f"{key}_is_coroutine"] = True
+
+    return serialized
+
+
+def serialize_attributes(
+    attributes: Dict[str, Any], prefix: str = ""
+) -> Dict[str, Any]:
+    """Serialize a dict of attributes into a flat OpenTelemetry-compatible dict."""
+    serialized = {}
+    prefix = f"{prefix}." if prefix else ""
+
+    for key, value in attributes.items():
+        full_key = f"{prefix}{key}"
+        serialized.update(serialize_attribute(full_key, value))
+
+    return serialized
+
+
 def record_attribute(span, key, value):
     """Record a single serializable value on the span."""
     if is_otel_serializable(value):
-        span.set_attribute(key, str(value))
-    elif isinstance(value, dict):
-        record_attributes(span, value, key)
-    elif isinstance(value, Callable):
-        span.set_attribute(
-            f"{key}_callable_name", getattr(value, "__qualname__", str(value))
-        )
-        span.set_attribute(
-            f"{key}_callable_module", getattr(value, "__module__", "unknown")
-        )
-        span.set_attribute(f"{key}_is_coroutine", asyncio.iscoroutinefunction(value))
-    elif inspect.iscoroutine(value):
-        span.set_attribute(f"{key}_coroutine", str(value))
-        span.set_attribute(f"{key}_is_coroutine", True)
+        span.set_attribute(key, value)
+    else:
+        serialized = serialize_attribute(key, value)
+        for attr_key, attr_value in serialized.items():
+            span.set_attribute(attr_key, attr_value)
 
 
 def record_attributes(span, attributes: Dict[str, Any], prefix: str = ""):
-    """
-    Record attributes on the span, prefixing keys with the provided prefix.
-    """
-    prefix = f"{prefix}." if prefix else ""
-    for key, value in attributes.items():
-        record_attribute(span, f"{prefix}{key}", value)
+    """Record a dict of attributes on the span after serialization."""
+    serialized = serialize_attributes(attributes, prefix)
+    for attr_key, attr_value in serialized.items():
+        span.set_attribute(attr_key, attr_value)
 
 
 class MCPRequestTrace:

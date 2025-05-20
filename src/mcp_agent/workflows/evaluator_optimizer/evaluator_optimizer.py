@@ -170,7 +170,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             self._annotate_span_for_generation_message(span, message)
 
             if request_params:
-                self._annotate_span_with_request_params(span, request_params)
+                AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             refinement_count = 0
             response = None
@@ -335,7 +335,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             self._annotate_span_for_generation_message(span, message)
 
             if request_params:
-                self._annotate_span_with_request_params(span, request_params)
+                AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             response = await self.generate(
                 message=message,
@@ -361,7 +361,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             self._annotate_span_for_generation_message(span, message)
 
             if request_params:
-                self._annotate_span_with_request_params(span, request_params)
+                AugmentedLLM.annotate_span_with_request_params(span, request_params)
             span.set_attribute(
                 "response_model",
                 f"{response_model.__module__}.{response_model.__name__}",

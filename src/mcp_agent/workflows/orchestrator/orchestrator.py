@@ -135,7 +135,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             span.set_attribute("available_agents", str(self.agents.keys()))
 
             params = self.get_request_params(request_params)
-            self._annotate_span_with_request_params(span, params)
+            AugmentedLLM.annotate_span_with_request_params(span, params)
 
             # TODO: saqadri - history tracking is complicated in this multi-step workflow, so we will ignore it for now
             if params.use_history:
@@ -195,7 +195,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             span.set_attribute("plan_type", self.plan_type)
 
             params = self.get_request_params(request_params)
-            self._annotate_span_with_request_params(span, params)
+            AugmentedLLM.annotate_span_with_request_params(span, params)
 
             result = await self.generate(
                 message=message,
@@ -222,7 +222,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             span.set_attribute("plan_type", self.plan_type)
 
             params = self.get_request_params(request_params)
-            self._annotate_span_with_request_params(span, params)
+            AugmentedLLM.annotate_span_with_request_params(span, params)
 
             result_str = await self.generate_str(message=message, request_params=params)
 
@@ -271,7 +271,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     use_history=False, max_iterations=30, maxTokens=16384
                 ),
             )
-            self._annotate_span_with_request_params(span, params)
+            AugmentedLLM.annotate_span_with_request_params(span, params)
 
             plan_result = PlanResult(objective=objective, step_results=[])
 

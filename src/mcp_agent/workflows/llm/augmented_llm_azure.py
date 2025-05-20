@@ -137,7 +137,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             responses: list[ResponseMessage] = []
 
             params = self.get_request_params(request_params)
-            self._annotate_span_with_request_params(span, params)
+            AugmentedLLM.annotate_span_with_request_params(span, params)
 
             if params.use_history:
                 messages.extend(self.history.get())

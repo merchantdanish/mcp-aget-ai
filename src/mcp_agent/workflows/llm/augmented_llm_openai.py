@@ -155,7 +155,7 @@ class OpenAIAugmentedLLM(
 
             messages: List[ChatCompletionMessageParam] = []
             params = self.get_request_params(request_params)
-            self._annotate_span_with_request_params(span, params)
+            AugmentedLLM.annotate_span_with_request_params(span, params)
 
             if params.use_history:
                 messages.extend(self.history.get())
@@ -363,7 +363,7 @@ class OpenAIAugmentedLLM(
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
             if request_params:
-                self._annotate_span_with_request_params(span, request_params)
+                AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             responses = await self.generate(
                 message=message,
@@ -403,7 +403,7 @@ class OpenAIAugmentedLLM(
             self._annotate_span_for_generation_message(span, message)
 
             params = self.get_request_params(request_params)
-            self._annotate_span_with_request_params(span, params)
+            AugmentedLLM.annotate_span_with_request_params(span, params)
 
             response = await self.generate_str(
                 message=message,
