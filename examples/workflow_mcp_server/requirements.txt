@@ -1,3 +1,0 @@
-mcp-agent
-rich
-openai>=1.0.0
