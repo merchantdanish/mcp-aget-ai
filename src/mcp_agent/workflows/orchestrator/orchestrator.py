@@ -406,7 +406,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             return ""
 
         if isinstance(agent, AugmentedLLM):
-            server_names = agent.aggregator.server_names
+            server_names = agent.agent.server_names
         elif isinstance(agent, Agent):
             server_names = agent.server_names
         else:

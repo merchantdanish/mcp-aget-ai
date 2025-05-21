@@ -30,8 +30,8 @@ class TestOpenAIAugmentedLLM:
         llm = OpenAIAugmentedLLM(name="test", context=mock_context)
 
         # Setup common mocks
-        llm.aggregator = MagicMock()
-        llm.aggregator.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
+        llm.agent = MagicMock()
+        llm.agent.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
         llm.history = MagicMock()
         llm.history.get = MagicMock(return_value=[])
         llm.history.set = MagicMock()
