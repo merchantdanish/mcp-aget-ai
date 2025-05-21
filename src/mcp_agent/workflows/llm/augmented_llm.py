@@ -11,7 +11,7 @@ from typing import (
     TYPE_CHECKING,
 )
 
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from mcp.types import (
     CallToolRequest,
@@ -22,14 +22,13 @@ from mcp.types import (
     TextContent,
 )
 
-from mcp_agent.context_dependent import ContextDependent
-from mcp_agent.mcp.mcp_aggregator import MCPAggregator
+from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 
 if TYPE_CHECKING:
-    from mcp_agent.agents.agent import Agent
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
     from mcp_agent.logging.logger import Logger
+    from mcp_agent.agents.agent import Agent
 
 MessageParamT = TypeVar("MessageParamT")
 """A type representing an input message to an LLM."""
@@ -45,33 +44,39 @@ MCPMessageParam = SamplingMessage
 MCPMessageResult = CreateMessageResult
 
 
-class Memory(Protocol, Generic[MessageParamT]):
+class Memory(BaseModel, Generic[MessageParamT]):
     """
     Simple memory management for storing past interactions in-memory.
     """
 
-    # TODO: saqadri - add checkpointing and other advanced memory capabilities
+    # Pydantic settings common to all memories
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,  # lets MessageParamT be anything (e.g. a pydantic model)
+        extra="allow",  # fail fast on unexpected attributes
+    )
 
-    def __init__(self): ...
+    def extend(self, messages: List[MessageParamT]) -> None:  # noqa: D401
+        raise NotImplementedError
 
-    def extend(self, messages: List[MessageParamT]) -> None: ...
+    def set(self, messages: List[MessageParamT]) -> None:
+        raise NotImplementedError
 
-    def set(self, messages: List[MessageParamT]) -> None: ...
+    def append(self, message: MessageParamT) -> None:
+        raise NotImplementedError
 
-    def append(self, message: MessageParamT) -> None: ...
+    def get(self) -> List[MessageParamT]:
+        raise NotImplementedError
 
-    def get(self) -> List[MessageParamT]: ...
+    def clear(self) -> None:
+        raise NotImplementedError
 
-    def clear(self) -> None: ...
 
-
-class SimpleMemory(Memory, Generic[MessageParamT]):
+class SimpleMemory(Memory[MessageParamT]):
     """
-    Simple memory management for storing past interactions in-memory.
+    In-memory implementation that just keeps an ordered list of messages.
     """
 
-    def __init__(self):
-        self.history: List[MessageParamT] = []
+    history: List[MessageParamT] = Field(default_factory=list)
 
     def extend(self, messages: List[MessageParamT]):
         self.history.extend(messages)
@@ -83,10 +88,10 @@ class SimpleMemory(Memory, Generic[MessageParamT]):
         self.history.append(message)
 
     def get(self) -> List[MessageParamT]:
-        return self.history
+        return list(self.history)
 
     def clear(self):
-        self.history = []
+        self.history.clear()
 
 
 class RequestParams(CreateMessageRequestParams):
@@ -215,13 +220,27 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         """
         super().__init__(context=context, **kwargs)
         self.executor = self.context.executor
-        self.aggregator = (
-            agent if agent is not None else MCPAggregator(server_names or [])
-        )
-        self.name = name or (agent.name if agent else None)
-        self.instruction = instruction or (
-            agent.instruction if agent and isinstance(agent.instruction, str) else None
-        )
+        self.name = self._gen_name(name or (agent.name if agent else None), prefix=None)
+        self.instruction = instruction or (agent.instruction if agent else None)
+
+        if not self.name:
+            raise ValueError(
+                "An AugmentedLLM must have a name or be provided with an agent that has a name"
+            )
+
+        if agent:
+            self.agent = agent
+        else:
+            # Import here to avoid circular import
+            from mcp_agent.agents.agent import Agent
+
+            self.agent = Agent(
+                name=self.name,
+                instruction=self.instruction,
+                server_names=server_names or [],
+                llm=self,
+            )
+
         self.history: Memory[MessageParamT] = SimpleMemory[MessageParamT]()
         self.default_request_params = default_request_params
         self.model_preferences = (
@@ -394,7 +413,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
             tool_name = request.params.name
             tool_args = request.params.arguments
-            result = await self.aggregator.call_tool(tool_name, tool_args)
+            result = await self.agent.call_tool(tool_name, tool_args)
 
             postprocess = await self.post_tool_call(
                 tool_call_id=tool_call_id, request=request, result=result
@@ -440,15 +459,22 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         data = {"progress_action": "Finished", "model": model, "agent_name": self.name}
         self.logger.debug("Chat finished", data=data)
 
+    def _gen_name(self, name: str | None, prefix: str | None) -> str:
+        """
+        Generate a name for the LLM based on the provided name or the default prefix.
+        """
+        if name:
+            return name
 
-def image_url_to_mime_and_base64(url: str) -> tuple[str, str]:
-    """
-    Extract mime type and base64 data from ImageUrl
-    """
-    import re
+        if not prefix:
+            prefix = self.__class__.__name__
 
-    match = re.match(r"data:(image/\w+);base64,(.*)", url)
-    if not match:
-        raise ValueError(f"Invalid image data URI: {url[:30]}...")
-    mime_type, base64_data = match.groups()
-    return mime_type, base64_data
+        identifier: str | None = None
+        if not self.context or not self.context.executor:
+            import uuid
+
+            identifier = str(uuid.uuid4())
+        else:
+            identifier = str(self.context.executor.uuid())
+
+        return f"{prefix}-{identifier}"

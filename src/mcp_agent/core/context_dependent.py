@@ -3,7 +3,7 @@ from typing import Optional, TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 
 class ContextDependent:
@@ -28,7 +28,7 @@ class ContextDependent:
 
         try:
             # Fall back to global context if available
-            from mcp_agent.context import get_current_context
+            from mcp_agent.core.context import get_current_context
 
             return get_current_context()
         except Exception as e:

@@ -1,6 +1,9 @@
 import json
 import re
-from typing import Iterable, List, Type
+import functools
+from typing import Any, Iterable, List, Type
+
+from pydantic import BaseModel
 
 from openai import OpenAI, AsyncOpenAI
 from openai.types.chat import (
@@ -10,10 +13,12 @@ from openai.types.chat import (
     ChatCompletionContentPartRefusalParam,
     ChatCompletionMessage,
     ChatCompletionMessageParam,
+    ChatCompletionMessageToolCall,
     ChatCompletionSystemMessageParam,
     ChatCompletionToolParam,
     ChatCompletionToolMessageParam,
     ChatCompletionUserMessageParam,
+    ChatCompletion,
 )
 from mcp.types import (
     CallToolRequestParams,
@@ -21,11 +26,16 @@ from mcp.types import (
     CallToolResult,
     EmbeddedResource,
     ImageContent,
+    ListToolsResult,
     ModelPreferences,
     TextContent,
     TextResourceContents,
 )
 
+from mcp_agent.config import OpenAISettings
+from mcp_agent.executor.workflow_task import workflow_task
+from mcp_agent.utils.common import ensure_serializable, typed_dict_extras
+from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -113,14 +123,6 @@ class OpenAIAugmentedLLM(
         The default implementation uses OpenAI's ChatCompletion as the LLM.
         Override this method to use a different LLM.
         """
-        config = self.context.config
-        openai_client = OpenAI(
-            api_key=config.openai.api_key,
-            base_url=config.openai.base_url,
-            http_client=config.openai.http_client
-            if hasattr(config.openai, "http_client")
-            else None,
-        )
         messages: List[ChatCompletionMessageParam] = []
         params = self.get_request_params(request_params)
 
@@ -142,7 +144,7 @@ class OpenAIAugmentedLLM(
         else:
             messages.append(message)
 
-        response = await self.aggregator.list_tools()
+        response: ListToolsResult = await self.agent.list_tools()
         available_tools: List[ChatCompletionToolParam] = [
             ChatCompletionToolParam(
                 type="function",
@@ -187,11 +189,15 @@ class OpenAIAugmentedLLM(
             self.logger.debug(f"{arguments}")
             self._log_chat_progress(chat_turn=len(messages) // 2, model=model)
 
-            executor_result = await self.executor.execute(
-                openai_client.chat.completions.create, **arguments
+            request = ensure_serializable(
+                RequestCompletionRequest(
+                    config=self.context.config.openai,
+                    payload=arguments,
+                ),
             )
-
-            response = executor_result[0]
+            response: ChatCompletion = await self.executor.execute(
+                OpenAICompletionTasks.request_completion_task, request
+            )
 
             self.logger.debug(
                 "OpenAI ChatCompletion response:",
@@ -228,13 +234,13 @@ class OpenAIAugmentedLLM(
                 choice.finish_reason in ["tool_calls", "function_call"]
                 and message.tool_calls
             ):
-                # Execute all tool calls in parallel.
+                # Execute all tool calls in parallel using functools.partial to bind arguments
                 tool_tasks = [
-                    self.execute_tool_call(tool_call)
+                    functools.partial(self.execute_tool_call, tool_call=tool_call)
                     for tool_call in message.tool_calls
                 ]
                 # Wait for all tool calls to complete.
-                tool_results = await self.executor.execute(*tool_tasks)
+                tool_results = await self.executor.execute_many(tool_tasks)
                 self.logger.debug(
                     f"Iteration {i}: Tool call results: {str(tool_results) if tool_results else 'None'}"
                 )
@@ -312,58 +318,38 @@ class OpenAIAugmentedLLM(
         # We need to do this in a two-step process because Instructor doesn't
         # know how to invoke MCP tools via call_tool, so we'll handle all the
         # processing first and then pass the final response through Instructor
-        import instructor
-
-        from instructor.exceptions import InstructorRetryException
 
         response = await self.generate_str(
             message=message,
             request_params=request_params,
         )
 
-        # Next we pass the text through instructor to extract structured data
-        async_client = instructor.from_openai(
-            AsyncOpenAI(
-                api_key=self.context.config.openai.api_key,
-                base_url=self.context.config.openai.base_url,
-                http_client=self.context.config.openai.http_client
-                if hasattr(self.context.config.openai, "http_client")
+        params = self.get_request_params(request_params)
+        model = await self.select_model(params) or "gpt-4o"
+
+        serialized_response_model: str | None = None
+
+        if self.executor and self.executor.execution_engine == "temporal":
+            # Serialize the response model to a string
+            serialized_response_model = serialize_model(response_model)
+
+        structured_response = await self.executor.execute(
+            OpenAICompletionTasks.request_structured_completion_task,
+            RequestStructuredCompletionRequest(
+                config=self.context.config.openai,
+                response_model=response_model
+                if not serialized_response_model
                 else None,
+                serialized_response_model=serialized_response_model,
+                response_str=response,
+                model=model,
             ),
         )
 
-        params = self.get_request_params(request_params)
-        model = await self.select_model(params)
-
-        try:
-            # Extract structured data from natural language
-            structured_response = await async_client.chat.completions.create(
-                model=model or "gpt-4o",
-                response_model=response_model,
-                messages=[
-                    {"role": "user", "content": response},
-                ],
-            )
-        except InstructorRetryException:
-            # Retry the request with JSON mode
-            async_client = instructor.from_openai(
-                AsyncOpenAI(
-                    api_key=self.context.config.openai.api_key,
-                    base_url=self.context.config.openai.base_url,
-                    http_client=self.context.config.openai.http_client
-                    if hasattr(self.context.config.openai, "http_client")
-                    else None,
-                ),
-                mode=instructor.Mode.JSON,
-            )
-
-            structured_response = await async_client.chat.completions.create(
-                model=model or "gpt-4o",
-                response_model=response_model,
-                messages=[
-                    {"role": "user", "content": response},
-                ],
-            )
+        # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
+        # Convert dict back to the proper model instance if needed
+        if isinstance(structured_response, dict):
+            structured_response = response_model.model_validate(structured_response)
 
         return structured_response
 
@@ -377,7 +363,7 @@ class OpenAIAugmentedLLM(
 
     async def execute_tool_call(
         self,
-        tool_call: ChatCompletionToolParam,
+        tool_call: ChatCompletionMessageToolCall,
     ) -> ChatCompletionToolMessageParam | None:
         """
         Execute a single tool call and return the result message.
@@ -444,6 +430,107 @@ class OpenAIAugmentedLLM(
             return content
 
         return str(message)
+
+
+class RequestCompletionRequest(BaseModel):
+    config: OpenAISettings
+    payload: dict
+
+
+class RequestStructuredCompletionRequest(BaseModel):
+    config: OpenAISettings
+    response_model: Any | None = None
+    serialized_response_model: str | None = None
+    response_str: str
+    model: str
+
+
+class OpenAICompletionTasks:
+    @staticmethod
+    @workflow_task
+    async def request_completion_task(
+        request: RequestCompletionRequest,
+    ) -> ChatCompletion:
+        """
+        Request a completion from OpenAI's API.
+        """
+
+        openai_client = OpenAI(
+            api_key=request.config.api_key,
+            base_url=request.config.base_url,
+            http_client=request.config.http_client
+            if hasattr(request.config, "http_client")
+            else None,
+        )
+
+        payload = request.payload
+        response = openai_client.chat.completions.create(**payload)
+        response = ensure_serializable(response)
+        return response
+
+    @staticmethod
+    @workflow_task
+    async def request_structured_completion_task(
+        request: RequestStructuredCompletionRequest,
+    ) -> ModelT:
+        """
+        Request a structured completion using Instructor's OpenAI API.
+        """
+        import instructor
+        from instructor.exceptions import InstructorRetryException
+
+        if request.response_model:
+            response_model = request.response_model
+        elif request.serialized_response_model:
+            response_model = deserialize_model(request.serialized_response_model)
+        else:
+            raise ValueError(
+                "Either response_model or serialized_response_model must be provided for structured completion."
+            )
+
+        # Next we pass the text through instructor to extract structured data
+        client = instructor.from_openai(
+            AsyncOpenAI(
+                api_key=request.config.api_key,
+                base_url=request.config.base_url,
+                http_client=request.config.http_client
+                if hasattr(request.config, "http_client")
+                else None,
+            ),
+            mode=instructor.Mode.TOOLS_STRICT,
+        )
+
+        try:
+            # Extract structured data from natural language
+            structured_response = await client.chat.completions.create(
+                model=request.model,
+                response_model=response_model,
+                messages=[
+                    {"role": "user", "content": request.response_str},
+                ],
+            )
+        except InstructorRetryException:
+            # Retry the request with JSON mode
+            client = instructor.from_openai(
+                AsyncOpenAI(
+                    api_key=request.config.api_key,
+                    base_url=request.config.base_url,
+                    http_client=request.config.http_client
+                    if hasattr(request.config, "http_client")
+                    else None,
+                ),
+                mode=instructor.Mode.JSON,
+            )
+
+            structured_response = await client.chat.completions.create(
+                model=request.model,
+                response_model=response_model,
+                messages=[
+                    {"role": "user", "content": request.response_str},
+                ],
+            )
+
+        return structured_response
 
 
 class MCPOpenAITypeConverter(
@@ -630,8 +717,3 @@ def openai_content_to_mcp_content(
                 raise ValueError(f"Unexpected content type: {c.type}")
 
     return mcp_content
-
-
-def typed_dict_extras(d: dict, exclude: List[str]):
-    extras = {k: v for k, v in d.items() if k not in exclude}
-    return extras

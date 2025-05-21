@@ -12,7 +12,7 @@ from mcp_agent.workflows.parallel.fan_in import FanInInput, FanIn
 from mcp_agent.workflows.parallel.fan_out import FanOut
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 
 class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
@@ -49,6 +49,7 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
         fan_in_agent: Agent | AugmentedLLM | Callable[[FanInInput], Any],
         fan_out_agents: List[Agent | AugmentedLLM] | None = None,
         fan_out_functions: List[Callable] | None = None,
+        name: str | None = None,
         llm_factory: Callable[[Agent], AugmentedLLM] = None,
         context: Optional["Context"] = None,
         **kwargs,
@@ -58,7 +59,12 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
         If a name is provided, it will be used to identify the LLM.
         If an agent is provided, all other properties are optional
         """
-        super().__init__(context=context, **kwargs)
+        super().__init__(
+            name=name,
+            instruction="You are a parallel LLM workflow that can fan-out to multiple LLMs and fan-in to an aggregator LLM.",
+            context=context,
+            **kwargs,
+        )
 
         self.llm_factory = llm_factory
         self.fan_in_agent = fan_in_agent

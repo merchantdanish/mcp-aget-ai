@@ -1,7 +1,7 @@
 import asyncio
 from typing import List, Literal, Dict, Optional, TypeVar, TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 from mcp.client.session import ClientSession
 from mcp.server.lowlevel.server import Server
 from mcp.server.stdio import stdio_server
@@ -15,16 +15,16 @@ from mcp.types import (
     TextContent,
 )
 
-from mcp_agent.event_progress import ProgressAction
+from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.gen_client import gen_client
 
-from mcp_agent.context_dependent import ContextDependent
+from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 
 logger = get_logger(
@@ -72,8 +72,6 @@ class MCPAggregator(ContextDependent):
 
     server_names: List[str]
     """A list of server names to connect to."""
-
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
     async def __aenter__(self):
         await self.initialize()
@@ -346,6 +344,34 @@ class MCPAggregator(ContextDependent):
 
         self.initialized = True
 
+    async def get_server(self, server_name: str) -> Optional[ClientSession]:
+        """Get a server connection if available."""
+
+        if self.connection_persistence:
+            try:
+                server_conn = await self._persistent_connection_manager.get_server(
+                    server_name, client_session_factory=MCPAgentClientSession
+                )
+                return server_conn.session
+            except Exception as e:
+                logger.warning(
+                    f"Error getting server connection for '{server_name}': {e}"
+                )
+                return None
+        else:
+            logger.debug(
+                f"Creating temporary connection to server: {server_name}",
+                data={
+                    "progress_action": ProgressAction.STARTING,
+                    "server_name": server_name,
+                    "agent_name": self.agent_name,
+                },
+            )
+            async with gen_client(
+                server_name, server_registry=self.context.server_registry
+            ) as client:
+                return client
+
     async def get_capabilities(self, server_name: str):
         """Get server capabilities if available."""
         if self.connection_persistence:
@@ -423,7 +449,7 @@ class MCPAggregator(ContextDependent):
         )
 
     async def call_tool(
-        self, name: str, arguments: dict | None = None
+        self, name: str, arguments: dict | None = None, server_name: str | None = None
     ) -> CallToolResult:
         """
         Call a namespaced tool, e.g., 'server_name.tool_name'.
@@ -434,8 +460,10 @@ class MCPAggregator(ContextDependent):
         server_name: str = None
         local_tool_name: str = None
 
-        # Use the helper method to parse the capability name
-        server_name, local_tool_name = self._parse_capability_name(name, "tool")
+        if server_name:
+            local_tool_name = name
+        else:
+            server_name, local_tool_name = self._parse_capability_name(name, "tool")
 
         if server_name is None or local_tool_name is None:
             logger.error(f"Error: Tool '{name}' not found")
@@ -525,7 +553,10 @@ class MCPAggregator(ContextDependent):
         )
 
     async def get_prompt(
-        self, name: str, arguments: dict[str, str] | None = None
+        self,
+        name: str,
+        arguments: dict[str, str] | None = None,
+        server_name: str | None = None,
     ) -> GetPromptResult:
         """
         Get a prompt from a server.
@@ -542,7 +573,11 @@ class MCPAggregator(ContextDependent):
         if not self.initialized:
             await self.load_servers()
 
-        server_name, local_prompt_name = self._parse_capability_name(name, "prompt")
+        if server_name:
+            local_prompt_name = name
+        else:
+            server_name, local_prompt_name = self._parse_capability_name(name, "prompt")
+
         if server_name is None or local_prompt_name is None:
             logger.error(f"Error: Prompt '{name}' not found")
             return GetPromptResult(

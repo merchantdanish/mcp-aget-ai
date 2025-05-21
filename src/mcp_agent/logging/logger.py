@@ -49,12 +49,30 @@ class Logger:
     def _emit_event(self, event: Event):
         """Emit an event by running it in the event loop."""
         loop = self._ensure_event_loop()
-        if loop.is_running():
+        try:
+            is_running = loop.is_running()
+        except NotImplementedError:
+            # Handle Temporal workflow environment where is_running() is not implemented
+            # Default to assuming the loop is not running
+            is_running = False
+
+        if is_running:
             # If we're in a thread with a running loop, schedule the coroutine
             asyncio.create_task(self.event_bus.emit(event))
         else:
             # If no loop is running, run it until the emit completes
-            loop.run_until_complete(self.event_bus.emit(event))
+            try:
+                loop.run_until_complete(self.event_bus.emit(event))
+            except NotImplementedError:
+                # Handle Temporal workflow environment where run_until_complete() is not implemented
+                # In Temporal, we can't block on async operations, so we'll need to avoid this
+                # Simply log to stdout/stderr as a fallback
+                import sys
+
+                print(
+                    f"[{event.type}] {event.namespace}: {event.message}",
+                    file=sys.stderr,
+                )
 
     def event(
         self,

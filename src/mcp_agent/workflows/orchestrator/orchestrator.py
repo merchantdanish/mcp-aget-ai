@@ -1,6 +1,5 @@
 import contextlib
 from typing import (
-    Any,
     Callable,
     Coroutine,
     List,
@@ -37,7 +36,7 @@ from mcp_agent.workflows.orchestrator.orchestrator_prompts import (
 from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 
@@ -62,7 +61,9 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
     def __init__(
         self,
         llm_factory: Callable[[Agent], AugmentedLLM[MessageParamT, MessageT]],
+        name: str | None = None,
         planner: AugmentedLLM | None = None,
+        synthesizer: AugmentedLLM | None = None,
         available_agents: List[Agent | AugmentedLLM] | None = None,
         plan_type: Literal["full", "iterative"] = "full",
         context: Optional["Context"] = None,
@@ -76,7 +77,12 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             available_agents: List of agents available to tasks executed by this orchestrator
             context: Application context
         """
-        super().__init__(context=context, **kwargs)
+        super().__init__(
+            name=name,
+            instruction="You are an orchestrator-worker LLM that breaks down tasks into subtasks, delegates them to worker LLMs, and synthesizes their results.",
+            context=context,
+            **kwargs,
+        )
 
         self.llm_factory = llm_factory
 
@@ -87,6 +93,15 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 You are an expert planner. Given an objective task and a list of MCP servers (which are collections of tools)
                 or Agents (which are collections of servers), your job is to break down the objective into a series of steps,
                 which can be performed by LLMs with access to the servers or agents.
+                """,
+            )
+        )
+
+        self.sythesizer = synthesizer or llm_factory(
+            agent=Agent(
+                name="LLM Orchestration Synthesizer",
+                instruction="""
+                You are an expert synthesizer. Given the results of a series of steps, your job is to synthesize the results into a cohesive result.
                 """,
             )
         )
@@ -200,7 +215,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     plan_result=format_plan_result(plan_result)
                 )
 
-                plan_result.result = await self.planner.generate_str(
+                plan_result.result = await self.sythesizer.generate_str(
                     message=synthesis_prompt,
                     request_params=params.model_copy(update={"max_iterations": 1}),
                 )
@@ -241,10 +256,12 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         context = format_plan_result(previous_result)
 
         # Execute subtasks in parallel
-        futures: List[Coroutine[Any, Any, str]] = []
+        futures: list[Coroutine[any, any, str]] = []
         results = []
 
         async with contextlib.AsyncExitStack() as stack:
+            active_agents: dict[str, Agent] = {}
+
             # Set up all the tasks with their agents and LLMs
             for task in step.tasks:
                 agent = self.agents.get(task.agent)
@@ -254,8 +271,12 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 elif isinstance(agent, AugmentedLLM):
                     llm = agent
                 else:
-                    # Enter agent context
-                    ctx_agent = await stack.enter_async_context(agent)
+                    ctx_agent = active_agents.get(agent.name)
+                    if ctx_agent is None:
+                        ctx_agent = await stack.enter_async_context(
+                            agent
+                        )  # Enter agent context if agent is not already active
+                        active_agents[agent.name] = ctx_agent
                     llm = await ctx_agent.attach_llm(self.llm_factory)
 
                 task_description = TASK_PROMPT_TEMPLATE.format(
@@ -272,7 +293,8 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 )
 
             # Wait for all tasks to complete
-            results = await self.executor.execute(*futures)
+            if futures:
+                results = await self.executor.execute_many(futures)
 
         # Store task results
         for task, result in zip(step.tasks, results):

@@ -16,7 +16,7 @@ from mcp_agent.workflows.router.router_base import (
 )
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 
 class EmbeddingRouterCategory(RouterCategory):

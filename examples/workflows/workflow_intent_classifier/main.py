@@ -40,7 +40,7 @@ async def example_usage():
             top_k=1,
         )
 
-        logger.info("LLM-based Intent classification results:", data=results)
+        logger.info("Embedding-based Intent classification results:", data=results)
 
         llm_intent_classifier = OpenAILLMIntentClassifier(
             intents=[

@@ -1,19 +1,31 @@
-from typing import Any, Dict, Optional, Type, TypeVar, Callable
+import functools
+from types import MethodType
+from typing import Any, Dict, Optional, Type, TypeVar, Callable, TYPE_CHECKING
 from datetime import timedelta
 import asyncio
 import sys
-import uuid
 from contextlib import asynccontextmanager
 
 from mcp import ServerSession
-from mcp_agent.context import Context, initialize_context, cleanup_context
-from mcp_agent.config import Settings
-from mcp_agent.event_progress import ProgressAction
+from mcp_agent.core.context import Context, initialize_context, cleanup_context
+from mcp_agent.config import Settings, get_settings
+from mcp_agent.executor.signal_registry import SignalRegistry
+from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.executor.decorator_registry import (
+    DecoratorRegistry,
+    register_asyncio_decorators,
+    register_temporal_decorators,
+)
+from mcp_agent.executor.task_registry import ActivityRegistry
 from mcp_agent.executor.workflow_signal import SignalWaitCallback
+from mcp_agent.executor.workflow_task import GlobalWorkflowTaskRegistry
 from mcp_agent.human_input.types import HumanInputCallback
-from mcp_agent.human_input.handler import console_input_callback
+from mcp_agent.utils.common import unwrap
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
+
+if TYPE_CHECKING:
+    from mcp_agent.executor.workflow import Workflow
 
 R = TypeVar("R")
 
@@ -42,8 +54,9 @@ class MCPApp:
     def __init__(
         self,
         name: str = "mcp_application",
+        description: str | None = None,
         settings: Optional[Settings] | str = None,
-        human_input_callback: Optional[HumanInputCallback] = console_input_callback,
+        human_input_callback: Optional[HumanInputCallback] = None,
         signal_notification: Optional[SignalWaitCallback] = None,
         upstream_session: Optional["ServerSession"] = None,
         model_selector: ModelSelector = None,
@@ -52,23 +65,43 @@ class MCPApp:
         Initialize the application with a name and optional settings.
         Args:
             name: Name of the application
+            description: Description of the application. If you expose the MCPApp as an MCP server,
+                provide a detailed description, since it will be used as the server's description.
             settings: Application configuration - If unspecified, the settings are loaded from mcp_agent.config.yaml.
                 If this is a string, it is treated as the path to the config file to load.
             human_input_callback: Callback for handling human input
             signal_notification: Callback for getting notified on workflow signals/events.
-            upstream_session: Optional upstream session if the MCPApp is running as a server to an MCP client.
+            upstream_session: Upstream session if the MCPApp is running as a server to an MCP client.
             initialize_model_selector: Initializes the built-in ModelSelector to help with model selection. Defaults to False.
         """
         self.name = name
+        self.description = description or "MCP Agent Application"
 
         # We use these to initialize the context in initialize()
-        self._config_or_path = settings
+        if settings is None:
+            self._config = get_settings()
+        elif isinstance(settings, str):
+            self._config = get_settings(config_path=settings)
+        else:
+            self._config = settings
+
+        # We initialize the task and decorator registries at construction time
+        # (prior to initializing the context) to ensure that they are available
+        # for any decorators that are applied to the workflow or task methods.
+        self._task_registry = ActivityRegistry()
+        self._decorator_registry = DecoratorRegistry()
+        self._signal_registry = SignalRegistry()
+        register_asyncio_decorators(self._decorator_registry)
+        register_temporal_decorators(self._decorator_registry)
+        self._registered_global_workflow_tasks = set()
+
         self._human_input_callback = human_input_callback
         self._signal_notification = signal_notification
         self._upstream_session = upstream_session
         self._model_selector = model_selector
 
-        self._workflows: Dict[str, Type] = {}  # id to workflow class
+        self._workflows: Dict[str, Type["Workflow"]] = {}  # id to workflow class
+
         self._logger = None
         self._context: Optional[Context] = None
         self._initialized = False
@@ -92,7 +125,7 @@ class MCPApp:
 
     @property
     def config(self):
-        return self._context.config
+        return self._config
 
     @property
     def server_registry(self):
@@ -123,6 +156,10 @@ class MCPApp:
         return self.context.task_registry.list_activities()
 
     @property
+    def session_id(self):
+        return self.context.session_id
+
+    @property
     def logger(self):
         if self._logger is None:
             session_id = self._context.session_id if self._context else None
@@ -134,12 +171,13 @@ class MCPApp:
         if self._initialized:
             return
 
-        # Generate a session ID first
-        session_id = str(uuid.uuid4())
-
         # Pass the session ID to initialize_context
         self._context = await initialize_context(
-            self._config_or_path, store_globally=True, session_id=session_id
+            config=self.config,
+            task_registry=self._task_registry,
+            decorator_registry=self._decorator_registry,
+            signal_registry=self._signal_registry,
+            store_globally=True,
         )
 
         # Set the properties that were passed in the constructor
@@ -148,14 +186,19 @@ class MCPApp:
         self._context.upstream_session = self._upstream_session
         self._context.model_selector = self._model_selector
 
+        # Store a reference to this app instance in the context for easier access
+        self._context.app = self
+
+        self._register_global_workflow_tasks()
+
         self._initialized = True
         self.logger.info(
-            "MCPAgent initialized",
+            "MCPApp initialized",
             data={
                 "progress_action": "Running",
                 "target": self.name,
                 "agent_name": "mcp_application_loop",
-                "session_id": session_id,
+                "session_id": self.session_id,
             },
         )
 
@@ -166,7 +209,7 @@ class MCPApp:
 
         # Updatre progress display before logging is shut down
         self.logger.info(
-            "MCPAgent cleanup",
+            "MCPApp cleanup",
             data={
                 "progress_action": ProgressAction.FINISHED,
                 "target": self.name or "mcp_app",
@@ -210,22 +253,80 @@ class MCPApp:
             If Temporal is available & we use a TemporalExecutor,
             this decorator will wrap with temporal_workflow.defn.
         """
-        decorator_registry = self.context.decorator_registry
-        execution_engine = self.engine
-        workflow_defn_decorator = decorator_registry.get_workflow_defn_decorator(
-            execution_engine
+        cls._app = self
+
+        workflow_id = workflow_id or cls.__name__
+
+        # Apply the engine-specific decorator if available
+        engine_type = self.config.execution_engine
+        workflow_defn_decorator = self._decorator_registry.get_workflow_defn_decorator(
+            engine_type
         )
 
         if workflow_defn_decorator:
-            return workflow_defn_decorator(cls, *args, **kwargs)
+            # TODO: jerron (MAC) - Setting sandboxed=False is a workaround to silence temporal's RestrictedWorkflowAccessError.
+            # Can we make this work without having to run outside sandbox environment?
+            # This is not ideal as it could lead to non-deterministic behavior.
+            decorated_cls = workflow_defn_decorator(
+                cls, sandboxed=False, *args, **kwargs
+            )
+            self._workflows[workflow_id] = decorated_cls
+            return decorated_cls
+        else:
+            self._workflows[workflow_id] = cls
+            return cls
 
-        cls._app = self
-        self._workflows[workflow_id or cls.__name__] = cls
+    def workflow_signal(
+        self, fn: Callable[..., R] | None = None, *, name: str | None = None
+    ) -> Callable[..., R]:
+        """
+        Decorator for a workflow's signal handler.
+        Different executors can use this to customize behavior for workflow signal handling.
 
-        # Default no-op
-        return cls
+        Args:
+            fn: The function to decorate (optional, for use with direct application)
+            name: Optional custom name for the signal. If not provided, uses the function name.
 
-    def workflow_run(self, fn: Callable[..., R]) -> Callable[..., R]:
+        Example:
+            If Temporal is in use, this gets converted to @workflow.signal.
+        """
+
+        def decorator(func):
+            # Determine the signal name to use
+            signal_name = name or func.__name__
+
+            # Get the engine-specific signal decorator
+            engine_type = self.config.execution_engine
+            signal_decorator = self._decorator_registry.get_workflow_signal_decorator(
+                engine_type
+            )
+
+            # Apply the engine-specific decorator if available
+            # Important: We need to correctly pass the name parameter to the Temporal decorator
+            if signal_decorator:
+                # For Temporal, ensure we're passing name as a keyword argument
+                decorated_fn = signal_decorator(name=signal_name)(func)
+            else:
+                decorated_fn = func
+
+            @functools.wraps(decorated_fn)
+            async def wrapper(*args, **kwargs):
+                signal_handler_args = args[1:]
+                return decorated_fn(*signal_handler_args, **kwargs)
+
+            # Register with the signal registry using the custom name
+            self._signal_registry.register(
+                signal_name, wrapper, state={"completed": False, "value": None}
+            )
+
+            return wrapper
+
+        # Handle both @app.workflow_signal and @app.workflow_signal(name="custom_name")
+        if fn is None:
+            return decorator
+        return decorator(fn)
+
+    def workflow_run(self, fn: Callable[..., R], **kwargs) -> Callable[..., R]:
         """
         Decorator for a workflow's main 'run' method.
         Different executors can use this to customize behavior for workflow execution.
@@ -233,20 +334,37 @@ class MCPApp:
         Example:
             If Temporal is in use, this gets converted to @workflow.run.
         """
+        # Apply the engine-specific decorator if available
+        engine_type = self.config.execution_engine
+        run_decorator = self._decorator_registry.get_workflow_run_decorator(engine_type)
+        decorated_fn = run_decorator(fn, **kwargs) if run_decorator else fn
 
-        decorator_registry = self.context.decorator_registry
-        execution_engine = self.engine
-        workflow_run_decorator = decorator_registry.get_workflow_run_decorator(
-            execution_engine
-        )
+        @functools.wraps(fn)
+        async def wrapper(*args, **kwargs):
+            if not args:
+                return await decorated_fn(*args, **kwargs)
 
-        if workflow_run_decorator:
-            return workflow_run_decorator(fn)
+            # Get the workflow class instance from the first argument
+            instance = args[0]
 
-        # Default no-op
-        def wrapper(*args, **kwargs):
-            # no-op wrapper
-            return fn(*args, **kwargs)
+            # Ensure initialization happens
+            await instance.initialize()
+
+            workflow_cls = instance.__class__
+            method_name = fn.__name__
+
+            # See if we need to store the decorated method on the class
+            # (we only need to do this once per class)
+            if run_decorator and not hasattr(workflow_cls, f"_decorated_{method_name}"):
+                setattr(workflow_cls, f"_decorated_{method_name}", decorated_fn)
+
+            # Use the decorated method if available on the class
+            class_decorated = getattr(workflow_cls, f"_decorated_{method_name}", None)
+            if class_decorated:
+                return await class_decorated(*args, **kwargs)
+
+            # Fall back to the original function
+            return await fn(*args, **kwargs)
 
         return wrapper
 
@@ -255,7 +373,7 @@ class MCPApp:
         name: str | None = None,
         schedule_to_close_timeout: timedelta | None = None,
         retry_policy: Dict[str, Any] | None = None,
-        **kwargs: Any,
+        **meta_kwargs,
     ) -> Callable[[Callable[..., R]], Callable[..., R]]:
         """
         Decorator to mark a function as a workflow task,
@@ -275,48 +393,49 @@ class MCPApp:
             ValueError: If the retry policy or timeout is invalid
         """
 
-        def decorator(func: Callable[..., R]) -> Callable[..., R]:
+        def decorator(target: Callable[..., R]) -> Callable[..., R]:
+            func = unwrap(target)  # underlying function
+
             if not asyncio.iscoroutinefunction(func):
-                raise TypeError(f"Function {func.__name__} must be async.")
+                raise TypeError(f"{func.__qualname__} must be async")
 
-            actual_name = name or f"{func.__module__}.{func.__qualname__}"
-            timeout = schedule_to_close_timeout or timedelta(minutes=10)
+            activity_name = name or f"{func.__module__}.{func.__qualname__}"
             metadata = {
-                "activity_name": actual_name,
-                "schedule_to_close_timeout": timeout,
+                "activity_name": activity_name,
+                "schedule_to_close_timeout": schedule_to_close_timeout
+                or timedelta(minutes=10),
                 "retry_policy": retry_policy or {},
-                **kwargs,
+                **meta_kwargs,
             }
-            activity_registry = self.context.task_registry
-            activity_registry.register(actual_name, func, metadata)
 
-            setattr(func, "is_workflow_task", True)
-            setattr(func, "execution_metadata", metadata)
+            # bookkeeping that survives partial/bound wrappers
+            func.is_workflow_task = True
+            func.execution_metadata = metadata
 
-            # TODO: saqadri - determine if we need this
-            # Preserve metadata through partial application
-            # @functools.wraps(func)
-            # async def wrapper(*args: Any, **kwargs: Any) -> R:
-            #     result = await func(*args, **kwargs)
-            #     return cast(R, result)  # Ensure type checking works
+            task_defn = self._decorator_registry.get_workflow_task_decorator(
+                self.config.execution_engine
+            )
 
-            # # Add metadata that survives partial application
-            # wrapper.is_workflow_task = True  # type: ignore
-            # wrapper.execution_metadata = metadata  # type: ignore
+            if task_defn:
+                if isinstance(target, MethodType):
+                    self_ref = target.__self__
 
-            # # Make metadata accessible through partial
-            # def __getattr__(name: str) -> Any:
-            #     if name == "is_workflow_task":
-            #         return True
-            #     if name == "execution_metadata":
-            #         return metadata
-            #     raise AttributeError(f"'{func.__name__}' has no attribute '{name}'")
+                    @functools.wraps(func)
+                    async def _bound_adapter(*a, **k):
+                        return await func(self_ref, *a, **k)
 
-            # wrapper.__getattr__ = __getattr__  # type: ignore
+                    _bound_adapter.__annotations__ = func.__annotations__.copy()
+                    task_callable = task_defn(_bound_adapter, name=activity_name)
+                else:
+                    task_callable = task_defn(func, name=activity_name)
+            else:
+                task_callable = target  # asyncio backend
 
-            # return wrapper
+            # ---- register *after* decorating --------------------------------
+            self._task_registry.register(activity_name, task_callable, metadata)
 
-            return func
+            # Return the callable we created rather than re-decorating
+            return task_callable
 
         return decorator
 
@@ -325,3 +444,58 @@ class MCPApp:
         Check if a function is marked as a workflow task.
         This gets set for functions that are decorated with @workflow_task."""
         return bool(getattr(func, "is_workflow_task", False))
+
+    def _register_global_workflow_tasks(self):
+        """Register all statically defined workflow tasks with this app instance."""
+        registry = GlobalWorkflowTaskRegistry()
+
+        self.logger.debug(
+            "Registering global workflow tasks with application instance."
+        )
+
+        for target, metadata in registry.get_all_tasks():
+            func = unwrap(target)  # underlying function
+            activity_name = metadata["activity_name"]
+
+            self.logger.debug(f"Registering global workflow task: {activity_name}")
+
+            # Skip if already registered in this app instance
+            if activity_name in self._registered_global_workflow_tasks:
+                self.logger.debug(
+                    f"Global workflow task {activity_name} already registered, skipping."
+                )
+                continue
+
+            # Skip if already registered in the app's task registry
+            if activity_name in self._task_registry.list_activities():
+                self.logger.debug(
+                    f"Global workflow task {activity_name} already registered in task registry, skipping."
+                )
+                self._registered_global_workflow_tasks.add(activity_name)
+                continue
+
+            # Apply the engine-specific decorator if available
+            task_defn = self._decorator_registry.get_workflow_task_decorator(
+                self.config.execution_engine
+            )
+
+            if task_defn:  # Engine-specific decorator available
+                if isinstance(target, MethodType):
+                    self_ref = target.__self__
+
+                    @functools.wraps(func)
+                    async def _bound_adapter(*a, **k):
+                        return await func(self_ref, *a, **k)
+
+                    _bound_adapter.__annotations__ = func.__annotations__.copy()
+                    task_callable = task_defn(_bound_adapter, name=activity_name)
+                else:
+                    task_callable = task_defn(func, name=activity_name)
+            else:
+                task_callable = target  # asyncio backend
+
+            # Register with the task registry
+            self._task_registry.register(activity_name, task_callable, metadata)
+
+            # Mark as registered in this app instance
+            self._registered_global_workflow_tasks.add(activity_name)

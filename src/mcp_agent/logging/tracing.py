@@ -15,10 +15,10 @@ from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapProp
 
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
-from mcp_agent.context_dependent import ContextDependent
+from mcp_agent.core.context_dependent import ContextDependent
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 
 class TelemetryManager(ContextDependent):

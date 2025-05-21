@@ -291,7 +291,6 @@ def clean_env(
         for category_dir in examples_dir.iterdir():
             if not category_dir.is_dir() or category_dir.name.startswith("."):
                 continue
-
             for example_dir in category_dir.iterdir():
                 if example_dir.is_dir() and not example_dir.name.startswith("."):
                     dirs.append(example_dir)

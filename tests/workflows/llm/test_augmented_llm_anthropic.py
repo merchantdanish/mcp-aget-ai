@@ -29,8 +29,8 @@ class TestAnthropicAugmentedLLM:
         llm = AnthropicAugmentedLLM(name="test", context=mock_context)
 
         # Setup common mocks
-        llm.aggregator = MagicMock()
-        llm.aggregator.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
+        llm.agent = MagicMock()
+        llm.agent.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
         llm.history = MagicMock()
         llm.history.get = MagicMock(return_value=[])
         llm.history.set = MagicMock()
@@ -173,6 +173,6 @@ class TestAnthropicAugmentedLLM:
         messages = final_call_args["messages"]
 
         # Check for the presence of the final answer request message
-        assert self.check_final_iteration_prompt_in_messages(messages), (
-            "No message requesting to stop using tools was found"
-        )
+        assert self.check_final_iteration_prompt_in_messages(
+            messages
+        ), "No message requesting to stop using tools was found"

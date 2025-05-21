@@ -4,7 +4,7 @@ A central context object to store global state that is shared across the applica
 
 import asyncio
 import concurrent.futures
-from typing import Any, Optional, Union, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 
@@ -26,13 +26,14 @@ from mcp_agent.executor.decorator_registry import (
     register_asyncio_decorators,
     register_temporal_decorators,
 )
+from mcp_agent.executor.signal_registry import SignalRegistry
 from mcp_agent.executor.task_registry import ActivityRegistry
 from mcp_agent.executor.executor import AsyncioExecutor
 
 from mcp_agent.logging.events import EventFilter
 from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.logging.transport import create_transport
-from mcp_agent.mcp_server_registry import ServerRegistry
+from mcp_agent.mcp.mcp_server_registry import ServerRegistry
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 from mcp_agent.logging.logger import get_logger
 
@@ -40,10 +41,14 @@ from mcp_agent.logging.logger import get_logger
 if TYPE_CHECKING:
     from mcp_agent.human_input.types import HumanInputCallback
     from mcp_agent.executor.workflow_signal import SignalWaitCallback
+    from mcp_agent.executor.workflow_registry import WorkflowRegistry
+    from mcp_agent.app import MCPApp
 else:
     # Runtime placeholders for the types
     HumanInputCallback = Any
     SignalWaitCallback = Any
+    WorkflowRegistry = Any
+    MCPApp = Any
 
 logger = get_logger(__name__)
 
@@ -61,11 +66,14 @@ class Context(BaseModel):
     upstream_session: Optional[ServerSession] = None  # TODO: saqadri - figure this out
     model_selector: Optional[ModelSelector] = None
     session_id: str | None = None
+    app: Optional["MCPApp"] = None
 
     # Registries
     server_registry: Optional[ServerRegistry] = None
     task_registry: Optional[ActivityRegistry] = None
+    signal_registry: Optional[SignalRegistry] = None
     decorator_registry: Optional[DecoratorRegistry] = None
+    workflow_registry: Optional["WorkflowRegistry"] = None
 
     tracer: Optional[trace.Tracer] = None
 
@@ -171,24 +179,39 @@ async def configure_executor(config: "Settings"):
         return executor
 
 
+async def configure_workflow_registry(config: "Settings", executor: Executor):
+    """
+    Configure the workflow registry based on the application config.
+    """
+    if config.execution_engine == "temporal":
+        from mcp_agent.executor.temporal.workflow_registry import (
+            TemporalWorkflowRegistry,
+        )
+
+        return TemporalWorkflowRegistry(executor=executor)
+    else:
+        # Default to local workflow registry
+        from mcp_agent.executor.workflow_registry import InMemoryWorkflowRegistry
+
+        return InMemoryWorkflowRegistry()
+
+
 async def initialize_context(
-    config: Optional[Union["Settings", str]] = None,
+    config: Optional["Settings"] = None,
+    task_registry: Optional[ActivityRegistry] = None,
+    decorator_registry: Optional[DecoratorRegistry] = None,
+    signal_registry: Optional[SignalRegistry] = None,
     store_globally: bool = False,
-    session_id: str = None,
 ):
     """
     Initialize the global application context.
     """
     if config is None:
         config = get_settings()
-    elif isinstance(config, str):
-        config = get_settings(config_path=config)
 
     context = Context()
     context.config = config
     context.server_registry = ServerRegistry(config=config)
-
-    context.session_id = session_id
 
     # Configure logging and telemetry
     await configure_otel(config)
@@ -197,11 +220,22 @@ async def initialize_context(
 
     # Configure the executor
     context.executor = await configure_executor(config)
-    context.task_registry = ActivityRegistry()
+    context.workflow_registry = await configure_workflow_registry(
+        config, context.executor
+    )
 
-    context.decorator_registry = DecoratorRegistry()
-    register_asyncio_decorators(context.decorator_registry)
-    register_temporal_decorators(context.decorator_registry)
+    context.session_id = str(context.executor.uuid())
+
+    context.task_registry = task_registry or ActivityRegistry()
+
+    context.signal_registry = signal_registry or SignalRegistry()
+
+    if not decorator_registry:
+        context.decorator_registry = DecoratorRegistry()
+        register_asyncio_decorators(context.decorator_registry)
+        register_temporal_decorators(context.decorator_registry)
+    else:
+        context.decorator_registry = decorator_registry
 
     # Store the tracer in context if needed
     context.tracer = trace.get_tracer(config.otel.service_name)

@@ -5,11 +5,11 @@ from pydantic import BaseModel, Field, ConfigDict
 from mcp.server.fastmcp.tools import Tool as FastTool
 
 from mcp_agent.agents.agent import Agent
-from mcp_agent.context_dependent import ContextDependent
+from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 

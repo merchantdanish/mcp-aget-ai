@@ -6,7 +6,7 @@ from numpy import array, float32
 from mcp_agent.workflows.embedding.embedding_base import EmbeddingModel, FloatArray
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 
 class CohereEmbeddingModel(EmbeddingModel):

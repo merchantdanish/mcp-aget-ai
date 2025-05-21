@@ -7,7 +7,7 @@ from mcp_agent.workflows.intent_classifier.intent_classifier_embedding import (
 )
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 
 class CohereEmbeddingIntentClassifier(EmbeddingIntentClassifier):
