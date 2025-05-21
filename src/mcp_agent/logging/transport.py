@@ -271,11 +271,14 @@ class AsyncEventBus:
     def __init__(self, transport: EventTransport | None = None):
         self.transport: EventTransport = transport or NoOpTransport()
         self.listeners: Dict[str, EventListener] = {}
-        self._queue = asyncio.Queue()
         self._task: asyncio.Task | None = None
         self._running = False
-        self._stop_event = asyncio.Event()
 
+    def init_queue(self):
+        if self._running:
+            return
+        self._queue = asyncio.Queue()
+        self._stop_event = asyncio.Event()
         # Store the loop we're created on
         try:
             self._loop = asyncio.get_running_loop()
@@ -312,7 +315,7 @@ class AsyncEventBus:
         """Start the event bus and all lifecycle-aware listeners."""
         if self._running:
             return
-
+        self.init_queue()
         # Start each lifecycle-aware listener
         for listener in self.listeners.values():
             if isinstance(listener, LifecycleAwareListener):

@@ -428,6 +428,34 @@ class MCPAggregator(ContextDependent):
 
             self.initialized = True
 
+    async def get_server(self, server_name: str) -> Optional[ClientSession]:
+        """Get a server connection if available."""
+
+        if self.connection_persistence:
+            try:
+                server_conn = await self._persistent_connection_manager.get_server(
+                    server_name, client_session_factory=MCPAgentClientSession
+                )
+                return server_conn.session
+            except Exception as e:
+                logger.warning(
+                    f"Error getting server connection for '{server_name}': {e}"
+                )
+                return None
+        else:
+            logger.debug(
+                f"Creating temporary connection to server: {server_name}",
+                data={
+                    "progress_action": ProgressAction.STARTING,
+                    "server_name": server_name,
+                    "agent_name": self.agent_name,
+                },
+            )
+            async with gen_client(
+                server_name, server_registry=self.context.server_registry
+            ) as client:
+                return client
+
     async def get_capabilities(self, server_name: str):
         """Get server capabilities if available."""
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")

@@ -1,17 +1,55 @@
-# LLM Selector
+# LLM Selector example
 
 This example shows using MCP's ModelPreferences type to select a model (LLM) based on speed, cost and intelligence priorities.
 
-Interactive mode:
-
-```bash
-uv run interactive.py
-```
-
 https://github.com/user-attachments/assets/04257ae4-a628-4c25-ace2-6540620cbf8b
 
-Script mode:
+---
+
+```plaintext
+┌──────────┐      ┌─────────────────────┐
+│ Selector │──┬──▶│       gpt-4o        │
+└──────────┘  │   └─────────────────────┘
+              │   ┌─────────────────────┐
+              ├──▶│     gpt-4o-mini     │
+              │   └─────────────────────┘
+              │   ┌─────────────────────┐
+              ├──▶│  claude-3.5-sonnet  │
+              │   └─────────────────────┘
+              │   ┌─────────────────────┐
+              └──▶│   claude-3-haiku    │
+                  └─────────────────────┘
+```
+
+## `1` App set up
+
+First, clone the repo and navigate to the mcp_model_selector example:
+
+```bash
+git clone https://github.com/lastmile-ai/mcp-agent.git
+cd mcp-agent/examples/basic/mcp_model_selector
+```
+
+Install the UV tool (if you don’t have it) to manage dependencies:
+
+```bash
+pip install uv
+
+uv pip install -r requirements.txt
+```
+
+## `2` Run locally
+
+Run your MCP Agent app:
 
 ```bash
 uv run main.py
+```
+
+## `2.1` Run locally in Interactive mode
+
+Run your MCP Agent app:
+
+```bash
+uv run interactive.py
 ```

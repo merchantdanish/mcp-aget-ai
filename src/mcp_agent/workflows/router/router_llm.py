@@ -5,7 +5,6 @@ from pydantic import BaseModel
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.tracing.semconv import GEN_AI_REQUEST_TOP_K
-from mcp_agent.tracing.telemetry import telemetry
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 from mcp_agent.workflows.router.router_base import ResultT, Router, RouterResult
 from mcp_agent.logging.logger import get_logger

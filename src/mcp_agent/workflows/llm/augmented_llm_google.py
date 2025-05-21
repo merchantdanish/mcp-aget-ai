@@ -19,6 +19,7 @@ from mcp.types import (
 from mcp_agent.config import GoogleSettings
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MCPMessageParam,
@@ -239,16 +240,30 @@ class GoogleAugmentedLLM(
         params = self.get_request_params(request_params)
         model = await self.select_model(params) or "gemini-2.0-flash"
 
+        serialized_response_model: str | None = None
+
+        if self.executor and self.executor.execution_engine == "temporal":
+            # Serialize the response model to a string
+            serialized_response_model = serialize_model(response_model)
+
         structured_response = await self.executor.execute(
             GoogleCompletionTasks.request_structured_completion_task,
             RequestStructuredCompletionRequest(
                 config=self.context.config.google,
                 params=params,
-                response_model=response_model,
+                response_model=response_model
+                if not serialized_response_model
+                else None,
+                serialized_response_model=serialized_response_model,
                 response_str=response,
                 model=model,
             ),
         )
+
+        # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
+        # Convert dict back to the proper model instance if needed
+        if isinstance(structured_response, dict):
+            structured_response = response_model.model_validate(structured_response)
 
         return structured_response
 
@@ -303,7 +318,8 @@ class RequestCompletionRequest(BaseModel):
 class RequestStructuredCompletionRequest(BaseModel):
     config: GoogleSettings
     params: RequestParams
-    response_model: Type[ModelT]
+    response_model: Type[ModelT] | None = None
+    serialized_response_model: str | None = None
     response_str: str
     model: str
 
@@ -341,6 +357,15 @@ class GoogleCompletionTasks:
         """
         import instructor
 
+        if request.response_model:
+            response_model = request.response_model
+        elif request.serialized_response_model:
+            response_model = deserialize_model(request.serialized_response_model)
+        else:
+            raise ValueError(
+                "Either response_model or serialized_response_model must be provided for structured completion."
+            )
+
         if request.config and request.config.vertexai:
             google_client = Client(
                 vertexai=request.config.vertexai,
@@ -356,7 +381,8 @@ class GoogleCompletionTasks:
 
         structured_response = client.chat.completions.create(
             model=request.model,
-            response_model=request.response_model,
+            response_model=response_model,
+            system="Convert the provided text into the required response model. Do not change the text or add any additional text. Just convert it into the required response model.",
             messages=[
                 {"role": "user", "content": request.response_str},
             ],

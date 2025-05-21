@@ -5,7 +5,8 @@ from typing import Any, Dict, Iterable, List, Type, cast
 
 from pydantic import BaseModel
 
-from openai import OpenAI
+
+from openai import OpenAI, AsyncOpenAI
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionContentPartParam,
@@ -47,6 +48,7 @@ from mcp_agent.tracing.semconv import (
 )
 from mcp_agent.tracing.telemetry import is_otel_serializable
 from mcp_agent.utils.common import ensure_serializable, typed_dict_extras
+from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -65,7 +67,8 @@ class RequestCompletionRequest(BaseModel):
 
 class RequestStructuredCompletionRequest(BaseModel):
     config: OpenAISettings
-    model_path: str
+    response_model: Any | None = None
+    serialized_response_model: str | None = None
     response_str: str
     model: str
 
@@ -413,21 +416,26 @@ class OpenAIAugmentedLLM(
             model = await self.select_model(params) or "gpt-4o"
             span.set_attribute(GEN_AI_REQUEST_MODEL, model)
 
-            # TODO: saqadri (MAC) - this is brittle, make it more robust by serializing response_model
-            # Get the import path for the class
-            model_path = f"{response_model.__module__}.{response_model.__name__}"
-            span.set_attribute("response_model", model_path)
+            span.set_attribute("response_model", response_model.__name__)
+
+            serialized_response_model: str | None = None
+
+            if self.executor and self.executor.execution_engine == "temporal":
+                # Serialize the response model to a string
+                serialized_response_model = serialize_model(response_model)
 
             structured_response = await self.executor.execute(
                 OpenAICompletionTasks.request_structured_completion_task,
                 RequestStructuredCompletionRequest(
                     config=self.context.config.openai,
-                    model_path=model_path,
+                    response_model=response_model
+                    if not serialized_response_model
+                    else None,
+                    serialized_response_model=serialized_response_model,
                     response_str=response,
                     model=model,
                 ),
             )
-
             # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
             # Convert dict back to the proper model instance if needed
             if isinstance(structured_response, dict):
@@ -825,17 +833,20 @@ class OpenAICompletionTasks:
         Request a structured completion using Instructor's OpenAI API.
         """
         import instructor
-        import importlib
         from instructor.exceptions import InstructorRetryException
 
-        # Dynamically import the model class
-        module_path, class_name = request.model_path.rsplit(".", 1)
-        module = importlib.import_module(module_path)
-        response_model = getattr(module, class_name)
+        if request.response_model:
+            response_model = request.response_model
+        elif request.serialized_response_model:
+            response_model = deserialize_model(request.serialized_response_model)
+        else:
+            raise ValueError(
+                "Either response_model or serialized_response_model must be provided for structured completion."
+            )
 
         # Next we pass the text through instructor to extract structured data
         client = instructor.from_openai(
-            OpenAI(
+            AsyncOpenAI(
                 api_key=request.config.api_key,
                 base_url=request.config.base_url,
                 http_client=request.config.http_client
@@ -847,7 +858,7 @@ class OpenAICompletionTasks:
 
         try:
             # Extract structured data from natural language
-            structured_response = client.chat.completions.create(
+            structured_response = await client.chat.completions.create(
                 model=request.model,
                 response_model=response_model,
                 messages=[
@@ -857,7 +868,7 @@ class OpenAICompletionTasks:
         except InstructorRetryException:
             # Retry the request with JSON mode
             client = instructor.from_openai(
-                OpenAI(
+                AsyncOpenAI(
                     api_key=request.config.api_key,
                     base_url=request.config.base_url,
                     http_client=request.config.http_client
@@ -867,22 +878,13 @@ class OpenAICompletionTasks:
                 mode=instructor.Mode.JSON,
             )
 
-            structured_response = client.chat.completions.create(
+            structured_response = await client.chat.completions.create(
                 model=request.model,
                 response_model=response_model,
                 messages=[
                     {"role": "user", "content": request.response_str},
                 ],
             )
-
-        # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
-            model=request.model,
-            response_model=response_model,
-            messages=[
-                {"role": "user", "content": request.response_str},
-            ],
-        )
 
         return structured_response
 

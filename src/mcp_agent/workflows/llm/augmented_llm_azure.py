@@ -1,5 +1,5 @@
 import json
-from typing import Any, Iterable, List, Optional, Type, Union
+from typing import Any, Iterable, Optional, Type, Union
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import (
     ChatCompletions,

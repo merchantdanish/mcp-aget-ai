@@ -1,5 +1,4 @@
 version = 1
-revision = 1
 requires-python = ">=3.10"
 
 [[package]]
@@ -1047,7 +1046,7 @@ wheels = [
 
 [[package]]
 name = "mcp-agent"
-version = "0.0.22"
+version = "0.0.23"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -1136,7 +1135,6 @@ requires-dist = [
     { name = "typer", specifier = ">=0.15.1" },
     { name = "websockets", specifier = ">=12.0" },
 ]
-provides-extras = ["temporal", "anthropic", "bedrock", "openai", "azure", "google", "cohere"]
 
 [package.metadata.requires-dev]
 dev = [

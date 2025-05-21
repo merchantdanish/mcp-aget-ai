@@ -8,18 +8,19 @@ from opentelemetry import trace
 from typing import Any, Callable, Optional, TYPE_CHECKING
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from mcp import ClientNotification, ClientRequest, ClientSession
+from mcp import ClientSession
 from mcp.shared.session import (
     ReceiveResultT,
     ReceiveNotificationT,
     RequestId,
     SendNotificationT,
+    SendRequestT,
     SendResultT,
     ProgressFnT,
 )
 
 from mcp.shared.context import RequestContext
-from mcp.shared.message import ClientMessageMetadata
+from mcp.shared.message import MessageMetadata
 
 from mcp.client.session import (
     ListRootsFnT,
@@ -55,6 +56,9 @@ from mcp_agent.tracing.semconv import (
     MCP_TOOL_NAME,
 )
 from mcp_agent.tracing.telemetry import record_attributes
+
+if TYPE_CHECKING:
+    from mcp_agent.core.context import Context
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -135,10 +139,10 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
 
     async def send_request(
         self,
-        request: ClientRequest,
+        request: SendRequestT,
         result_type: type[ReceiveResultT],
         request_read_timeout_seconds: timedelta | None = None,
-        metadata: ClientMessageMetadata = None,
+        metadata: MessageMetadata = None,
         progress_callback: ProgressFnT | None = None,
     ) -> ReceiveResultT:
         logger.debug("send_request: request=", data=request.model_dump())
@@ -194,7 +198,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
 
     async def send_notification(
         self,
-        notification: ClientNotification,
+        notification: SendNotificationT,
         related_request_id: RequestId | None = None,
     ) -> None:
         logger.debug("send_notification:", data=notification.model_dump())

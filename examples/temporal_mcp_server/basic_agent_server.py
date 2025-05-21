@@ -8,15 +8,11 @@ This example demonstrates three approaches to creating agents and workflows:
 """
 
 import asyncio
-import os
 import logging
-from pydantic import BaseModel
 
 from mcp_agent.app import MCPApp
 from mcp_agent.executor.workflow_signal import Signal
 from mcp_agent.server.app_server import create_mcp_server_for_app
-from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 
 # Initialize logging

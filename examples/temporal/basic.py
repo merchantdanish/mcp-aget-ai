@@ -54,13 +54,6 @@ class SimpleWorkflow(Workflow[str]):
             )
             return WorkflowResult(value=result)
 
-        # logger.info(f"Running SimpleWorkflow with input: {input_data}")
-
-        # # Execute the workflow task as a Temporal activity
-        # result = input_data.upper()
-
-        # return WorkflowResult(value=result)
-
 
 async def main():
     async with app.run() as agent_app:

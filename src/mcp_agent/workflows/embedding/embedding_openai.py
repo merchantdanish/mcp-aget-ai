@@ -9,7 +9,6 @@ from mcp_agent.tracing.semconv import (
     GEN_AI_REQUEST_MODEL,
     GEN_AI_RESPONSE_MODEL,
     GEN_AI_USAGE_INPUT_TOKENS,
-    GEN_AI_USAGE_OUTPUT_TOKENS,
 )
 from mcp_agent.workflows.embedding.embedding_base import EmbeddingModel, FloatArray
 

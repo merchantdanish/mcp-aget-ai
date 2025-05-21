@@ -9,7 +9,6 @@ from typing import (
     Type,
     TYPE_CHECKING,
 )
-import uuid
 from opentelemetry import trace
 
 from mcp_agent.agents.agent import Agent
@@ -65,6 +64,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
     def __init__(
         self,
         llm_factory: Callable[[Agent], AugmentedLLM[MessageParamT, MessageT]],
+        name: str | None = None,
         planner: AugmentedLLM | None = None,
         synthesizer: AugmentedLLM | None = None,
         available_agents: List[Agent | AugmentedLLM] | None = None,
@@ -81,7 +81,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             context: Application context
         """
         super().__init__(
-            name=f"orchestrator-{str(context.executor.uuid() if context else uuid.uuid4())}",
+            name=name,
             instruction="You are an orchestrator-worker LLM that breaks down tasks into subtasks, delegates them to worker LLMs, and synthesizes their results.",
             context=context,
             **kwargs,
@@ -555,10 +555,20 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         if not agent:
             return ""
 
+        if isinstance(agent, AugmentedLLM):
+            server_names = agent.agent.server_names
+        elif isinstance(agent, Agent):
+            server_names = agent.server_names
+        else:
+            logger.warning(
+                f"_format_agent_info: Agent {agent_name} is not an instance of Agent or AugmentedLLM. Skipping."
+            )
+            return ""
+
         servers = "\n".join(
             [
                 f"- {self._format_server_info(server_name)}"
-                for server_name in agent.server_names
+                for server_name in server_names
             ]
         )
 

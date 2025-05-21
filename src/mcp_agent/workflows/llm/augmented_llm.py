@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from mcp_agent.logging.logger import Logger
     from mcp_agent.agents.agent import Agent
 
+
 MessageParamT = TypeVar("MessageParamT")
 """A type representing an input message to an LLM."""
 
@@ -237,7 +238,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         """
         super().__init__(context=context, **kwargs)
         self.executor = self.context.executor
-        self.name = name or (agent.name if agent else None)
+        self.name = self._gen_name(name or (agent.name if agent else None), prefix=None)
         self.instruction = instruction or (agent.instruction if agent else None)
 
         if not self.name:
@@ -627,3 +628,23 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         Override this for the AugmentedLLM subclass MessageT type.
         """
         return {}
+
+    def _gen_name(self, name: str | None, prefix: str | None) -> str:
+        """
+        Generate a name for the LLM based on the provided name or the default prefix.
+        """
+        if name:
+            return name
+
+        if not prefix:
+            prefix = self.__class__.__name__
+
+        identifier: str | None = None
+        if not self.context or not self.context.executor:
+            import uuid
+
+            identifier = str(uuid.uuid4())
+        else:
+            identifier = str(self.context.executor.uuid())
+
+        return f"{prefix}-{identifier}"
