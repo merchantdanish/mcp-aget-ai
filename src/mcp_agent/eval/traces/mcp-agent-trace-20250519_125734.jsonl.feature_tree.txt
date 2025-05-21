@@ -1,0 +1,196 @@
+Feature Spans Tree:
+└── Initialization (2 spans)
+    ├── agent.finder.initialize (613.83ms)
+    │   Start: 12:57:34.324, End: 12:57:34.938
+    │   Agent: finder
+    └── MCPAggregator.initialize (613.36ms)
+        Start: 12:57:34.324, End: 12:57:34.937
+        Agent: finder
+└── Mcp Session (10 spans)
+    ├── MCPAgentClientSession.send_request (468.40ms)
+    │   Start: 12:57:34.328, End: 12:57:34.797
+    │   Method: initialize
+    ├── MCPAgentClientSession.send_request (603.18ms)
+    │   Start: 12:57:34.329, End: 12:57:34.932
+    │   Method: initialize
+    ├── MCPAgentClientSession.send_notification (0.59ms)
+    │   Start: 12:57:34.797, End: 12:57:34.797
+    │   Method: notifications/initialized
+    ├── MCPAgentClientSession.send_request (2.36ms)
+    │   Start: 12:57:34.798, End: 12:57:34.801
+    │   Method: tools/list
+    ├── MCPAgentClientSession.send_request (1.14ms)
+    │   Start: 12:57:34.801, End: 12:57:34.802
+    │   Method: prompts/list
+    ├── MCPAgentClientSession.send_notification (0.49ms)
+    │   Start: 12:57:34.932, End: 12:57:34.933
+    │   Method: notifications/initialized
+    ├── MCPAgentClientSession.send_request (3.17ms)
+    │   Start: 12:57:34.933, End: 12:57:34.936
+    │   Method: tools/list
+    ├── MCPAgentClientSession.send_request (729.57ms)
+    │   Start: 12:57:34.945, End: 12:57:35.675
+    │   Method: prompts/get
+    ├── MCPAgentClientSession.send_request (3.88ms)
+    │   Start: 12:57:37.219, End: 12:57:37.223
+    │   Method: tools/call
+    └── MCPAgentClientSession.send_request (1145.55ms)
+        Start: 12:57:44.239, End: 12:57:45.384
+        Method: tools/call
+└── Llm Operations (9 spans)
+    ├── llm_openai.finder.generate_str (8559.37ms)
+    │   Start: 12:57:35.675, End: 12:57:44.234
+    │   Agent: finder
+    ├── llm_openai.finder.generate (8559.29ms)
+    │   Start: 12:57:35.675, End: 12:57:44.234
+    │   Agent: finder, Model: gpt-4o-mini, Tokens: 2837 in, 287 out
+    ├── llm.finder.select_model (0.02ms)
+    │   Start: 12:57:35.679, End: 12:57:35.679
+    │   Agent: finder
+    ├── openai.chat (1499.02ms)
+    │   Start: 12:57:35.718, End: 12:57:37.217
+    │   Model: gpt-4o-mini
+    ├── llm.finder.call_tool (4.82ms)
+    │   Start: 12:57:37.218, End: 12:57:37.223
+    │   Agent: finder
+    ├── openai.chat (6986.02ms)
+    │   Start: 12:57:37.248, End: 12:57:44.234
+    │   Model: gpt-4o-mini
+    ├── llm_anthropic.finder.generate_str (178.22ms)
+    │   Start: 12:57:45.385, End: 12:57:45.563
+    │   Agent: finder
+    ├── llm_anthropic.finder.generate (178.13ms)
+    │   Start: 12:57:45.385, End: 12:57:45.563
+    │   Agent: finder, Model: claude-3-7-sonnet-latest, Tokens: 0 in, 0 out
+    └── llm.finder.select_model (0.02ms)
+        Start: 12:57:45.389, End: 12:57:45.389
+        Agent: finder
+└── Tool Operations (8 spans)
+    ├── agent.finder.list_tools (3.94ms)
+    │   Start: 12:57:34.938, End: 12:57:34.942
+    │   Agent: finder
+    ├── agent.finder.list_tools (3.64ms)
+    │   Start: 12:57:35.675, End: 12:57:35.679
+    │   Agent: finder
+    ├── llm_openai.finder.execute_tool_call (4.91ms)
+    │   Start: 12:57:37.218, End: 12:57:37.223
+    ├── agent.finder.call_tool (4.74ms)
+    │   Start: 12:57:37.218, End: 12:57:37.223
+    │   Agent: finder
+    ├── MCPAggregator.call_tool (4.53ms)
+    │   Start: 12:57:37.219, End: 12:57:37.223
+    │   Agent: finder
+    ├── agent.finder.call_tool (1146.46ms)
+    │   Start: 12:57:44.238, End: 12:57:45.384
+    │   Agent: finder
+    ├── MCPAggregator.call_tool (1146.25ms)
+    │   Start: 12:57:44.238, End: 12:57:45.384
+    │   Agent: finder
+    └── agent.finder.list_tools (3.77ms)
+        Start: 12:57:45.385, End: 12:57:45.389
+        Agent: finder
+└── Workflow (15 spans)
+    ├── AsyncioExecutor.execute (613.63ms)
+    │   Start: 12:57:34.324, End: 12:57:34.937
+    ├── AsyncioExecutor.execute (1.20ms)
+    │   Start: 12:57:34.942, End: 12:57:34.943
+    ├── AsyncioExecutor.execute (0.30ms)
+    │   Start: 12:57:34.943, End: 12:57:34.943
+    ├── AsyncioExecutor.execute (0.17ms)
+    │   Start: 12:57:34.944, End: 12:57:34.944
+    ├── AsyncioExecutor.execute (0.11ms)
+    │   Start: 12:57:34.944, End: 12:57:34.944
+    ├── AsyncioExecutor.execute (730.60ms)
+    │   Start: 12:57:34.944, End: 12:57:35.675
+    ├── AsyncioExecutor.execute (1537.39ms)
+    │   Start: 12:57:35.679, End: 12:57:37.217
+    ├── AsyncioExecutor.execute_many (6.30ms)
+    │   Start: 12:57:37.217, End: 12:57:37.223
+    ├── AsyncioExecutor.execute (4.67ms)
+    │   Start: 12:57:37.218, End: 12:57:37.223
+    ├── AsyncioExecutor.execute (7010.24ms)
+    │   Start: 12:57:37.224, End: 12:57:44.234
+    ├── AsyncioExecutor.wait_for_signal (3.09ms)
+    │   Start: 12:57:44.235, End: 12:57:44.238
+    ├── AsyncioExecutor.signal (0.11ms)
+    │   Start: 12:57:44.237, End: 12:57:44.238
+    ├── AsyncioExecutor.execute (1146.37ms)
+    │   Start: 12:57:44.238, End: 12:57:45.384
+    ├── AsyncioExecutor.execute (172.18ms)
+    │   Start: 12:57:45.390, End: 12:57:45.563
+    └── AsyncioExecutor.execute (503.45ms)
+        Start: 12:57:45.563, End: 12:57:46.067
+└── Error Handling (1 spans)
+    └── llm_anthropic.request_completion_task (171.96ms)
+        Start: 12:57:45.391, End: 12:57:45.563
+└── Other (25 spans)
+    ├── agent_tracing_example (11744.81ms)
+    │   Start: 12:57:34.323, End: 12:57:46.068
+    ├── MCPAggregator.load_servers (613.21ms)
+    │   Start: 12:57:34.324, End: 12:57:34.937
+    │   Agent: finder
+    ├── MCPAggregator.load_server (477.28ms)
+    │   Start: 12:57:34.325, End: 12:57:34.802
+    │   Server: fetch, Agent: finder
+    ├── MCPAggregator.load_server (611.97ms)
+    │   Start: 12:57:34.325, End: 12:57:34.937
+    │   Server: filesystem, Agent: finder
+    ├── MCPAggregator.get_capabilitites (0.14ms)
+    │   Start: 12:57:34.798, End: 12:57:34.798
+    │   Server: fetch, Agent: finder
+    ├── MCPAggregator.get_capabilitites (0.41ms)
+    │   Start: 12:57:34.801, End: 12:57:34.801
+    │   Server: fetch, Agent: finder
+    ├── MCPAggregator.get_capabilitites (0.13ms)
+    │   Start: 12:57:34.933, End: 12:57:34.933
+    │   Server: filesystem, Agent: finder
+    ├── MCPAggregator.get_capabilitites (0.67ms)
+    │   Start: 12:57:34.936, End: 12:57:34.937
+    │   Server: filesystem, Agent: finder
+    ├── agent.finder.get_capabilities (1.28ms)
+    │   Start: 12:57:34.942, End: 12:57:34.943
+    │   Agent: finder
+    ├── MCPAggregator.get_capabilitites (1.04ms)
+    │   Start: 12:57:34.942, End: 12:57:34.943
+    │   Server: fetch, Agent: finder
+    ├── agent.finder.get_capabilities (0.36ms)
+    │   Start: 12:57:34.943, End: 12:57:34.943
+    │   Agent: finder
+    ├── MCPAggregator.get_capabilitites (0.21ms)
+    │   Start: 12:57:34.943, End: 12:57:34.943
+    │   Server: filesystem, Agent: finder
+    ├── agent.finder.list_prompts (0.24ms)
+    │   Start: 12:57:34.943, End: 12:57:34.944
+    │   Server: fetch, Agent: finder
+    ├── MCPAggregator.list_prompts (0.07ms)
+    │   Start: 12:57:34.944, End: 12:57:34.944
+    │   Server: fetch, Agent: finder
+    ├── agent.finder.list_prompts (0.18ms)
+    │   Start: 12:57:34.944, End: 12:57:34.944
+    │   Server: filesystem, Agent: finder
+    ├── MCPAggregator.list_prompts (0.03ms)
+    │   Start: 12:57:34.944, End: 12:57:34.944
+    │   Server: filesystem, Agent: finder
+    ├── agent.finder.get_prompt (730.69ms)
+    │   Start: 12:57:34.944, End: 12:57:35.675
+    │   Agent: finder
+    ├── MCPAggregator.get_prompt (730.47ms)
+    │   Start: 12:57:34.944, End: 12:57:35.675
+    │   Agent: finder
+    ├── agent.finder.attach_llm (0.16ms)
+    │   Start: 12:57:35.675, End: 12:57:35.675
+    ├── llm_openai.request_completion_task (1537.20ms)
+    │   Start: 12:57:35.680, End: 12:57:37.217
+    ├── llm_openai.request_completion_task (7010.13ms)
+    │   Start: 12:57:37.224, End: 12:57:44.234
+    ├── agent.finder.request_human_input (3.30ms)
+    │   Start: 12:57:44.235, End: 12:57:44.238
+    │   Agent: finder
+    ├── agent.finder.attach_llm (0.16ms)
+    │   Start: 12:57:45.385, End: 12:57:45.385
+    ├── agent.finder.shutdown (503.60ms)
+    │   Start: 12:57:45.563, End: 12:57:46.067
+    │   Agent: finder
+    └── MCPAggregator.close (503.31ms)
+        Start: 12:57:45.563, End: 12:57:46.067
+        Agent: finder

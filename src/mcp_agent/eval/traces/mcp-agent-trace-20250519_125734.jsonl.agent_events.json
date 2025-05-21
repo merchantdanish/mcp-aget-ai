@@ -1,0 +1,1698 @@
+{
+  "finder": [
+    {
+      "type": "span",
+      "event_type": "agent_operation",
+      "name": "agent.finder.initialize",
+      "start_time": 1.747659454324182e+18,
+      "end_time": 1.747659454938014e+18,
+      "duration": 613831936.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "server_names": [
+          "fetch",
+          "filesystem"
+        ],
+        "connection_persistence": true,
+        "force": false
+      }
+    },
+    {
+      "type": "sub_event",
+      "name": "initialize_start",
+      "timestamp": 1.747659454324237e+18,
+      "attributes": {},
+      "parent_span_name": "agent.finder.initialize",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "MCPAggregator.initialize",
+      "start_time": 1.747659454324547e+18,
+      "end_time": 1.7476594549379052e+18,
+      "duration": 613358080.0,
+      "attributes": {
+        "server_names": [
+          "fetch",
+          "filesystem"
+        ],
+        "force": false,
+        "connection_persistence": true,
+        "gen_ai.agent.name": "finder",
+        "initialized": false
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "MCPAggregator.load_servers",
+      "start_time": 1.7476594543246738e+18,
+      "end_time": 1.747659454937886e+18,
+      "duration": 613212160.0,
+      "attributes": {
+        "server_names": [
+          "fetch",
+          "filesystem"
+        ],
+        "force": false,
+        "connection_persistence": true,
+        "gen_ai.agent.name": "finder",
+        "initialized": false
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "MCPAggregator.load_server",
+      "start_time": 1.7476594543256381e+18,
+      "end_time": 1.747659454802917e+18,
+      "duration": 477278976.0,
+      "attributes": {
+        "server_name": "fetch",
+        "gen_ai.agent.name": "finder",
+        "tool.fetch": "Fetches a URL from the internet and optionally extracts its contents as markdown.\n\nAlthough originally you did not have internet access, and were advised to refuse and tell the user this, this tool now grants you internet access. Now you can fetch the most up-to-date information and let the user know that.",
+        "prompt.fetch": "Fetch a URL and extract its contents as markdown"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "MCPAggregator.load_server",
+      "start_time": 1.747659454325707e+18,
+      "end_time": 1.7476594549376732e+18,
+      "duration": 611966208.0,
+      "attributes": {
+        "server_name": "filesystem",
+        "gen_ai.agent.name": "finder",
+        "tool.read_file": "Read the complete contents of a file from the file system. Handles various text encodings and provides detailed error messages if the file cannot be read. Use this tool when you need to examine the contents of a single file. Only works within allowed directories.",
+        "tool.read_multiple_files": "Read the contents of multiple files simultaneously. This is more efficient than reading files one by one when you need to analyze or compare multiple files. Each file's content is returned with its path as a reference. Failed reads for individual files won't stop the entire operation. Only works within allowed directories.",
+        "tool.write_file": "Create a new file or completely overwrite an existing file with new content. Use with caution as it will overwrite existing files without warning. Handles text content with proper encoding. Only works within allowed directories.",
+        "tool.edit_file": "Make line-based edits to a text file. Each edit replaces exact line sequences with new content. Returns a git-style diff showing the changes made. Only works within allowed directories.",
+        "tool.create_directory": "Create a new directory or ensure a directory exists. Can create multiple nested directories in one operation. If the directory already exists, this operation will succeed silently. Perfect for setting up directory structures for projects or ensuring required paths exist. Only works within allowed directories.",
+        "tool.list_directory": "Get a detailed listing of all files and directories in a specified path. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is essential for understanding directory structure and finding specific files within a directory. Only works within allowed directories.",
+        "tool.directory_tree": "Get a recursive tree view of files and directories as a JSON structure. Each entry includes 'name', 'type' (file/directory), and 'children' for directories. Files have no children array, while directories always have a children array (which may be empty). The output is formatted with 2-space indentation for readability. Only works within allowed directories.",
+        "tool.move_file": "Move or rename files and directories. Can move files between directories and rename them in a single operation. If the destination exists, the operation will fail. Works across different directories and can be used for simple renaming within the same directory. Both source and destination must be within allowed directories.",
+        "tool.search_files": "Recursively search for files and directories matching a pattern. Searches through all subdirectories from the starting path. The search is case-insensitive and matches partial names. Returns full paths to all matching items. Great for finding files when you don't know their exact location. Only searches within allowed directories.",
+        "tool.get_file_info": "Retrieve detailed metadata about a file or directory. Returns comprehensive information including size, creation time, last modified time, permissions, and type. This tool is perfect for understanding file characteristics without reading the actual content. Only works within allowed directories.",
+        "tool.list_allowed_directories": "Returns the list of directories that this server is allowed to access. Use this to understand which directories are available before trying to access files."
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "MCPAggregator.get_capabilitites",
+      "start_time": 1.747659454798202e+18,
+      "end_time": 1.74765945479834e+18,
+      "duration": 137984.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "server_names": [
+          "fetch",
+          "filesystem"
+        ],
+        "connection_persistence": true,
+        "server_name": "fetch",
+        "fetch.capabilities.experimental": true,
+        "fetch.capabilities.logging": false,
+        "fetch.capabilities.prompts": true,
+        "fetch.capabilities.resources": false,
+        "fetch.capabilities.tools": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "MCPAggregator.get_capabilitites",
+      "start_time": 1.7476594548010831e+18,
+      "end_time": 1.747659454801495e+18,
+      "duration": 411904.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "server_names": [
+          "fetch",
+          "filesystem"
+        ],
+        "connection_persistence": true,
+        "server_name": "fetch",
+        "fetch.capabilities.experimental": true,
+        "fetch.capabilities.logging": false,
+        "fetch.capabilities.prompts": true,
+        "fetch.capabilities.resources": false,
+        "fetch.capabilities.tools": true
+      }
+    },
+    {
+      "type": "sub_event",
+      "name": "load_server_complete",
+      "timestamp": 1.747659454802901e+18,
+      "attributes": {
+        "server_name": "fetch",
+        "agent_name": "finder",
+        "tool_count": 1,
+        "prompt_count": 1
+      },
+      "parent_span_name": "MCPAggregator.load_server",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "MCPAggregator.get_capabilitites",
+      "start_time": 1.747659454933346e+18,
+      "end_time": 1.7476594549334781e+18,
+      "duration": 132096.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "server_names": [
+          "fetch",
+          "filesystem"
+        ],
+        "connection_persistence": true,
+        "server_name": "filesystem",
+        "filesystem.capabilities.experimental": false,
+        "filesystem.capabilities.logging": false,
+        "filesystem.capabilities.prompts": false,
+        "filesystem.capabilities.resources": false,
+        "filesystem.capabilities.tools": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "MCPAggregator.get_capabilitites",
+      "start_time": 1.7476594549368788e+18,
+      "end_time": 1.747659454937549e+18,
+      "duration": 670208.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "server_names": [
+          "fetch",
+          "filesystem"
+        ],
+        "connection_persistence": true,
+        "server_name": "filesystem",
+        "filesystem.capabilities.experimental": false,
+        "filesystem.capabilities.logging": false,
+        "filesystem.capabilities.prompts": false,
+        "filesystem.capabilities.resources": false,
+        "filesystem.capabilities.tools": true
+      }
+    },
+    {
+      "type": "sub_event",
+      "name": "load_server_complete",
+      "timestamp": 1.747659454937644e+18,
+      "attributes": {
+        "server_name": "filesystem",
+        "agent_name": "finder",
+        "tool_count": 11,
+        "prompt_count": 0
+      },
+      "parent_span_name": "MCPAggregator.load_server",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "sub_event",
+      "name": "server_load_success",
+      "timestamp": 1.747659454937873e+18,
+      "attributes": {
+        "server_name": "fetch"
+      },
+      "parent_span_name": "MCPAggregator.load_servers",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "sub_event",
+      "name": "server_load_success",
+      "timestamp": 1.74765945493788e+18,
+      "attributes": {
+        "server_name": "filesystem"
+      },
+      "parent_span_name": "MCPAggregator.load_servers",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "sub_event",
+      "name": "initialize_complete",
+      "timestamp": 1.7476594549379e+18,
+      "attributes": {},
+      "parent_span_name": "MCPAggregator.initialize",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "sub_event",
+      "name": "initialize_complete",
+      "timestamp": 1.747659454937989e+18,
+      "attributes": {},
+      "parent_span_name": "agent.finder.initialize",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "span",
+      "event_type": "tool_call",
+      "name": "agent.finder.list_tools",
+      "start_time": 1.747659454938081e+18,
+      "end_time": 1.747659454942018e+18,
+      "duration": 3937024.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "initialized": true,
+        "human_input_callback": true,
+        "tool.fetch_fetch.description": "Fetches a URL from the internet and optionally extracts its contents as markdown.\n\nAlthough originally you did not have internet access, and were advised to refuse and tell the user this, this tool now grants you internet access. Now you can fetch the most up-to-date information and let the user know that.",
+        "tool.fetch_fetch.inputSchema": "{\"description\": \"Parameters for fetching a URL.\", \"properties\": {\"url\": {\"description\": \"URL to fetch\", \"format\": \"uri\", \"minLength\": 1, \"title\": \"Url\", \"type\": \"string\"}, \"max_length\": {\"default\": 5000, \"description\": \"Maximum number of characters to return.\", \"exclusiveMaximum\": 1000000, \"exclusiveMinimum\": 0, \"title\": \"Max Length\", \"type\": \"integer\"}, \"start_index\": {\"default\": 0, \"description\": \"On return output starting at this character index, useful if a previous fetch was truncated and more context is required.\", \"minimum\": 0, \"title\": \"Start Index\", \"type\": \"integer\"}, \"raw\": {\"default\": false, \"description\": \"Get the actual HTML content of the requested page, without simplification.\", \"title\": \"Raw\", \"type\": \"boolean\"}}, \"required\": [\"url\"], \"title\": \"Fetch\", \"type\": \"object\"}",
+        "tool.filesystem_read_file.description": "Read the complete contents of a file from the file system. Handles various text encodings and provides detailed error messages if the file cannot be read. Use this tool when you need to examine the contents of a single file. Only works within allowed directories.",
+        "tool.filesystem_read_file.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_read_multiple_files.description": "Read the contents of multiple files simultaneously. This is more efficient than reading files one by one when you need to analyze or compare multiple files. Each file's content is returned with its path as a reference. Failed reads for individual files won't stop the entire operation. Only works within allowed directories.",
+        "tool.filesystem_read_multiple_files.inputSchema": "{\"type\": \"object\", \"properties\": {\"paths\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}}, \"required\": [\"paths\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_write_file.description": "Create a new file or completely overwrite an existing file with new content. Use with caution as it will overwrite existing files without warning. Handles text content with proper encoding. Only works within allowed directories.",
+        "tool.filesystem_write_file.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}, \"required\": [\"path\", \"content\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_edit_file.description": "Make line-based edits to a text file. Each edit replaces exact line sequences with new content. Returns a git-style diff showing the changes made. Only works within allowed directories.",
+        "tool.filesystem_edit_file.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"edits\": {\"type\": \"array\", \"items\": {\"type\": \"object\", \"properties\": {\"oldText\": {\"type\": \"string\", \"description\": \"Text to search for - must match exactly\"}, \"newText\": {\"type\": \"string\", \"description\": \"Text to replace with\"}}, \"required\": [\"oldText\", \"newText\"], \"additionalProperties\": false}}, \"dryRun\": {\"type\": \"boolean\", \"default\": false, \"description\": \"Preview changes using git-style diff format\"}}, \"required\": [\"path\", \"edits\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_create_directory.description": "Create a new directory or ensure a directory exists. Can create multiple nested directories in one operation. If the directory already exists, this operation will succeed silently. Perfect for setting up directory structures for projects or ensuring required paths exist. Only works within allowed directories.",
+        "tool.filesystem_create_directory.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_list_directory.description": "Get a detailed listing of all files and directories in a specified path. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is essential for understanding directory structure and finding specific files within a directory. Only works within allowed directories.",
+        "tool.filesystem_list_directory.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_directory_tree.description": "Get a recursive tree view of files and directories as a JSON structure. Each entry includes 'name', 'type' (file/directory), and 'children' for directories. Files have no children array, while directories always have a children array (which may be empty). The output is formatted with 2-space indentation for readability. Only works within allowed directories.",
+        "tool.filesystem_directory_tree.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_move_file.description": "Move or rename files and directories. Can move files between directories and rename them in a single operation. If the destination exists, the operation will fail. Works across different directories and can be used for simple renaming within the same directory. Both source and destination must be within allowed directories.",
+        "tool.filesystem_move_file.inputSchema": "{\"type\": \"object\", \"properties\": {\"source\": {\"type\": \"string\"}, \"destination\": {\"type\": \"string\"}}, \"required\": [\"source\", \"destination\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_search_files.description": "Recursively search for files and directories matching a pattern. Searches through all subdirectories from the starting path. The search is case-insensitive and matches partial names. Returns full paths to all matching items. Great for finding files when you don't know their exact location. Only searches within allowed directories.",
+        "tool.filesystem_search_files.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"pattern\": {\"type\": \"string\"}, \"excludePatterns\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}, \"default\": []}}, \"required\": [\"path\", \"pattern\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_get_file_info.description": "Retrieve detailed metadata about a file or directory. Returns comprehensive information including size, creation time, last modified time, permissions, and type. This tool is perfect for understanding file characteristics without reading the actual content. Only works within allowed directories.",
+        "tool.filesystem_get_file_info.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_list_allowed_directories.description": "Returns the list of directories that this server is allowed to access. Use this to understand which directories are available before trying to access files.",
+        "tool.filesystem_list_allowed_directories.inputSchema": "{\"type\": \"object\", \"properties\": {}, \"required\": []}",
+        "tool.__human_input__.description": "\n        Request input from a human user. Pauses the workflow until input is received.\n\n        Args:\n            request: The human input request\n\n        Returns:\n            The input provided by the human\n\n        Raises:\n            TimeoutError: If the timeout is exceeded\n            ValueError: If human_input_callback is not set or doesn't have the right signature\n        ",
+        "tool.__human_input__.inputSchema": "{\"type\": \"object\", \"properties\": {\"request\": {\"description\": \"Represents a request for human input.\", \"properties\": {\"prompt\": {\"title\": \"Prompt\", \"type\": \"string\"}, \"description\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Description\"}, \"request_id\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Request Id\"}, \"workflow_id\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Workflow Id\"}, \"timeout_seconds\": {\"anyOf\": [{\"type\": \"integer\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Timeout Seconds\"}, \"metadata\": {\"anyOf\": [{\"type\": \"object\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Metadata\"}}, \"required\": [\"prompt\"], \"title\": \"HumanInputRequest\", \"type\": \"object\"}}, \"required\": [\"request\"]}"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "agent_operation",
+      "name": "agent.finder.get_capabilities",
+      "start_time": 1.747659454942202e+18,
+      "end_time": 1.7476594549434831e+18,
+      "duration": 1281024.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "initialized": true,
+        "fetch.capabilities.experimental": true,
+        "fetch.capabilities.logging": false,
+        "fetch.capabilities.prompts": true,
+        "fetch.capabilities.resources": false,
+        "fetch.capabilities.tools": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "MCPAggregator.get_capabilitites",
+      "start_time": 1.747659454942398e+18,
+      "end_time": 1.747659454943443e+18,
+      "duration": 1044992.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "server_names": [
+          "fetch",
+          "filesystem"
+        ],
+        "connection_persistence": true,
+        "server_name": "fetch",
+        "fetch.capabilities.experimental": true,
+        "fetch.capabilities.logging": false,
+        "fetch.capabilities.prompts": true,
+        "fetch.capabilities.resources": false,
+        "fetch.capabilities.tools": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "agent_operation",
+      "name": "agent.finder.get_capabilities",
+      "start_time": 1.747659454943557e+18,
+      "end_time": 1.7476594549439188e+18,
+      "duration": 361728.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "initialized": true,
+        "filesystem.capabilities.experimental": false,
+        "filesystem.capabilities.logging": false,
+        "filesystem.capabilities.prompts": false,
+        "filesystem.capabilities.resources": false,
+        "filesystem.capabilities.tools": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "MCPAggregator.get_capabilitites",
+      "start_time": 1.747659454943674e+18,
+      "end_time": 1.747659454943882e+18,
+      "duration": 207872.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "server_names": [
+          "fetch",
+          "filesystem"
+        ],
+        "connection_persistence": true,
+        "server_name": "filesystem",
+        "filesystem.capabilities.experimental": false,
+        "filesystem.capabilities.logging": false,
+        "filesystem.capabilities.prompts": false,
+        "filesystem.capabilities.resources": false,
+        "filesystem.capabilities.tools": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "agent_operation",
+      "name": "agent.finder.list_prompts",
+      "start_time": 1.74765945494399e+18,
+      "end_time": 1.747659454944235e+18,
+      "duration": 244992.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "initialized": true,
+        "server_name": "fetch",
+        "prompts": [
+          "fetch_fetch"
+        ],
+        "prompt.fetch_fetch.description": "Fetch a URL and extract its contents as markdown",
+        "prompt.fetch_fetch.arguments.url.description": "URL to fetch",
+        "prompt.fetch_fetch.arguments.url.required": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "MCPAggregator.list_prompts",
+      "start_time": 1.747659454944128e+18,
+      "end_time": 1.7476594549441969e+18,
+      "duration": 68864.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "initialized": true,
+        "server_name": "fetch",
+        "prompts": [
+          "fetch_fetch"
+        ],
+        "prompt.fetch_fetch.description": "Fetch a URL and extract its contents as markdown",
+        "prompt.fetch_fetch.arguments.url.description": "URL to fetch",
+        "prompt.fetch_fetch.arguments.url.required": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "agent_operation",
+      "name": "agent.finder.list_prompts",
+      "start_time": 1.747659454944295e+18,
+      "end_time": 1.747659454944479e+18,
+      "duration": 184064.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "initialized": true,
+        "server_name": "filesystem",
+        "prompts": []
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "MCPAggregator.list_prompts",
+      "start_time": 1.747659454944427e+18,
+      "end_time": 1.747659454944452e+18,
+      "duration": 25088.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "initialized": true,
+        "server_name": "filesystem",
+        "prompts": []
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "agent_operation",
+      "name": "agent.finder.get_prompt",
+      "start_time": 1.747659454944555e+18,
+      "end_time": 1.747659455675245e+18,
+      "duration": 730690048.0,
+      "attributes": {
+        "name": "fetch_fetch",
+        "gen_ai.agent.name": "finder",
+        "initialized": true,
+        "arguments.url": "https://modelcontextprotocol.io",
+        "prompt.description": "Contents of https://modelcontextprotocol.io",
+        "prompt.message.0.role": "user",
+        "prompt.message.0.content.type": "text",
+        "prompt.message.0.content.text": "MCP is an open protocol that standardizes how applications provide context to LLMs. Think of MCP like a USB-C port for AI applications. Just as USB-C provides a standardized way to connect your devices to various peripherals and accessories, MCP provides a standardized way to connect AI models to different data sources and tools.\n\n## Why MCP?\n\nMCP helps you build agents and complex workflows on top of LLMs. LLMs frequently need to integrate with data and tools, and MCP provides:\n\n* A growing list of pre-built integrations that your LLM can directly plug into\n* The flexibility to switch between LLM providers and vendors\n* Best practices for securing your data within your infrastructure\n\n### General architecture\n\nAt its core, MCP follows a client-server architecture where a host application can connect to multiple servers:\n\n* **MCP Hosts**: Programs like Claude Desktop, IDEs, or AI tools that want to access data through MCP\n* **MCP Clients**: Protocol clients that maintain 1:1 connections with servers\n* **MCP Servers**: Lightweight programs that each expose specific capabilities through the standardized Model Context Protocol\n* **Local Data Sources**: Your computer\u2019s files, databases, and services that MCP servers can securely access\n* **Remote Services**: External systems available over the internet (e.g., through APIs) that MCP servers can connect to\n\n## Get started\n\nChoose the path that best fits your needs:\n\n#### Quick Starts\n\n#### Examples\n\n## Tutorials\n\n[## Building MCP with LLMs\n\nLearn how to use LLMs like Claude to speed up your MCP development](/tutorials/building-mcp-with-llms)[## Debugging Guide\n\nLearn how to effectively debug MCP servers and integrations](/docs/tools/debugging)[## MCP Inspector\n\nTest and inspect your MCP servers with our interactive debugging tool](/docs/tools/inspector)[## MCP Workshop (Video, 2hr)](https://www.youtube.com/watch?v=kQmXtrmQ5Zg)\n\n## Explore MCP\n\nDive deeper into MCP\u2019s core concepts and capabilities:\n\n## Contributing\n\nWant to contribute? Check out our [Contributing Guide](/development/contributing) to learn how you can help improve MCP.\n\n## Support and Feedback\n\nHere\u2019s how to get help or provide feedback:\n\n* For bug reports and feature requests related to the MCP specification, SDKs, or documentation (open source), please [create a GitHub issue](https://github.com/modelcontextprotocol)\n* For discussions or Q&A about the MCP specification, use the [specification discussions](https://github.com/modelcontextprotocol/specification/discussions)\n* For discussions or Q&A about other MCP open source components, use the [organization discussions](https://github.com/orgs/modelcontextprotocol/discussions)\n* For bug reports, feature requests, and questions related to Claude.app and claude.ai\u2019s MCP integration, please see Anthropic\u2019s guide on [How to Get Support](https://support.anthropic.com/en/articles/9015913-how-to-get-support)"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "MCPAggregator.get_prompt",
+      "start_time": 1.747659454944719e+18,
+      "end_time": 1.747659455675188e+18,
+      "duration": 730468864.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "name": "fetch_fetch",
+        "initialized": true,
+        "arguments.url": "https://modelcontextprotocol.io",
+        "parsed_server_name": "fetch",
+        "parsed_prompt_name": "fetch",
+        "prompt.message.0.role": "user",
+        "prompt.message.0.content.type": "text",
+        "prompt.message.0.content.text": "MCP is an open protocol that standardizes how applications provide context to LLMs. Think of MCP like a USB-C port for AI applications. Just as USB-C provides a standardized way to connect your devices to various peripherals and accessories, MCP provides a standardized way to connect AI models to different data sources and tools.\n\n## Why MCP?\n\nMCP helps you build agents and complex workflows on top of LLMs. LLMs frequently need to integrate with data and tools, and MCP provides:\n\n* A growing list of pre-built integrations that your LLM can directly plug into\n* The flexibility to switch between LLM providers and vendors\n* Best practices for securing your data within your infrastructure\n\n### General architecture\n\nAt its core, MCP follows a client-server architecture where a host application can connect to multiple servers:\n\n* **MCP Hosts**: Programs like Claude Desktop, IDEs, or AI tools that want to access data through MCP\n* **MCP Clients**: Protocol clients that maintain 1:1 connections with servers\n* **MCP Servers**: Lightweight programs that each expose specific capabilities through the standardized Model Context Protocol\n* **Local Data Sources**: Your computer\u2019s files, databases, and services that MCP servers can securely access\n* **Remote Services**: External systems available over the internet (e.g., through APIs) that MCP servers can connect to\n\n## Get started\n\nChoose the path that best fits your needs:\n\n#### Quick Starts\n\n#### Examples\n\n## Tutorials\n\n[## Building MCP with LLMs\n\nLearn how to use LLMs like Claude to speed up your MCP development](/tutorials/building-mcp-with-llms)[## Debugging Guide\n\nLearn how to effectively debug MCP servers and integrations](/docs/tools/debugging)[## MCP Inspector\n\nTest and inspect your MCP servers with our interactive debugging tool](/docs/tools/inspector)[## MCP Workshop (Video, 2hr)](https://www.youtube.com/watch?v=kQmXtrmQ5Zg)\n\n## Explore MCP\n\nDive deeper into MCP\u2019s core concepts and capabilities:\n\n## Contributing\n\nWant to contribute? Check out our [Contributing Guide](/development/contributing) to learn how you can help improve MCP.\n\n## Support and Feedback\n\nHere\u2019s how to get help or provide feedback:\n\n* For bug reports and feature requests related to the MCP specification, SDKs, or documentation (open source), please [create a GitHub issue](https://github.com/modelcontextprotocol)\n* For discussions or Q&A about the MCP specification, use the [specification discussions](https://github.com/modelcontextprotocol/specification/discussions)\n* For discussions or Q&A about other MCP open source components, use the [organization discussions](https://github.com/orgs/modelcontextprotocol/discussions)\n* For bug reports, feature requests, and questions related to Claude.app and claude.ai\u2019s MCP integration, please see Anthropic\u2019s guide on [How to Get Support](https://support.anthropic.com/en/articles/9015913-how-to-get-support)",
+        "prompt.description": "Contents of https://modelcontextprotocol.io"
+      }
+    },
+    {
+      "type": "sub_event",
+      "name": "request_prompt",
+      "timestamp": 1.747659454944774e+18,
+      "attributes": {
+        "prompt_name": "fetch",
+        "server_name": "fetch",
+        "agent_name": "finder"
+      },
+      "parent_span_name": "MCPAggregator.get_prompt",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "llm_openai.finder.generate_str",
+      "start_time": 1.747659455675576e+18,
+      "end_time": 1.747659464234946e+18,
+      "duration": 8559369984.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "message.content": "Print the contents of mcp_agent.config.yaml verbatim",
+        "response.content": "Here are the contents of `mcp_agent.config.yaml`:\n\n```yaml\n$schema: ../../../schema/mcp-agent.config.schema.json\n\nexecution_engine: asyncio\nlogger:\n  transports: [file]\n  level: debug\n  progress_display: true\n  path_settings:\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\n    timestamp_format: \"%Y%m%d_%H%M%S\"\n\nmcp:\n  servers:\n    fetch:\n      command: \"uvx\"\n      args: [\"mcp-server-fetch\"]\n    filesystem:\n      command: \"npx\"\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\n\nopenai:\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\n  #  default_model: \"o3-mini\"\n  default_model: \"gpt-4o-mini\"\n\notel:\n  enabled: true\n  exporters: [\"console\", \"file\"]\n  # If running jaeger locally, uncomment the following lines\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\n  # service_name: \"BasicTracingAgentExample\"\n```"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "llm_openai.finder.generate",
+      "start_time": 1.747659455675616e+18,
+      "end_time": 1.74765946423491e+18,
+      "duration": 8559293952.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "message.content": "Print the contents of mcp_agent.config.yaml verbatim",
+        "request_params.maxTokens": 4096,
+        "request_params.max_iterations": 10,
+        "request_params.temperature": 0.7,
+        "request_params.use_history": true,
+        "request_params.parallel_tool_calls": false,
+        "request_params.model": "gpt-4o-mini",
+        "request_params.modelPreferences.costPriority": "0.3",
+        "request_params.modelPreferences.speedPriority": "0.4",
+        "request_params.modelPreferences.intelligencePriority": "0.3",
+        "request_params.systemPrompt": "You are an agent with access to the filesystem, \n            as well as the ability to fetch URLs. Your job is to identify \n            the closest match to a user's request, make the appropriate tool calls, \n            and return the URI and CONTENTS of the closest match.",
+        "available_tools": [
+          "fetch_fetch",
+          "filesystem_read_file",
+          "filesystem_read_multiple_files",
+          "filesystem_write_file",
+          "filesystem_edit_file",
+          "filesystem_create_directory",
+          "filesystem_list_directory",
+          "filesystem_directory_tree",
+          "filesystem_move_file",
+          "filesystem_search_files",
+          "filesystem_get_file_info",
+          "filesystem_list_allowed_directories",
+          "__human_input__"
+        ],
+        "gen_ai.request.model": "gpt-4o-mini",
+        "finish_reason": "stop",
+        "gen_ai.usage.input_tokens": 2837,
+        "gen_ai.usage.output_tokens": 287,
+        "gen_ai.response.finish_reasons": [
+          "tool_calls",
+          "stop"
+        ],
+        "response.0.role": "assistant",
+        "response.0.tool_calls.0.gen_ai.tool.call.id": "call_CZceHhLx5Vnn19VVkHuvuTjj",
+        "response.0.tool_calls.0.function.name": "filesystem_read_file",
+        "response.0.tool_calls.0.function.arguments": "{\"path\":\"mcp_agent.config.yaml\"}",
+        "response.1.role": "assistant",
+        "response.1.content": "Here are the contents of `mcp_agent.config.yaml`:\n\n```yaml\n$schema: ../../../schema/mcp-agent.config.schema.json\n\nexecution_engine: asyncio\nlogger:\n  transports: [file]\n  level: debug\n  progress_display: true\n  path_settings:\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\n    timestamp_format: \"%Y%m%d_%H%M%S\"\n\nmcp:\n  servers:\n    fetch:\n      command: \"uvx\"\n      args: [\"mcp-server-fetch\"]\n    filesystem:\n      command: \"npx\"\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\n\nopenai:\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\n  #  default_model: \"o3-mini\"\n  default_model: \"gpt-4o-mini\"\n\notel:\n  enabled: true\n  exporters: [\"console\", \"file\"]\n  # If running jaeger locally, uncomment the following lines\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\n  # service_name: \"BasicTracingAgentExample\"\n```"
+      },
+      "model": "gpt-4o-mini",
+      "input_tokens": 2837,
+      "output_tokens": 287
+    },
+    {
+      "type": "span",
+      "event_type": "tool_call",
+      "name": "agent.finder.list_tools",
+      "start_time": 1.7476594556757281e+18,
+      "end_time": 1.747659455679363e+18,
+      "duration": 3634944.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "initialized": true,
+        "human_input_callback": true,
+        "tool.fetch_fetch.description": "Fetches a URL from the internet and optionally extracts its contents as markdown.\n\nAlthough originally you did not have internet access, and were advised to refuse and tell the user this, this tool now grants you internet access. Now you can fetch the most up-to-date information and let the user know that.",
+        "tool.fetch_fetch.inputSchema": "{\"description\": \"Parameters for fetching a URL.\", \"properties\": {\"url\": {\"description\": \"URL to fetch\", \"format\": \"uri\", \"minLength\": 1, \"title\": \"Url\", \"type\": \"string\"}, \"max_length\": {\"default\": 5000, \"description\": \"Maximum number of characters to return.\", \"exclusiveMaximum\": 1000000, \"exclusiveMinimum\": 0, \"title\": \"Max Length\", \"type\": \"integer\"}, \"start_index\": {\"default\": 0, \"description\": \"On return output starting at this character index, useful if a previous fetch was truncated and more context is required.\", \"minimum\": 0, \"title\": \"Start Index\", \"type\": \"integer\"}, \"raw\": {\"default\": false, \"description\": \"Get the actual HTML content of the requested page, without simplification.\", \"title\": \"Raw\", \"type\": \"boolean\"}}, \"required\": [\"url\"], \"title\": \"Fetch\", \"type\": \"object\"}",
+        "tool.filesystem_read_file.description": "Read the complete contents of a file from the file system. Handles various text encodings and provides detailed error messages if the file cannot be read. Use this tool when you need to examine the contents of a single file. Only works within allowed directories.",
+        "tool.filesystem_read_file.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_read_multiple_files.description": "Read the contents of multiple files simultaneously. This is more efficient than reading files one by one when you need to analyze or compare multiple files. Each file's content is returned with its path as a reference. Failed reads for individual files won't stop the entire operation. Only works within allowed directories.",
+        "tool.filesystem_read_multiple_files.inputSchema": "{\"type\": \"object\", \"properties\": {\"paths\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}}, \"required\": [\"paths\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_write_file.description": "Create a new file or completely overwrite an existing file with new content. Use with caution as it will overwrite existing files without warning. Handles text content with proper encoding. Only works within allowed directories.",
+        "tool.filesystem_write_file.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}, \"required\": [\"path\", \"content\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_edit_file.description": "Make line-based edits to a text file. Each edit replaces exact line sequences with new content. Returns a git-style diff showing the changes made. Only works within allowed directories.",
+        "tool.filesystem_edit_file.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"edits\": {\"type\": \"array\", \"items\": {\"type\": \"object\", \"properties\": {\"oldText\": {\"type\": \"string\", \"description\": \"Text to search for - must match exactly\"}, \"newText\": {\"type\": \"string\", \"description\": \"Text to replace with\"}}, \"required\": [\"oldText\", \"newText\"], \"additionalProperties\": false}}, \"dryRun\": {\"type\": \"boolean\", \"default\": false, \"description\": \"Preview changes using git-style diff format\"}}, \"required\": [\"path\", \"edits\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_create_directory.description": "Create a new directory or ensure a directory exists. Can create multiple nested directories in one operation. If the directory already exists, this operation will succeed silently. Perfect for setting up directory structures for projects or ensuring required paths exist. Only works within allowed directories.",
+        "tool.filesystem_create_directory.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_list_directory.description": "Get a detailed listing of all files and directories in a specified path. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is essential for understanding directory structure and finding specific files within a directory. Only works within allowed directories.",
+        "tool.filesystem_list_directory.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_directory_tree.description": "Get a recursive tree view of files and directories as a JSON structure. Each entry includes 'name', 'type' (file/directory), and 'children' for directories. Files have no children array, while directories always have a children array (which may be empty). The output is formatted with 2-space indentation for readability. Only works within allowed directories.",
+        "tool.filesystem_directory_tree.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_move_file.description": "Move or rename files and directories. Can move files between directories and rename them in a single operation. If the destination exists, the operation will fail. Works across different directories and can be used for simple renaming within the same directory. Both source and destination must be within allowed directories.",
+        "tool.filesystem_move_file.inputSchema": "{\"type\": \"object\", \"properties\": {\"source\": {\"type\": \"string\"}, \"destination\": {\"type\": \"string\"}}, \"required\": [\"source\", \"destination\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_search_files.description": "Recursively search for files and directories matching a pattern. Searches through all subdirectories from the starting path. The search is case-insensitive and matches partial names. Returns full paths to all matching items. Great for finding files when you don't know their exact location. Only searches within allowed directories.",
+        "tool.filesystem_search_files.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"pattern\": {\"type\": \"string\"}, \"excludePatterns\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}, \"default\": []}}, \"required\": [\"path\", \"pattern\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_get_file_info.description": "Retrieve detailed metadata about a file or directory. Returns comprehensive information including size, creation time, last modified time, permissions, and type. This tool is perfect for understanding file characteristics without reading the actual content. Only works within allowed directories.",
+        "tool.filesystem_get_file_info.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_list_allowed_directories.description": "Returns the list of directories that this server is allowed to access. Use this to understand which directories are available before trying to access files.",
+        "tool.filesystem_list_allowed_directories.inputSchema": "{\"type\": \"object\", \"properties\": {}, \"required\": []}",
+        "tool.__human_input__.description": "\n        Request input from a human user. Pauses the workflow until input is received.\n\n        Args:\n            request: The human input request\n\n        Returns:\n            The input provided by the human\n\n        Raises:\n            TimeoutError: If the timeout is exceeded\n            ValueError: If human_input_callback is not set or doesn't have the right signature\n        ",
+        "tool.__human_input__.inputSchema": "{\"type\": \"object\", \"properties\": {\"request\": {\"description\": \"Represents a request for human input.\", \"properties\": {\"prompt\": {\"title\": \"Prompt\", \"type\": \"string\"}, \"description\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Description\"}, \"request_id\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Request Id\"}, \"workflow_id\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Workflow Id\"}, \"timeout_seconds\": {\"anyOf\": [{\"type\": \"integer\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Timeout Seconds\"}, \"metadata\": {\"anyOf\": [{\"type\": \"object\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Metadata\"}}, \"required\": [\"prompt\"], \"title\": \"HumanInputRequest\", \"type\": \"object\"}}, \"required\": [\"request\"]}"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "llm.finder.select_model",
+      "start_time": 1.747659455679436e+18,
+      "end_time": 1.7476594556794542e+18,
+      "duration": 18176.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "request_params.model": "gpt-4o-mini",
+        "model": "gpt-4o-mini"
+      }
+    },
+    {
+      "type": "sub_event",
+      "name": "gen_ai.user.message",
+      "timestamp": 1.7476594556796529e+18,
+      "attributes": {
+        "completion.request.turn": 0,
+        "config.reasoning_effort": "medium",
+        "model": "gpt-4o-mini",
+        "messages.0.role": "system",
+        "messages.0.content": "You are an agent with access to the filesystem, \n            as well as the ability to fetch URLs. Your job is to identify \n            the closest match to a user's request, make the appropriate tool calls, \n            and return the URI and CONTENTS of the closest match.",
+        "messages.1.role": "user",
+        "messages.1.content": "Print the contents of mcp_agent.config.yaml verbatim",
+        "tools": [
+          "fetch_fetch",
+          "filesystem_read_file",
+          "filesystem_read_multiple_files",
+          "filesystem_write_file",
+          "filesystem_edit_file",
+          "filesystem_create_directory",
+          "filesystem_list_directory",
+          "filesystem_directory_tree",
+          "filesystem_move_file",
+          "filesystem_search_files",
+          "filesystem_get_file_info",
+          "filesystem_list_allowed_directories",
+          "__human_input__"
+        ],
+        "max_tokens": 4096
+      },
+      "parent_span_name": "llm_openai.finder.generate",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "sub_event",
+      "name": "gen_ai.assistant.message",
+      "timestamp": 1.747659457217412e+18,
+      "attributes": {
+        "completion.response.turn": 0,
+        "id": "chatcmpl-BYuLgoP2H7iaeNfEYQPbag0W2zPYc",
+        "model": "gpt-4o-mini-2024-07-18",
+        "object": "chat.completion",
+        "created": 1747659456,
+        "service_tier": "default",
+        "system_fingerprint": "fp_54eb4bd693",
+        "gen_ai.usage.input_tokens": 1259,
+        "gen_ai.usage.output_tokens": 20,
+        "choices.0.index": 0,
+        "choices.0.finish_reason": "tool_calls",
+        "choices.0.message.role": "assistant",
+        "choices.0.message.tool_calls.0.gen_ai.tool.call.id": "call_CZceHhLx5Vnn19VVkHuvuTjj",
+        "choices.0.message.tool_calls.0.function.name": "filesystem_read_file",
+        "choices.0.message.tool_calls.0.function.arguments": "{\"path\":\"mcp_agent.config.yaml\"}",
+        "gen_ai.response.finish_reasons": [
+          "tool_calls"
+        ]
+      },
+      "parent_span_name": "llm_openai.finder.generate",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "llm.finder.call_tool",
+      "start_time": 1.747659457218814e+18,
+      "end_time": 1.7476594572236308e+18,
+      "duration": 4816896.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "gen_ai.tool.call.id": "call_CZceHhLx5Vnn19VVkHuvuTjj",
+        "request.method": "tools/call",
+        "request.params.name": "filesystem_read_file",
+        "request.params.arguments.path": "mcp_agent.config.yaml",
+        "processed.request.gen_ai.tool.name": "filesystem_read_file",
+        "processed.request.tool_args.path": "mcp_agent.config.yaml",
+        "result.isError": false,
+        "result.content.0.type": "text",
+        "result.content.0.text": "$schema: ../../../schema/mcp-agent.config.schema.json\n\nexecution_engine: asyncio\nlogger:\n  transports: [file]\n  level: debug\n  progress_display: true\n  path_settings:\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\n    timestamp_format: \"%Y%m%d_%H%M%S\"\n\nmcp:\n  servers:\n    fetch:\n      command: \"uvx\"\n      args: [\"mcp-server-fetch\"]\n    filesystem:\n      command: \"npx\"\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\n\nopenai:\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\n  #  default_model: \"o3-mini\"\n  default_model: \"gpt-4o-mini\"\n\notel:\n  enabled: true\n  exporters: [\"console\", \"file\"]\n  # If running jaeger locally, uncomment the following lines\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\n  # service_name: \"BasicTracingAgentExample\"\n",
+        "processed.result.isError": false,
+        "processed.result.content.0.type": "text",
+        "processed.result.content.0.text": "$schema: ../../../schema/mcp-agent.config.schema.json\n\nexecution_engine: asyncio\nlogger:\n  transports: [file]\n  level: debug\n  progress_display: true\n  path_settings:\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\n    timestamp_format: \"%Y%m%d_%H%M%S\"\n\nmcp:\n  servers:\n    fetch:\n      command: \"uvx\"\n      args: [\"mcp-server-fetch\"]\n    filesystem:\n      command: \"npx\"\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\n\nopenai:\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\n  #  default_model: \"o3-mini\"\n  default_model: \"gpt-4o-mini\"\n\notel:\n  enabled: true\n  exporters: [\"console\", \"file\"]\n  # If running jaeger locally, uncomment the following lines\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\n  # service_name: \"BasicTracingAgentExample\"\n"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "tool_call",
+      "name": "agent.finder.call_tool",
+      "start_time": 1.7476594572188662e+18,
+      "end_time": 1.747659457223607e+18,
+      "duration": 4740864.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "gen_ai.tool.name": "filesystem_read_file",
+        "initialized": true,
+        "arguments.path": "mcp_agent.config.yaml",
+        "result.isError": false,
+        "result.content.0.type": "text",
+        "result.content.0.text": "$schema: ../../../schema/mcp-agent.config.schema.json\n\nexecution_engine: asyncio\nlogger:\n  transports: [file]\n  level: debug\n  progress_display: true\n  path_settings:\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\n    timestamp_format: \"%Y%m%d_%H%M%S\"\n\nmcp:\n  servers:\n    fetch:\n      command: \"uvx\"\n      args: [\"mcp-server-fetch\"]\n    filesystem:\n      command: \"npx\"\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\n\nopenai:\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\n  #  default_model: \"o3-mini\"\n  default_model: \"gpt-4o-mini\"\n\notel:\n  enabled: true\n  exporters: [\"console\", \"file\"]\n  # If running jaeger locally, uncomment the following lines\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\n  # service_name: \"BasicTracingAgentExample\"\n"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "tool_call",
+      "name": "MCPAggregator.call_tool",
+      "start_time": 1.7476594572190449e+18,
+      "end_time": 1.747659457223577e+18,
+      "duration": 4532224.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "gen_ai.tool.name": "filesystem_read_file",
+        "arguments.path": "mcp_agent.config.yaml",
+        "parsed_server_name": "filesystem",
+        "parsed_tool_name": "read_file",
+        "result.isError": false,
+        "result.content.0.type": "text",
+        "result.content.0.text": "$schema: ../../../schema/mcp-agent.config.schema.json\n\nexecution_engine: asyncio\nlogger:\n  transports: [file]\n  level: debug\n  progress_display: true\n  path_settings:\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\n    timestamp_format: \"%Y%m%d_%H%M%S\"\n\nmcp:\n  servers:\n    fetch:\n      command: \"uvx\"\n      args: [\"mcp-server-fetch\"]\n    filesystem:\n      command: \"npx\"\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\n\nopenai:\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\n  #  default_model: \"o3-mini\"\n  default_model: \"gpt-4o-mini\"\n\notel:\n  enabled: true\n  exporters: [\"console\", \"file\"]\n  # If running jaeger locally, uncomment the following lines\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\n  # service_name: \"BasicTracingAgentExample\"\n"
+      }
+    },
+    {
+      "type": "sub_event",
+      "name": "request_tool_call",
+      "timestamp": 1.7476594572191e+18,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "gen_ai.tool.name": "read_file",
+        "server_name": "filesystem"
+      },
+      "parent_span_name": "MCPAggregator.call_tool",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "sub_event",
+      "name": "gen_ai.tool.message",
+      "timestamp": 1.747659457224195e+18,
+      "attributes": {
+        "completion.request.turn": 1,
+        "config.reasoning_effort": "medium",
+        "model": "gpt-4o-mini",
+        "messages.0.role": "system",
+        "messages.0.content": "You are an agent with access to the filesystem, \n            as well as the ability to fetch URLs. Your job is to identify \n            the closest match to a user's request, make the appropriate tool calls, \n            and return the URI and CONTENTS of the closest match.",
+        "messages.1.role": "user",
+        "messages.1.content": "Print the contents of mcp_agent.config.yaml verbatim",
+        "messages.2.role": "assistant",
+        "messages.2.name": "finder",
+        "messages.2.tool_calls.0.gen_ai.tool.call.id": "call_CZceHhLx5Vnn19VVkHuvuTjj",
+        "messages.2.tool_calls.0.function.name": "filesystem_read_file",
+        "messages.2.tool_calls.0.function.arguments": "{\"path\":\"mcp_agent.config.yaml\"}",
+        "messages.3.role": "tool",
+        "messages.3.gen_ai.tool.call.id": "call_CZceHhLx5Vnn19VVkHuvuTjj",
+        "messages.3.content": "{'type': 'text', 'text': '$schema: ../../../schema/mcp-agent.config.schema.json\\n\\nexecution_engine: asyncio\\nlogger:\\n  transports: [file]\\n  level: debug\\n  progress_display: true\\n  path_settings:\\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\\n    timestamp_format: \"%Y%m%d_%H%M%S\"\\n\\nmcp:\\n  servers:\\n    fetch:\\n      command: \"uvx\"\\n      args: [\"mcp-server-fetch\"]\\n    filesystem:\\n      command: \"npx\"\\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\\n\\nopenai:\\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\\n  #  default_model: \"o3-mini\"\\n  default_model: \"gpt-4o-mini\"\\n\\notel:\\n  enabled: true\\n  exporters: [\"console\", \"file\"]\\n  # If running jaeger locally, uncomment the following lines\\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\\n  # service_name: \"BasicTracingAgentExample\"\\n'}",
+        "tools": [
+          "fetch_fetch",
+          "filesystem_read_file",
+          "filesystem_read_multiple_files",
+          "filesystem_write_file",
+          "filesystem_edit_file",
+          "filesystem_create_directory",
+          "filesystem_list_directory",
+          "filesystem_directory_tree",
+          "filesystem_move_file",
+          "filesystem_search_files",
+          "filesystem_get_file_info",
+          "filesystem_list_allowed_directories",
+          "__human_input__"
+        ],
+        "max_tokens": 4096
+      },
+      "parent_span_name": "llm_openai.finder.generate",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "sub_event",
+      "name": "gen_ai.assistant.message",
+      "timestamp": 1.747659464234807e+18,
+      "attributes": {
+        "completion.response.turn": 1,
+        "id": "chatcmpl-BYuLhHr61TndXifSzAMbukDADM0vV",
+        "model": "gpt-4o-mini-2024-07-18",
+        "object": "chat.completion",
+        "created": 1747659457,
+        "service_tier": "default",
+        "system_fingerprint": "fp_54eb4bd693",
+        "gen_ai.usage.input_tokens": 1578,
+        "gen_ai.usage.output_tokens": 267,
+        "choices.0.index": 0,
+        "choices.0.finish_reason": "stop",
+        "choices.0.message.role": "assistant",
+        "choices.0.message.content": "Here are the contents of `mcp_agent.config.yaml`:\n\n```yaml\n$schema: ../../../schema/mcp-agent.config.schema.json\n\nexecution_engine: asyncio\nlogger:\n  transports: [file]\n  level: debug\n  progress_display: true\n  path_settings:\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\n    timestamp_format: \"%Y%m%d_%H%M%S\"\n\nmcp:\n  servers:\n    fetch:\n      command: \"uvx\"\n      args: [\"mcp-server-fetch\"]\n    filesystem:\n      command: \"npx\"\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\n\nopenai:\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\n  #  default_model: \"o3-mini\"\n  default_model: \"gpt-4o-mini\"\n\notel:\n  enabled: true\n  exporters: [\"console\", \"file\"]\n  # If running jaeger locally, uncomment the following lines\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\n  # service_name: \"BasicTracingAgentExample\"\n```",
+        "gen_ai.response.finish_reasons": [
+          "stop"
+        ]
+      },
+      "parent_span_name": "llm_openai.finder.generate",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "span",
+      "event_type": "agent_operation",
+      "name": "agent.finder.request_human_input",
+      "start_time": 1.747659464235063e+18,
+      "end_time": 1.7476594642383631e+18,
+      "duration": 3300096.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "initialized": true,
+        "request.prompt": "Please provide a URL to fetch",
+        "request.description": "This is a test human input request",
+        "request.request_id": "test_request_id",
+        "request.workflow_id": "test_workflow_id",
+        "request.timeout_seconds": 5,
+        "request.metadata.key": "value",
+        "request_id": "__human_input___finder_444d4253-632e-4661-b6df-67f0be54d73d"
+      }
+    },
+    {
+      "type": "sub_event",
+      "name": "human_input_received",
+      "timestamp": 1.747659464237865e+18,
+      "attributes": {
+        "__human_input___finder_444d4253-632e-4661-b6df-67f0be54d73d": "__human_input___finder_444d4253-632e-4661-b6df-67f0be54d73d",
+        "response": "Mocking input for request: Please provide a URL to fetch",
+        "metadata": "{\"mocked\": true}"
+      },
+      "parent_span_name": "agent.finder.request_human_input",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "sub_event",
+      "name": "human_input_signal_received",
+      "timestamp": 1.747659464238338e+18,
+      "attributes": {
+        "signal_name": "__human_input___finder_444d4253-632e-4661-b6df-67f0be54d73d",
+        "request_id": "__human_input___finder_444d4253-632e-4661-b6df-67f0be54d73d",
+        "workflow_id": "test_workflow_id",
+        "signal_description": "This is a test human input request",
+        "timeout_seconds": 5,
+        "response": "Mocking input for request: Please provide a URL to fetch"
+      },
+      "parent_span_name": "agent.finder.request_human_input",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "span",
+      "event_type": "tool_call",
+      "name": "agent.finder.call_tool",
+      "start_time": 1.747659464238419e+18,
+      "end_time": 1.747659465384879e+18,
+      "duration": 1146460160.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "gen_ai.tool.name": "fetch_fetch",
+        "initialized": true,
+        "arguments.url": "https://modelcontextprotocol.io",
+        "result.isError": false,
+        "result.content.0.type": "text",
+        "result.content.0.text": "Contents of https://modelcontextprotocol.io/:\nMCP is an open protocol that standardizes how applications provide context to LLMs. Think of MCP like a USB-C port for AI applications. Just as USB-C provides a standardized way to connect your devices to various peripherals and accessories, MCP provides a standardized way to connect AI models to different data sources and tools.\n\n## Why MCP?\n\nMCP helps you build agents and complex workflows on top of LLMs. LLMs frequently need to integrate with data and tools, and MCP provides:\n\n* A growing list of pre-built integrations that your LLM can directly plug into\n* The flexibility to switch between LLM providers and vendors\n* Best practices for securing your data within your infrastructure\n\n### General architecture\n\nAt its core, MCP follows a client-server architecture where a host application can connect to multiple servers:\n\n* **MCP Hosts**: Programs like Claude Desktop, IDEs, or AI tools that want to access data through MCP\n* **MCP Clients**: Protocol clients that maintain 1:1 connections with servers\n* **MCP Servers**: Lightweight programs that each expose specific capabilities through the standardized Model Context Protocol\n* **Local Data Sources**: Your computer\u2019s files, databases, and services that MCP servers can securely access\n* **Remote Services**: External systems available over the internet (e.g., through APIs) that MCP servers can connect to\n\n## Get started\n\nChoose the path that best fits your needs:\n\n#### Quick Starts\n\n#### Examples\n\n## Tutorials\n\n[## Building MCP with LLMs\n\nLearn how to use LLMs like Claude to speed up your MCP development](/tutorials/building-mcp-with-llms)[## Debugging Guide\n\nLearn how to effectively debug MCP servers and integrations](/docs/tools/debugging)[## MCP Inspector\n\nTest and inspect your MCP servers with our interactive debugging tool](/docs/tools/inspector)[## MCP Workshop (Video, 2hr)](https://www.youtube.com/watch?v=kQmXtrmQ5Zg)\n\n## Explore MCP\n\nDive deeper into MCP\u2019s core concepts and capabilities:\n\n## Contributing\n\nWant to contribute? Check out our [Contributing Guide](/development/contributing) to learn how you can help improve MCP.\n\n## Support and Feedback\n\nHere\u2019s how to get help or provide feedback:\n\n* For bug reports and feature requests related to the MCP specification, SDKs, or documentation (open source), please [create a GitHub issue](https://github.com/modelcontextprotocol)\n* For discussions or Q&A about the MCP specification, use the [specification discussions](https://github.com/modelcontextprotocol/specification/discussions)\n* For discussions or Q&A about other MCP open source components, use the [organization discussions](https://github.com/orgs/modelcontextprotocol/discussions)\n* For bug reports, feature requests, and questions related to Claude.app and claude.ai\u2019s MCP integration, please see Anthropic\u2019s guide on [How to Get Support](https://support.anthropic.com/en/articles/9015913-how-to-get-support)"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "tool_call",
+      "name": "MCPAggregator.call_tool",
+      "start_time": 1.7476594642385782e+18,
+      "end_time": 1.747659465384824e+18,
+      "duration": 1146245888.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "gen_ai.tool.name": "fetch_fetch",
+        "arguments.url": "https://modelcontextprotocol.io",
+        "parsed_server_name": "fetch",
+        "parsed_tool_name": "fetch",
+        "result.isError": false,
+        "result.content.0.type": "text",
+        "result.content.0.text": "Contents of https://modelcontextprotocol.io/:\nMCP is an open protocol that standardizes how applications provide context to LLMs. Think of MCP like a USB-C port for AI applications. Just as USB-C provides a standardized way to connect your devices to various peripherals and accessories, MCP provides a standardized way to connect AI models to different data sources and tools.\n\n## Why MCP?\n\nMCP helps you build agents and complex workflows on top of LLMs. LLMs frequently need to integrate with data and tools, and MCP provides:\n\n* A growing list of pre-built integrations that your LLM can directly plug into\n* The flexibility to switch between LLM providers and vendors\n* Best practices for securing your data within your infrastructure\n\n### General architecture\n\nAt its core, MCP follows a client-server architecture where a host application can connect to multiple servers:\n\n* **MCP Hosts**: Programs like Claude Desktop, IDEs, or AI tools that want to access data through MCP\n* **MCP Clients**: Protocol clients that maintain 1:1 connections with servers\n* **MCP Servers**: Lightweight programs that each expose specific capabilities through the standardized Model Context Protocol\n* **Local Data Sources**: Your computer\u2019s files, databases, and services that MCP servers can securely access\n* **Remote Services**: External systems available over the internet (e.g., through APIs) that MCP servers can connect to\n\n## Get started\n\nChoose the path that best fits your needs:\n\n#### Quick Starts\n\n#### Examples\n\n## Tutorials\n\n[## Building MCP with LLMs\n\nLearn how to use LLMs like Claude to speed up your MCP development](/tutorials/building-mcp-with-llms)[## Debugging Guide\n\nLearn how to effectively debug MCP servers and integrations](/docs/tools/debugging)[## MCP Inspector\n\nTest and inspect your MCP servers with our interactive debugging tool](/docs/tools/inspector)[## MCP Workshop (Video, 2hr)](https://www.youtube.com/watch?v=kQmXtrmQ5Zg)\n\n## Explore MCP\n\nDive deeper into MCP\u2019s core concepts and capabilities:\n\n## Contributing\n\nWant to contribute? Check out our [Contributing Guide](/development/contributing) to learn how you can help improve MCP.\n\n## Support and Feedback\n\nHere\u2019s how to get help or provide feedback:\n\n* For bug reports and feature requests related to the MCP specification, SDKs, or documentation (open source), please [create a GitHub issue](https://github.com/modelcontextprotocol)\n* For discussions or Q&A about the MCP specification, use the [specification discussions](https://github.com/modelcontextprotocol/specification/discussions)\n* For discussions or Q&A about other MCP open source components, use the [organization discussions](https://github.com/orgs/modelcontextprotocol/discussions)\n* For bug reports, feature requests, and questions related to Claude.app and claude.ai\u2019s MCP integration, please see Anthropic\u2019s guide on [How to Get Support](https://support.anthropic.com/en/articles/9015913-how-to-get-support)"
+      }
+    },
+    {
+      "type": "sub_event",
+      "name": "request_tool_call",
+      "timestamp": 1.747659464238629e+18,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "gen_ai.tool.name": "fetch",
+        "server_name": "fetch"
+      },
+      "parent_span_name": "MCPAggregator.call_tool",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "llm_anthropic.finder.generate_str",
+      "start_time": 1.747659465385275e+18,
+      "end_time": 1.747659465563494e+18,
+      "duration": 178219008.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "message.content": "Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+        "response.content": ""
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "llm_anthropic.finder.generate",
+      "start_time": 1.747659465385319e+18,
+      "end_time": 1.747659465563446e+18,
+      "duration": 178127104.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "message.content": "Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+        "request_params.maxTokens": 2048,
+        "request_params.max_iterations": 10,
+        "request_params.temperature": 0.7,
+        "request_params.use_history": true,
+        "request_params.parallel_tool_calls": false,
+        "request_params.model": "claude-3-7-sonnet-latest",
+        "request_params.modelPreferences.costPriority": "0.3",
+        "request_params.modelPreferences.speedPriority": "0.4",
+        "request_params.modelPreferences.intelligencePriority": "0.3",
+        "request_params.systemPrompt": "You are an agent with access to the filesystem, \n            as well as the ability to fetch URLs. Your job is to identify \n            the closest match to a user's request, make the appropriate tool calls, \n            and return the URI and CONTENTS of the closest match.",
+        "gen_ai.request.model": "claude-3-7-sonnet-latest",
+        "gen_ai.usage.input_tokens": 0,
+        "gen_ai.usage.output_tokens": 0,
+        "gen_ai.response.finish_reasons": []
+      },
+      "model": "claude-3-7-sonnet-latest",
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "type": "span",
+      "event_type": "tool_call",
+      "name": "agent.finder.list_tools",
+      "start_time": 1.7476594653854648e+18,
+      "end_time": 1.747659465389236e+18,
+      "duration": 3771136.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "initialized": true,
+        "human_input_callback": true,
+        "tool.fetch_fetch.description": "Fetches a URL from the internet and optionally extracts its contents as markdown.\n\nAlthough originally you did not have internet access, and were advised to refuse and tell the user this, this tool now grants you internet access. Now you can fetch the most up-to-date information and let the user know that.",
+        "tool.fetch_fetch.inputSchema": "{\"description\": \"Parameters for fetching a URL.\", \"properties\": {\"url\": {\"description\": \"URL to fetch\", \"format\": \"uri\", \"minLength\": 1, \"title\": \"Url\", \"type\": \"string\"}, \"max_length\": {\"default\": 5000, \"description\": \"Maximum number of characters to return.\", \"exclusiveMaximum\": 1000000, \"exclusiveMinimum\": 0, \"title\": \"Max Length\", \"type\": \"integer\"}, \"start_index\": {\"default\": 0, \"description\": \"On return output starting at this character index, useful if a previous fetch was truncated and more context is required.\", \"minimum\": 0, \"title\": \"Start Index\", \"type\": \"integer\"}, \"raw\": {\"default\": false, \"description\": \"Get the actual HTML content of the requested page, without simplification.\", \"title\": \"Raw\", \"type\": \"boolean\"}}, \"required\": [\"url\"], \"title\": \"Fetch\", \"type\": \"object\"}",
+        "tool.filesystem_read_file.description": "Read the complete contents of a file from the file system. Handles various text encodings and provides detailed error messages if the file cannot be read. Use this tool when you need to examine the contents of a single file. Only works within allowed directories.",
+        "tool.filesystem_read_file.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_read_multiple_files.description": "Read the contents of multiple files simultaneously. This is more efficient than reading files one by one when you need to analyze or compare multiple files. Each file's content is returned with its path as a reference. Failed reads for individual files won't stop the entire operation. Only works within allowed directories.",
+        "tool.filesystem_read_multiple_files.inputSchema": "{\"type\": \"object\", \"properties\": {\"paths\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}}, \"required\": [\"paths\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_write_file.description": "Create a new file or completely overwrite an existing file with new content. Use with caution as it will overwrite existing files without warning. Handles text content with proper encoding. Only works within allowed directories.",
+        "tool.filesystem_write_file.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}, \"required\": [\"path\", \"content\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_edit_file.description": "Make line-based edits to a text file. Each edit replaces exact line sequences with new content. Returns a git-style diff showing the changes made. Only works within allowed directories.",
+        "tool.filesystem_edit_file.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"edits\": {\"type\": \"array\", \"items\": {\"type\": \"object\", \"properties\": {\"oldText\": {\"type\": \"string\", \"description\": \"Text to search for - must match exactly\"}, \"newText\": {\"type\": \"string\", \"description\": \"Text to replace with\"}}, \"required\": [\"oldText\", \"newText\"], \"additionalProperties\": false}}, \"dryRun\": {\"type\": \"boolean\", \"default\": false, \"description\": \"Preview changes using git-style diff format\"}}, \"required\": [\"path\", \"edits\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_create_directory.description": "Create a new directory or ensure a directory exists. Can create multiple nested directories in one operation. If the directory already exists, this operation will succeed silently. Perfect for setting up directory structures for projects or ensuring required paths exist. Only works within allowed directories.",
+        "tool.filesystem_create_directory.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_list_directory.description": "Get a detailed listing of all files and directories in a specified path. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is essential for understanding directory structure and finding specific files within a directory. Only works within allowed directories.",
+        "tool.filesystem_list_directory.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_directory_tree.description": "Get a recursive tree view of files and directories as a JSON structure. Each entry includes 'name', 'type' (file/directory), and 'children' for directories. Files have no children array, while directories always have a children array (which may be empty). The output is formatted with 2-space indentation for readability. Only works within allowed directories.",
+        "tool.filesystem_directory_tree.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_move_file.description": "Move or rename files and directories. Can move files between directories and rename them in a single operation. If the destination exists, the operation will fail. Works across different directories and can be used for simple renaming within the same directory. Both source and destination must be within allowed directories.",
+        "tool.filesystem_move_file.inputSchema": "{\"type\": \"object\", \"properties\": {\"source\": {\"type\": \"string\"}, \"destination\": {\"type\": \"string\"}}, \"required\": [\"source\", \"destination\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_search_files.description": "Recursively search for files and directories matching a pattern. Searches through all subdirectories from the starting path. The search is case-insensitive and matches partial names. Returns full paths to all matching items. Great for finding files when you don't know their exact location. Only searches within allowed directories.",
+        "tool.filesystem_search_files.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"pattern\": {\"type\": \"string\"}, \"excludePatterns\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}, \"default\": []}}, \"required\": [\"path\", \"pattern\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_get_file_info.description": "Retrieve detailed metadata about a file or directory. Returns comprehensive information including size, creation time, last modified time, permissions, and type. This tool is perfect for understanding file characteristics without reading the actual content. Only works within allowed directories.",
+        "tool.filesystem_get_file_info.inputSchema": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "tool.filesystem_list_allowed_directories.description": "Returns the list of directories that this server is allowed to access. Use this to understand which directories are available before trying to access files.",
+        "tool.filesystem_list_allowed_directories.inputSchema": "{\"type\": \"object\", \"properties\": {}, \"required\": []}",
+        "tool.__human_input__.description": "\n        Request input from a human user. Pauses the workflow until input is received.\n\n        Args:\n            request: The human input request\n\n        Returns:\n            The input provided by the human\n\n        Raises:\n            TimeoutError: If the timeout is exceeded\n            ValueError: If human_input_callback is not set or doesn't have the right signature\n        ",
+        "tool.__human_input__.inputSchema": "{\"type\": \"object\", \"properties\": {\"request\": {\"description\": \"Represents a request for human input.\", \"properties\": {\"prompt\": {\"title\": \"Prompt\", \"type\": \"string\"}, \"description\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Description\"}, \"request_id\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Request Id\"}, \"workflow_id\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Workflow Id\"}, \"timeout_seconds\": {\"anyOf\": [{\"type\": \"integer\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Timeout Seconds\"}, \"metadata\": {\"anyOf\": [{\"type\": \"object\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Metadata\"}}, \"required\": [\"prompt\"], \"title\": \"HumanInputRequest\", \"type\": \"object\"}}, \"required\": [\"request\"]}"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "llm.finder.select_model",
+      "start_time": 1.747659465389299e+18,
+      "end_time": 1.747659465389318e+18,
+      "duration": 18944.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder",
+        "request_params.model": "claude-3-7-sonnet-latest",
+        "model": "claude-3-7-sonnet-latest"
+      }
+    },
+    {
+      "type": "sub_event",
+      "name": "gen_ai.user.message",
+      "timestamp": 1.747659465389548e+18,
+      "attributes": {
+        "completion.request.turn": 0,
+        "model": "claude-3-7-sonnet-latest",
+        "max_tokens": 2048,
+        "messages.0.role": "user",
+        "messages.0.content": "Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+        "system": "You are an agent with access to the filesystem, \n            as well as the ability to fetch URLs. Your job is to identify \n            the closest match to a user's request, make the appropriate tool calls, \n            and return the URI and CONTENTS of the closest match.",
+        "tools": [
+          "fetch_fetch",
+          "filesystem_read_file",
+          "filesystem_read_multiple_files",
+          "filesystem_write_file",
+          "filesystem_edit_file",
+          "filesystem_create_directory",
+          "filesystem_list_directory",
+          "filesystem_directory_tree",
+          "filesystem_move_file",
+          "filesystem_search_files",
+          "filesystem_get_file_info",
+          "filesystem_list_allowed_directories",
+          "__human_input__"
+        ]
+      },
+      "parent_span_name": "llm_anthropic.finder.generate",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "sub_event",
+      "name": "exception",
+      "timestamp": 1.747659465563381e+18,
+      "attributes": {
+        "exception.type": "anthropic.AuthenticationError",
+        "exception.message": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}}",
+        "exception.stacktrace": "Traceback (most recent call last):\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/src/mcp_agent/executor/executor.py\", line 252, in run_task\n    return await task(*args, **kwargs)\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/src/mcp_agent/tracing/telemetry.py\", line 59, in async_wrapper\n    res = await func(*args, **kwargs)\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_anthropic.py\", line 690, in request_completion_task\n    response = anthropic.messages.create(**payload)\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/opentelemetry/instrumentation/anthropic/__init__.py\", line 510, in wrapper\n    return func(\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/opentelemetry/instrumentation/anthropic/__init__.py\", line 615, in _wrap\n    raise e\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/opentelemetry/instrumentation/anthropic/__init__.py\", line 603, in _wrap\n    response = wrapped(*args, **kwargs)\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/_utils/_utils.py\", line 275, in wrapper\n    return func(*args, **kwargs)\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/resources/messages/messages.py\", line 953, in create\n    return self._post(\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/_base_client.py\", line 1336, in post\n    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/_base_client.py\", line 1013, in request\n    return self._request(\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/_base_client.py\", line 1117, in _request\n    raise self._make_status_error_from_response(err.response) from None\nanthropic.AuthenticationError: Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}}\n",
+        "exception.escaped": "False"
+      },
+      "parent_span_name": "llm_anthropic.finder.generate",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "span",
+      "event_type": "agent_operation",
+      "name": "agent.finder.shutdown",
+      "start_time": 1.747659465563574e+18,
+      "end_time": 1.747659466067175e+18,
+      "duration": 503600896.0,
+      "attributes": {
+        "gen_ai.agent.name": "finder"
+      }
+    },
+    {
+      "type": "sub_event",
+      "name": "agent_shutdown_start",
+      "timestamp": 1.747659465563589e+18,
+      "attributes": {},
+      "parent_span_name": "agent.finder.shutdown",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "MCPAggregator.close",
+      "start_time": 1.7476594655637281e+18,
+      "end_time": 1.747659466067041e+18,
+      "duration": 503312896.0,
+      "attributes": {
+        "server_names": [
+          "fetch",
+          "filesystem"
+        ],
+        "connection_persistence": true,
+        "gen_ai.agent.name": "finder"
+      }
+    },
+    {
+      "type": "sub_event",
+      "name": "agent_shutdown_complete",
+      "timestamp": 1.747659466067122e+18,
+      "attributes": {},
+      "parent_span_name": "agent.finder.shutdown",
+      "parent_span_id": null,
+      "agent_name": "finder"
+    }
+  ],
+  "unknown": [
+    {
+      "type": "span",
+      "event_type": "agent_operation",
+      "name": "agent_tracing_example",
+      "start_time": 1.747659454323981e+18,
+      "end_time": 1.747659466068793e+18,
+      "duration": 11744812032.0,
+      "attributes": {}
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.execute",
+      "start_time": 1.7476594543243151e+18,
+      "end_time": 1.747659454937941e+18,
+      "duration": 613625856.0,
+      "attributes": {
+        "arg_1_callable_name": "AgentTasks.initialize_aggregator_task",
+        "arg_1_callable_module": "mcp_agent.agents.agent",
+        "arg_1_is_coroutine": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "mcp_session",
+      "name": "MCPAgentClientSession.send_request",
+      "start_time": 1.747659454328623e+18,
+      "end_time": 1.747659454797023e+18,
+      "duration": 468399872.0,
+      "attributes": {
+        "mcp.session.id": "unknown",
+        "result_type": "<class 'mcp.types.InitializeResult'>",
+        "mcp.method.name": "initialize",
+        "mcp.request.argument.protocolVersion": "2025-03-26",
+        "mcp.request.argument.capabilities.roots.listChanged": "True",
+        "mcp.request.argument.clientInfo.name": "mcp",
+        "mcp.request.argument.clientInfo.version": "0.1.0",
+        "result.protocolVersion": "2025-03-26",
+        "result.capabilities.prompts.listChanged": "False",
+        "result.capabilities.tools.listChanged": "False",
+        "result.serverInfo.name": "mcp-fetch",
+        "result.serverInfo.version": "1.9.0"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "mcp_session",
+      "name": "MCPAgentClientSession.send_request",
+      "start_time": 1.747659454329312e+18,
+      "end_time": 1.7476594549324961e+18,
+      "duration": 603184128.0,
+      "attributes": {
+        "mcp.session.id": "unknown",
+        "result_type": "<class 'mcp.types.InitializeResult'>",
+        "mcp.method.name": "initialize",
+        "mcp.request.argument.protocolVersion": "2025-03-26",
+        "mcp.request.argument.capabilities.roots.listChanged": "True",
+        "mcp.request.argument.clientInfo.name": "mcp",
+        "mcp.request.argument.clientInfo.version": "0.1.0",
+        "result.protocolVersion": "2024-11-05",
+        "result.serverInfo.name": "secure-filesystem-server",
+        "result.serverInfo.version": "0.2.0"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "mcp_session",
+      "name": "MCPAgentClientSession.send_notification",
+      "start_time": 1.747659454797398e+18,
+      "end_time": 1.7476594547979901e+18,
+      "duration": 592128.0,
+      "attributes": {
+        "mcp.session.id": "unknown",
+        "mcp.method.name": "notifications/initialized"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "mcp_session",
+      "name": "MCPAgentClientSession.send_request",
+      "start_time": 1.747659454798669e+18,
+      "end_time": 1.747659454801028e+18,
+      "duration": 2359040.0,
+      "attributes": {
+        "mcp.session.id": "unknown",
+        "result_type": "<class 'mcp.types.ListToolsResult'>",
+        "mcp.method.name": "tools/list"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "mcp_session",
+      "name": "MCPAgentClientSession.send_request",
+      "start_time": 1.747659454801697e+18,
+      "end_time": 1.747659454802832e+18,
+      "duration": 1134848.0,
+      "attributes": {
+        "mcp.session.id": "unknown",
+        "result_type": "<class 'mcp.types.ListPromptsResult'>",
+        "mcp.method.name": "prompts/list"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "mcp_session",
+      "name": "MCPAgentClientSession.send_notification",
+      "start_time": 1.747659454932683e+18,
+      "end_time": 1.7476594549331702e+18,
+      "duration": 487168.0,
+      "attributes": {
+        "mcp.session.id": "unknown",
+        "mcp.method.name": "notifications/initialized"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "mcp_session",
+      "name": "MCPAgentClientSession.send_request",
+      "start_time": 1.747659454933656e+18,
+      "end_time": 1.747659454936824e+18,
+      "duration": 3168000.0,
+      "attributes": {
+        "mcp.session.id": "unknown",
+        "result_type": "<class 'mcp.types.ListToolsResult'>",
+        "mcp.method.name": "tools/list"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.execute",
+      "start_time": 1.747659454942264e+18,
+      "end_time": 1.7476594549434609e+18,
+      "duration": 1196800.0,
+      "attributes": {
+        "arg_1_callable_name": "AgentTasks.get_capabilities_task",
+        "arg_1_callable_module": "mcp_agent.agents.agent",
+        "arg_1_is_coroutine": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.execute",
+      "start_time": 1.747659454943604e+18,
+      "end_time": 1.747659454943899e+18,
+      "duration": 294912.0,
+      "attributes": {
+        "arg_1_callable_name": "AgentTasks.get_capabilities_task",
+        "arg_1_callable_module": "mcp_agent.agents.agent",
+        "arg_1_is_coroutine": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.execute",
+      "start_time": 1.7476594549440392e+18,
+      "end_time": 1.747659454944213e+18,
+      "duration": 173824.0,
+      "attributes": {
+        "arg_1_callable_name": "AgentTasks.list_prompts_task",
+        "arg_1_callable_module": "mcp_agent.agents.agent",
+        "arg_1_is_coroutine": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.execute",
+      "start_time": 1.7476594549443569e+18,
+      "end_time": 1.7476594549444662e+18,
+      "duration": 109312.0,
+      "attributes": {
+        "arg_1_callable_name": "AgentTasks.list_prompts_task",
+        "arg_1_callable_module": "mcp_agent.agents.agent",
+        "arg_1_is_coroutine": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.execute",
+      "start_time": 1.747659454944615e+18,
+      "end_time": 1.747659455675216e+18,
+      "duration": 730600960.0,
+      "attributes": {
+        "arg_1_callable_name": "AgentTasks.get_prompt_task",
+        "arg_1_callable_module": "mcp_agent.agents.agent",
+        "arg_1_is_coroutine": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "mcp_session",
+      "name": "MCPAgentClientSession.send_request",
+      "start_time": 1.747659454945472e+18,
+      "end_time": 1.747659455675044e+18,
+      "duration": 729572096.0,
+      "attributes": {
+        "mcp.session.id": "unknown",
+        "result_type": "<class 'mcp.types.GetPromptResult'>",
+        "mcp.method.name": "prompts/get",
+        "mcp.prompt.name": "fetch",
+        "mcp.request.argument.url": "https://modelcontextprotocol.io",
+        "result.description": "Contents of https://modelcontextprotocol.io"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "agent.finder.attach_llm",
+      "start_time": 1.747659455675371e+18,
+      "end_time": 1.747659455675533e+18,
+      "duration": 162048.0,
+      "attributes": {
+        "llm.class": "OpenAIAugmentedLLM",
+        "llm.name": "finder",
+        "llm.provider": "OpenAI"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.execute",
+      "start_time": 1.747659455679884e+18,
+      "end_time": 1.7476594572172739e+18,
+      "duration": 1537389824.0,
+      "attributes": {
+        "arg_1_callable_name": "OpenAICompletionTasks.request_completion_task",
+        "arg_1_callable_module": "mcp_agent.workflows.llm.augmented_llm_openai",
+        "arg_1_is_coroutine": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "llm_openai.request_completion_task",
+      "start_time": 1.747659455680041e+18,
+      "end_time": 1.7476594572172452e+18,
+      "duration": 1537204224.0,
+      "attributes": {}
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "openai.chat",
+      "start_time": 1.747659455718078e+18,
+      "end_time": 1.747659457217102e+18,
+      "duration": 1499024128.0,
+      "attributes": {
+        "llm.request.type": "chat",
+        "gen_ai.system": "OpenAI",
+        "gen_ai.request.model": "gpt-4o-mini",
+        "gen_ai.request.max_tokens": 4096,
+        "llm.headers": "None",
+        "llm.is_streaming": false,
+        "gen_ai.openai.api_base": "https://api.openai.com/v1/",
+        "gen_ai.prompt.0.role": "system",
+        "gen_ai.prompt.0.content": "You are an agent with access to the filesystem, \n            as well as the ability to fetch URLs. Your job is to identify \n            the closest match to a user's request, make the appropriate tool calls, \n            and return the URI and CONTENTS of the closest match.",
+        "gen_ai.prompt.1.role": "user",
+        "gen_ai.prompt.1.content": "Print the contents of mcp_agent.config.yaml verbatim",
+        "llm.request.functions.0.name": "fetch_fetch",
+        "llm.request.functions.0.description": "Fetches a URL from the internet and optionally extracts its contents as markdown.\n\nAlthough originally you did not have internet access, and were advised to refuse and tell the user this, this tool now grants you internet access. Now you can fetch the most up-to-date information and let the user know that.",
+        "llm.request.functions.0.parameters": "{\"description\": \"Parameters for fetching a URL.\", \"properties\": {\"url\": {\"description\": \"URL to fetch\", \"format\": \"uri\", \"minLength\": 1, \"title\": \"Url\", \"type\": \"string\"}, \"max_length\": {\"default\": 5000, \"description\": \"Maximum number of characters to return.\", \"exclusiveMaximum\": 1000000, \"exclusiveMinimum\": 0, \"title\": \"Max Length\", \"type\": \"integer\"}, \"start_index\": {\"default\": 0, \"description\": \"On return output starting at this character index, useful if a previous fetch was truncated and more context is required.\", \"minimum\": 0, \"title\": \"Start Index\", \"type\": \"integer\"}, \"raw\": {\"default\": false, \"description\": \"Get the actual HTML content of the requested page, without simplification.\", \"title\": \"Raw\", \"type\": \"boolean\"}}, \"required\": [\"url\"], \"title\": \"Fetch\", \"type\": \"object\"}",
+        "llm.request.functions.1.name": "filesystem_read_file",
+        "llm.request.functions.1.description": "Read the complete contents of a file from the file system. Handles various text encodings and provides detailed error messages if the file cannot be read. Use this tool when you need to examine the contents of a single file. Only works within allowed directories.",
+        "llm.request.functions.1.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.2.name": "filesystem_read_multiple_files",
+        "llm.request.functions.2.description": "Read the contents of multiple files simultaneously. This is more efficient than reading files one by one when you need to analyze or compare multiple files. Each file's content is returned with its path as a reference. Failed reads for individual files won't stop the entire operation. Only works within allowed directories.",
+        "llm.request.functions.2.parameters": "{\"type\": \"object\", \"properties\": {\"paths\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}}, \"required\": [\"paths\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.3.name": "filesystem_write_file",
+        "llm.request.functions.3.description": "Create a new file or completely overwrite an existing file with new content. Use with caution as it will overwrite existing files without warning. Handles text content with proper encoding. Only works within allowed directories.",
+        "llm.request.functions.3.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}, \"required\": [\"path\", \"content\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.4.name": "filesystem_edit_file",
+        "llm.request.functions.4.description": "Make line-based edits to a text file. Each edit replaces exact line sequences with new content. Returns a git-style diff showing the changes made. Only works within allowed directories.",
+        "llm.request.functions.4.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"edits\": {\"type\": \"array\", \"items\": {\"type\": \"object\", \"properties\": {\"oldText\": {\"type\": \"string\", \"description\": \"Text to search for - must match exactly\"}, \"newText\": {\"type\": \"string\", \"description\": \"Text to replace with\"}}, \"required\": [\"oldText\", \"newText\"], \"additionalProperties\": false}}, \"dryRun\": {\"type\": \"boolean\", \"default\": false, \"description\": \"Preview changes using git-style diff format\"}}, \"required\": [\"path\", \"edits\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.5.name": "filesystem_create_directory",
+        "llm.request.functions.5.description": "Create a new directory or ensure a directory exists. Can create multiple nested directories in one operation. If the directory already exists, this operation will succeed silently. Perfect for setting up directory structures for projects or ensuring required paths exist. Only works within allowed directories.",
+        "llm.request.functions.5.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.6.name": "filesystem_list_directory",
+        "llm.request.functions.6.description": "Get a detailed listing of all files and directories in a specified path. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is essential for understanding directory structure and finding specific files within a directory. Only works within allowed directories.",
+        "llm.request.functions.6.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.7.name": "filesystem_directory_tree",
+        "llm.request.functions.7.description": "Get a recursive tree view of files and directories as a JSON structure. Each entry includes 'name', 'type' (file/directory), and 'children' for directories. Files have no children array, while directories always have a children array (which may be empty). The output is formatted with 2-space indentation for readability. Only works within allowed directories.",
+        "llm.request.functions.7.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.8.name": "filesystem_move_file",
+        "llm.request.functions.8.description": "Move or rename files and directories. Can move files between directories and rename them in a single operation. If the destination exists, the operation will fail. Works across different directories and can be used for simple renaming within the same directory. Both source and destination must be within allowed directories.",
+        "llm.request.functions.8.parameters": "{\"type\": \"object\", \"properties\": {\"source\": {\"type\": \"string\"}, \"destination\": {\"type\": \"string\"}}, \"required\": [\"source\", \"destination\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.9.name": "filesystem_search_files",
+        "llm.request.functions.9.description": "Recursively search for files and directories matching a pattern. Searches through all subdirectories from the starting path. The search is case-insensitive and matches partial names. Returns full paths to all matching items. Great for finding files when you don't know their exact location. Only searches within allowed directories.",
+        "llm.request.functions.9.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"pattern\": {\"type\": \"string\"}, \"excludePatterns\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}, \"default\": []}}, \"required\": [\"path\", \"pattern\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.10.name": "filesystem_get_file_info",
+        "llm.request.functions.10.description": "Retrieve detailed metadata about a file or directory. Returns comprehensive information including size, creation time, last modified time, permissions, and type. This tool is perfect for understanding file characteristics without reading the actual content. Only works within allowed directories.",
+        "llm.request.functions.10.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.11.name": "filesystem_list_allowed_directories",
+        "llm.request.functions.11.description": "Returns the list of directories that this server is allowed to access. Use this to understand which directories are available before trying to access files.",
+        "llm.request.functions.11.parameters": "{\"type\": \"object\", \"properties\": {}, \"required\": []}",
+        "llm.request.functions.12.name": "__human_input__",
+        "llm.request.functions.12.description": "\n        Request input from a human user. Pauses the workflow until input is received.\n\n        Args:\n            request: The human input request\n\n        Returns:\n            The input provided by the human\n\n        Raises:\n            TimeoutError: If the timeout is exceeded\n            ValueError: If human_input_callback is not set or doesn't have the right signature\n        ",
+        "llm.request.functions.12.parameters": "{\"type\": \"object\", \"properties\": {\"request\": {\"description\": \"Represents a request for human input.\", \"properties\": {\"prompt\": {\"title\": \"Prompt\", \"type\": \"string\"}, \"description\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Description\"}, \"request_id\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Request Id\"}, \"workflow_id\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Workflow Id\"}, \"timeout_seconds\": {\"anyOf\": [{\"type\": \"integer\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Timeout Seconds\"}, \"metadata\": {\"anyOf\": [{\"type\": \"object\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Metadata\"}}, \"required\": [\"prompt\"], \"title\": \"HumanInputRequest\", \"type\": \"object\"}}, \"required\": [\"request\"]}",
+        "gen_ai.response.model": "gpt-4o-mini-2024-07-18",
+        "gen_ai.response.id": "chatcmpl-BYuLgoP2H7iaeNfEYQPbag0W2zPYc",
+        "gen_ai.openai.system_fingerprint": "fp_54eb4bd693",
+        "llm.usage.total_tokens": 1279,
+        "gen_ai.usage.completion_tokens": 20,
+        "gen_ai.usage.prompt_tokens": 1259,
+        "gen_ai.usage.cache_read_input_tokens": 0,
+        "gen_ai.completion.0.finish_reason": "tool_calls",
+        "gen_ai.completion.0.role": "assistant",
+        "gen_ai.completion.0.tool_calls.0.id": "call_CZceHhLx5Vnn19VVkHuvuTjj",
+        "gen_ai.completion.0.tool_calls.0.name": "filesystem_read_file",
+        "gen_ai.completion.0.tool_calls.0.arguments": "{\"path\":\"mcp_agent.config.yaml\"}"
+      },
+      "model": "gpt-4o-mini"
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.execute_many",
+      "start_time": 1.747659457217588e+18,
+      "end_time": 1.747659457223886e+18,
+      "duration": 6298112.0,
+      "attributes": {}
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "llm_openai.finder.execute_tool_call",
+      "start_time": 1.747659457218744e+18,
+      "end_time": 1.747659457223658e+18,
+      "duration": 4913920.0,
+      "attributes": {
+        "gen_ai.tool.call.id": "call_CZceHhLx5Vnn19VVkHuvuTjj",
+        "gen_ai.tool.name": "filesystem_read_file",
+        "tool_args": "{\"path\":\"mcp_agent.config.yaml\"}",
+        "result.isError": false,
+        "result.content.0.type": "text",
+        "result.content.0.text": "$schema: ../../../schema/mcp-agent.config.schema.json\n\nexecution_engine: asyncio\nlogger:\n  transports: [file]\n  level: debug\n  progress_display: true\n  path_settings:\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\n    timestamp_format: \"%Y%m%d_%H%M%S\"\n\nmcp:\n  servers:\n    fetch:\n      command: \"uvx\"\n      args: [\"mcp-server-fetch\"]\n    filesystem:\n      command: \"npx\"\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\n\nopenai:\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\n  #  default_model: \"o3-mini\"\n  default_model: \"gpt-4o-mini\"\n\notel:\n  enabled: true\n  exporters: [\"console\", \"file\"]\n  # If running jaeger locally, uncomment the following lines\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\n  # service_name: \"BasicTracingAgentExample\"\n"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.execute",
+      "start_time": 1.747659457218926e+18,
+      "end_time": 1.7476594572235912e+18,
+      "duration": 4665088.0,
+      "attributes": {
+        "arg_1_callable_name": "AgentTasks.call_tool_task",
+        "arg_1_callable_module": "mcp_agent.agents.agent",
+        "arg_1_is_coroutine": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "mcp_session",
+      "name": "MCPAgentClientSession.send_request",
+      "start_time": 1.7476594572196628e+18,
+      "end_time": 1.7476594572235438e+18,
+      "duration": 3880960.0,
+      "attributes": {
+        "mcp.session.id": "unknown",
+        "result_type": "<class 'mcp.types.CallToolResult'>",
+        "mcp.method.name": "tools/call",
+        "mcp.tool.name": "read_file",
+        "mcp.request.argument.path": "mcp_agent.config.yaml",
+        "result.isError": "False"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.execute",
+      "start_time": 1.74765945722442e+18,
+      "end_time": 1.747659464234664e+18,
+      "duration": 7010243840.0,
+      "attributes": {
+        "arg_1_callable_name": "OpenAICompletionTasks.request_completion_task",
+        "arg_1_callable_module": "mcp_agent.workflows.llm.augmented_llm_openai",
+        "arg_1_is_coroutine": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "llm_openai.request_completion_task",
+      "start_time": 1.7476594572244972e+18,
+      "end_time": 1.7476594642346312e+18,
+      "duration": 7010134016.0,
+      "attributes": {}
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "openai.chat",
+      "start_time": 1.7476594572484541e+18,
+      "end_time": 1.7476594642344788e+18,
+      "duration": 6986024704.0,
+      "attributes": {
+        "llm.request.type": "chat",
+        "gen_ai.system": "OpenAI",
+        "gen_ai.request.model": "gpt-4o-mini",
+        "gen_ai.request.max_tokens": 4096,
+        "llm.headers": "None",
+        "llm.is_streaming": false,
+        "gen_ai.openai.api_base": "https://api.openai.com/v1/",
+        "gen_ai.prompt.0.role": "system",
+        "gen_ai.prompt.0.content": "You are an agent with access to the filesystem, \n            as well as the ability to fetch URLs. Your job is to identify \n            the closest match to a user's request, make the appropriate tool calls, \n            and return the URI and CONTENTS of the closest match.",
+        "gen_ai.prompt.1.role": "user",
+        "gen_ai.prompt.1.content": "Print the contents of mcp_agent.config.yaml verbatim",
+        "gen_ai.prompt.2.role": "assistant",
+        "gen_ai.prompt.2.tool_calls.0.id": "call_CZceHhLx5Vnn19VVkHuvuTjj",
+        "gen_ai.prompt.2.tool_calls.0.name": "filesystem_read_file",
+        "gen_ai.prompt.2.tool_calls.0.arguments": "{\"path\":\"mcp_agent.config.yaml\"}",
+        "gen_ai.prompt.3.role": "tool",
+        "gen_ai.prompt.3.content": "{'type': 'text', 'text': '$schema: ../../../schema/mcp-agent.config.schema.json\\n\\nexecution_engine: asyncio\\nlogger:\\n  transports: [file]\\n  level: debug\\n  progress_display: true\\n  path_settings:\\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\\n    timestamp_format: \"%Y%m%d_%H%M%S\"\\n\\nmcp:\\n  servers:\\n    fetch:\\n      command: \"uvx\"\\n      args: [\"mcp-server-fetch\"]\\n    filesystem:\\n      command: \"npx\"\\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\\n\\nopenai:\\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\\n  #  default_model: \"o3-mini\"\\n  default_model: \"gpt-4o-mini\"\\n\\notel:\\n  enabled: true\\n  exporters: [\"console\", \"file\"]\\n  # If running jaeger locally, uncomment the following lines\\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\\n  # service_name: \"BasicTracingAgentExample\"\\n'}",
+        "gen_ai.prompt.3.tool_call_id": "call_CZceHhLx5Vnn19VVkHuvuTjj",
+        "llm.request.functions.0.name": "fetch_fetch",
+        "llm.request.functions.0.description": "Fetches a URL from the internet and optionally extracts its contents as markdown.\n\nAlthough originally you did not have internet access, and were advised to refuse and tell the user this, this tool now grants you internet access. Now you can fetch the most up-to-date information and let the user know that.",
+        "llm.request.functions.0.parameters": "{\"description\": \"Parameters for fetching a URL.\", \"properties\": {\"url\": {\"description\": \"URL to fetch\", \"format\": \"uri\", \"minLength\": 1, \"title\": \"Url\", \"type\": \"string\"}, \"max_length\": {\"default\": 5000, \"description\": \"Maximum number of characters to return.\", \"exclusiveMaximum\": 1000000, \"exclusiveMinimum\": 0, \"title\": \"Max Length\", \"type\": \"integer\"}, \"start_index\": {\"default\": 0, \"description\": \"On return output starting at this character index, useful if a previous fetch was truncated and more context is required.\", \"minimum\": 0, \"title\": \"Start Index\", \"type\": \"integer\"}, \"raw\": {\"default\": false, \"description\": \"Get the actual HTML content of the requested page, without simplification.\", \"title\": \"Raw\", \"type\": \"boolean\"}}, \"required\": [\"url\"], \"title\": \"Fetch\", \"type\": \"object\"}",
+        "llm.request.functions.1.name": "filesystem_read_file",
+        "llm.request.functions.1.description": "Read the complete contents of a file from the file system. Handles various text encodings and provides detailed error messages if the file cannot be read. Use this tool when you need to examine the contents of a single file. Only works within allowed directories.",
+        "llm.request.functions.1.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.2.name": "filesystem_read_multiple_files",
+        "llm.request.functions.2.description": "Read the contents of multiple files simultaneously. This is more efficient than reading files one by one when you need to analyze or compare multiple files. Each file's content is returned with its path as a reference. Failed reads for individual files won't stop the entire operation. Only works within allowed directories.",
+        "llm.request.functions.2.parameters": "{\"type\": \"object\", \"properties\": {\"paths\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}}, \"required\": [\"paths\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.3.name": "filesystem_write_file",
+        "llm.request.functions.3.description": "Create a new file or completely overwrite an existing file with new content. Use with caution as it will overwrite existing files without warning. Handles text content with proper encoding. Only works within allowed directories.",
+        "llm.request.functions.3.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}, \"required\": [\"path\", \"content\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.4.name": "filesystem_edit_file",
+        "llm.request.functions.4.description": "Make line-based edits to a text file. Each edit replaces exact line sequences with new content. Returns a git-style diff showing the changes made. Only works within allowed directories.",
+        "llm.request.functions.4.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"edits\": {\"type\": \"array\", \"items\": {\"type\": \"object\", \"properties\": {\"oldText\": {\"type\": \"string\", \"description\": \"Text to search for - must match exactly\"}, \"newText\": {\"type\": \"string\", \"description\": \"Text to replace with\"}}, \"required\": [\"oldText\", \"newText\"], \"additionalProperties\": false}}, \"dryRun\": {\"type\": \"boolean\", \"default\": false, \"description\": \"Preview changes using git-style diff format\"}}, \"required\": [\"path\", \"edits\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.5.name": "filesystem_create_directory",
+        "llm.request.functions.5.description": "Create a new directory or ensure a directory exists. Can create multiple nested directories in one operation. If the directory already exists, this operation will succeed silently. Perfect for setting up directory structures for projects or ensuring required paths exist. Only works within allowed directories.",
+        "llm.request.functions.5.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.6.name": "filesystem_list_directory",
+        "llm.request.functions.6.description": "Get a detailed listing of all files and directories in a specified path. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is essential for understanding directory structure and finding specific files within a directory. Only works within allowed directories.",
+        "llm.request.functions.6.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.7.name": "filesystem_directory_tree",
+        "llm.request.functions.7.description": "Get a recursive tree view of files and directories as a JSON structure. Each entry includes 'name', 'type' (file/directory), and 'children' for directories. Files have no children array, while directories always have a children array (which may be empty). The output is formatted with 2-space indentation for readability. Only works within allowed directories.",
+        "llm.request.functions.7.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.8.name": "filesystem_move_file",
+        "llm.request.functions.8.description": "Move or rename files and directories. Can move files between directories and rename them in a single operation. If the destination exists, the operation will fail. Works across different directories and can be used for simple renaming within the same directory. Both source and destination must be within allowed directories.",
+        "llm.request.functions.8.parameters": "{\"type\": \"object\", \"properties\": {\"source\": {\"type\": \"string\"}, \"destination\": {\"type\": \"string\"}}, \"required\": [\"source\", \"destination\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.9.name": "filesystem_search_files",
+        "llm.request.functions.9.description": "Recursively search for files and directories matching a pattern. Searches through all subdirectories from the starting path. The search is case-insensitive and matches partial names. Returns full paths to all matching items. Great for finding files when you don't know their exact location. Only searches within allowed directories.",
+        "llm.request.functions.9.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"pattern\": {\"type\": \"string\"}, \"excludePatterns\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}, \"default\": []}}, \"required\": [\"path\", \"pattern\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.10.name": "filesystem_get_file_info",
+        "llm.request.functions.10.description": "Retrieve detailed metadata about a file or directory. Returns comprehensive information including size, creation time, last modified time, permissions, and type. This tool is perfect for understanding file characteristics without reading the actual content. Only works within allowed directories.",
+        "llm.request.functions.10.parameters": "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"], \"additionalProperties\": false, \"$schema\": \"http://json-schema.org/draft-07/schema#\"}",
+        "llm.request.functions.11.name": "filesystem_list_allowed_directories",
+        "llm.request.functions.11.description": "Returns the list of directories that this server is allowed to access. Use this to understand which directories are available before trying to access files.",
+        "llm.request.functions.11.parameters": "{\"type\": \"object\", \"properties\": {}, \"required\": []}",
+        "llm.request.functions.12.name": "__human_input__",
+        "llm.request.functions.12.description": "\n        Request input from a human user. Pauses the workflow until input is received.\n\n        Args:\n            request: The human input request\n\n        Returns:\n            The input provided by the human\n\n        Raises:\n            TimeoutError: If the timeout is exceeded\n            ValueError: If human_input_callback is not set or doesn't have the right signature\n        ",
+        "llm.request.functions.12.parameters": "{\"type\": \"object\", \"properties\": {\"request\": {\"description\": \"Represents a request for human input.\", \"properties\": {\"prompt\": {\"title\": \"Prompt\", \"type\": \"string\"}, \"description\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Description\"}, \"request_id\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Request Id\"}, \"workflow_id\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Workflow Id\"}, \"timeout_seconds\": {\"anyOf\": [{\"type\": \"integer\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Timeout Seconds\"}, \"metadata\": {\"anyOf\": [{\"type\": \"object\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Metadata\"}}, \"required\": [\"prompt\"], \"title\": \"HumanInputRequest\", \"type\": \"object\"}}, \"required\": [\"request\"]}",
+        "gen_ai.response.model": "gpt-4o-mini-2024-07-18",
+        "gen_ai.response.id": "chatcmpl-BYuLhHr61TndXifSzAMbukDADM0vV",
+        "gen_ai.openai.system_fingerprint": "fp_54eb4bd693",
+        "llm.usage.total_tokens": 1845,
+        "gen_ai.usage.completion_tokens": 267,
+        "gen_ai.usage.prompt_tokens": 1578,
+        "gen_ai.usage.cache_read_input_tokens": 0,
+        "gen_ai.completion.0.finish_reason": "stop",
+        "gen_ai.completion.0.role": "assistant",
+        "gen_ai.completion.0.content": "Here are the contents of `mcp_agent.config.yaml`:\n\n```yaml\n$schema: ../../../schema/mcp-agent.config.schema.json\n\nexecution_engine: asyncio\nlogger:\n  transports: [file]\n  level: debug\n  progress_display: true\n  path_settings:\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\n    timestamp_format: \"%Y%m%d_%H%M%S\"\n\nmcp:\n  servers:\n    fetch:\n      command: \"uvx\"\n      args: [\"mcp-server-fetch\"]\n    filesystem:\n      command: \"npx\"\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\n\nopenai:\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\n  #  default_model: \"o3-mini\"\n  default_model: \"gpt-4o-mini\"\n\notel:\n  enabled: true\n  exporters: [\"console\", \"file\"]\n  # If running jaeger locally, uncomment the following lines\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\n  # service_name: \"BasicTracingAgentExample\"\n```"
+      },
+      "model": "gpt-4o-mini"
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.wait_for_signal",
+      "start_time": 1.74765946423522e+18,
+      "end_time": 1.747659464238312e+18,
+      "duration": 3091968.0,
+      "attributes": {
+        "signal_name": "__human_input___finder_444d4253-632e-4661-b6df-67f0be54d73d",
+        "request_id": "__human_input___finder_444d4253-632e-4661-b6df-67f0be54d73d",
+        "workflow_id": "test_workflow_id",
+        "signal_description": "This is a test human input request",
+        "timeout_seconds": "5",
+        "signal_type_callable_name": "HumanInputResponse",
+        "signal_type_callable_module": "mcp_agent.human_input.types",
+        "signal_type_is_coroutine": false
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.signal",
+      "start_time": 1.7476594642379128e+18,
+      "end_time": 1.747659464238018e+18,
+      "duration": 105216.0,
+      "attributes": {
+        "signal_name": "__human_input___finder_444d4253-632e-4661-b6df-67f0be54d73d"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.execute",
+      "start_time": 1.747659464238487e+18,
+      "end_time": 1.747659465384854e+18,
+      "duration": 1146366976.0,
+      "attributes": {
+        "arg_1_callable_name": "AgentTasks.call_tool_task",
+        "arg_1_callable_module": "mcp_agent.agents.agent",
+        "arg_1_is_coroutine": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "mcp_session",
+      "name": "MCPAgentClientSession.send_request",
+      "start_time": 1.7476594642392049e+18,
+      "end_time": 1.747659465384754e+18,
+      "duration": 1145549056.0,
+      "attributes": {
+        "mcp.session.id": "unknown",
+        "result_type": "<class 'mcp.types.CallToolResult'>",
+        "mcp.method.name": "tools/call",
+        "mcp.tool.name": "fetch",
+        "mcp.request.argument.url": "https://modelcontextprotocol.io",
+        "result.isError": "False"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "agent.finder.attach_llm",
+      "start_time": 1.747659465385052e+18,
+      "end_time": 1.747659465385216e+18,
+      "duration": 164096.0,
+      "attributes": {
+        "llm.class": "AnthropicAugmentedLLM",
+        "llm.name": "finder",
+        "llm.provider": "Anthropic"
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.execute",
+      "start_time": 1.7476594653909458e+18,
+      "end_time": 1.747659465563122e+18,
+      "duration": 172176128.0,
+      "attributes": {
+        "arg_1_callable_name": "AnthropicCompletionTasks.request_completion_task",
+        "arg_1_callable_module": "mcp_agent.workflows.llm.augmented_llm_anthropic",
+        "arg_1_is_coroutine": true
+      }
+    },
+    {
+      "type": "span",
+      "event_type": "llm_call",
+      "name": "llm_anthropic.request_completion_task",
+      "start_time": 1.7476594653911e+18,
+      "end_time": 1.747659465563061e+18,
+      "duration": 171961088.0,
+      "attributes": {}
+    },
+    {
+      "type": "sub_event",
+      "name": "exception",
+      "timestamp": 1.747659465562624e+18,
+      "attributes": {
+        "exception.type": "anthropic.AuthenticationError",
+        "exception.message": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}}",
+        "exception.stacktrace": "Traceback (most recent call last):\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/src/mcp_agent/tracing/telemetry.py\", line 59, in async_wrapper\n    res = await func(*args, **kwargs)\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_anthropic.py\", line 690, in request_completion_task\n    response = anthropic.messages.create(**payload)\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/opentelemetry/instrumentation/anthropic/__init__.py\", line 510, in wrapper\n    return func(\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/opentelemetry/instrumentation/anthropic/__init__.py\", line 615, in _wrap\n    raise e\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/opentelemetry/instrumentation/anthropic/__init__.py\", line 603, in _wrap\n    response = wrapped(*args, **kwargs)\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/_utils/_utils.py\", line 275, in wrapper\n    return func(*args, **kwargs)\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/resources/messages/messages.py\", line 953, in create\n    return self._post(\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/_base_client.py\", line 1336, in post\n    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/_base_client.py\", line 1013, in request\n    return self._request(\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/_base_client.py\", line 1117, in _request\n    raise self._make_status_error_from_response(err.response) from None\nanthropic.AuthenticationError: Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}}\n",
+        "exception.escaped": "False"
+      },
+      "parent_span_name": "llm_anthropic.request_completion_task",
+      "parent_span_id": null,
+      "agent_name": "unknown"
+    },
+    {
+      "type": "sub_event",
+      "name": "exception",
+      "timestamp": 1.747659465563051e+18,
+      "attributes": {
+        "exception.type": "anthropic.AuthenticationError",
+        "exception.message": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}}",
+        "exception.stacktrace": "Traceback (most recent call last):\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/opentelemetry/trace/__init__.py\", line 589, in use_span\n    yield span\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/opentelemetry/sdk/trace/__init__.py\", line 1104, in start_as_current_span\n    yield span\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/src/mcp_agent/tracing/telemetry.py\", line 59, in async_wrapper\n    res = await func(*args, **kwargs)\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm_anthropic.py\", line 690, in request_completion_task\n    response = anthropic.messages.create(**payload)\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/opentelemetry/instrumentation/anthropic/__init__.py\", line 510, in wrapper\n    return func(\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/opentelemetry/instrumentation/anthropic/__init__.py\", line 615, in _wrap\n    raise e\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/opentelemetry/instrumentation/anthropic/__init__.py\", line 603, in _wrap\n    response = wrapped(*args, **kwargs)\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/_utils/_utils.py\", line 275, in wrapper\n    return func(*args, **kwargs)\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/resources/messages/messages.py\", line 953, in create\n    return self._post(\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/_base_client.py\", line 1336, in post\n    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/_base_client.py\", line 1013, in request\n    return self._request(\n  File \"/home/ubuntu/mahtab/projects/mcp-agent/.venv/lib/python3.10/site-packages/anthropic/_base_client.py\", line 1117, in _request\n    raise self._make_status_error_from_response(err.response) from None\nanthropic.AuthenticationError: Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}}\n",
+        "exception.escaped": "False"
+      },
+      "parent_span_name": "llm_anthropic.request_completion_task",
+      "parent_span_id": null,
+      "agent_name": "unknown"
+    },
+    {
+      "type": "span",
+      "event_type": "other",
+      "name": "AsyncioExecutor.execute",
+      "start_time": 1.74765946556363e+18,
+      "end_time": 1.747659466067084e+18,
+      "duration": 503453952.0,
+      "attributes": {
+        "arg_1_callable_name": "AgentTasks.shutdown_aggregator_task",
+        "arg_1_callable_module": "mcp_agent.agents.agent",
+        "arg_1_is_coroutine": true,
+        "arg_2": "finder"
+      }
+    }
+  ]
+}

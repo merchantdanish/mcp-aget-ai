@@ -1,0 +1,210 @@
+{
+  "trace_file": "traces/mcp-agent-trace-20250519_125734.jsonl",
+  "summary": {
+    "total_tasks": 9,
+    "total_tool_calls": 11,
+    "tasks_with_tools": 4,
+    "avg_tools_per_task": 1.1111111111111112,
+    "avg_task_duration_ms": 1154.8018915555556
+  },
+  "tasks": {
+    "1": {
+      "request": "Print the contents of mcp_agent.config.yaml verbatim",
+      "agent_name": "finder",
+      "duration_ms": 0.039936,
+      "tool_calls": [],
+      "total_tool_calls": 0,
+      "tool_time_percentage": 0.0
+    },
+    "2": {
+      "request": "Print the contents of mcp_agent.config.yaml verbatim",
+      "agent_name": "finder",
+      "duration_ms": 4.42496,
+      "tool_calls": [
+        {
+          "tool_name": null,
+          "server_name": "unknown",
+          "method_name": "unknown",
+          "span_name": "agent.finder.list_tools",
+          "duration_ms": 3.634944,
+          "arguments": null,
+          "result": null
+        }
+      ],
+      "total_tool_calls": 1,
+      "tool_time_percentage": 82.14636968469772
+    },
+    "3": {
+      "request": null,
+      "agent_name": "unknown",
+      "duration_ms": 38.036992,
+      "tool_calls": [],
+      "total_tool_calls": 0,
+      "tool_time_percentage": 0.0
+    },
+    "4": {
+      "request": "You are an agent with access to the filesystem, \n            as well as the ability to fetch URLs. Your job is to identify \n            the closest match to a user's request, make the appropriate tool calls, \n            and return the URI and CONTENTS of the closest match.",
+      "agent_name": "unknown",
+      "duration_ms": 1506.4192,
+      "tool_calls": [
+        {
+          "tool_name": null,
+          "server_name": "unknown",
+          "method_name": "unknown",
+          "span_name": "llm_openai.finder.execute_tool_call",
+          "duration_ms": 4.91392,
+          "arguments": null,
+          "result": {
+            "isError": false,
+            "content.0.type": "text",
+            "content.0.text": "$schema: ../../../schema/mcp-agent.config.schema.json\n\nexecution_engine: asyncio\nlogger:\n  transports: [file]\n  level: debug\n  progress_display: true\n  path_settings:\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\n    timestamp_format: \"%Y%m%d_%H%M%S\"\n\nmcp:\n  servers:\n    fetch:\n      command: \"uvx\"\n      args: [\"mcp-server-fetch\"]\n    filesystem:\n      command: \"npx\"\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\n\nopenai:\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\n  #  default_model: \"o3-mini\"\n  default_model: \"gpt-4o-mini\"\n\notel:\n  enabled: true\n  exporters: [\"console\", \"file\"]\n  # If running jaeger locally, uncomment the following lines\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\n  # service_name: \"BasicTracingAgentExample\"\n"
+          }
+        },
+        {
+          "tool_name": null,
+          "server_name": "unknown",
+          "method_name": "unknown",
+          "span_name": "llm.finder.call_tool",
+          "duration_ms": 4.816896,
+          "arguments": null,
+          "result": {
+            "isError": false,
+            "content.0.type": "text",
+            "content.0.text": "$schema: ../../../schema/mcp-agent.config.schema.json\n\nexecution_engine: asyncio\nlogger:\n  transports: [file]\n  level: debug\n  progress_display: true\n  path_settings:\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\n    timestamp_format: \"%Y%m%d_%H%M%S\"\n\nmcp:\n  servers:\n    fetch:\n      command: \"uvx\"\n      args: [\"mcp-server-fetch\"]\n    filesystem:\n      command: \"npx\"\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\n\nopenai:\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\n  #  default_model: \"o3-mini\"\n  default_model: \"gpt-4o-mini\"\n\notel:\n  enabled: true\n  exporters: [\"console\", \"file\"]\n  # If running jaeger locally, uncomment the following lines\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\n  # service_name: \"BasicTracingAgentExample\"\n"
+          }
+        },
+        {
+          "tool_name": null,
+          "server_name": "unknown",
+          "method_name": "unknown",
+          "span_name": "agent.finder.call_tool",
+          "duration_ms": 4.740864,
+          "arguments": null,
+          "result": {
+            "isError": false,
+            "content.0.type": "text",
+            "content.0.text": "$schema: ../../../schema/mcp-agent.config.schema.json\n\nexecution_engine: asyncio\nlogger:\n  transports: [file]\n  level: debug\n  progress_display: true\n  path_settings:\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\n    timestamp_format: \"%Y%m%d_%H%M%S\"\n\nmcp:\n  servers:\n    fetch:\n      command: \"uvx\"\n      args: [\"mcp-server-fetch\"]\n    filesystem:\n      command: \"npx\"\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\n\nopenai:\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\n  #  default_model: \"o3-mini\"\n  default_model: \"gpt-4o-mini\"\n\notel:\n  enabled: true\n  exporters: [\"console\", \"file\"]\n  # If running jaeger locally, uncomment the following lines\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\n  # service_name: \"BasicTracingAgentExample\"\n"
+          }
+        },
+        {
+          "tool_name": null,
+          "server_name": "unknown",
+          "method_name": "unknown",
+          "span_name": "MCPAggregator.call_tool",
+          "duration_ms": 4.532224,
+          "arguments": null,
+          "result": {
+            "isError": false,
+            "content.0.type": "text",
+            "content.0.text": "$schema: ../../../schema/mcp-agent.config.schema.json\n\nexecution_engine: asyncio\nlogger:\n  transports: [file]\n  level: debug\n  progress_display: true\n  path_settings:\n    path_pattern: \"logs/mcp-agent-{unique_id}.jsonl\"\n    unique_id: \"timestamp\" # Options: \"timestamp\" or \"session_id\"\n    timestamp_format: \"%Y%m%d_%H%M%S\"\n\nmcp:\n  servers:\n    fetch:\n      command: \"uvx\"\n      args: [\"mcp-server-fetch\"]\n    filesystem:\n      command: \"npx\"\n      args: [\"-y\", \"@modelcontextprotocol/server-filesystem\"]\n\nopenai:\n  # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored\n  #  default_model: \"o3-mini\"\n  default_model: \"gpt-4o-mini\"\n\notel:\n  enabled: true\n  exporters: [\"console\", \"file\"]\n  # If running jaeger locally, uncomment the following lines\n  # otlp_endpoint: \"http://localhost:4318/v1/traces\"\n  # service_name: \"BasicTracingAgentExample\"\n"
+          }
+        },
+        {
+          "tool_name": null,
+          "server_name": "unknown",
+          "method_name": "tools/call",
+          "span_name": "MCPAgentClientSession.send_request",
+          "duration_ms": 3.88096,
+          "arguments": {
+            "path": "mcp_agent.config.yaml"
+          },
+          "result": {
+            "isError": "False"
+          }
+        }
+      ],
+      "total_tool_calls": 5,
+      "tool_time_percentage": 1.5191564207360075
+    },
+    "5": {
+      "request": null,
+      "agent_name": "unknown",
+      "duration_ms": 23.956992,
+      "tool_calls": [],
+      "total_tool_calls": 0,
+      "tool_time_percentage": 0.0
+    },
+    "6": {
+      "request": "You are an agent with access to the filesystem, \n            as well as the ability to fetch URLs. Your job is to identify \n            the closest match to a user's request, make the appropriate tool calls, \n            and return the URI and CONTENTS of the closest match.",
+      "agent_name": "unknown",
+      "duration_ms": 8136.820736,
+      "tool_calls": [
+        {
+          "tool_name": null,
+          "server_name": "unknown",
+          "method_name": "unknown",
+          "span_name": "agent.finder.call_tool",
+          "duration_ms": 1146.46016,
+          "arguments": null,
+          "result": {
+            "isError": false,
+            "content.0.type": "text",
+            "content.0.text": "Contents of https://modelcontextprotocol.io/:\nMCP is an open protocol that standardizes how applications provide context to LLMs. Think of MCP like a USB-C port for AI applications. Just as USB-C provides a standardized way to connect your devices to various peripherals and accessories, MCP provides a standardized way to connect AI models to different data sources and tools.\n\n## Why MCP?\n\nMCP helps you build agents and complex workflows on top of LLMs. LLMs frequently need to integrate with data and tools, and MCP provides:\n\n* A growing list of pre-built integrations that your LLM can directly plug into\n* The flexibility to switch between LLM providers and vendors\n* Best practices for securing your data within your infrastructure\n\n### General architecture\n\nAt its core, MCP follows a client-server architecture where a host application can connect to multiple servers:\n\n* **MCP Hosts**: Programs like Claude Desktop, IDEs, or AI tools that want to access data through MCP\n* **MCP Clients**: Protocol clients that maintain 1:1 connections with servers\n* **MCP Servers**: Lightweight programs that each expose specific capabilities through the standardized Model Context Protocol\n* **Local Data Sources**: Your computer\u2019s files, databases, and services that MCP servers can securely access\n* **Remote Services**: External systems available over the internet (e.g., through APIs) that MCP servers can connect to\n\n## Get started\n\nChoose the path that best fits your needs:\n\n#### Quick Starts\n\n#### Examples\n\n## Tutorials\n\n[## Building MCP with LLMs\n\nLearn how to use LLMs like Claude to speed up your MCP development](/tutorials/building-mcp-with-llms)[## Debugging Guide\n\nLearn how to effectively debug MCP servers and integrations](/docs/tools/debugging)[## MCP Inspector\n\nTest and inspect your MCP servers with our interactive debugging tool](/docs/tools/inspector)[## MCP Workshop (Video, 2hr)](https://www.youtube.com/watch?v=kQmXtrmQ5Zg)\n\n## Explore MCP\n\nDive deeper into MCP\u2019s core concepts and capabilities:\n\n## Contributing\n\nWant to contribute? Check out our [Contributing Guide](/development/contributing) to learn how you can help improve MCP.\n\n## Support and Feedback\n\nHere\u2019s how to get help or provide feedback:\n\n* For bug reports and feature requests related to the MCP specification, SDKs, or documentation (open source), please [create a GitHub issue](https://github.com/modelcontextprotocol)\n* For discussions or Q&A about the MCP specification, use the [specification discussions](https://github.com/modelcontextprotocol/specification/discussions)\n* For discussions or Q&A about other MCP open source components, use the [organization discussions](https://github.com/orgs/modelcontextprotocol/discussions)\n* For bug reports, feature requests, and questions related to Claude.app and claude.ai\u2019s MCP integration, please see Anthropic\u2019s guide on [How to Get Support](https://support.anthropic.com/en/articles/9015913-how-to-get-support)"
+          }
+        },
+        {
+          "tool_name": null,
+          "server_name": "unknown",
+          "method_name": "unknown",
+          "span_name": "MCPAggregator.call_tool",
+          "duration_ms": 1146.245888,
+          "arguments": null,
+          "result": {
+            "isError": false,
+            "content.0.type": "text",
+            "content.0.text": "Contents of https://modelcontextprotocol.io/:\nMCP is an open protocol that standardizes how applications provide context to LLMs. Think of MCP like a USB-C port for AI applications. Just as USB-C provides a standardized way to connect your devices to various peripherals and accessories, MCP provides a standardized way to connect AI models to different data sources and tools.\n\n## Why MCP?\n\nMCP helps you build agents and complex workflows on top of LLMs. LLMs frequently need to integrate with data and tools, and MCP provides:\n\n* A growing list of pre-built integrations that your LLM can directly plug into\n* The flexibility to switch between LLM providers and vendors\n* Best practices for securing your data within your infrastructure\n\n### General architecture\n\nAt its core, MCP follows a client-server architecture where a host application can connect to multiple servers:\n\n* **MCP Hosts**: Programs like Claude Desktop, IDEs, or AI tools that want to access data through MCP\n* **MCP Clients**: Protocol clients that maintain 1:1 connections with servers\n* **MCP Servers**: Lightweight programs that each expose specific capabilities through the standardized Model Context Protocol\n* **Local Data Sources**: Your computer\u2019s files, databases, and services that MCP servers can securely access\n* **Remote Services**: External systems available over the internet (e.g., through APIs) that MCP servers can connect to\n\n## Get started\n\nChoose the path that best fits your needs:\n\n#### Quick Starts\n\n#### Examples\n\n## Tutorials\n\n[## Building MCP with LLMs\n\nLearn how to use LLMs like Claude to speed up your MCP development](/tutorials/building-mcp-with-llms)[## Debugging Guide\n\nLearn how to effectively debug MCP servers and integrations](/docs/tools/debugging)[## MCP Inspector\n\nTest and inspect your MCP servers with our interactive debugging tool](/docs/tools/inspector)[## MCP Workshop (Video, 2hr)](https://www.youtube.com/watch?v=kQmXtrmQ5Zg)\n\n## Explore MCP\n\nDive deeper into MCP\u2019s core concepts and capabilities:\n\n## Contributing\n\nWant to contribute? Check out our [Contributing Guide](/development/contributing) to learn how you can help improve MCP.\n\n## Support and Feedback\n\nHere\u2019s how to get help or provide feedback:\n\n* For bug reports and feature requests related to the MCP specification, SDKs, or documentation (open source), please [create a GitHub issue](https://github.com/modelcontextprotocol)\n* For discussions or Q&A about the MCP specification, use the [specification discussions](https://github.com/modelcontextprotocol/specification/discussions)\n* For discussions or Q&A about other MCP open source components, use the [organization discussions](https://github.com/orgs/modelcontextprotocol/discussions)\n* For bug reports, feature requests, and questions related to Claude.app and claude.ai\u2019s MCP integration, please see Anthropic\u2019s guide on [How to Get Support](https://support.anthropic.com/en/articles/9015913-how-to-get-support)"
+          }
+        },
+        {
+          "tool_name": null,
+          "server_name": "unknown",
+          "method_name": "tools/call",
+          "span_name": "MCPAgentClientSession.send_request",
+          "duration_ms": 1145.549056,
+          "arguments": {
+            "url": "https://modelcontextprotocol.io"
+          },
+          "result": {
+            "isError": "False"
+          }
+        }
+      ],
+      "total_tool_calls": 3,
+      "tool_time_percentage": 42.25551005183162
+    },
+    "7": {
+      "request": "Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+      "agent_name": "finder",
+      "duration_ms": 0.044032,
+      "tool_calls": [],
+      "total_tool_calls": 0,
+      "tool_time_percentage": 0.0
+    },
+    "8": {
+      "request": "Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+      "agent_name": "finder",
+      "duration_ms": 5.780992,
+      "tool_calls": [
+        {
+          "tool_name": null,
+          "server_name": "unknown",
+          "method_name": "unknown",
+          "span_name": "agent.finder.list_tools",
+          "duration_ms": 3.771136,
+          "arguments": null,
+          "result": null
+        }
+      ],
+      "total_tool_calls": 1,
+      "tool_time_percentage": 65.233371711983
+    },
+    "9": {
+      "request": null,
+      "agent_name": "unknown",
+      "duration_ms": 677.693184,
+      "tool_calls": [],
+      "total_tool_calls": 0,
+      "tool_time_percentage": 0.0
+    }
+  }
+}
