@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
-from mcp_agent.event_progress import convert_log_event, ProgressAction
+from mcp_agent.logging.event_progress import convert_log_event, ProgressAction
 from mcp_agent.logging.events import Event
 
 

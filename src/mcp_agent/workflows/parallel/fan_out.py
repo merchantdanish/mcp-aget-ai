@@ -3,7 +3,7 @@ import functools
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Type, TYPE_CHECKING
 
 from mcp_agent.agents.agent import Agent
-from mcp_agent.context_dependent import ContextDependent
+from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -14,7 +14,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
 from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 
@@ -95,7 +95,7 @@ class FanOut(ContextDependent):
 
             # Wait for all tasks to complete
             logger.debug("Running fan-out tasks:", data=task_names)
-            task_results = await self.executor.execute(*tasks)
+            task_results = await self.executor.execute_many(tasks)
 
         logger.debug(
             "Fan-out tasks completed:", data=dict(zip(task_names, task_results))
@@ -141,7 +141,7 @@ class FanOut(ContextDependent):
                 tasks.append(functools.partial(fn_result_to_string, function, message))
                 task_names.append(function.__name__ or id(function))
 
-            task_results = await self.executor.execute(*tasks)
+            task_results = await self.executor.execute_many(tasks)
 
         return dict(zip(task_names, task_results))
 
@@ -182,6 +182,6 @@ class FanOut(ContextDependent):
                 tasks.append(functools.partial(function, message))
                 task_names.append(function.__name__ or id(function))
 
-            task_results = await self.executor.execute(*tasks)
+            task_results = await self.executor.execute_many(tasks)
 
         return dict(zip(task_names, task_results))

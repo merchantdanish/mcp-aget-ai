@@ -718,6 +718,19 @@
           "title": "Task Queue",
           "type": "string"
         },
+        "max_concurrent_activities": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Concurrent Activities",
+          "type": "integer"
+        },
         "api_key": {
           "anyOf": [
             {

@@ -7,7 +7,7 @@ from mcp_agent.workflows.intent_classifier.intent_classifier_llm import (
 )
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 CLASSIFIER_SYSTEM_INSTRUCTION = """
 You are a precise intent classifier that analyzes input requests to determine their intended action or purpose.
@@ -25,11 +25,13 @@ class AnthropicLLMIntentClassifier(LLMIntentClassifier):
         self,
         intents: List[Intent],
         classification_instruction: str | None = None,
+        name: str | None = None,
+        llm: AnthropicAugmentedLLM | None = None,
         context: Optional["Context"] = None,
         **kwargs,
     ):
-        anthropic_llm = AnthropicAugmentedLLM(
-            instruction=CLASSIFIER_SYSTEM_INSTRUCTION, context=context
+        anthropic_llm = llm or AnthropicAugmentedLLM(
+            name=name, instruction=CLASSIFIER_SYSTEM_INSTRUCTION, context=context
         )
 
         super().__init__(
@@ -43,8 +45,10 @@ class AnthropicLLMIntentClassifier(LLMIntentClassifier):
     @classmethod
     async def create(
         cls,
+        llm: AnthropicAugmentedLLM,
         intents: List[Intent],
         classification_instruction: str | None = None,
+        name: str | None = None,
         context: Optional["Context"] = None,
     ) -> "AnthropicLLMIntentClassifier":
         """
@@ -52,8 +56,10 @@ class AnthropicLLMIntentClassifier(LLMIntentClassifier):
         Use this instead of constructor since we need async initialization.
         """
         instance = cls(
+            llm=llm,
             intents=intents,
             classification_instruction=classification_instruction,
+            name=name,
             context=context,
         )
         await instance.initialize()

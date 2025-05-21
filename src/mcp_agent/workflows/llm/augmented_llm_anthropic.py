@@ -1,4 +1,3 @@
-import json
 from typing import Iterable, List, Type, Union
 
 from pydantic import BaseModel
@@ -34,6 +33,10 @@ from mcp.types import (
 
 # from mcp_agent import console
 # from mcp_agent.agents.agent import HUMAN_INPUT_TOOL_NAME
+from mcp_agent.config import AnthropicSettings
+from mcp_agent.executor.workflow_task import workflow_task
+from mcp_agent.utils.common import ensure_serializable, typed_dict_extras, to_string
+from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -113,7 +116,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         Override this method to use a different LLM.
         """
         config = self.context.config
-        anthropic = Anthropic(api_key=config.anthropic.api_key)
         messages: List[MessageParam] = []
         params = self.get_request_params(request_params)
 
@@ -127,7 +129,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         else:
             messages.append(message)
 
-        response = await self.aggregator.list_tools()
+        response = await self.agent.list_tools()
         available_tools: List[ToolParam] = [
             {
                 "name": tool.name,
@@ -166,14 +168,19 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             self.logger.debug(f"{arguments}")
             self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
-            executor_result = await self.executor.execute(
-                anthropic.messages.create, **arguments
+            request = ensure_serializable(
+                RequestCompletionRequest(
+                    config=config.anthropic,
+                    payload=arguments,
+                )
             )
 
-            response = executor_result[0]
+            response: Message = await self.executor.execute(
+                AnthropicCompletionTasks.request_completion_task, request
+            )
 
             if isinstance(response, BaseException):
-                self.logger.error(f"Error: {executor_result}")
+                self.logger.error(f"Error: {response}")
                 break
 
             self.logger.debug(
@@ -292,28 +299,38 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         # We need to do this in a two-step process because Instructor doesn't
         # know how to invoke MCP tools via call_tool, so we'll handle all the
         # processing first and then pass the final response through Instructor
-        import instructor
-
         response = await self.generate_str(
             message=message,
             request_params=request_params,
         )
 
-        # Next we pass the text through instructor to extract structured data
-        client = instructor.from_anthropic(
-            Anthropic(api_key=self.context.config.anthropic.api_key),
-        )
-
         params = self.get_request_params(request_params)
         model = await self.select_model(params)
 
-        # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
-            model=model,
-            response_model=response_model,
-            messages=[{"role": "user", "content": response}],
-            max_tokens=params.maxTokens,
+        serialized_response_model: str | None = None
+
+        if self.executor and self.executor.execution_engine == "temporal":
+            # Serialize the response model to a string
+            serialized_response_model = serialize_model(response_model)
+
+        structured_response = await self.executor.execute(
+            AnthropicCompletionTasks.request_structured_completion_task,
+            RequestStructuredCompletionRequest(
+                config=self.context.config.anthropic,
+                params=params,
+                response_model=response_model
+                if not serialized_response_model
+                else None,
+                serialized_response_model=serialized_response_model,
+                response_str=response,
+                model=model,
+            ),
         )
+
+        # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
+        # Convert dict back to the proper model instance if needed
+        if isinstance(structured_response, dict):
+            structured_response = response_model.model_validate(structured_response)
 
         return structured_response
 
@@ -376,6 +393,72 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 return str(content)
 
         return str(message)
+
+
+class RequestCompletionRequest(BaseModel):
+    config: AnthropicSettings
+    payload: dict
+
+
+class RequestStructuredCompletionRequest(BaseModel):
+    config: AnthropicSettings
+    params: RequestParams
+    response_model: Type[ModelT] | None = None
+    serialized_response_model: str | None = None
+    response_str: str
+    model: str
+
+
+class AnthropicCompletionTasks:
+    @staticmethod
+    @workflow_task
+    async def request_completion_task(
+        request: RequestCompletionRequest,
+    ) -> Message:
+        """
+        Request a completion from Anthropic's API.
+        """
+
+        anthropic = Anthropic(api_key=request.config.api_key)
+
+        payload = request.payload
+        response = anthropic.messages.create(**payload)
+        response = ensure_serializable(response)
+        return response
+
+    @staticmethod
+    @workflow_task
+    async def request_structured_completion_task(
+        request: RequestStructuredCompletionRequest,
+    ):
+        """
+        Request a structured completion using Instructor's Anthropic API.
+        """
+        import instructor
+
+        if request.response_model:
+            response_model = request.response_model
+        elif request.serialized_response_model:
+            response_model = deserialize_model(request.serialized_response_model)
+        else:
+            raise ValueError(
+                "Either response_model or serialized_response_model must be provided for structured completion."
+            )
+
+        # We pass the text through instructor to extract structured data
+        client = instructor.from_anthropic(
+            Anthropic(api_key=request.config.api_key),
+        )
+
+        # Extract structured data from natural language
+        structured_response = client.chat.completions.create(
+            model=request.model,
+            response_model=response_model,
+            messages=[{"role": "user", "content": request.response_str}],
+            max_tokens=request.params.maxTokens,
+        )
+
+        return structured_response
 
 
 class AnthropicMCPTypeConverter(ProviderToMCPConverter[MessageParam, Message]):
@@ -637,15 +720,3 @@ def anthropic_stop_reason_to_mcp_stop_reason(stop_reason: str) -> StopReason:
         return "toolUse"
     else:
         return stop_reason
-
-
-def to_string(obj: BaseModel | dict) -> str:
-    if isinstance(obj, BaseModel):
-        return obj.model_dump_json()
-    else:
-        return json.dumps(obj)
-
-
-def typed_dict_extras(d: dict, exclude: List[str]):
-    extras = {k: v for k, v in d.items() if k not in exclude}
-    return extras

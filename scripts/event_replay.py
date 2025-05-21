@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 import typer
-from mcp_agent.event_progress import convert_log_event
+from mcp_agent.logging.event_progress import convert_log_event
 from mcp_agent.logging.events import Event
 from mcp_agent.logging.rich_progress import RichProgressDisplay
 

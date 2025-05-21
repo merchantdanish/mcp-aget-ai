@@ -14,7 +14,7 @@ from mcp_agent.agents.agent import Agent
 from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 
@@ -68,6 +68,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         self,
         optimizer: Agent | AugmentedLLM,
         evaluator: str | Agent | AugmentedLLM,
+        name: str | None = None,
         min_rating: QualityRating = QualityRating.GOOD,
         max_refinements: int = 3,
         llm_factory: Callable[[Agent], AugmentedLLM] | None = None,
@@ -87,10 +88,14 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             max_refinements: Maximum refinement iterations
             llm_factory: Optional factory to create LLMs from agents
         """
-        super().__init__(context=context)
+        super().__init__(
+            name=name,
+            instruction="You are an evaluator-optimizer workflow that generates responses and evaluates them iteratively until they achieve a necessary quality criteria.",
+            context=context,
+        )
 
         # Set up the optimizer
-        self.name = optimizer.name
+        self.name = optimizer.name if not self.name else self.name
         self.llm_factory = llm_factory
         self.optimizer = optimizer
         self.evaluator = evaluator
@@ -100,7 +105,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                 raise ValueError("llm_factory is required when using an Agent")
 
             self.optimizer_llm = llm_factory(agent=optimizer)
-            self.aggregator = optimizer
+            self.agent = optimizer
             self.instruction = (
                 optimizer.instruction
                 if isinstance(optimizer.instruction, str)
@@ -109,7 +114,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
 
         elif isinstance(optimizer, AugmentedLLM):
             self.optimizer_llm = optimizer
-            self.aggregator = optimizer.aggregator
+            self.agent = optimizer.agent
             self.instruction = optimizer.instruction
 
         else:

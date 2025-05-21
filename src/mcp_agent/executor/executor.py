@@ -1,5 +1,7 @@
 import asyncio
 import functools
+import random
+import uuid
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -18,7 +20,7 @@ from typing import (
 
 from pydantic import BaseModel, ConfigDict
 
-from mcp_agent.context_dependent import ContextDependent
+from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.workflow_signal import (
     AsyncioSignalHandler,
     Signal,
@@ -28,7 +30,7 @@ from mcp_agent.executor.workflow_signal import (
 from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 
@@ -81,15 +83,26 @@ class Executor(ABC, ContextDependent):
     @abstractmethod
     async def execute(
         self,
-        *tasks: Callable[..., R] | Coroutine[Any, Any, R],
-        **kwargs: Any,
+        task: Callable[..., R] | Coroutine[Any, Any, R],
+        *args,
+        **kwargs,
+    ) -> R | BaseException:
+        """Execute a list of tasks and return their results"""
+
+    @abstractmethod
+    async def execute_many(
+        self,
+        tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
+        *args,
+        **kwargs,
     ) -> List[R | BaseException]:
         """Execute a list of tasks and return their results"""
 
     @abstractmethod
     async def execute_streaming(
         self,
-        *tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
+        tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
+        *args,
         **kwargs: Any,
     ) -> AsyncIterator[R | BaseException]:
         """Execute tasks and yield results as they complete"""
@@ -139,12 +152,25 @@ class Executor(ABC, ContextDependent):
         signal_name: str,
         payload: SignalValueT = None,
         signal_description: str | None = None,
+        workflow_id: str | None = None,
+        run_id: str | None = None,
     ) -> None:
         """
         Emit a signal.
+
+        Args:
+            signal_name: The name of the signal to emit
+            payload: Optional data to include with the signal
+            signal_description: Optional human-readable description
+            workflow_id: Optional workflow ID to send the signal
+            workflow_id: Optional run ID of the workflow instance to signal
         """
         signal = Signal[SignalValueT](
-            name=signal_name, payload=payload, description=signal_description
+            name=signal_name,
+            payload=payload,
+            description=signal_description,
+            workflow_id=workflow_id,
+            run_id=run_id,
         )
         await self.signal_bus.signal(signal)
 
@@ -153,6 +179,7 @@ class Executor(ABC, ContextDependent):
         signal_name: str,
         request_id: str | None = None,
         workflow_id: str | None = None,
+        run_id: str | None = None,
         signal_description: str | None = None,
         timeout_seconds: int | None = None,
         signal_type: Type[SignalValueT] = str,
@@ -168,6 +195,7 @@ class Executor(ABC, ContextDependent):
                 signal_name=signal_name,
                 request_id=request_id,
                 workflow_id=workflow_id,
+                run_id=run_id,
                 metadata={
                     "description": signal_description,
                     "timeout_seconds": timeout_seconds,
@@ -176,9 +204,31 @@ class Executor(ABC, ContextDependent):
             )
 
         signal = Signal[signal_type](
-            name=signal_name, description=signal_description, workflow_id=workflow_id
+            name=signal_name,
+            description=signal_description,
+            workflow_id=workflow_id,
+            run_id=run_id,
         )
         return await self.signal_bus.wait_for_signal(signal)
+
+    def uuid(self) -> uuid.UUID:
+        """
+        Generate a UUID. Some executors enforce deterministic UUIDs, so this is an
+        opportunity for an executor to provide its own UUID generation.
+
+        Defaults to uuid4().
+        """
+        return uuid.uuid4()
+
+    def random(self) -> random.Random:
+        """
+        Get a random number generator. Some executors enforce deterministic random
+        number generation, so this is an opportunity for an executor to provide its
+        own random number generator.
+
+        Defaults to random.Random().
+        """
+        return random.Random()
 
 
 class AsyncioExecutor(Executor):
@@ -199,24 +249,21 @@ class AsyncioExecutor(Executor):
             )
 
     async def _execute_task(
-        self, task: Callable[..., R] | Coroutine[Any, Any, R], **kwargs: Any
+        self, task: Callable[..., R] | Coroutine[Any, Any, R], *args, **kwargs
     ) -> R | BaseException:
         async def run_task(task: Callable[..., R] | Coroutine[Any, Any, R]) -> R:
             try:
                 if asyncio.iscoroutine(task):
                     return await task
                 elif asyncio.iscoroutinefunction(task):
-                    return await task(**kwargs)
+                    return await task(*args, **kwargs)
                 else:
                     # Execute the callable and await if it returns a coroutine
                     loop = asyncio.get_running_loop()
 
-                    # If kwargs are provided, wrap the function with partial
-                    if kwargs:
-                        wrapped_task = functools.partial(task, **kwargs)
-                        result = await loop.run_in_executor(None, wrapped_task)
-                    else:
-                        result = await loop.run_in_executor(None, task)
+                    # Using partial to handle both args and kwargs together
+                    wrapped_task = functools.partial(task, *args, **kwargs)
+                    result = await loop.run_in_executor(None, wrapped_task)
 
                     # Handle case where the sync function returns a coroutine
                     if asyncio.iscoroutine(result):
@@ -224,7 +271,7 @@ class AsyncioExecutor(Executor):
 
                     return result
             except Exception as e:
-                # TODO: saqadri - adding logging or other error handling here
+                logger.error(f"Error executing task: {e}")
                 return e
 
         if self._activity_semaphore:
@@ -235,26 +282,87 @@ class AsyncioExecutor(Executor):
 
     async def execute(
         self,
-        *tasks: Callable[..., R] | Coroutine[Any, Any, R],
-        **kwargs: Any,
+        task: Callable[..., R] | Coroutine[Any, Any, R],
+        *args,
+        **kwargs,
+    ) -> R | BaseException:
+        """
+        Execute a task and return its results.
+
+        Args:
+            task: The task to execute
+            *args: Positional arguments to pass to the task
+            **kwargs: Additional arguments to pass to the tasks
+
+        Returns:
+            A result or exception
+        """
+        # TODO: saqadri - validate if async with self.execution_context() is needed here
+        async with self.execution_context():
+            return await self._execute_task(
+                task,
+                *args,
+                **kwargs,
+            )
+
+    async def execute_many(
+        self,
+        tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
+        *args,
+        **kwargs,
     ) -> List[R | BaseException]:
+        """
+        Execute a list of tasks and return their results.
+
+        Args:
+            tasks: The tasks to execute
+            *args: Positional arguments to pass to each task
+            **kwargs: Additional arguments to pass to the tasks
+
+        Returns:
+            A list of results or exceptions
+        """
         # TODO: saqadri - validate if async with self.execution_context() is needed here
         async with self.execution_context():
             return await asyncio.gather(
-                *(self._execute_task(task, **kwargs) for task in tasks),
+                *(
+                    self._execute_task(
+                        task,
+                        **kwargs,
+                    )
+                    for task in tasks
+                ),
                 return_exceptions=True,
             )
 
     async def execute_streaming(
         self,
-        *tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
+        tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
+        *args,
         **kwargs: Any,
     ) -> AsyncIterator[R | BaseException]:
+        """
+        Execute tasks and yield results as they complete.
+
+        Args:
+            tasks: The tasks to execute
+            *args: Positional arguments to pass to each task
+            **kwargs: Additional arguments to pass to the tasks
+
+        Yields:
+            Results or exceptions as tasks complete
+        """
         # TODO: saqadri - validate if async with self.execution_context() is needed here
         async with self.execution_context():
             # Create futures for all tasks
             futures = [
-                asyncio.create_task(self._execute_task(task, **kwargs))
+                asyncio.create_task(
+                    self._execute_task(
+                        task,
+                        *args,
+                        **kwargs,
+                    )
+                )
                 for task in tasks
             ]
             pending = set(futures)
@@ -271,14 +379,19 @@ class AsyncioExecutor(Executor):
         signal_name: str,
         payload: SignalValueT = None,
         signal_description: str | None = None,
+        workflow_id: str | None = None,
+        run_id: str | None = None,
     ) -> None:
-        await super().signal(signal_name, payload, signal_description)
+        await super().signal(
+            signal_name, payload, signal_description, workflow_id, run_id
+        )
 
     async def wait_for_signal(
         self,
         signal_name: str,
         request_id: str | None = None,
         workflow_id: str | None = None,
+        run_id: str | None = None,
         signal_description: str | None = None,
         timeout_seconds: int | None = None,
         signal_type: Type[SignalValueT] = str,
@@ -287,6 +400,7 @@ class AsyncioExecutor(Executor):
             signal_name,
             request_id,
             workflow_id,
+            run_id,
             signal_description,
             timeout_seconds,
             signal_type,

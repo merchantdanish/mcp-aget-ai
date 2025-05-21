@@ -98,6 +98,8 @@ class MCPServerSettings(BaseModel):
     env: Dict[str, str] | None = None
     """Environment variables to pass to the server process."""
 
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
 
 class MCPSettings(BaseModel):
     """Configuration for all MCP servers."""
@@ -199,7 +201,9 @@ class TemporalSettings(BaseModel):
     host: str
     namespace: str = "default"
     task_queue: str
+    max_concurrent_activities: int | None = None
     api_key: str | None = None
+    timeout_seconds: int | None = 60
 
 
 class UsageTelemetrySettings(BaseModel):
