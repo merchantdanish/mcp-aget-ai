@@ -1,5 +1,5 @@
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from azure.ai.inference.models import (
@@ -9,12 +9,20 @@ from azure.ai.inference.models import (
     ChatCompletionsToolCall,
     FunctionCall,
     TextContentItem,
+    ImageContentItem,
+    ImageUrl,
+    SystemMessage,
+    AssistantMessage,
 )
 from pydantic import BaseModel
 
 from mcp.types import (
     TextContent,
+    ImageContent,
+    EmbeddedResource,
+    TextResourceContents,
     SamplingMessage,
+    CallToolResult,
 )
 
 from mcp_agent.workflows.llm.augmented_llm_azure import (
@@ -502,3 +510,663 @@ class TestAzureAugmentedLLM:
         message_str = AzureAugmentedLLM.message_param_str(None, message_with_items)
         assert "Hello" in message_str
         assert "World" in message_str
+
+    # Test 13: Initialization with API Key
+    @patch("mcp_agent.workflows.llm.augmented_llm_azure.ChatCompletionsClient")
+    @patch("mcp_agent.workflows.llm.augmented_llm_azure.AzureKeyCredential")
+    def test_init_with_api_key(self, mock_credential, mock_client):
+        """
+        Tests initialization with API key.
+        """
+        # Setup mock context explicitly
+        from unittest.mock import MagicMock
+
+        mock_context = MagicMock()
+        mock_context.config.azure = MagicMock()
+        mock_context.config.azure.api_key = "test_api_key"
+        mock_context.config.azure.endpoint = "https://test-endpoint.com"
+        mock_context.config.azure.default_model = "gpt-4o-mini"
+        mock_context.config.azure.model_dump = MagicMock(return_value={})
+
+        # Create instance
+        llm = AzureAugmentedLLM(name="test", context=mock_context)
+
+        # Assertions
+        mock_client.assert_called_once()
+        # First positional arg should be endpoint
+        assert mock_client.call_args[1]["endpoint"] == "https://test-endpoint.com"
+        # Check that AzureKeyCredential was used with the correct API key
+        mock_credential.assert_called_once_with("test_api_key")
+
+    # Test 14: Initialization with DefaultAzureCredential
+    @patch("mcp_agent.workflows.llm.augmented_llm_azure.ChatCompletionsClient")
+    @patch("mcp_agent.workflows.llm.augmented_llm_azure.DefaultAzureCredential")
+    def test_init_with_default_credential(
+        self, mock_default_credential, mock_client, mock_context
+    ):
+        """
+        Tests initialization with DefaultAzureCredential.
+        """
+        # Setup
+        mock_context.config.azure = MagicMock()
+        mock_context.config.azure.api_key = None  # No API key
+        mock_context.config.azure.endpoint = "https://test-endpoint.com"
+        mock_context.config.azure.default_model = "gpt-4o-mini"
+        mock_context.config.azure.credential_scopes = [
+            "https://cognitiveservices.azure.com/.default"
+        ]
+        mock_context.config.azure.model_dump = MagicMock(return_value={})
+
+        # Create instance
+        llm = AzureAugmentedLLM(name="test", context=mock_context)
+
+        # Assertions
+        mock_default_credential.assert_called_once()
+        mock_client.assert_called_once()
+        assert mock_client.call_args[1]["endpoint"] == "https://test-endpoint.com"
+        assert mock_client.call_args[1]["credential_scopes"] == [
+            "https://cognitiveservices.azure.com/.default"
+        ]
+
+    # Test 15: Error on Missing Azure Configuration
+    def test_missing_azure_config(self, mock_context):
+        """
+        Tests that an error is raised when Azure configuration is missing.
+        """
+        # Remove Azure config
+        mock_context.config.azure = None
+
+        # Assert that initialization raises ValueError
+        with pytest.raises(ValueError) as excinfo:
+            AzureAugmentedLLM(name="test", context=mock_context)
+
+        assert "Azure configuration not found" in str(excinfo.value)
+
+    # Test 16: Direct Testing of execute_tool_call
+    @pytest.mark.asyncio
+    async def test_execute_tool_call_direct(self, mock_llm):
+        """
+        Tests the execute_tool_call method directly.
+        """
+        # Create a tool call
+        function_call = FunctionCall(
+            name="test_tool",
+            arguments=json.dumps({"param1": "value1"}),
+        )
+        tool_call = ChatCompletionsToolCall(
+            id="tool_123",
+            type="function",
+            function=function_call,
+        )
+
+        # Mock call_tool to return a result
+        tool_result = CallToolResult(
+            isError=False,
+            content=[TextContent(type="text", text="Tool executed successfully")],
+        )
+        mock_llm.call_tool = AsyncMock(return_value=tool_result)
+
+        # Execute tool call
+        result = await mock_llm.execute_tool_call(tool_call)
+
+        # Assertions
+        assert result is not None
+        assert result.tool_call_id == "tool_123"
+        assert result.content == "Tool executed successfully"
+        mock_llm.call_tool.assert_called_once()
+        call_args = mock_llm.call_tool.call_args[1]
+        assert call_args["tool_call_id"] == "tool_123"
+        assert call_args["request"].params.name == "test_tool"
+        assert call_args["request"].params.arguments == {"param1": "value1"}
+
+    # Test 17: Execute Tool Call with Invalid JSON
+    @pytest.mark.asyncio
+    async def test_execute_tool_call_invalid_json(self, mock_llm):
+        """
+        Tests execute_tool_call with invalid JSON arguments.
+        """
+        # Create a tool call with invalid JSON
+        function_call = FunctionCall(
+            name="test_tool",
+            arguments="{'invalid': json}",  # This is not valid JSON
+        )
+        tool_call = ChatCompletionsToolCall(
+            id="tool_123",
+            type="function",
+            function=function_call,
+        )
+
+        # Patch call_tool as an AsyncMock to track calls
+        from unittest.mock import AsyncMock
+        mock_llm.call_tool = AsyncMock()
+
+        # Execute tool call
+        result = await mock_llm.execute_tool_call(tool_call)
+
+        # Assertions
+        assert result is not None
+        assert result.tool_call_id == "tool_123"
+        assert "Invalid JSON" in result.content
+        # call_tool should not be called due to JSON parsing error
+        assert not mock_llm.call_tool.called
+
+    # Test 18: Test message_str Method
+    def test_message_str(self):
+        """
+        Tests the message_str method for different response types.
+        """
+        # Test with content
+        message_with_content = ChatResponseMessage(
+            role="assistant", content="This is a test message"
+        )
+        result = AzureAugmentedLLM.message_str(None, message_with_content)
+        assert result == "This is a test message"
+
+        # Test with None content
+        tool_call = ChatCompletionsToolCall(
+                    id="tool_123",
+                    type="function",
+                    function=FunctionCall(name="test_tool", arguments="{}"),
+                )
+        message_without_content = ChatResponseMessage(
+            role="assistant",
+            content=None,
+            tool_calls=[
+                tool_call
+            ],
+        )
+        result = AzureAugmentedLLM.message_str(None, message_without_content)
+        assert str(tool_call) in result
+        assert "tool_calls" in result
+
+    # Test 19: Test message_param_str Method with Various Content Types
+    def test_message_param_str_with_various_content(self):
+        """
+        Tests the message_param_str method with various content types.
+        """
+        # Test with string content
+        message_with_string = UserMessage(content="String content")
+        result = AzureAugmentedLLM.message_param_str(None, message_with_string)
+        assert result == "String content"
+
+        # Test with text content items
+        message_with_text_items = UserMessage(
+            content=[
+                TextContentItem(text="Text item 1"),
+                TextContentItem(text="Text item 2"),
+            ]
+        )
+        result = AzureAugmentedLLM.message_param_str(None, message_with_text_items)
+        assert "Text item 1" in result
+        assert "Text item 2" in result
+
+        # Test with image content item
+        image_url = ImageUrl(
+            url="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+        message_with_image = UserMessage(
+            content=[ImageContentItem(image_url=image_url)]
+        )
+        result = AzureAugmentedLLM.message_param_str(None, message_with_image)
+        assert "Image url:" in result
+        assert "data:image/png;base64" in result
+
+        # Test with None content
+        message_without_content = UserMessage(content=None)
+        result = AzureAugmentedLLM.message_param_str(None, message_without_content)
+        assert result == "{'role': 'user'}"
+
+    # Test 20: Test Helper Function mcp_content_to_azure_content
+    @pytest.mark.parametrize("str_only", [True, False])
+    def test_mcp_content_to_azure_content(self, str_only):
+        """
+        Tests the mcp_content_to_azure_content helper function.
+        """
+        from mcp_agent.workflows.llm.augmented_llm_azure import (
+            mcp_content_to_azure_content,
+        )
+
+        # Create test content
+        text_content = TextContent(type="text", text="Test text")
+        image_content = ImageContent(
+            type="image",
+            mimeType="image/png",
+            data="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        )
+        # TextResourceContents requires a 'uri' field; provide a dummy value for testing
+        text_resource = TextResourceContents(uri="resource://dummy", text="Resource text")
+        embedded_resource = EmbeddedResource(resource=text_resource, type="resource")
+
+        # Test with single text content
+        result = mcp_content_to_azure_content([text_content], str_only=str_only)
+
+        if str_only:
+            assert isinstance(result, str)
+            assert "Test text" in result
+        else:
+            assert isinstance(result, list)
+            assert len(result) == 1
+            assert isinstance(result[0], TextContentItem)
+            assert result[0].text == "Test text"
+
+        # Test with multiple content types
+        result = mcp_content_to_azure_content(
+            [text_content, image_content, embedded_resource], str_only=str_only
+        )
+
+        if str_only:
+            assert isinstance(result, str)
+            assert "Test text" in result
+            assert "image/png" in result
+            assert "Resource text" in result
+        else:
+            assert isinstance(result, list)
+            assert len(result) == 3
+            assert isinstance(result[0], TextContentItem)
+            assert isinstance(result[1], ImageContentItem)
+            assert isinstance(result[2], TextContentItem)
+
+    # Test 21: Test Helper Function azure_content_to_mcp_content
+    def test_azure_content_to_mcp_content(self):
+        """
+        Tests the azure_content_to_mcp_content helper function.
+        """
+        from mcp_agent.workflows.llm.augmented_llm_azure import (
+            azure_content_to_mcp_content,
+        )
+
+        # Test with string content
+        string_content = "Simple string content"
+        result = azure_content_to_mcp_content(string_content)
+        assert len(result) == 1
+        assert isinstance(result[0], TextContent)
+        assert result[0].text == "Simple string content"
+
+        # Test with content items list
+        content_items = [
+            TextContentItem(text="Text item"),
+            ImageContentItem(
+                image_url=ImageUrl(
+                    url="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+                )
+            ),
+        ]
+        result = azure_content_to_mcp_content(content_items)
+        assert len(result) == 2
+        assert isinstance(result[0], TextContent)
+        assert result[0].text == "Text item"
+        assert isinstance(result[1], ImageContent)
+        assert result[1].type == "image"
+        assert result[1].mimeType == "image/png"
+
+        # Test with None content
+        result = azure_content_to_mcp_content(None)
+        assert len(result) == 0
+
+    # Test 22: Test Helper Function image_url_to_mime_and_base64
+    def test_image_url_to_mime_and_base64(self):
+        """
+        Tests the image_url_to_mime_and_base64 helper function.
+        """
+        from mcp_agent.workflows.llm.augmented_llm_azure import (
+            image_url_to_mime_and_base64,
+        )
+
+        # Valid image URL
+        valid_url = ImageUrl(
+            url="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+        mime_type, base64_data = image_url_to_mime_and_base64(valid_url)
+        assert mime_type == "image/png"
+        assert (
+            base64_data
+            == "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+
+        # Invalid image URL
+        invalid_url = ImageUrl(url="invalid-data-url")
+        with pytest.raises(ValueError) as excinfo:
+            image_url_to_mime_and_base64(invalid_url)
+        assert "Invalid image data URI" in str(excinfo.value)
+
+    # Test 23: Test Helper Function typed_dict_extras
+    def test_typed_dict_extras(self):
+        """
+        Tests the typed_dict_extras helper function.
+        """
+        from mcp_agent.workflows.llm.augmented_llm_azure import typed_dict_extras
+
+        # Test with dict including excluded and non-excluded fields
+        test_dict = {
+            "field1": "value1",
+            "field2": "value2",
+            "exclude_me": "value3",
+            "also_exclude": "value4",
+        }
+
+        result = typed_dict_extras(test_dict, ["exclude_me", "also_exclude"])
+        assert "field1" in result
+        assert "field2" in result
+        assert "exclude_me" not in result
+        assert "also_exclude" not in result
+        assert result["field1"] == "value1"
+        assert result["field2"] == "value2"
+
+        # Test with empty dict
+        result = typed_dict_extras({}, ["any_field"])
+        assert result == {}
+
+        # Test with no exclusions
+        result = typed_dict_extras(test_dict, [])
+        assert len(result) == 4
+        assert "exclude_me" in result
+
+    # Test 24: Comprehensive Type Converter Tests
+    def test_type_converter_comprehensive(self):
+        """
+        Comprehensive tests for the MCPAzureTypeConverter.
+        """
+        # Test to_mcp_message_param with different roles
+        # User message
+        user_message = SamplingMessage(
+            role="user", content=TextContent(type="text", text="User content")
+        )
+        azure_user = MCPAzureTypeConverter.from_mcp_message_param(user_message)
+        assert azure_user.role == "user"
+
+        # Assistant message
+        assistant_message = SamplingMessage(
+            role="assistant", content=TextContent(type="text", text="Assistant content")
+        )
+        azure_assistant = MCPAzureTypeConverter.from_mcp_message_param(
+            assistant_message
+        )
+        assert azure_assistant.role == "assistant"
+
+        # Unsupported role
+        with pytest.raises(ValueError) as excinfo:
+            MCPAzureTypeConverter.from_mcp_message_param(
+                SamplingMessage(
+                    role="unsupported_role",
+                    content=TextContent(type="text", text="content"),
+                )
+            )
+        assert "Input should be 'user' or 'assistant'" in str(excinfo.value)
+
+    # Test 25: Parallel Tool Calls
+    @pytest.mark.asyncio
+    async def test_parallel_tool_calls(self, mock_llm, default_usage):
+        """
+        Tests parallel tool calls where multiple tools are called in a single response.
+        """
+        # Create tool calls
+        function_call1 = FunctionCall(
+            name="tool1",
+            arguments=json.dumps({"param": "value1"}),
+        )
+        function_call2 = FunctionCall(
+            name="tool2",
+            arguments=json.dumps({"param": "value2"}),
+        )
+
+        tool_call1 = ChatCompletionsToolCall(
+            id="call_1",
+            type="function",
+            function=function_call1,
+        )
+        tool_call2 = ChatCompletionsToolCall(
+            id="call_2",
+            type="function",
+            function=function_call2,
+        )
+
+        # Create response with multiple tool calls
+        message = ChatResponseMessage(
+            role="assistant",
+            content=None,
+            tool_calls=[tool_call1, tool_call2],
+        )
+
+        response = MagicMock()
+        response.choices = [
+            MagicMock(message=message, finish_reason="tool_calls", index=0)
+        ]
+        response.id = "chatcmpl-123"
+        response.created = 1677858242
+        response.model = "gpt-4o-mini"
+        response.usage = default_usage
+
+        # Define custom side effect
+        call_count = 0
+
+        async def custom_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+
+            if call_count == 1:
+                # First call returns the tool calls
+                return [response]
+            elif call_count == 2:
+                # Second call handles tool responses
+                # In this case we're returning both tool results at once
+                tool_messages = [
+                    ToolMessage(tool_call_id="call_1", content="Tool 1 result"),
+                    ToolMessage(tool_call_id="call_2", content="Tool 2 result"),
+                ]
+                return tool_messages
+            else:
+                # Final response
+                return [
+                    self.create_text_response(
+                        "Final response after parallel tools", usage=default_usage
+                    )
+                ]
+
+        # Setup mock
+        mock_llm.executor.execute = AsyncMock(side_effect=custom_side_effect)
+
+        # Enable parallel tool calls
+        request_params = RequestParams(parallel_tool_calls=True)
+
+        # Call LLM
+        responses = await mock_llm.generate("Test parallel tools", request_params)
+
+        # Assertions
+        assert len(responses) >= 3  # Initial response, tool results, final response
+        assert hasattr(responses[0], "tool_calls")
+        assert len(responses[0].tool_calls) == 2
+        assert "tool1" in [tc.function.name for tc in responses[0].tool_calls]
+        assert "tool2" in [tc.function.name for tc in responses[0].tool_calls]
+
+    # Test 26: Multiple Iterations with Tool Calls
+    @pytest.mark.asyncio
+    async def test_multiple_iterations(self, mock_llm, default_usage):
+        """
+        Tests multiple iterations of generate with multiple tool calls.
+        """
+        # Define a complex side effect that models multiple iterations
+        call_count = 0
+
+        async def complex_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+
+            # First iteration: LLM requests tool 1
+            if call_count == 1:
+                return [
+                    self.create_tool_use_response(
+                        "tool_iter1",
+                        {"query": "data1"},
+                        "tool_id1",
+                        usage=default_usage,
+                    )
+                ]
+            # Tool result for tool 1
+            elif call_count == 2:
+                tool_message = ToolMessage(
+                    tool_call_id="tool_id1",
+                    content="Result from first tool",
+                )
+                return [tool_message]
+            # Second iteration: LLM requests tool 2 (should be another tool call, not a normal message)
+            elif call_count == 3:
+                return [
+                    self.create_tool_use_response(
+                        "tool_iter2",
+                        {"query": "data2"},
+                        "tool_id2",
+                        usage=default_usage,
+                    )
+                ]
+            # Tool result for tool 2
+            elif call_count == 4:
+                tool_message = ToolMessage(
+                    tool_call_id="tool_id2",
+                    content="Result from second tool",
+                )
+                return [tool_message]
+            # Final response (normal message)
+            else:
+                return [
+                    self.create_text_response(
+                        "Final response after multiple iterations", usage=default_usage
+                    )
+                ]
+
+        # Setup mock
+        mock_llm.executor.execute = AsyncMock(side_effect=complex_side_effect)
+
+        # Set a high max_iterations to allow multiple iterations
+        request_params = RequestParams(max_iterations=5)
+
+        # Call LLM
+        responses = await mock_llm.generate("Test multiple iterations", request_params)
+
+        # Assertions
+        assert len(responses) > 4  # Should have multiple responses
+        assert mock_llm.executor.execute.call_count > 3
+
+        # Verify the sequence of responses
+        tool_call_responses = [
+            r for r in responses if hasattr(r, "tool_calls") and r.tool_calls
+        ]
+        tool_result_responses = [r for r in responses if hasattr(r, "tool_call_id")]
+        text_responses = [r for r in responses if hasattr(r, "content") and r.content]
+
+        assert len(tool_call_responses) == 2  # Two tool call requests
+        assert len(tool_result_responses) == 2  # Two tool results
+        assert len(text_responses) >= 2  # At least interim and final responses
+
+        # Verify final response
+        assert "Final response" in responses[-1].content
+
+    # Test 27: System Prompt Handling
+    @pytest.mark.asyncio
+    async def test_system_prompt_handling(self, mock_llm, default_usage):
+        """
+        Tests handling of system prompts in generate requests.
+        """
+        # Setup mock executor
+        mock_llm.executor.execute = AsyncMock(
+            return_value=[
+                self.create_text_response(
+                    "Response with system prompt", usage=default_usage
+                )
+            ]
+        )
+
+        # Set system prompt in instance
+        test_prompt = "This is a test system prompt"
+        mock_llm.instruction = test_prompt
+
+        # Call with empty history to ensure system prompt is included
+        mock_llm.history.get = MagicMock(return_value=[])
+
+        # Call LLM
+        await mock_llm.generate("Test query")
+
+        # Assertions
+        first_call_args = mock_llm.executor.execute.call_args_list[0][1]
+        messages = first_call_args["messages"]
+
+        # First message should be system message with our prompt
+        assert len(messages) >= 2
+        assert isinstance(messages[0], SystemMessage)
+        assert messages[0].content == test_prompt
+
+        # Test with system prompt in request params
+        request_prompt = "Override system prompt"
+        request_params = RequestParams(systemPrompt=request_prompt)
+
+        # Reset mock to clear call history
+        mock_llm.executor.execute.reset_mock()
+
+        # Call with request params
+        await mock_llm.generate("Test query", request_params)
+
+        # Assertions
+        first_call_args = mock_llm.executor.execute.call_args_list[0][1]
+        messages = first_call_args["messages"]
+
+        # Still should use instance instruction over request params
+        assert isinstance(messages[0], SystemMessage)
+        assert messages[0].content == test_prompt
+
+    # Test 28: Error in Tool Execution
+    @pytest.mark.asyncio
+    async def test_execute_tool_call_exception(self, mock_llm):
+        """
+        Tests execute_tool_call with an exception during tool call.
+        """
+        # Create a tool call
+        function_call = FunctionCall(
+            name="failing_tool",
+            arguments=json.dumps({"param": "value"}),
+        )
+        tool_call = ChatCompletionsToolCall(
+            id="tool_123",
+            type="function",
+            function=function_call,
+        )
+
+        # Mock call_tool to raise an exception
+        mock_llm.call_tool = AsyncMock(side_effect=Exception("Tool execution failed"))
+
+        # Execute tool call
+        result = await mock_llm.execute_tool_call(tool_call)
+
+        # Assertions
+        assert result is not None
+        assert result.tool_call_id == "tool_123"
+        assert "Error executing tool" in result.content
+        assert "Tool execution failed" in result.content
+
+    # Test 29: convert_message_to_message_param Method
+    def test_convert_message_to_message_param(self):
+        """
+        Tests the convert_message_to_message_param method.
+        """
+        # Create a response message
+        response_message = ChatResponseMessage(
+            role="assistant",
+            content="Test response content",
+            tool_calls=[
+                ChatCompletionsToolCall(
+                    id="tool_123",
+                    type="function",
+                    function=FunctionCall(name="test_tool", arguments="{}"),
+                )
+            ],
+        )
+
+        # Convert to message param
+        param_message = AzureAugmentedLLM.convert_message_to_message_param(
+          response_message
+        )
+
+        # Assertions
+        assert isinstance(param_message, AssistantMessage)
+        assert param_message.content == "Test response content"
+        assert param_message.tool_calls is not None
+        assert len(param_message.tool_calls) == 1
+        assert param_message.tool_calls[0].function.name == "test_tool"
