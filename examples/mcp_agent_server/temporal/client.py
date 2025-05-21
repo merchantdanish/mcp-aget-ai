@@ -20,45 +20,30 @@ async def main():
         context.server_registry.registry["basic_agent_server"] = MCPServerSettings(
             name="basic_agent_server",
             description="Local workflow server running the basic agent example",
-            command="uv",
-            args=["run", "basic_agent_server.py"],
+            transport="sse",
+            url="http://0.0.0.0:8000/sse",
         )
 
         # Connect to the workflow server
         async with gen_client("basic_agent_server", context.server_registry) as server:
-            # List available tools
-            tools_result = await server.list_tools()
-            logger.info(
-                "Available tools:",
-                data={"tools": [tool.name for tool in tools_result.tools]},
-            )
-
-            # List available workflows
-            logger.info("Fetching available workflows...")
-            workflows_response = await server.call_tool("workflows-list", {})
-            logger.info(
-                "Available workflows:",
-                data=_tool_result_to_json(workflows_response) or workflows_response,
-            )
-
             # Call the BasicAgentWorkflow
             run_result = await server.call_tool(
                 "workflows-BasicAgentWorkflow-run",
                 arguments={
                     "run_parameters": {
-                        "input": "Find the closest match to this request."
+                        "input": "Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction"
                     }
                 },
             )
 
-            workflow_id: str = run_result.content[0].text
-            logger.info(f"Started BasicAgentWorkflow-run. workflow ID={workflow_id}")
+            run_id: str = run_result.content[0].text
+            logger.info(f"Started BasicAgentWorkflow-run. workflow run ID={run_id}")
 
             # Wait for the workflow to complete
             while True:
                 get_status_result = await server.call_tool(
                     "workflows-BasicAgentWorkflow-get_status",
-                    arguments={"workflow_id": workflow_id},
+                    arguments={"run_id": run_id},
                 )
 
                 workflow_status = _tool_result_to_json(get_status_result)
@@ -69,37 +54,37 @@ async def main():
                     break
 
                 logger.info(
-                    f"Workflow {workflow_id} status:",
+                    f"Workflow run {run_id} status:",
                     data=workflow_status,
                 )
 
                 if not workflow_status.get("status"):
                     logger.error(
-                        f"Workflow {workflow_id} status is empty. get_status_result:",
+                        f"Workflow run {run_id} status is empty. get_status_result:",
                         data=get_status_result,
                     )
                     break
 
                 if workflow_status.get("status") == "completed":
                     logger.info(
-                        f"Workflow {workflow_id} completed successfully! Result:",
+                        f"Workflow run {run_id} completed successfully! Result:",
                         data=workflow_status.get("result"),
                     )
 
                     break
                 elif workflow_status.get("status") == "error":
                     logger.error(
-                        f"Workflow {workflow_id} failed with error:",
+                        f"Workflow run {run_id} failed with error:",
                         data=workflow_status,
                     )
                     break
                 elif workflow_status.get("status") == "running":
                     logger.info(
-                        f"Workflow {workflow_id} is still running...",
+                        f"Workflow run {run_id} is still running...",
                     )
                 elif workflow_status.get("status") == "cancelled":
                     logger.error(
-                        f"Workflow {workflow_id} was cancelled.",
+                        f"Workflow run {run_id} was cancelled.",
                         data=workflow_status,
                     )
                     break
@@ -115,8 +100,10 @@ async def main():
                 # TODO: UNCOMMENT ME to try out cancellation:
                 # await server.call_tool(
                 #     "workflows-cancel",
-                #     arguments={"workflow_id": workflow_id},
+                #     arguments={"workflow_id": "BasicAgentWorkflow", "run_id": run_id},
                 # )
+
+            print(run_result)
 
 
 def _tool_result_to_json(tool_result: CallToolResult):

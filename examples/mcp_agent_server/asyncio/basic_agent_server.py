@@ -73,13 +73,6 @@ class BasicAgentWorkflow(Workflow[str]):
             result = await finder_agent.list_tools()
             logger.info("Tools available:", data=result.model_dump())
 
-            # llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
-            # result = await llm.generate_str(
-            #     message="Print the contents of mcp_agent.config.yaml verbatim",
-            # )
-            # logger.info(f"mcp_agent.config.yaml contents: {result}")
-
-            # Let's switch the same agent to a different LLM
             llm = await finder_agent.attach_llm(AnthropicAugmentedLLM)
 
             result = await llm.generate_str(
@@ -186,11 +179,6 @@ async def main():
         logger.info("Registered workflows:")
         for workflow_id in agent_app.workflows:
             logger.info(f"  - {workflow_id}")
-
-        logger.info("Registered agent configurations:")
-        for name, config in agent_app.agent_configs.items():
-            workflow_type = config.get_agent_type() or "basic"
-            logger.info(f"  - {name} ({workflow_type})")
 
         # Create the MCP server that exposes both workflows and agent configurations
         mcp_server = create_mcp_server_for_app(agent_app)
