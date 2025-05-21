@@ -7,7 +7,6 @@ from typing import (
     Any,
     Dict,
     Generic,
-    List,
     Optional,
     TypeVar,
     TYPE_CHECKING,
@@ -29,131 +28,6 @@ if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
 T = TypeVar("T")
-
-
-class WorkflowRegistry:
-    """
-    Registry for tracking workflow instances.
-    Provides a central place to register, look up, and manage workflow instances.
-
-    TODO: saqadri (MAC) - How does this work with proper workflow orchestration?
-    For example, when using Temporal, this registry should interface with the
-    workflow service to manage workflow instances.
-    """
-
-    def __init__(self):
-        self._workflows: Dict[str, "Workflow"] = {}
-        self._tasks: Dict[str, "asyncio.Task"] = {}
-        self._logger = get_logger("workflow.registry")
-
-    def register(
-        self,
-        workflow_id: str,
-        workflow: "Workflow",
-        task: Optional["asyncio.Task"] = None,
-    ) -> None:
-        """
-        Register a workflow instance and its associated task.
-
-        Args:
-            workflow_id: The unique ID for the workflow
-            workflow: The workflow instance
-            task: The asyncio task running the workflow
-        """
-        self._workflows[workflow_id] = workflow
-        if task:
-            self._tasks[workflow_id] = task
-
-    def unregister(self, workflow_id: str) -> None:
-        """
-        Remove a workflow instance from the registry.
-
-        Args:
-            workflow_id: The unique ID for the workflow
-        """
-        self._workflows.pop(workflow_id, None)
-        self._tasks.pop(workflow_id, None)
-
-    def get_workflow(self, workflow_id: str) -> Optional["Workflow"]:
-        """
-        Get a workflow instance by ID.
-
-        Args:
-            workflow_id: The unique ID for the workflow
-
-        Returns:
-            The workflow instance, or None if not found
-        """
-        return self._workflows.get(workflow_id)
-
-    async def resume_workflow(
-        self,
-        workflow_id: str,
-        signal_name: str | None = "resume",
-        payload: str | None = None,
-    ) -> bool:
-        workflow = self.get_workflow(workflow_id)
-        if not workflow:
-            self._logger.error(
-                f"Cannot resume workflow {workflow_id}: workflow not found"
-            )
-            return False
-
-        return await workflow.resume(signal_name, payload)
-
-    async def cancel_workflow(self, workflow_id: str) -> bool:
-        workflow = self.get_workflow(workflow_id)
-        if not workflow:
-            self._logger.error(
-                f"Cannot cancel workflow {workflow_id}: workflow not found"
-            )
-            return False
-
-        return await workflow.cancel()
-
-    def get_workflow_status(self, workflow_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get the status of a workflow by ID.
-
-        Args:
-            workflow_id: The unique ID of the workflow to check
-
-        Returns:
-            The workflow status if found, None otherwise
-        """
-        workflow = self.get_workflow(workflow_id)
-        if not workflow:
-            return None
-
-        return workflow.get_status()
-
-    def list_workflow_statuses(self) -> List[Dict[str, Any]]:
-        """
-        List all registered workflow instances with their status.
-
-        Returns:
-            A list of dictionaries with workflow information
-        """
-        result = []
-        for workflow_id, workflow in self._workflows.items():
-            # Get the workflow status directly to have consistent behavior
-            status = workflow.get_status()
-            result.append(status)
-
-        return result
-
-    def list_workflows(self) -> list["Workflow"]:
-        """
-        List all registered workflow instances.
-
-        Returns:
-            A list of workflow instances
-        """
-        workflows = []
-
-        for workflow_id, workflow in self._workflows.items():
-            workflows.append(workflow)
-        return workflows
 
 
 class WorkflowState(BaseModel):
