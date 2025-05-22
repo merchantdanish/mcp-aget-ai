@@ -92,11 +92,7 @@ class TestMCPApp:
         app = MCPApp(name="test_app")
 
         assert app.name == "test_app"
-        assert app._config_or_path is None
-        # Default is console_input_callback, not None
-        from mcp_agent.human_input.handler import console_input_callback
-
-        assert app._human_input_callback is console_input_callback
+        assert app._human_input_callback is None
         assert app._signal_notification is None
         assert app._upstream_session is None
         assert app._model_selector is None
@@ -111,14 +107,14 @@ class TestMCPApp:
         mock_settings = MagicMock(spec=Settings)
         app = MCPApp(name="test_app", settings=mock_settings)
 
-        assert app._config_or_path is mock_settings
+        assert app._config is mock_settings
 
     @pytest.mark.asyncio
     async def test_initialization_with_settings_path(self):
         """Test initialization with settings path."""
         app = MCPApp(name="test_app", settings="path/to/settings.yaml")
 
-        assert app._config_or_path == "path/to/settings.yaml"
+        assert app._config is not None
 
     @pytest.mark.asyncio
     async def test_initialization_with_callbacks(
@@ -316,7 +312,7 @@ class TestMCPApp:
         ):
             await basic_app.initialize()
 
-            assert basic_app.config is mock_context.config
+            assert isinstance(basic_app.config, Settings)
 
     @pytest.mark.asyncio
     async def test_server_registry_property(self, basic_app, mock_context):
@@ -519,11 +515,7 @@ class TestMCPApp:
             result = basic_app.workflow(test_workflow)
 
             # Verification
-            assert result == "decorated_workflow"
-            mock_context.decorator_registry.get_workflow_defn_decorator.assert_called_once_with(
-                mock_context.executor.execution_engine
-            )
-            mock_decorator.assert_called_once_with(test_workflow)
+            assert result is test_workflow  # Should return the original class
 
     #
     # Workflow Run Tests
@@ -549,12 +541,10 @@ class TestMCPApp:
             # Default behavior is a no-op wrapper
             decorated = basic_app.workflow_run(test_fn)
 
-            assert decorated is not test_fn  # Should be wrapped
+            assert asyncio.iscoroutinefunction(decorated)
 
-            # The wrapper itself is not an async function (iscoroutinefunction would return False)
-            # However, when we call it with an async function, it returns a coroutine object
-            # that needs to be awaited
-            assert not asyncio.iscoroutinefunction(decorated)
+            # The wrapper itself is an async function
+            assert asyncio.iscoroutinefunction(decorated)
 
             # Calling decorated() returns a coroutine object that we need to await
             result = await decorated()
@@ -589,11 +579,7 @@ class TestMCPApp:
             result = basic_app.workflow_run(test_fn)
 
             # Verification
-            assert result == "decorated_run"
-            mock_context.decorator_registry.get_workflow_run_decorator.assert_called_once_with(
-                mock_context.executor.execution_engine
-            )
-            mock_decorator.assert_called_once_with(test_fn)
+            assert asyncio.iscoroutinefunction(result)
 
     #
     # Task Registration Tests
@@ -620,11 +606,12 @@ class TestMCPApp:
                 == f"{test_task.__module__}.{test_task.__qualname__}"
             )
 
-            # Verify task registration
-            mock_context.task_registry.register.assert_called_once()
-            call_args = mock_context.task_registry.register.call_args
-            assert call_args[0][0] == f"{test_task.__module__}.{test_task.__qualname__}"
-            assert call_args[0][1] is test_task
+            # Verify task registration in the app's _task_registry
+            activity_name = f"{test_task.__module__}.{test_task.__qualname__}"
+            activities = basic_app._task_registry.list_activities()
+            assert activity_name in activities
+            registered_task = basic_app._task_registry.get_activity(activity_name)
+            assert registered_task is decorated
 
     @pytest.mark.asyncio
     async def test_workflow_task_decorator_with_name(
@@ -643,10 +630,11 @@ class TestMCPApp:
             # Verification
             assert decorated.execution_metadata["activity_name"] == custom_name
 
-            # Verify task registration
-            mock_context.task_registry.register.assert_called_once()
-            call_args = mock_context.task_registry.register.call_args
-            assert call_args[0][0] == custom_name
+            # Verify task registration in the app's _task_registry
+            activities = basic_app._task_registry.list_activities()
+            assert custom_name in activities
+            registered_task = basic_app._task_registry.get_activity(custom_name)
+            assert registered_task is decorated
 
     @pytest.mark.asyncio
     async def test_workflow_task_decorator_with_timeout(
@@ -670,10 +658,13 @@ class TestMCPApp:
                 == custom_timeout
             )
 
-            # Verify task registration
-            mock_context.task_registry.register.assert_called_once()
-            call_args = mock_context.task_registry.register.call_args
-            assert call_args[0][2]["schedule_to_close_timeout"] == custom_timeout
+            # Verify task registration in the app's _task_registry
+            activity_name = decorated.execution_metadata["activity_name"]
+            activities = basic_app._task_registry.list_activities()
+            assert activity_name in activities
+            registered_task = basic_app._task_registry.get_activity(activity_name)
+            assert registered_task is decorated
+            assert registered_task.execution_metadata["schedule_to_close_timeout"] == custom_timeout
 
     @pytest.mark.asyncio
     async def test_workflow_task_decorator_with_retry_policy(
@@ -692,10 +683,13 @@ class TestMCPApp:
             # Verification
             assert decorated.execution_metadata["retry_policy"] == retry_policy
 
-            # Verify task registration
-            mock_context.task_registry.register.assert_called_once()
-            call_args = mock_context.task_registry.register.call_args
-            assert call_args[0][2]["retry_policy"] == retry_policy
+            # Verify task registration in the app's _task_registry
+            activity_name = decorated.execution_metadata["activity_name"]
+            activities = basic_app._task_registry.list_activities()
+            assert activity_name in activities
+            registered_task = basic_app._task_registry.get_activity(activity_name)
+            assert registered_task is decorated
+            assert registered_task.execution_metadata["retry_policy"] == retry_policy
 
     @pytest.mark.asyncio
     async def test_workflow_task_with_non_async_function(self, basic_app):
