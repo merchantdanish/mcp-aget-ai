@@ -61,7 +61,8 @@ class NestedLocation(BaseModel):
     location: Location
 
     @field_validator("name")
-    def validate_name(self, v):
+    @classmethod
+    def validate_name(cls, v):
         return v.strip()
 
 
@@ -87,7 +88,8 @@ class ComplexModel(BaseModel):
 
     # Complex validators
     @field_validator("tags")
-    def validate_tags(self, v):
+    @classmethod
+    def validate_tags(cls, v):
         return {tag.lower() for tag in v}
 
     @model_validator(mode="after")
