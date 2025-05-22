@@ -27,8 +27,6 @@ openai:
 otel:
   enabled: true
   exporters: ["console", "file"]
-  path_settings:
-    path_pattern: "traces/mcp-agent-abcd.jsonl"
   # If running jaeger locally, uncomment the following lines and add "otlp" to the exporters list
   # otlp_settings:
   #   endpoint: "http://localhost:4318/v1/traces"

@@ -207,7 +207,7 @@ async def cleanup_context():
 
     # Shutdown logging and telemetry
     await LoggingConfig.shutdown()
-    await TracingConfig.cleanup()
+    # await TracingConfig.cleanup()
 
 
 _global_context: Context | None = None

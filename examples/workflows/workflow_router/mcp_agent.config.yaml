@@ -20,9 +20,9 @@ openai:
   default_model: "gpt-4o-mini"
 
 otel:
-  enabled: true
-  exporters: ["otlp"]
+  enabled: false
+  exporters: ["console"]
   # If running jaeger locally, uncomment the following lines and add "otlp" to the exporters list
-  otlp_settings:
-    endpoint: "http://localhost:4318/v1/traces"
+  # otlp_settings:
+  #   endpoint: "http://localhost:4318/v1/traces"
   service_name: "WorkflowRouterExample"
