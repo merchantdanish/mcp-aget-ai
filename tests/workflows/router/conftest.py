@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import numpy as np
 from typing import List, Dict, Callable, Optional, Any
 
-from mcp_agent.context import Context
+from mcp_agent.core.context import Context
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.embedding.embedding_base import FloatArray, EmbeddingModel
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM

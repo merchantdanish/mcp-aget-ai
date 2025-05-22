@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 from mcp_agent.workflows.router.router_llm import LLMRouter
 from mcp_agent.workflows.router.router_llm_anthropic import (

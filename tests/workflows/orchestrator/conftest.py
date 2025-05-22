@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, MagicMock
 from typing import Optional
 
 from mcp_agent.agents.agent import Agent
-from mcp_agent.context import Context
-from mcp_agent.mcp_server_registry import ServerRegistry
+from mcp_agent.core.context import Context
+from mcp_agent.mcp.mcp_server_registry import ServerRegistry
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 from mcp_agent.workflows.orchestrator.orchestrator_models import (
     Plan,
