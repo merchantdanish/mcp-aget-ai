@@ -306,6 +306,7 @@ class OpenAIAugmentedLLM(
                             self.logger.error(
                                 f"Warning: Unexpected error during tool execution: {result}. Continuing..."
                             )
+                            span.record_exception(result)
                             continue
                         if result is not None:
                             messages.append(result)
