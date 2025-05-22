@@ -17,12 +17,15 @@ class TestAgent:
 
     @pytest.fixture
     def mock_context(self):
-        """Mock Context with necessary attributes."""
-        mock_context = MagicMock()
-        mock_context.executor = MagicMock()
-        mock_context.human_input_handler = None
-        mock_context.server_registry = MagicMock()
-        return mock_context
+        """Create a Context with mocked components for testing."""
+        from mcp_agent.core.context import Context
+
+        context = Context()
+        # Use an AsyncMock for executor to support 'await executor.execute(...)'
+        context.executor = AsyncMock()
+        context.human_input_handler = None
+        context.server_registry = MagicMock()
+        return context
 
     @pytest.fixture
     def basic_agent(self, mock_context):
@@ -47,12 +50,15 @@ class TestAgent:
     @pytest.fixture
     def agent_with_human_input(self, mock_context, mock_human_input_callback):
         """Create an Agent with human input callback."""
-        return Agent(
+        agent = Agent(
             name="test_agent_with_human_input",
             instruction="You are a helpful agent.",
             context=mock_context,
             human_input_callback=mock_human_input_callback,
         )
+        # Ensure executor is accessible directly on the agent for patching in tests
+        agent.executor = agent.context.executor
+        return agent
 
     @pytest.fixture
     def test_function(self):
@@ -189,12 +195,12 @@ class TestAgent:
     @pytest.mark.asyncio
     async def test_shutdown(self, basic_agent):
         """Test agent shutdown."""
-        # Mock the superclass close method to avoid actual implementation
-        with patch(
-            "mcp_agent.mcp.mcp_aggregator.MCPAggregator.close", AsyncMock()
-        ) as mock_close:
+        # Patch the executor's execute method to simulate shutdown_aggregator_task
+        with patch.object(
+            basic_agent.context.executor, "execute", AsyncMock(return_value=True)
+        ) as mock_execute:
             await basic_agent.shutdown()
-            mock_close.assert_called_once()
+            mock_execute.assert_called_once()
 
     #
     # Human Input Tests
@@ -265,7 +271,7 @@ class TestAgent:
             raise Exception(error_message)
 
         # Setup the executor signal mock to verify it gets called
-        agent_with_human_input.executor.signal = AsyncMock()
+        agent_with_human_input.context.executor.signal = AsyncMock()
 
         # Apply the mock
         with patch.object(
@@ -281,43 +287,53 @@ class TestAgent:
 
     @pytest.mark.asyncio
     async def test_list_tools_parent_call(self, basic_agent):
-        """Test that list_tools calls parent method."""
-        # Mock initialize and super().list_tools
-        with patch.object(basic_agent, "initialize", AsyncMock()) as mock_initialize:
-            mock_result = ListToolsResult(
-                tools=[
-                    Tool(
-                        name="parent_tool", description="A parent tool", inputSchema={}
-                    )
-                ]
-            )
-            with patch(
-                "mcp_agent.mcp.mcp_aggregator.MCPAggregator.list_tools",
-                AsyncMock(return_value=mock_result),
-            ):
-                result = await basic_agent.list_tools()
-
-                mock_initialize.assert_called_once()
-                assert "parent_tool" in [tool.name for tool in result.tools]
+        """Test that list_tools returns parent tool from internal state."""
+        # Patch executor.execute to return InitAggregatorResponse with parent_tool
+        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+        namespaced_tool = NamespacedTool(
+            namespaced_tool_name="parent_tool",
+            tool=parent_tool,
+            server_name="server1"
+        )
+        init_response = InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={"parent_tool": namespaced_tool},
+            server_to_tool_map={"server1": [namespaced_tool]},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+        )
+        with patch.object(
+            basic_agent.context.executor, "execute", AsyncMock(return_value=init_response)
+        ):
+            # Force re-initialization
+            basic_agent.initialized = False
+            result = await basic_agent.list_tools()
+            assert "parent_tool" in [tool.name for tool in result.tools]
 
     @pytest.mark.asyncio
     async def test_list_tools_with_functions(self, agent_with_functions, test_function):
         """Test that list_tools includes function tools."""
-        # Mock super().list_tools
-        parent_tools = [
-            Tool(name="parent_tool", description="A parent tool", inputSchema={})
-        ]
-        mock_result = ListToolsResult(tools=parent_tools)
-
-        with patch(
-            "mcp_agent.mcp.mcp_aggregator.MCPAggregator.list_tools",
-            AsyncMock(return_value=mock_result),
+        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+        namespaced_tool = NamespacedTool(
+            namespaced_tool_name="parent_tool",
+            tool=parent_tool,
+            server_name="server1"
+        )
+        init_response = InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={"parent_tool": namespaced_tool},
+            server_to_tool_map={"server1": [namespaced_tool]},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+        )
+        with patch.object(
+            agent_with_functions.context.executor, "execute", AsyncMock(return_value=init_response)
         ):
-            agent_with_functions.initialized = True  # Skip initialization
+            agent_with_functions.initialized = False  # Force re-initialization
             result = await agent_with_functions.list_tools()
-
             tool_names = [tool.name for tool in result.tools]
-
             # Check that both parent tool and function tool are in result
             assert "parent_tool" in tool_names
             assert (
@@ -327,25 +343,29 @@ class TestAgent:
     @pytest.mark.asyncio
     async def test_list_tools_with_human_input(self, agent_with_human_input):
         """Test that list_tools includes human input tool when callback is set."""
-        # Mock super().list_tools
-        parent_tools = [
-            Tool(name="parent_tool", description="A parent tool", inputSchema={})
-        ]
-        mock_result = ListToolsResult(tools=parent_tools)
-
-        with patch(
-            "mcp_agent.mcp.mcp_aggregator.MCPAggregator.list_tools",
-            AsyncMock(return_value=mock_result),
+        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+        namespaced_tool = NamespacedTool(
+            namespaced_tool_name="parent_tool",
+            tool=parent_tool,
+            server_name="server1"
+        )
+        init_response = InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={"parent_tool": namespaced_tool},
+            server_to_tool_map={"server1": [namespaced_tool]},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+        )
+        with patch.object(
+            agent_with_human_input.context.executor, "execute", AsyncMock(return_value=init_response)
         ):
-            agent_with_human_input.initialized = True  # Skip initialization
+            agent_with_human_input.initialized = False  # Force re-initialization
             result = await agent_with_human_input.list_tools()
-
             tool_names = [tool.name for tool in result.tools]
-
             # Check that both parent tool and human input tool are in result
             assert "parent_tool" in tool_names
             assert HUMAN_INPUT_TOOL_NAME in tool_names
-
             # Find the human input tool and check its schema
             human_input_tool = next(
                 (tool for tool in result.tools if tool.name == HUMAN_INPUT_TOOL_NAME),
@@ -357,21 +377,26 @@ class TestAgent:
     @pytest.mark.asyncio
     async def test_list_tools_without_human_input(self, basic_agent):
         """Test that list_tools doesn't include human input tool when callback is not set."""
-        # Mock super().list_tools
-        parent_tools = [
-            Tool(name="parent_tool", description="A parent tool", inputSchema={})
-        ]
-        mock_result = ListToolsResult(tools=parent_tools)
-
-        with patch(
-            "mcp_agent.mcp.mcp_aggregator.MCPAggregator.list_tools",
-            AsyncMock(return_value=mock_result),
+        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+        namespaced_tool = NamespacedTool(
+            namespaced_tool_name="parent_tool",
+            tool=parent_tool,
+            server_name="server1"
+        )
+        init_response = InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={"parent_tool": namespaced_tool},
+            server_to_tool_map={"server1": [namespaced_tool]},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+        )
+        with patch.object(
+            basic_agent.context.executor, "execute", AsyncMock(return_value=init_response)
         ):
-            basic_agent.initialized = True  # Skip initialization
+            basic_agent.initialized = False  # Force re-initialization
             result = await basic_agent.list_tools()
-
             tool_names = [tool.name for tool in result.tools]
-
             # Check that parent tool is in result but human input tool is not
             assert "parent_tool" in tool_names
             assert HUMAN_INPUT_TOOL_NAME not in tool_names
@@ -383,36 +408,71 @@ class TestAgent:
     @pytest.mark.asyncio
     async def test_call_tool_parent(self, basic_agent):
         """Test calling a parent tool."""
+        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
         tool_name = "parent_tool"
         arguments = {"arg1": "value1"}
         mock_result = CallToolResult(
             content=[TextContent(type="text", text="Tool result")]
         )
+        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+        namespaced_tool = NamespacedTool(
+            namespaced_tool_name="parent_tool",
+            tool=parent_tool,
+            server_name="server1"
+        )
+        init_response = InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={"parent_tool": namespaced_tool},
+            server_to_tool_map={"server1": [namespaced_tool]},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+        )
+        # Patch executor.execute to return InitAggregatorResponse for initialization,
+        # and CallToolResult for the tool call
+        def execute_side_effect(*args, **kwargs):
+            if not basic_agent.initialized:
+                return init_response
+            return mock_result
 
-        # Mock parent call_tool method
-        with patch(
-            "mcp_agent.mcp.mcp_aggregator.MCPAggregator.call_tool",
-            AsyncMock(return_value=mock_result),
+        with patch.object(
+            basic_agent.context.executor, "execute", AsyncMock(side_effect=execute_side_effect)
         ):
+            basic_agent.initialized = False  # Force re-initialization
             result = await basic_agent.call_tool(tool_name, arguments)
-
             assert result == mock_result
 
     @pytest.mark.asyncio
     async def test_call_tool_function(self, agent_with_functions, test_function):
         """Test calling a function tool."""
+        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
         tool_name = test_function.__name__  # Should be "function" not "test_function"
         arguments = {"param1": "test", "param2": 42}
-
-        result = await agent_with_functions.call_tool(tool_name, arguments)
-
-        assert result.isError is False
-        assert len(result.content) == 1
-        assert "Function called with test and 42" in result.content[0].text
+        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+        namespaced_tool = NamespacedTool(
+            namespaced_tool_name="parent_tool",
+            tool=parent_tool,
+            server_name="server1"
+        )
+        init_response = InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={"parent_tool": namespaced_tool},
+            server_to_tool_map={"server1": [namespaced_tool]},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+        )
+        with patch.object(
+            agent_with_functions.context.executor, "execute", AsyncMock(return_value=init_response)
+        ):
+            agent_with_functions.initialized = False  # Force re-initialization
+            result = await agent_with_functions.call_tool(tool_name, arguments)
+            assert result.isError is False
+            assert len(result.content) == 1
+            assert "Function called with test and 42" in result.content[0].text
 
     @pytest.mark.asyncio
     async def test_call_tool_human_input(self, agent_with_human_input):
         """Test calling the human input tool."""
+        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
         tool_name = HUMAN_INPUT_TOOL_NAME
         arguments = {
             "request": {
@@ -420,20 +480,35 @@ class TestAgent:
                 "description": "This is a test",
             }
         }
-
+        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+        namespaced_tool = NamespacedTool(
+            namespaced_tool_name="parent_tool",
+            tool=parent_tool,
+            server_name="server1"
+        )
+        init_response = InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={"parent_tool": namespaced_tool},
+            server_to_tool_map={"server1": [namespaced_tool]},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+        )
         # Mock the request_human_input method
         response = HumanInputResponse(request_id="test-id", response="User input")
         agent_with_human_input.request_human_input = AsyncMock(return_value=response)
-
-        result = await agent_with_human_input.call_tool(tool_name, arguments)
-
-        assert result.isError is False
-        assert len(result.content) == 1
-        assert "Human response:" in result.content[0].text
+        with patch.object(
+            agent_with_human_input.context.executor, "execute", AsyncMock(return_value=init_response)
+        ):
+            agent_with_human_input.initialized = False  # Force re-initialization
+            result = await agent_with_human_input.call_tool(tool_name, arguments)
+            assert result.isError is False
+            assert len(result.content) == 1
+            assert "Human response:" in result.content[0].text
 
     @pytest.mark.asyncio
     async def test_call_tool_human_input_timeout(self, agent_with_human_input):
         """Test calling the human input tool with timeout."""
+        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
         tool_name = HUMAN_INPUT_TOOL_NAME
         arguments = {
             "request": {
@@ -442,21 +517,36 @@ class TestAgent:
                 "timeout_seconds": 5,
             }
         }
-
+        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+        namespaced_tool = NamespacedTool(
+            namespaced_tool_name="parent_tool",
+            tool=parent_tool,
+            server_name="server1"
+        )
+        init_response = InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={"parent_tool": namespaced_tool},
+            server_to_tool_map={"server1": [namespaced_tool]},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+        )
         # Mock the request_human_input method to raise TimeoutError
         agent_with_human_input.request_human_input = AsyncMock(
             side_effect=TimeoutError("Timeout occurred")
         )
-
-        result = await agent_with_human_input.call_tool(tool_name, arguments)
-
-        assert result.isError is True
-        assert len(result.content) == 1
-        assert "Error: Human input request timed out" in result.content[0].text
+        with patch.object(
+            agent_with_human_input.context.executor, "execute", AsyncMock(return_value=init_response)
+        ):
+            agent_with_human_input.initialized = False  # Force re-initialization
+            result = await agent_with_human_input.call_tool(tool_name, arguments)
+            assert result.isError is True
+            assert len(result.content) == 1
+            assert "Error: Human input request timed out" in result.content[0].text
 
     @pytest.mark.asyncio
     async def test_call_tool_human_input_error(self, agent_with_human_input):
         """Test calling the human input tool with general error."""
+        from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
         tool_name = HUMAN_INPUT_TOOL_NAME
         arguments = {
             "request": {
@@ -464,19 +554,33 @@ class TestAgent:
                 "description": "This is a test",
             }
         }
-
+        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+        namespaced_tool = NamespacedTool(
+            namespaced_tool_name="parent_tool",
+            tool=parent_tool,
+            server_name="server1"
+        )
+        init_response = InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={"parent_tool": namespaced_tool},
+            server_to_tool_map={"server1": [namespaced_tool]},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+        )
         # Mock the request_human_input method to raise Exception
         error_message = "Something went wrong"
         agent_with_human_input.request_human_input = AsyncMock(
             side_effect=Exception(error_message)
         )
-
-        result = await agent_with_human_input.call_tool(tool_name, arguments)
-
-        assert result.isError is True
-        assert len(result.content) == 1
-        assert "Error requesting human input" in result.content[0].text
-        assert error_message in result.content[0].text
+        with patch.object(
+            agent_with_human_input.context.executor, "execute", AsyncMock(return_value=init_response)
+        ):
+            agent_with_human_input.initialized = False  # Force re-initialization
+            result = await agent_with_human_input.call_tool(tool_name, arguments)
+            assert result.isError is True
+            assert len(result.content) == 1
+            assert "Error requesting human input" in result.content[0].text
+            assert error_message in result.content[0].text
 
     @pytest.mark.asyncio
     async def test_call_tool_with_custom_callable_instruction(self, mock_context):
