@@ -26,13 +26,13 @@ class OpenAILLMIntentClassifier(LLMIntentClassifier):
         self,
         intents: List[Intent],
         classification_instruction: str | None = None,
+        name: str | None = None,
+        llm: OpenAIAugmentedLLM | None = None,
         context: Optional["Context"] = None,
         **kwargs,
     ):
-        openai_llm = OpenAIAugmentedLLM(
-            instruction=CLASSIFIER_SYSTEM_INSTRUCTION,
-            context=context,
-            name=f"intent-classifier-{str(context.executor.uuid() if context else uuid.uuid4())}",
+        openai_llm = llm or OpenAIAugmentedLLM(
+            name=name, instruction=CLASSIFIER_SYSTEM_INSTRUCTION, context=context
         )
 
         super().__init__(
@@ -46,8 +46,10 @@ class OpenAILLMIntentClassifier(LLMIntentClassifier):
     @classmethod
     async def create(
         cls,
+        llm: OpenAIAugmentedLLM,
         intents: List[Intent],
         classification_instruction: str | None = None,
+        name: str | None = None,
         context: Optional["Context"] = None,
     ) -> "OpenAILLMIntentClassifier":
         """
@@ -55,8 +57,10 @@ class OpenAILLMIntentClassifier(LLMIntentClassifier):
         Use this instead of constructor since we need async initialization.
         """
         instance = cls(
+            llm=llm,
             intents=intents,
             classification_instruction=classification_instruction,
+            name=name,
             context=context,
         )
         await instance.initialize()

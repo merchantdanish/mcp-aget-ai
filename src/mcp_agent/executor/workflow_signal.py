@@ -14,10 +14,36 @@ class Signal(BaseModel, Generic[SignalValueT]):
     """Represents a signal that can be sent to a workflow."""
 
     name: str
+    """
+    The name of the signal. This is used to identify the signal and route it to the correct handler.
+    """
+
     description: str | None = "Workflow Signal"
+    """
+    A description of the signal. This can be used to provide additional context about the signal.
+    """
+
     payload: SignalValueT | None = None
+    """
+    The payload of the signal. This is the data that will be sent with the signal.
+    """
+
     metadata: Dict[str, Any] | None = None
+    """
+    Additional metadata about the signal. This can be used to provide extra context or information.
+    """
+
     workflow_id: str | None = None
+    """
+    The ID of the workflow that this signal is associated with. 
+    This is used in conjunction with the run_id to identify the specific workflow instance.
+    """
+
+    run_id: str | None = None
+    """
+    The unique ID for this specific workflow run to signal. 
+    This is used to identify the specific instance of the workflow that this signal is associated with.
+    """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -28,6 +54,7 @@ class SignalRegistration(BaseModel):
     signal_name: str
     unique_name: str
     workflow_id: str | None = None
+    run_id: str | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -204,6 +231,7 @@ class AsyncioSignalHandler(BaseSignalHandler[SignalValueT]):
             signal_name=signal.name,
             unique_name=unique_name,
             workflow_id=signal.workflow_id,
+            run_id=signal.run_id,
         )
 
         pending_signal = PendingSignal(registration=registration, event=event)
@@ -312,6 +340,7 @@ class SignalWaitCallback(Protocol):
         signal_name: str,
         request_id: str | None = None,
         workflow_id: str | None = None,
+        run_id: str | None = None,
         metadata: Dict[str, Any] | None = None,
     ) -> None:
         """
@@ -320,6 +349,7 @@ class SignalWaitCallback(Protocol):
         Args:
             signal_name: The name of the signal the workflow is pausing on.
             workflow_id: The ID of the workflow that is pausing (if using a workflow engine).
+            run_id: The ID of the workflow run that is pausing (if using a workflow engine).
             metadata: Additional metadata about the signal.
         """
         ...

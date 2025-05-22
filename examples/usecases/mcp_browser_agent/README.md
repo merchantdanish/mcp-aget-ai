@@ -1,57 +1,65 @@
-# 🌐 Browser Console Agent
+# 🌐 Browser Console Agent Example
 
-A command-line application that lets you interact with websites using natural language through the Model Context Protocol (MCP).
+A command-line application that lets you interact with websites using natural language through the Model Context Protocol (MCP) with the use of the [Puppeteer MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer).
 
-![browser agent](https://andrew-dev-s3.s3.us-east-1.amazonaws.com/browser-agent.gif)
-
-## Features
+https://github.com/user-attachments/assets/195af0e7-1bd1-42bf-b77a-15ca28d36f1f
 
 - **Natural Language Control**: Navigate and interact with websites using conversational commands
 - **Continuous Browser Session**: Keep the same browser context across multiple queries
 - **Real-time Website Analysis**: Extract information, analyze content, and take screenshots
 - **Interactive Console Interface**: Simple terminal-based interface for browsing the web
 
-## Requirements
+```plaintext
+┌─────────┐      ┌───────────┐      ┌──────────────┐
+│ Console │─────▶│  Browser  │─────▶│  Puppeteer   │
+└─────────┘      │  Agent    │      │  MCP Server  │
+                 └───────────┘      └──────────────┘
+```
 
-- Python 3.13+
-- Node.js and npm (for the MCP Puppeteer server)
-- OpenAI API key
+## `1` App set up
 
-## Installation
+First, clone the repo and navigate to the browser agent example:
 
-1. Install using `uv`:
+```bash
+git clone https://github.com/lastmile-ai/mcp-agent.git
+cd mcp-agent/examples/usecases/mcp_browser_agent
+```
 
-   ```bash
-   uv pip install .
-   ```
+Install the UV tool (if you don’t have it) to manage dependencies:
 
-2. Make sure Node.js and npm are installed:
+```bash
+pip install uv
 
-   ```bash
-   node --version
-   npm --version
-   ```
+# inside the example:
+uv pip install .
+```
 
-3. Configure your API keys in `mcp_agent.secrets.yaml`:
-   ```yaml
-   openai:
-     api_key: your-openai-api-key
-   ```
+Make sure Node.js and npm are installed:
 
-## Usage
+```bash
+node --version
+npm --version
+```
 
-1. Run the console app:
+## `2` Set up environment variables
 
-   ```bash
-   uv run console_agent.py [URL]
-   ```
+Copy and configure your secrets and env variables:
 
-   If no URL is provided, it defaults to the Wikipedia page for large language models.
+```bash
+cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
+```
 
-2. Type commands to interact with the webpage or select numbered options
-3. Type `exit` or `quit` to end the session
+Then open `mcp_agent.secrets.yaml` and add your api key for your preferred LLM.
 
-## Example Commands
+## `3` Run locally
+
+Run your MCP Agent app:
+
+```bash
+uv run console_agent.py [URL]
+```
+
+### Example Commands
 
 - "Summarize the content on this page"
 - "Click on the 'Documentation' link"
@@ -79,4 +87,4 @@ The app maintains a continuous browser session, allowing you to:
 
 - Make sure Node.js and npm are properly installed
 - Check that your OpenAI API key is correctly configured in `mcp_agent.secrets.yaml`
-- If you encounter issues with the Puppeteer server, ensure you have a compatible browser installed
+- # If you encounter issues with the Puppeteer server, ensure you have a compatible browser installed

@@ -19,7 +19,8 @@ from mcp.types import (
 
 from mcp_agent.core.context import Context
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME, GEN_AI_TOOL_NAME
-from mcp_agent.tracing.telemetry import record_attributes
+from mcp_agent.tracing.telemetry import record_attributes, serialize_attributes
+from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator, NamespacedPrompt, NamespacedTool
 from mcp_agent.human_input.types import (
     HumanInputRequest,
@@ -177,6 +178,7 @@ class Agent(BaseModel):
                 value = getattr(self.llm, attr, None)
                 if value is not None:
                     span.set_attribute(f"llm.{attr}", value)
+
             return self.llm
 
     async def initialize(self, force: bool = False):
@@ -194,7 +196,6 @@ class Agent(BaseModel):
                 if self.initialized and not force:
                     return
 
-                span.add_event("initialize_start")
                 logger.debug(f"Initializing agent {self.name}...")
 
                 executor = self.context.executor
@@ -229,7 +230,6 @@ class Agent(BaseModel):
                 self._server_to_prompt_map.update(result.server_to_prompt_map)
 
                 self.initialized = result.initialized
-                span.add_event("initialize_complete")
                 logger.debug(f"Agent {self.name} initialized.")
 
     async def shutdown(self):
@@ -244,7 +244,6 @@ class Agent(BaseModel):
             f"{self.__class__.__name__}.{self.name}.shutdown"
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.name)
-            span.add_event("agent_shutdown_start")
 
             executor = self.context.executor
             result: bool = await executor.execute(
@@ -259,8 +258,14 @@ class Agent(BaseModel):
                 )
 
             self.initialized = False
-            span.add_event("agent_shutdown_complete")
             logger.debug(f"Agent {self.name} shutdown.")
+
+    async def close(self):
+        """
+        Close the agent and release all resources.
+        Synonymous with shutdown.
+        """
+        await self.shutdown()
 
     async def __aenter__(self):
         await self.initialize()
@@ -323,6 +328,21 @@ class Agent(BaseModel):
                     f"Available servers: {list(result.keys())}"
                 )
 
+    async def get_server_session(self, server_name: str):
+        """
+        Get the session data of a specific server.
+        """
+        if not self.initialized:
+            await self.initialize()
+
+        executor = self.context.executor
+        result: GetServerSessionResponse = await executor.execute(
+            self._agent_tasks.get_server_session,
+            GetServerSessionRequest(agent_name=self.name, server_name=server_name),
+        )
+
+        return result
+
     async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
@@ -340,7 +360,7 @@ class Agent(BaseModel):
             if server_name:
                 span.set_attribute("server_name", server_name)
                 result = ListToolsResult(
-                    tools=[
+                    prompts=[
                         namespaced_tool.tool.model_copy(
                             update={"name": namespaced_tool.namespaced_tool_name}
                         )
@@ -369,10 +389,7 @@ class Agent(BaseModel):
                     )
                 )
 
-            # Add a human_input_callback as a tool
-            if not self.human_input_callback:
-                logger.debug("Human input callback not set")
-
+            def _annotate_span_for_tools_result(result: ListToolsResult):
                 for tool in result.tools:
                     span.set_attribute(
                         f"tool.{tool.name}.description", tool.description
@@ -394,6 +411,10 @@ class Agent(BaseModel):
                                     f"tool.{tool.name}.annotations.{attr}", value
                                 )
 
+            # Add a human_input_callback as a tool
+            if not self.human_input_callback:
+                logger.debug("Human input callback not set")
+                _annotate_span_for_tools_result(result)
                 return result
 
             # Add a human_input_callback as a tool
@@ -414,25 +435,7 @@ class Agent(BaseModel):
                 )
             )
 
-            for tool in result.tools:
-                span.set_attribute(f"tool.{tool.name}.description", tool.description)
-                span.set_attribute(
-                    f"tool.{tool.name}.inputSchema", json.dumps(tool.inputSchema)
-                )
-                if tool.annotations:
-                    for attr in [
-                        "title",
-                        "readOnlyHint",
-                        "destructiveHint",
-                        "idempotentHint",
-                        "openWorldHint",
-                    ]:
-                        value = getattr(tool.annotations, attr, None)
-                        if value is not None:
-                            span.set_attribute(
-                                f"tool.{tool.name}.annotations.{attr}", value
-                            )
-
+            _annotate_span_for_tools_result(result)
             return result
 
     async def list_prompts(self, server_name: str | None = None) -> ListPromptsResult:
@@ -442,11 +445,9 @@ class Agent(BaseModel):
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.name)
             span.set_attribute("initialized", self.initialized)
-
             if server_name:
                 span.set_attribute("server_name", server_name)
 
-            # Check if the agent is initialized
             if not self.initialized:
                 await self.initialize()
 
@@ -457,7 +458,6 @@ class Agent(BaseModel):
             )
 
             span.set_attribute("prompts", [prompt.name for prompt in result.prompts])
-
             for prompt in result.prompts:
                 span.set_attribute(
                     f"prompt.{prompt.name}.description", prompt.description
@@ -571,12 +571,15 @@ class Agent(BaseModel):
                 try:
                     user_input = await self.human_input_callback(request)
                     logger.debug("Received human input:", data=user_input)
+                    event_metadata = serialize_attributes(
+                        user_input.metadata or {}, "request.metadata"
+                    )
                     span.add_event(
                         "human_input_received",
                         {
                             request_id: user_input.request_id,
                             "response": user_input.response,
-                            "metadata": json.dumps(user_input.metadata or {}),
+                            **event_metadata,
                         },
                     )
                     await self.context.executor.signal(
@@ -601,17 +604,23 @@ class Agent(BaseModel):
                 signal_type=HumanInputResponse,  # TODO: saqadri - should this be HumanInputResponse?
             )
 
+            signal_event_data = {
+                "signal_name": request_id,
+                "request_id": request.request_id,
+                "signal_description": request.description or request.prompt,
+                "response": result.response,
+            }
+
+            if request.workflow_id:
+                signal_event_data["workflow_id"] = request.workflow_id
+            if request.timeout_seconds:
+                signal_event_data["timeout_seconds"] = request.timeout_seconds
+
             span.add_event(
                 "human_input_signal_received",
-                {
-                    "signal_name": request_id,
-                    "request_id": request.request_id,
-                    "workflow_id": request.workflow_id,
-                    "signal_description": request.description or request.prompt,
-                    "timeout_seconds": request.timeout_seconds,
-                    "response": result.response,
-                },
+                signal_event_data,
             )
+
             logger.debug("Received human input signal", data=result)
             return result
 
@@ -619,7 +628,6 @@ class Agent(BaseModel):
         self, name: str, arguments: dict | None = None, server_name: str | None = None
     ) -> CallToolResult:
         # Call the tool on the server
-
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.call_tool"
@@ -794,6 +802,25 @@ class GetCapabilitiesRequest(BaseModel):
 
     agent_name: str
     server_name: Optional[str] = None
+
+
+class GetServerSessionRequest(BaseModel):
+    """
+    Request to get the session data of a specific server.
+    """
+
+    agent_name: str
+    server_name: str
+
+
+class GetServerSessionResponse(BaseModel):
+    """
+    Response to the get server session request.
+    """
+
+    session_id: str | None = None
+    session_data: dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
 
 
 class AgentTasks:
@@ -973,3 +1000,27 @@ class AgentTasks:
             )
 
         return server_capabilities
+
+    async def get_server_session(
+        self, request: GetServerSessionRequest
+    ) -> GetServerSessionResponse:
+        """
+        Get the session for a specific server.
+        """
+        agent_name = request.agent_name
+        server_name = request.server_name
+
+        # Get the MCPAggregator for the agent
+        aggregator = self.server_aggregators_for_agent.get(agent_name)
+        if not aggregator:
+            raise ValueError(f"Server aggregrator for agent '{agent_name}' not found")
+
+        server_session: MCPAgentClientSession = await aggregator.get_server(
+            server_name=server_name
+        )
+
+        session_id = server_session.get_session_id()
+
+        return GetServerSessionResponse(
+            session_id=session_id,
+        )

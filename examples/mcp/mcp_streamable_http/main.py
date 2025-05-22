@@ -3,8 +3,6 @@ import time
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
-from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
-from mcp_agent.mcp.mcp_connection_manager import ServerConnection
 
 
 # Settings can either be specified programmatically,
@@ -34,12 +32,7 @@ async def example_usage():
             result = await agent.list_tools()
             logger.info("Tools available:", data=result.model_dump())
 
-            # NOTE: this section is for illustration purposes only
-            server_connection: ServerConnection = (
-                await agent._persistent_connection_manager.get_server("stateless_http")
-            )
-            session: MCPAgentClientSession = server_connection.session
-            session_id = session.get_session_id()
+            session_id = (await agent.get_server_session("stateless_http")).session_id
             logger.info(
                 "Session ID:", data=session_id
             )  # Expected to be None for stateless server

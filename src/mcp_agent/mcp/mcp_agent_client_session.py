@@ -13,7 +13,6 @@ from mcp.shared.session import (
     ReceiveResultT,
     ReceiveNotificationT,
     RequestId,
-    SendNotificationT,
     SendResultT,
     ProgressFnT,
 )
@@ -55,6 +54,9 @@ from mcp_agent.tracing.semconv import (
     MCP_TOOL_NAME,
 )
 from mcp_agent.tracing.telemetry import record_attributes
+
+if TYPE_CHECKING:
+    from mcp_agent.core.context import Context
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -142,6 +144,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         progress_callback: ProgressFnT | None = None,
     ) -> ReceiveResultT:
         logger.debug("send_request: request=", data=request.model_dump())
+
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.send_request", kind=trace.SpanKind.CLIENT
@@ -185,7 +188,6 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
                     progress_callback,
                 )
                 logger.debug("send_request: response=", data=result.model_dump())
-
                 record_attributes(span, result.model_dump(), "result")
                 return result
             except Exception as e:
@@ -198,6 +200,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         related_request_id: RequestId | None = None,
     ) -> None:
         logger.debug("send_notification:", data=notification.model_dump())
+
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.send_notification", kind=trace.SpanKind.CLIENT
@@ -210,7 +213,6 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
                 record_attributes(
                     span, notification.root.parms.model_dump(), MCP_REQUEST_ARGUMENT_KEY
                 )
-
             try:
                 return await super().send_notification(notification, related_request_id)
             except Exception as e:
