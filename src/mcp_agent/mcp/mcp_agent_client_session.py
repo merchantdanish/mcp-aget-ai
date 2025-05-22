@@ -4,8 +4,9 @@ It adds logging and supports sampling requests.
 """
 
 from datetime import timedelta
-from opentelemetry import trace
 from typing import Any, Callable, Optional, TYPE_CHECKING
+from opentelemetry import trace
+
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientSession
@@ -56,9 +57,6 @@ from mcp_agent.tracing.semconv import (
     MCP_TOOL_NAME,
 )
 from mcp_agent.tracing.telemetry import record_attributes
-
-if TYPE_CHECKING:
-    from mcp_agent.core.context import Context
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context

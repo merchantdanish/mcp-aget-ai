@@ -281,7 +281,7 @@ class AsyncioExecutor(Executor):
         else:
             return await run_task(task)
 
-    @telemetry.traced(name="AsyncioExecutor.execute")
+    @telemetry.traced()
     async def execute(
         self,
         task: Callable[..., R] | Coroutine[Any, Any, R],

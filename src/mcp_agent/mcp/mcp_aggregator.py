@@ -409,14 +409,7 @@ class MCPAggregator(ContextDependent):
                     logger.error(
                         f"Error loading server data: {result}. Attempting to continue"
                     )
-                    span.add_event(
-                        "server_load_error",
-                        {
-                            "server_name": server_name,
-                            "exception.type": type(result).__name__,
-                            "exception.message": str(result),
-                        },
-                    )
+                    span.record_exception(result, {"server_name": server_name})
                     continue
                 else:
                     span.add_event(

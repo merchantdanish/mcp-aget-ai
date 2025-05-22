@@ -400,10 +400,7 @@ class Agent(BaseModel):
                     )
                 )
 
-            # Add a human_input_callback as a tool
-            if not self.human_input_callback:
-                logger.debug("Human input callback not set")
-
+            def _annotate_span_for_tools_result(result: ListToolsResult):
                 for tool in result.tools:
                     span.set_attribute(
                         f"tool.{tool.name}.description", tool.description
@@ -425,6 +422,11 @@ class Agent(BaseModel):
                                     f"tool.{tool.name}.annotations.{attr}", value
                                 )
 
+            # Add a human_input_callback as a tool
+            if not self.human_input_callback:
+                logger.debug("Human input callback not set")
+                _annotate_span_for_tools_result(result)
+
                 return result
 
             # Add a human_input_callback as a tool
@@ -445,24 +447,7 @@ class Agent(BaseModel):
                 )
             )
 
-            for tool in result.tools:
-                span.set_attribute(f"tool.{tool.name}.description", tool.description)
-                span.set_attribute(
-                    f"tool.{tool.name}.inputSchema", json.dumps(tool.inputSchema)
-                )
-                if tool.annotations:
-                    for attr in [
-                        "title",
-                        "readOnlyHint",
-                        "destructiveHint",
-                        "idempotentHint",
-                        "openWorldHint",
-                    ]:
-                        value = getattr(tool.annotations, attr, None)
-                        if value is not None:
-                            span.set_attribute(
-                                f"tool.{tool.name}.annotations.{attr}", value
-                            )
+            _annotate_span_for_tools_result(result)
 
             return result
 
