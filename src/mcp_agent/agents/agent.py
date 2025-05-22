@@ -54,7 +54,7 @@ class Agent(BaseModel):
     name: str
     """Agent name."""
 
-    instruction: str | Callable[[Dict], str] = "You are a helpful agent."
+    instruction: Optional[str | Callable[[Dict], str]] = "You are a helpful agent."
     """
     Instruction for the agent. This can be a string or a callable that takes a dictionary
     and returns a string. The callable can be used to generate dynamic instructions based
