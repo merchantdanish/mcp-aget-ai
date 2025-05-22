@@ -249,6 +249,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                                 self.logger.error(
                                     f"Warning: Unexpected error during tool execution: {result}. Continuing..."
                                 )
+                                span.record_exception(result)
                                 continue
                             elif isinstance(result, ToolMessage):
                                 messages.append(result)
