@@ -1,0 +1,35 @@
+$schema: ../../schema/mcp-agent.config.schema.json
+
+execution_engine: asyncio # Change to temporal later
+
+logger:
+  transports: [console, file]
+  level: debug
+  progress_display: true
+  path_settings:
+    path_pattern: "logs/rcm-{unique_id}.jsonl"
+    unique_id: "timestamp"
+    timestamp_format: "%Y%m%d_%H%M%S"
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem"]
+
+openai:
+  default_model: "gpt-4"
+
+anthropic:
+  default_model: "claude-3-sonnet-20240229"
+
+rcm:
+  quality_threshold: 0.8
+  max_refinement_attempts: 3
+  consolidation_interval: 3
+  verbose_metrics: false
+  use_claude_code: false
+  evaluator_model_provider: "openai" # or anthropic
