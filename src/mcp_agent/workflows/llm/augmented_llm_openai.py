@@ -1,9 +1,10 @@
 import json
 import re
 import functools
-from typing import Any, Iterable, List, Type
+from typing import Any, Dict, Iterable, List, Type, cast
 
 from pydantic import BaseModel
+
 
 from openai import OpenAI, AsyncOpenAI
 from openai.types.chat import (
@@ -20,6 +21,7 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
     ChatCompletion,
 )
+from opentelemetry import trace
 from mcp.types import (
     CallToolRequestParams,
     CallToolRequest,
@@ -34,6 +36,17 @@ from mcp.types import (
 
 from mcp_agent.config import OpenAISettings
 from mcp_agent.executor.workflow_task import workflow_task
+from mcp_agent.tracing.telemetry import get_tracer, telemetry
+from mcp_agent.tracing.semconv import (
+    GEN_AI_AGENT_NAME,
+    GEN_AI_REQUEST_MODEL,
+    GEN_AI_RESPONSE_FINISH_REASONS,
+    GEN_AI_TOOL_CALL_ID,
+    GEN_AI_TOOL_NAME,
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
+from mcp_agent.tracing.telemetry import is_otel_serializable
 from mcp_agent.utils.common import ensure_serializable, typed_dict_extras
 from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
@@ -45,6 +58,19 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
 )
 from mcp_agent.logging.logger import get_logger
+
+
+class RequestCompletionRequest(BaseModel):
+    config: OpenAISettings
+    payload: dict
+
+
+class RequestStructuredCompletionRequest(BaseModel):
+    config: OpenAISettings
+    response_model: Any | None = None
+    serialized_response_model: str | None = None
+    response_str: str
+    model: str
 
 
 class OpenAIAugmentedLLM(
@@ -123,162 +149,214 @@ class OpenAIAugmentedLLM(
         The default implementation uses OpenAI's ChatCompletion as the LLM.
         Override this method to use a different LLM.
         """
-        messages: List[ChatCompletionMessageParam] = []
-        params = self.get_request_params(request_params)
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.generate"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+            self._annotate_span_for_generation_message(span, message)
 
-        if params.use_history:
-            messages.extend(self.history.get())
+            messages: List[ChatCompletionMessageParam] = []
+            params = self.get_request_params(request_params)
 
-        system_prompt = self.instruction or params.systemPrompt
-        if system_prompt and len(messages) == 0:
-            messages.append(
-                ChatCompletionSystemMessageParam(role="system", content=system_prompt)
-            )
+            if self.context.tracing_enabled:
+                AugmentedLLM.annotate_span_with_request_params(span, params)
 
-        if isinstance(message, str):
-            messages.append(
-                ChatCompletionUserMessageParam(role="user", content=message)
-            )
-        elif isinstance(message, list):
-            messages.extend(message)
-        else:
-            messages.append(message)
+            if params.use_history:
+                messages.extend(self.history.get())
 
-        response: ListToolsResult = await self.agent.list_tools()
-        available_tools: List[ChatCompletionToolParam] = [
-            ChatCompletionToolParam(
-                type="function",
-                function={
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.inputSchema,
-                    # TODO: saqadri - determine if we should specify "strict" to True by default
-                },
-            )
-            for tool in response.tools
-        ]
-        if not available_tools:
-            available_tools = None
+            system_prompt = self.instruction or params.systemPrompt
+            if system_prompt and len(messages) == 0:
+                span.set_attribute("system_prompt", system_prompt)
+                messages.append(
+                    ChatCompletionSystemMessageParam(
+                        role="system", content=system_prompt
+                    )
+                )
 
-        responses: List[ChatCompletionMessage] = []
-        model = await self.select_model(params)
-
-        for i in range(params.max_iterations):
-            arguments = {
-                "model": model,
-                "messages": messages,
-                "stop": params.stopSequences,
-                "tools": available_tools,
-            }
-            if self._reasoning(model):
-                arguments = {
-                    **arguments,
-                    # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
-                    # "max_tokens": params.maxTokens,
-                    "max_completion_tokens": params.maxTokens,
-                    "reasoning_effort": self._reasoning_effort,
-                }
+            if isinstance(message, str):
+                messages.append(
+                    ChatCompletionUserMessageParam(role="user", content=message)
+                )
+            elif isinstance(message, list):
+                messages.extend(message)
             else:
-                arguments = {**arguments, "max_tokens": params.maxTokens}
-                # if available_tools:
-                #     arguments["parallel_tool_calls"] = params.parallel_tool_calls
+                messages.append(message)
 
-            if params.metadata:
-                arguments = {**arguments, **params.metadata}
+            response: ListToolsResult = await self.agent.list_tools()
+            available_tools: List[ChatCompletionToolParam] = [
+                ChatCompletionToolParam(
+                    type="function",
+                    function={
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.inputSchema,
+                        # TODO: saqadri - determine if we should specify "strict" to True by default
+                    },
+                )
+                for tool in response.tools
+            ]
 
-            self.logger.debug(f"{arguments}")
-            self._log_chat_progress(chat_turn=len(messages) // 2, model=model)
+            if self.context.tracing_enabled:
+                span.set_attribute(
+                    "available_tools",
+                    [t.get("function", {}).get("name") for t in available_tools],
+                )
+            if not available_tools:
+                available_tools = None
 
-            request = ensure_serializable(
-                RequestCompletionRequest(
+            responses: List[ChatCompletionMessage] = []
+            model = await self.select_model(params)
+            if model:
+                span.set_attribute(GEN_AI_REQUEST_MODEL, model)
+
+            total_input_tokens = 0
+            total_output_tokens = 0
+            finish_reasons = []
+
+            for i in range(params.max_iterations):
+                arguments = {
+                    "model": model,
+                    "messages": messages,
+                    "stop": params.stopSequences,
+                    "tools": available_tools,
+                }
+                if self._reasoning(model):
+                    arguments = {
+                        **arguments,
+                        # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
+                        # "max_tokens": params.maxTokens,
+                        "max_completion_tokens": params.maxTokens,
+                        "reasoning_effort": self._reasoning_effort,
+                    }
+                else:
+                    arguments = {**arguments, "max_tokens": params.maxTokens}
+                    # if available_tools:
+                    #     arguments["parallel_tool_calls"] = params.parallel_tool_calls
+
+                if params.metadata:
+                    arguments = {**arguments, **params.metadata}
+
+                self.logger.debug(f"{arguments}")
+                self._log_chat_progress(chat_turn=len(messages) // 2, model=model)
+
+                request = RequestCompletionRequest(
                     config=self.context.config.openai,
                     payload=arguments,
-                ),
-            )
-            response: ChatCompletion = await self.executor.execute(
-                OpenAICompletionTasks.request_completion_task, request
-            )
-
-            self.logger.debug(
-                "OpenAI ChatCompletion response:",
-                data=response,
-            )
-
-            if isinstance(response, BaseException):
-                self.logger.error(f"Error: {response}")
-                break
-
-            if not response.choices or len(response.choices) == 0:
-                # No response from the model, we're done
-                break
-
-            # TODO: saqadri - handle multiple choices for more complex interactions.
-            # Keeping it simple for now because multiple choices will also complicate memory management
-            choice = response.choices[0]
-            message = choice.message
-            responses.append(message)
-
-            # Fixes an issue with openai validation that does not allow non alphanumeric characters, dashes, and underscores
-            sanitized_name = (
-                re.sub(r"[^a-zA-Z0-9_-]", "_", self.name)
-                if isinstance(self.name, str)
-                else None
-            )
-
-            converted_message = self.convert_message_to_message_param(
-                message, name=sanitized_name
-            )
-            messages.append(converted_message)
-
-            if (
-                choice.finish_reason in ["tool_calls", "function_call"]
-                and message.tool_calls
-            ):
-                # Execute all tool calls in parallel using functools.partial to bind arguments
-                tool_tasks = [
-                    functools.partial(self.execute_tool_call, tool_call=tool_call)
-                    for tool_call in message.tool_calls
-                ]
-                # Wait for all tool calls to complete.
-                tool_results = await self.executor.execute_many(tool_tasks)
-                self.logger.debug(
-                    f"Iteration {i}: Tool call results: {str(tool_results) if tool_results else 'None'}"
                 )
-                # Add non-None results to messages.
-                for result in tool_results:
-                    if isinstance(result, BaseException):
-                        self.logger.error(
-                            f"Warning: Unexpected error during tool execution: {result}. Continuing..."
+
+                self._annotate_span_for_completion_request(span, request, i)
+
+                response: ChatCompletion = await self.executor.execute(
+                    OpenAICompletionTasks.request_completion_task,
+                    ensure_serializable(request),
+                )
+
+                self.logger.debug(
+                    "OpenAI ChatCompletion response:",
+                    data=response,
+                )
+
+                if isinstance(response, BaseException):
+                    self.logger.error(f"Error: {response}")
+                    span.record_exception(response)
+                    span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    break
+
+                self._annotate_span_for_completion_response(span, response, i)
+
+                total_input_tokens += response.usage.prompt_tokens
+                total_output_tokens += response.usage.completion_tokens
+
+                if not response.choices or len(response.choices) == 0:
+                    # No response from the model, we're done
+                    break
+
+                # TODO: saqadri - handle multiple choices for more complex interactions.
+                # Keeping it simple for now because multiple choices will also complicate memory management
+                choice = response.choices[0]
+                message = choice.message
+                responses.append(message)
+                finish_reasons.append(choice.finish_reason)
+
+                # Fixes an issue with openai validation that does not allow non alphanumeric characters, dashes, and underscores
+                sanitized_name = (
+                    re.sub(r"[^a-zA-Z0-9_-]", "_", self.name)
+                    if isinstance(self.name, str)
+                    else None
+                )
+
+                converted_message = self.convert_message_to_message_param(
+                    message, name=sanitized_name
+                )
+                messages.append(converted_message)
+
+                if (
+                    choice.finish_reason in ["tool_calls", "function_call"]
+                    and message.tool_calls
+                ):
+                    # Execute all tool calls in parallel using functools.partial to bind arguments
+                    tool_tasks = [
+                        functools.partial(self.execute_tool_call, tool_call=tool_call)
+                        for tool_call in message.tool_calls
+                    ]
+                    # Wait for all tool calls to complete.
+                    tool_results = await self.executor.execute_many(tool_tasks)
+                    self.logger.debug(
+                        f"Iteration {i}: Tool call results: {str(tool_results) if tool_results else 'None'}"
+                    )
+                    # Add non-None results to messages.
+                    for result in tool_results:
+                        if isinstance(result, BaseException):
+                            self.logger.error(
+                                f"Warning: Unexpected error during tool execution: {result}. Continuing..."
+                            )
+                            span.record_exception(result)
+                            continue
+                        if result is not None:
+                            messages.append(result)
+                elif choice.finish_reason == "length":
+                    # We have reached the max tokens limit
+                    self.logger.debug(
+                        f"Iteration {i}: Stopping because finish_reason is 'length'"
+                    )
+                    span.set_attribute("finish_reason", "length")
+                    # TODO: saqadri - would be useful to return the reason for stopping to the caller
+                    break
+                elif choice.finish_reason == "content_filter":
+                    # The response was filtered by the content filter
+                    self.logger.debug(
+                        f"Iteration {i}: Stopping because finish_reason is 'content_filter'"
+                    )
+                    span.set_attribute("finish_reason", "content_filter")
+                    # TODO: saqadri - would be useful to return the reason for stopping to the caller
+                    break
+                elif choice.finish_reason == "stop":
+                    self.logger.debug(
+                        f"Iteration {i}: Stopping because finish_reason is 'stop'"
+                    )
+                    span.set_attribute("finish_reason", "stop")
+                    break
+
+            if params.use_history:
+                self.history.set(messages)
+
+            self._log_chat_finished(model=model)
+
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)
+                span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
+                span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
+
+                for i, res in enumerate(responses):
+                    response_data = (
+                        self.extract_response_message_attributes_for_tracing(
+                            res, prefix=f"response.{i}"
                         )
-                        continue
-                    if result is not None:
-                        messages.append(result)
-            elif choice.finish_reason == "length":
-                # We have reached the max tokens limit
-                self.logger.debug(
-                    f"Iteration {i}: Stopping because finish_reason is 'length'"
-                )
-                # TODO: saqadri - would be useful to return the reason for stopping to the caller
-                break
-            elif choice.finish_reason == "content_filter":
-                # The response was filtered by the content filter
-                self.logger.debug(
-                    f"Iteration {i}: Stopping because finish_reason is 'content_filter'"
-                )
-                # TODO: saqadri - would be useful to return the reason for stopping to the caller
-                break
-            elif choice.finish_reason == "stop":
-                self.logger.debug(
-                    f"Iteration {i}: Stopping because finish_reason is 'stop'"
-                )
-                break
+                    )
+                    span.set_attributes(response_data)
 
-        if params.use_history:
-            self.history.set(messages)
-
-        self._log_chat_finished(model=model)
-
-        return responses
+            return responses
 
     async def generate_str(
         self,
@@ -290,23 +368,35 @@ class OpenAIAugmentedLLM(
         The default implementation uses OpenAI's ChatCompletion as the LLM.
         Override this method to use a different LLM.
         """
-        responses = await self.generate(
-            message=message,
-            request_params=request_params,
-        )
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.generate_str"
+        ) as span:
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+                self._annotate_span_for_generation_message(span, message)
+                if request_params:
+                    AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
-        final_text: List[str] = []
+            responses = await self.generate(
+                message=message,
+                request_params=request_params,
+            )
 
-        for response in responses:
-            content = response.content
-            if not content:
-                continue
+            final_text: List[str] = []
 
-            if isinstance(content, str):
-                final_text.append(content)
-                continue
+            for response in responses:
+                content = response.content
+                if not content:
+                    continue
 
-        return "\n".join(final_text)
+                if isinstance(content, str):
+                    final_text.append(content)
+                    continue
+
+            res = "\n".join(final_text)
+            span.set_attribute("response", res)
+            return res
 
     async def generate_structured(
         self,
@@ -318,40 +408,62 @@ class OpenAIAugmentedLLM(
         # We need to do this in a two-step process because Instructor doesn't
         # know how to invoke MCP tools via call_tool, so we'll handle all the
         # processing first and then pass the final response through Instructor
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.generate_structured"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+            self._annotate_span_for_generation_message(span, message)
 
-        response = await self.generate_str(
-            message=message,
-            request_params=request_params,
-        )
+            params = self.get_request_params(request_params)
 
-        params = self.get_request_params(request_params)
-        model = await self.select_model(params) or "gpt-4o"
+            if self.context.tracing_enabled:
+                AugmentedLLM.annotate_span_with_request_params(span, params)
 
-        serialized_response_model: str | None = None
+            response = await self.generate_str(
+                message=message,
+                request_params=params,
+            )
 
-        if self.executor and self.executor.execution_engine == "temporal":
-            # Serialize the response model to a string
-            serialized_response_model = serialize_model(response_model)
+            model = await self.select_model(params) or "gpt-4o"
+            span.set_attribute(GEN_AI_REQUEST_MODEL, model)
 
-        structured_response = await self.executor.execute(
-            OpenAICompletionTasks.request_structured_completion_task,
-            RequestStructuredCompletionRequest(
-                config=self.context.config.openai,
-                response_model=response_model
-                if not serialized_response_model
-                else None,
-                serialized_response_model=serialized_response_model,
-                response_str=response,
-                model=model,
-            ),
-        )
+            span.set_attribute("response_model", response_model.__name__)
 
-        # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
-        # Convert dict back to the proper model instance if needed
-        if isinstance(structured_response, dict):
-            structured_response = response_model.model_validate(structured_response)
+            serialized_response_model: str | None = None
 
-        return structured_response
+            if self.executor and self.executor.execution_engine == "temporal":
+                # Serialize the response model to a string
+                serialized_response_model = serialize_model(response_model)
+
+            structured_response = await self.executor.execute(
+                OpenAICompletionTasks.request_structured_completion_task,
+                RequestStructuredCompletionRequest(
+                    config=self.context.config.openai,
+                    response_model=response_model
+                    if not serialized_response_model
+                    else None,
+                    serialized_response_model=serialized_response_model,
+                    response_str=response,
+                    model=model,
+                ),
+            )
+            # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
+            # Convert dict back to the proper model instance if needed
+            if isinstance(structured_response, dict):
+                structured_response = response_model.model_validate(structured_response)
+
+            if self.context.tracing_enabled:
+                try:
+                    span.set_attribute(
+                        "structured_response_json",
+                        structured_response.model_dump_json(),
+                    )
+                # pylint: disable=broad-exception-caught
+                except Exception:
+                    span.set_attribute("unstructured_response", response)
+
+            return structured_response
 
     async def pre_tool_call(self, tool_call_id: str | None, request: CallToolRequest):
         return request
@@ -369,40 +481,53 @@ class OpenAIAugmentedLLM(
         Execute a single tool call and return the result message.
         Returns None if there's no content to add to messages.
         """
-        tool_name = tool_call.function.name
-        tool_args_str = tool_call.function.arguments
-        tool_call_id = tool_call.id
-        tool_args = {}
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.execute_tool_call"
+        ) as span:
+            tool_name = tool_call.function.name
+            tool_args_str = tool_call.function.arguments
+            tool_call_id = tool_call.id
+            tool_args = {}
 
-        try:
-            if tool_args_str:
-                tool_args = json.loads(tool_args_str)
-        except json.JSONDecodeError as e:
-            return ChatCompletionToolMessageParam(
-                role="tool",
-                tool_call_id=tool_call_id,
-                content=f"Invalid JSON provided in tool call arguments for '{tool_name}'. Failed to load JSON: {str(e)}",
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_TOOL_CALL_ID, tool_call_id)
+                span.set_attribute(GEN_AI_TOOL_NAME, tool_name)
+                span.set_attribute("tool_args", tool_args_str)
+
+            try:
+                if tool_args_str:
+                    tool_args = json.loads(tool_args_str)
+            except json.JSONDecodeError as e:
+                span.record_exception(e)
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                return ChatCompletionToolMessageParam(
+                    role="tool",
+                    tool_call_id=tool_call_id,
+                    content=f"Invalid JSON provided in tool call arguments for '{tool_name}'. Failed to load JSON: {str(e)}",
+                )
+
+            tool_call_request = CallToolRequest(
+                method="tools/call",
+                params=CallToolRequestParams(name=tool_name, arguments=tool_args),
             )
 
-        tool_call_request = CallToolRequest(
-            method="tools/call",
-            params=CallToolRequestParams(name=tool_name, arguments=tool_args),
-        )
-
-        result = await self.call_tool(
-            request=tool_call_request, tool_call_id=tool_call_id
-        )
-
-        if result.content:
-            return ChatCompletionToolMessageParam(
-                role="tool",
-                tool_call_id=tool_call_id,
-                content="\n".join(
-                    str(mcp_content_to_openai_content(c)) for c in result.content
-                ),
+            result = await self.call_tool(
+                request=tool_call_request, tool_call_id=tool_call_id
             )
 
-        return None
+            self._annotate_span_for_call_tool_result(span, result)
+
+            if result.content:
+                return ChatCompletionToolMessageParam(
+                    role="tool",
+                    tool_call_id=tool_call_id,
+                    content="\n".join(
+                        str(mcp_content_to_openai_content(c)) for c in result.content
+                    ),
+                )
+
+            return None
 
     def message_param_str(self, message: ChatCompletionMessageParam) -> str:
         """Convert an input message to a string representation."""
@@ -431,23 +556,280 @@ class OpenAIAugmentedLLM(
 
         return str(message)
 
+    def _annotate_span_for_generation_message(
+        self,
+        span: trace.Span,
+        message: ChatCompletionMessageParam | str | List[ChatCompletionMessageParam],
+    ) -> None:
+        """Annotate the span with the message content."""
+        if not self.context.tracing_enabled:
+            return
+        if isinstance(message, str):
+            span.set_attribute("message.content", message)
+        elif isinstance(message, list):
+            for i, msg in enumerate(message):
+                if isinstance(msg, str):
+                    span.set_attribute(f"message.{i}.content", msg)
+                else:
+                    span.set_attribute(f"message.{i}", str(msg))
+        else:
+            span.set_attribute("message", str(message))
 
-class RequestCompletionRequest(BaseModel):
-    config: OpenAISettings
-    payload: dict
+    def _extract_message_param_attributes_for_tracing(
+        self, message_param: ChatCompletionMessageParam, prefix: str = "message"
+    ) -> dict[str, Any]:
+        """Return a flat dict of span attributes for a given ChatCompletionMessageParam."""
+        attrs = {}
+        # TODO: rholinshead - serialize MessageParam dict
+        return attrs
 
+    def _annotate_span_for_completion_request(
+        self, span: trace.Span, request: RequestCompletionRequest, turn: int
+    ) -> None:
+        """Annotate the span with the completion request as an event."""
+        if not self.context.tracing_enabled:
+            return
 
-class RequestStructuredCompletionRequest(BaseModel):
-    config: OpenAISettings
-    response_model: Any | None = None
-    serialized_response_model: str | None = None
-    response_str: str
-    model: str
+        event_data = {
+            "completion.request.turn": turn,
+            "config.reasoning_effort": request.config.reasoning_effort,
+        }
+
+        if request.config.base_url:
+            event_data["config.base_url"] = request.config.base_url
+
+        for key, value in request.payload.items():
+            if key == "messages":
+                for i, message in enumerate(
+                    cast(List[ChatCompletionMessageParam], value)
+                ):
+                    role = message.get("role")
+                    event_data[f"messages.{i}.role"] = role
+                    message_content = message.get("content")
+
+                    match role:
+                        case "developer" | "system" | "user":
+                            if isinstance(message_content, str):
+                                event_data[f"messages.{i}.content"] = message_content
+                            elif message_content is not None:
+                                for j, part in enumerate(message_content):
+                                    event_data[f"messages.{i}.content.{j}.type"] = (
+                                        part.type
+                                    )
+                                    if part.type == "text":
+                                        event_data[f"messages.{i}.content.{j}.text"] = (
+                                            part.text
+                                        )
+                                    elif part.type == "image_url":
+                                        event_data[
+                                            f"messages.{i}.content.{j}.image_url.url"
+                                        ] = part.image_url.url
+                                        event_data[
+                                            f"messages.{i}.content.{j}.image_url.detail"
+                                        ] = part.image_url.detail
+                                    elif part.type == "input_audio":
+                                        event_data[
+                                            f"messages.{i}.content.{j}.input_audio.format"
+                                        ] = part.input_audio.format
+                        case "assistant":
+                            if isinstance(message_content, str):
+                                event_data[f"messages.{i}.content"] = message_content
+                            elif message_content is not None:
+                                for j, part in enumerate(message_content):
+                                    event_data[f"messages.{i}.content.{j}.type"] = (
+                                        part.type
+                                    )
+                                    if part.type == "text":
+                                        event_data[f"messages.{i}.content.{j}.text"] = (
+                                            part.text
+                                        )
+                                    elif part.type == "refusal":
+                                        event_data[
+                                            f"messages.{i}.content.{j}.refusal"
+                                        ] = part.refusal
+                            if message.get("audio") is not None:
+                                event_data[f"messages.{i}.audio.id"] = message.get(
+                                    "audio"
+                                ).get("id")
+                            if message.get("function_call") is not None:
+                                event_data[f"messages.{i}.function_call.name"] = (
+                                    message.get("function_call").get("name")
+                                )
+                                event_data[f"messages.{i}.function_call.arguments"] = (
+                                    message.get("function_call").get("arguments")
+                                )
+                            if message.get("name") is not None:
+                                event_data[f"messages.{i}.name"] = message.get("name")
+                            if message.get("refusal") is not None:
+                                event_data[f"messages.{i}.refusal"] = message.get(
+                                    "refusal"
+                                )
+                            if message.get("tool_calls") is not None:
+                                for j, tool_call in enumerate(
+                                    message.get("tool_calls")
+                                ):
+                                    event_data[
+                                        f"messages.{i}.tool_calls.{j}.{GEN_AI_TOOL_CALL_ID}"
+                                    ] = tool_call.id
+                                    event_data[
+                                        f"messages.{i}.tool_calls.{j}.function.name"
+                                    ] = tool_call.function.name
+                                    event_data[
+                                        f"messages.{i}.tool_calls.{j}.function.arguments"
+                                    ] = tool_call.function.arguments
+
+                        case "tool":
+                            event_data[f"messages.{i}.{GEN_AI_TOOL_CALL_ID}"] = (
+                                message.get("tool_call_id")
+                            )
+                            if isinstance(message_content, str):
+                                event_data[f"messages.{i}.content"] = message_content
+                            elif message_content is not None:
+                                for j, part in enumerate(message_content):
+                                    event_data[f"messages.{i}.content.{j}.type"] = (
+                                        part.type
+                                    )
+                                    if part.type == "text":
+                                        event_data[f"messages.{i}.content.{j}.text"] = (
+                                            part.text
+                                        )
+                        case "function":
+                            event_data[f"messages.{i}.name"] = message.get("name")
+                            event_data[f"messages.{i}.content"] = message_content
+
+            elif key == "tools":
+                if value is not None:
+                    event_data["tools"] = [
+                        tool.get("function", {}).get("name") for tool in value
+                    ]
+            elif is_otel_serializable(value):
+                event_data[key] = value
+
+        # Event name is based on the latest message role
+        event_name = f"completion.request.{turn}"
+        latest_message_role = request.payload.get("messages", [{}])[-1].get("role")
+
+        if latest_message_role:
+            event_name = f"gen_ai.{latest_message_role}.message"
+
+        span.add_event(event_name, event_data)
+
+    def _annotate_span_for_completion_response(
+        self, span: trace.Span, response: ChatCompletion, turn: int
+    ) -> None:
+        """Annotate the span with the completion response as an event."""
+        if not self.context.tracing_enabled:
+            return
+
+        event_data = {
+            "completion.response.turn": turn,
+        }
+
+        event_data.update(
+            self._extract_chat_completion_attributes_for_tracing(response)
+        )
+
+        # Event name is based on the first choice for now
+        event_name = f"completion.response.{turn}"
+        if response.choices and len(response.choices) > 0:
+            latest_message_role = response.choices[0].message.role
+            event_name = f"gen_ai.{latest_message_role}.message"
+
+        span.add_event(event_name, event_data)
+
+    def extract_response_message_attributes_for_tracing(
+        self, message: ChatCompletionMessage, prefix: str | None = None
+    ) -> Dict[str, Any]:
+        """
+        Extract relevant attributes from the ChatCompletionMessage for tracing.
+        """
+        if not self.context.tracing_enabled:
+            return {}
+
+        attr_prefix = f"{prefix}." if prefix else ""
+        attrs = {
+            f"{attr_prefix}role": message.role,
+        }
+
+        if message.content is not None:
+            attrs[f"{attr_prefix}content"] = message.content
+
+        if message.refusal:
+            attrs[f"{attr_prefix}refusal"] = message.refusal
+        if message.audio is not None:
+            attrs[f"{attr_prefix}audio.id"] = message.audio.id
+            attrs[f"{attr_prefix}audio.expires_at"] = message.audio.expires_at
+            attrs[f"{attr_prefix}audio.transcript"] = message.audio.transcript
+        if message.function_call is not None:
+            attrs[f"{attr_prefix}function_call.name"] = message.function_call.name
+            attrs[f"{attr_prefix}function_call.arguments"] = (
+                message.function_call.arguments
+            )
+        if message.tool_calls:
+            for j, tool_call in enumerate(message.tool_calls):
+                attrs[f"{attr_prefix}tool_calls.{j}.{GEN_AI_TOOL_CALL_ID}"] = (
+                    tool_call.id
+                )
+                attrs[f"{attr_prefix}tool_calls.{j}.function.name"] = (
+                    tool_call.function.name
+                )
+                attrs[f"{attr_prefix}tool_calls.{j}.function.arguments"] = (
+                    tool_call.function.arguments
+                )
+
+        return attrs
+
+    def _extract_chat_completion_attributes_for_tracing(
+        self, response: ChatCompletion, prefix: str | None = None
+    ) -> Dict[str, Any]:
+        """
+        Extract relevant attributes from the ChatCompletion response for tracing.
+        """
+        if not self.context.tracing_enabled:
+            return {}
+
+        attr_prefix = f"{prefix}." if prefix else ""
+        attrs = {
+            f"{attr_prefix}id": response.id,
+            f"{attr_prefix}model": response.model,
+            f"{attr_prefix}object": response.object,
+            f"{attr_prefix}created": response.created,
+        }
+
+        if response.service_tier:
+            attrs[f"{attr_prefix}service_tier"] = response.service_tier
+
+        if response.system_fingerprint:
+            attrs[f"{attr_prefix}system_fingerprint"] = response.system_fingerprint
+
+        if response.usage:
+            attrs[f"{attr_prefix}{GEN_AI_USAGE_INPUT_TOKENS}"] = (
+                response.usage.prompt_tokens
+            )
+            attrs[f"{attr_prefix}{GEN_AI_USAGE_OUTPUT_TOKENS}"] = (
+                response.usage.completion_tokens
+            )
+
+        finish_reasons = []
+        for i, choice in enumerate(response.choices):
+            attrs[f"{attr_prefix}choices.{i}.index"] = choice.index
+            attrs[f"{attr_prefix}choices.{i}.finish_reason"] = choice.finish_reason
+            finish_reasons.append(choice.finish_reason)
+
+            message_attrs = self.extract_response_message_attributes_for_tracing(
+                choice.message, f"{attr_prefix}choices.{i}.message"
+            )
+            attrs.update(message_attrs)
+
+        attrs[GEN_AI_RESPONSE_FINISH_REASONS] = finish_reasons
+
+        return attrs
 
 
 class OpenAICompletionTasks:
     @staticmethod
     @workflow_task
+    @telemetry.traced()
     async def request_completion_task(
         request: RequestCompletionRequest,
     ) -> ChatCompletion:
@@ -470,6 +852,7 @@ class OpenAICompletionTasks:
 
     @staticmethod
     @workflow_task
+    @telemetry.traced()
     async def request_structured_completion_task(
         request: RequestStructuredCompletionRequest,
     ) -> ModelT:

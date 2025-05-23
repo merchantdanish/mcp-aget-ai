@@ -1,7 +1,9 @@
 import asyncio
+import json
 import uuid
 from typing import Callable, Dict, List, Optional, TypeVar, TYPE_CHECKING, Any
 
+from opentelemetry import trace
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from mcp.server.fastmcp.tools import Tool as FastTool
@@ -16,6 +18,8 @@ from mcp.types import (
 )
 
 from mcp_agent.core.context import Context
+from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME, GEN_AI_TOOL_NAME
+from mcp_agent.tracing.telemetry import get_tracer, record_attributes
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator, NamespacedPrompt, NamespacedTool
 from mcp_agent.human_input.types import (
@@ -50,7 +54,7 @@ class Agent(BaseModel):
     name: str
     """Agent name."""
 
-    instruction: str | Callable[[Dict], str] = "You are a helpful agent."
+    instruction: Optional[str | Callable[[Dict], str]] = "You are a helpful agent."
     """
     Instruction for the agent. This can be a string or a callable that takes a dictionary
     and returns a string. The callable can be used to generate dynamic instructions based
@@ -157,57 +161,77 @@ class Agent(BaseModel):
         Returns:
             An instance of AugmentedLLM or one of its subclasses.
         """
-        if llm:
-            self.llm = llm
-        elif llm_factory:
-            self.llm = llm_factory(agent=self)
-        else:
-            raise ValueError("Either llm_factory or llm must be provided")
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.attach_llm"
+        ) as span:
+            if llm:
+                self.llm = llm
+            elif llm_factory:
+                self.llm = llm_factory(agent=self)
+            else:
+                raise ValueError("Either llm_factory or llm must be provided")
 
-        return self.llm
+            span.set_attribute("llm.class", self.llm.__class__.__name__)
+
+            for attr in ["name", "provider"]:
+                value = getattr(self.llm, attr, None)
+                if value is not None:
+                    span.set_attribute(f"llm.{attr}", value)
+            return self.llm
 
     async def initialize(self, force: bool = False):
         """Initialize the agent."""
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.initialize"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
+            span.set_attribute("server_names", self.server_names)
+            span.set_attribute("connection_persistence", self.connection_persistence)
+            span.set_attribute("force", force)
 
-        async with self._init_lock:
-            if self.initialized and not force:
-                return
+            async with self._init_lock:
+                if self.initialized and not force:
+                    return
 
-            logger.debug(f"Initializing agent {self.name}...")
+                span.add_event("initialize_start")
+                logger.debug(f"Initializing agent {self.name}...")
 
-            executor = self.context.executor
+                executor = self.context.executor
 
-            result: InitAggregatorResponse = await executor.execute(
-                self._agent_tasks.initialize_aggregator_task,
-                InitAggregatorRequest(
-                    agent_name=self.name,
-                    server_names=self.server_names,
-                    connection_persistence=self.connection_persistence,
-                    force=force,
-                ),
-            )
-
-            if not result.initialized:
-                raise RuntimeError(
-                    f"Failed to initialize agent {self.name}. "
-                    f"Check the server names and connection persistence settings."
+                result: InitAggregatorResponse = await executor.execute(
+                    self._agent_tasks.initialize_aggregator_task,
+                    InitAggregatorRequest(
+                        agent_name=self.name,
+                        server_names=self.server_names,
+                        connection_persistence=self.connection_persistence,
+                        force=force,
+                    ),
                 )
 
-            # TODO: saqadri - check if a lock is needed here
-            self._namespaced_tool_map.clear()
-            self._namespaced_tool_map.update(result.namespaced_tool_map)
+                if not result.initialized:
+                    raise RuntimeError(
+                        f"Failed to initialize agent {self.name}. "
+                        f"Check the server names and connection persistence settings."
+                    )
 
-            self._server_to_tool_map.clear()
-            self._server_to_tool_map.update(result.server_to_tool_map)
+                # TODO: saqadri - check if a lock is needed here
+                self._namespaced_tool_map.clear()
+                self._namespaced_tool_map.update(result.namespaced_tool_map)
 
-            self._namespaced_prompt_map.clear()
-            self._namespaced_prompt_map.update(result.namespaced_prompt_map)
+                self._server_to_tool_map.clear()
+                self._server_to_tool_map.update(result.server_to_tool_map)
 
-            self._server_to_prompt_map.clear()
-            self._server_to_prompt_map.update(result.server_to_prompt_map)
+                self._namespaced_prompt_map.clear()
+                self._namespaced_prompt_map.update(result.namespaced_prompt_map)
 
-            self.initialized = result.initialized
-            logger.debug(f"Agent {self.name} initialized.")
+                self._server_to_prompt_map.clear()
+                self._server_to_prompt_map.update(result.server_to_prompt_map)
+
+                self.initialized = result.initialized
+                span.add_event("initialize_complete")
+                logger.debug(f"Agent {self.name} initialized.")
 
     async def shutdown(self):
         """
@@ -216,20 +240,28 @@ class Agent(BaseModel):
         """
         logger.debug(f"Shutting down agent {self.name}...")
 
-        executor = self.context.executor
-        result: bool = await executor.execute(
-            self._agent_tasks.shutdown_aggregator_task,
-            self.name,
-        )
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.shutdown"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
+            span.add_event("agent_shutdown_start")
 
-        if not result:
-            raise RuntimeError(
-                f"Failed to shutdown agent {self.name}. "
-                f"Check the server names and connection persistence settings."
+            executor = self.context.executor
+            result: bool = await executor.execute(
+                self._agent_tasks.shutdown_aggregator_task,
+                self.name,
             )
 
-        self.initialized = False
-        logger.debug(f"Agent {self.name} shutdown.")
+            if not result:
+                raise RuntimeError(
+                    f"Failed to shutdown agent {self.name}. "
+                    f"Check the server names and connection persistence settings."
+                )
+
+            self.initialized = False
+            span.add_event("agent_shutdown_complete")
+            logger.debug(f"Agent {self.name} shutdown.")
 
     async def close(self):
         """
@@ -246,131 +278,276 @@ class Agent(BaseModel):
         await self.shutdown()
 
     async def get_capabilities(
-        self, server_name: str | None
+        self, server_name: str | None = None
     ) -> ServerCapabilities | Dict[str, ServerCapabilities]:
         """
         Get the capabilities of a specific server.
         """
-        if not self.initialized:
-            await self.initialize()
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.get_capabilities"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
+            span.set_attribute("initialized", self.initialized)
 
-        executor = self.context.executor
-        result: Dict[str, ServerCapabilities] = await executor.execute(
-            self._agent_tasks.get_capabilities_task,
-            GetCapabilitiesRequest(agent_name=self.name, server_name=server_name),
-        )
+            if not self.initialized:
+                await self.initialize()
 
-        # If server_name is None, return all server capabilities
-        if server_name is None:
-            return result
-        # If server_name is provided, return the capabilities for that server
-        elif server_name in result:
-            return result[server_name]
-        else:
-            raise ValueError(
-                f"Server '{server_name}' not found in agent '{self.name}'. "
-                f"Available servers: {list(result.keys())}"
+            executor = self.context.executor
+            result: Dict[str, ServerCapabilities] = await executor.execute(
+                self._agent_tasks.get_capabilities_task,
+                GetCapabilitiesRequest(agent_name=self.name, server_name=server_name),
             )
+
+            def _annotate_span_for_capabilities(
+                server_name: str, capabilities: ServerCapabilities
+            ):
+                if not self.context.tracing_enabled:
+                    return
+                for attr in [
+                    "experimental",
+                    "logging",
+                    "prompts",
+                    "resources",
+                    "tools",
+                ]:
+                    value = getattr(capabilities, attr, None)
+                    span.set_attribute(
+                        f"{server_name}.capabilities.{attr}", value is not None
+                    )
+
+            # If server_name is None, return all server capabilities
+            if server_name is None:
+                span.set_attribute("server_name", server_name)
+                for server_name, capabilities in result.items():
+                    _annotate_span_for_capabilities(server_name, capabilities)
+                return result
+            # If server_name is provided, return the capabilities for that server
+            elif server_name in result:
+                capabilities = result[server_name]
+                _annotate_span_for_capabilities(server_name, capabilities)
+                return capabilities
+            else:
+                raise ValueError(
+                    f"Server '{server_name}' not found in agent '{self.name}'. "
+                    f"Available servers: {list(result.keys())}"
+                )
 
     async def get_server_session(self, server_name: str):
         """
         Get the session data of a specific server.
         """
-        if not self.initialized:
-            await self.initialize()
 
-        executor = self.context.executor
-        result: GetServerSessionResponse = await executor.execute(
-            self._agent_tasks.get_server_session,
-            GetServerSessionRequest(agent_name=self.name, server_name=server_name),
-        )
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.get_server_session"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
+            span.set_attribute("initialized", self.initialized)
 
-        return result
+            if not self.initialized:
+                await self.initialize()
+
+            executor = self.context.executor
+            result: GetServerSessionResponse = await executor.execute(
+                self._agent_tasks.get_server_session,
+                GetServerSessionRequest(agent_name=self.name, server_name=server_name),
+            )
+
+            return result
 
     async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
-        if not self.initialized:
-            await self.initialize()
-
-        if server_name:
-            result = ListToolsResult(
-                prompts=[
-                    namespaced_tool.tool.model_copy(
-                        update={"name": namespaced_tool.namespaced_tool_name}
-                    )
-                    for namespaced_tool in self._server_to_tool_map.get(server_name, [])
-                ]
-            )
-        else:
-            result = ListToolsResult(
-                tools=[
-                    namespaced_tool.tool.model_copy(
-                        update={"name": namespaced_tool_name}
-                    )
-                    for namespaced_tool_name, namespaced_tool in self._namespaced_tool_map.items()
-                ]
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.list_tools"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
+            span.set_attribute("initialized", self.initialized)
+            span.set_attribute(
+                "human_input_callback", self.human_input_callback is not None
             )
 
-        # Add function tools
-        for tool in self._function_tool_map.values():
+            if not self.initialized:
+                await self.initialize()
+
+            if server_name:
+                span.set_attribute("server_name", server_name)
+                result = ListToolsResult(
+                    tools=[
+                        namespaced_tool.tool.model_copy(
+                            update={"name": namespaced_tool.namespaced_tool_name}
+                        )
+                        for namespaced_tool in self._server_to_tool_map.get(
+                            server_name, []
+                        )
+                    ]
+                )
+            else:
+                result = ListToolsResult(
+                    tools=[
+                        namespaced_tool.tool.model_copy(
+                            update={"name": namespaced_tool_name}
+                        )
+                        for namespaced_tool_name, namespaced_tool in self._namespaced_tool_map.items()
+                    ]
+                )
+
+            # Add function tools
+            for tool in self._function_tool_map.values():
+                result.tools.append(
+                    Tool(
+                        name=tool.name,
+                        description=tool.description,
+                        inputSchema=tool.parameters,
+                    )
+                )
+
+            def _annotate_span_for_tools_result(result: ListToolsResult):
+                if not self.context.tracing_enabled:
+                    return
+                for tool in result.tools:
+                    span.set_attribute(
+                        f"tool.{tool.name}.description", tool.description
+                    )
+                    span.set_attribute(
+                        f"tool.{tool.name}.inputSchema", json.dumps(tool.inputSchema)
+                    )
+                    if tool.annotations:
+                        for attr in [
+                            "title",
+                            "readOnlyHint",
+                            "destructiveHint",
+                            "idempotentHint",
+                            "openWorldHint",
+                        ]:
+                            value = getattr(tool.annotations, attr, None)
+                            if value is not None:
+                                span.set_attribute(
+                                    f"tool.{tool.name}.annotations.{attr}", value
+                                )
+
+            # Add a human_input_callback as a tool
+            if not self.human_input_callback:
+                logger.debug("Human input callback not set")
+                _annotate_span_for_tools_result(result)
+
+                return result
+
+            # Add a human_input_callback as a tool
+            human_input_tool: FastTool = FastTool.from_function(
+                self.request_human_input
+            )
             result.tools.append(
                 Tool(
-                    name=tool.name,
-                    description=tool.description,
-                    inputSchema=tool.parameters,
+                    name=HUMAN_INPUT_TOOL_NAME,
+                    description=human_input_tool.description,
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "request": HumanInputRequest.model_json_schema()
+                        },
+                        "required": ["request"],
+                    },
                 )
             )
 
-        # Add a human_input_callback as a tool
-        if not self.human_input_callback:
-            logger.debug("Human input callback not set")
+            _annotate_span_for_tools_result(result)
+
             return result
 
-        # Add a human_input_callback as a tool
-        human_input_tool: FastTool = FastTool.from_function(self.request_human_input)
-        result.tools.append(
-            Tool(
-                name=HUMAN_INPUT_TOOL_NAME,
-                description=human_input_tool.description,
-                inputSchema={
-                    "type": "object",
-                    "properties": {"request": HumanInputRequest.model_json_schema()},
-                    "required": ["request"],
-                },
-            )
-        )
-
-        return result
-
     async def list_prompts(self, server_name: str | None = None) -> ListPromptsResult:
-        if not self.initialized:
-            await self.initialize()
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.list_prompts"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
+            span.set_attribute("initialized", self.initialized)
 
-        executor = self.context.executor
-        result: ListPromptsResult = await executor.execute(
-            self._agent_tasks.list_prompts_task,
-            ListToolsRequest(agent_name=self.name, server_name=server_name),
-        )
+            if server_name:
+                span.set_attribute("server_name", server_name)
 
-        return result
+            # Check if the agent is initialized
+            if not self.initialized:
+                await self.initialize()
+
+            executor = self.context.executor
+            result: ListPromptsResult = await executor.execute(
+                self._agent_tasks.list_prompts_task,
+                ListToolsRequest(agent_name=self.name, server_name=server_name),
+            )
+
+            if self.context.tracing_enabled:
+                span.set_attribute(
+                    "prompts", [prompt.name for prompt in result.prompts]
+                )
+
+                for prompt in result.prompts:
+                    span.set_attribute(
+                        f"prompt.{prompt.name}.description", prompt.description
+                    )
+                    for arg in prompt.arguments:
+                        for attr in [
+                            "description",
+                            "required",
+                        ]:
+                            value = getattr(arg, attr, None)
+                            if value is not None:
+                                span.set_attribute(
+                                    f"prompt.{prompt.name}.arguments.{arg.name}.{attr}",
+                                    value,
+                                )
+
+            return result
 
     async def get_prompt(
         self, name: str, arguments: dict[str, str] | None = None
     ) -> GetPromptResult:
-        if not self.initialized:
-            await self.initialize()
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.get_prompt"
+        ) as span:
+            if self.context.tracing_enabled:
+                span.set_attribute("name", name)
+                span.set_attribute(GEN_AI_AGENT_NAME, self.name)
+                span.set_attribute("initialized", self.initialized)
+                record_attributes(span, arguments, "arguments")
 
-        executor = self.context.executor
-        result: GetPromptResult = await executor.execute(
-            self._agent_tasks.get_prompt_task,
-            GetPromptRequest(agent_name=self.name, name=name, arguments=arguments),
-        )
+            if not self.initialized:
+                await self.initialize()
 
-        return result
+            executor = self.context.executor
+            result: GetPromptResult = await executor.execute(
+                self._agent_tasks.get_prompt_task,
+                GetPromptRequest(agent_name=self.name, name=name, arguments=arguments),
+            )
+
+            if getattr(result, "isError", False):
+                # TODO: Should we remove isError to conform to spec and raise or return ErrorData code -32602
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                span.record_exception(
+                    Exception(result.description or "Error getting prompt")
+                )
+
+            if self.context.tracing_enabled:
+                if result.description:
+                    span.set_attribute("prompt.description", result.description)
+
+                for idx, message in enumerate(result.messages):
+                    span.set_attribute(f"prompt.message.{idx}.role", message.role)
+                    span.set_attribute(
+                        f"prompt.message.{idx}.content.type", message.content.type
+                    )
+                    if message.content.type == "text":
+                        span.set_attribute(
+                            f"prompt.message.{idx}.content.text", message.content.text
+                        )
+
+            return result
 
     async def request_human_input(
         self,
         request: HumanInputRequest,
-    ) -> str:
+    ) -> HumanInputResponse:
         """
         Request input from a human user. Pauses the workflow until input is received.
 
@@ -384,72 +561,159 @@ class Agent(BaseModel):
             TimeoutError: If the timeout is exceeded
             ValueError: If human_input_callback is not set or doesn't have the right signature
         """
-        if not self.human_input_callback:
-            raise ValueError("Human input callback not set")
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.request_human_input"
+        ) as span:
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.name)
+                span.set_attribute("initialized", self.initialized)
+                span.set_attribute("request.prompt", request.prompt)
 
-        # Generate a unique ID for this request to avoid signal collisions
-        request_id = f"{HUMAN_INPUT_SIGNAL_NAME}_{self.name}_{uuid.uuid4()}"
-        request.request_id = request_id
+                for attr in [
+                    "description",
+                    "request_id",
+                    "workflow_id",
+                    "timeout_seconds",
+                ]:
+                    value = getattr(request, attr, None)
+                    if value is not None:
+                        span.set_attribute(f"request.{attr}", value)
 
-        logger.debug("Requesting human input:", data=request)
+                if request.metadata:
+                    record_attributes(span, request.metadata, "request.metadata")
 
-        async def call_callback_and_signal():
-            try:
-                user_input = await self.human_input_callback(request)
-                logger.debug("Received human input:", data=user_input)
-                await self.context.executor.signal(
-                    signal_name=request_id, payload=user_input
+            if not self.human_input_callback:
+                raise ValueError("Human input callback not set")
+
+            # Generate a unique ID for this request to avoid signal collisions
+            request_id = f"{HUMAN_INPUT_SIGNAL_NAME}_{self.name}_{uuid.uuid4()}"
+            request.request_id = request_id
+            span.set_attribute("request_id", request_id)
+
+            logger.debug("Requesting human input:", data=request)
+
+            async def call_callback_and_signal():
+                try:
+                    user_input = await self.human_input_callback(request)
+                    logger.debug("Received human input:", data=user_input)
+                    if self.context.tracing_enabled:
+                        span.add_event(
+                            "human_input_received",
+                            {
+                                request_id: user_input.request_id,
+                                "response": user_input.response,
+                                "metadata": json.dumps(user_input.metadata or {}),
+                            },
+                        )
+                    await self.context.executor.signal(
+                        signal_name=request_id, payload=user_input
+                    )
+                except Exception as e:
+                    await self.context.executor.signal(
+                        request_id, payload=f"Error getting human input: {str(e)}"
+                    )
+
+            asyncio.create_task(call_callback_and_signal())
+
+            logger.debug("Waiting for human input signal")
+
+            # Wait for signal (workflow is paused here)
+            result = await self.context.executor.wait_for_signal(
+                signal_name=request_id,
+                request_id=request_id,
+                workflow_id=request.workflow_id,
+                signal_description=request.description or request.prompt,
+                timeout_seconds=request.timeout_seconds,
+                signal_type=HumanInputResponse,  # TODO: saqadri - should this be HumanInputResponse?
+            )
+
+            if self.context.tracing_enabled:
+                span.add_event(
+                    "human_input_signal_received",
+                    {
+                        "signal_name": request_id,
+                        "request_id": request.request_id,
+                        "workflow_id": request.workflow_id,
+                        "signal_description": request.description or request.prompt,
+                        "timeout_seconds": request.timeout_seconds,
+                        "response": result.response,
+                    },
                 )
-            except Exception as e:
-                await self.context.executor.signal(
-                    request_id, payload=f"Error getting human input: {str(e)}"
-                )
 
-        asyncio.create_task(call_callback_and_signal())
-
-        logger.debug("Waiting for human input signal")
-
-        # Wait for signal (workflow is paused here)
-        result = await self.context.executor.wait_for_signal(
-            signal_name=request_id,
-            request_id=request_id,
-            workflow_id=request.workflow_id,
-            signal_description=request.description or request.prompt,
-            timeout_seconds=request.timeout_seconds,
-            signal_type=HumanInputResponse,  # TODO: saqadri - should this be HumanInputResponse?
-        )
-
-        logger.debug("Received human input signal", data=result)
-        return result
+            logger.debug("Received human input signal", data=result)
+            return result
 
     async def call_tool(
         self, name: str, arguments: dict | None = None, server_name: str | None = None
     ) -> CallToolResult:
         # Call the tool on the server
-        if not self.initialized:
-            await self.initialize()
 
-        if name == HUMAN_INPUT_TOOL_NAME:
-            # Call the human input tool
-            return await self._call_human_input_tool(arguments)
-        elif name in self._function_tool_map:
-            # Call local function and return the result as a text response
-            tool = self._function_tool_map[name]
-            result = await tool.run(arguments)
-            return CallToolResult(content=[TextContent(type="text", text=str(result))])
-        else:
-            executor = self.context.executor
-            result: CallToolResult = await executor.execute(
-                self._agent_tasks.call_tool_task,
-                CallToolRequest(
-                    agent_name=self.name,
-                    name=name,
-                    arguments=arguments,
-                    server_name=server_name,
-                ),
-            )
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.call_tool"
+        ) as span:
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.name)
+                span.set_attribute(GEN_AI_TOOL_NAME, name)
+                span.set_attribute("initialized", self.initialized)
 
-            return result
+                if server_name:
+                    span.set_attribute("server_name", server_name)
+
+                if arguments is not None:
+                    record_attributes(span, arguments, "arguments")
+
+            if not self.initialized:
+                await self.initialize()
+
+            def _annotate_span_for_result(result: CallToolResult):
+                if not self.context.tracing_enabled:
+                    return
+                span.set_attribute("result.isError", result.isError)
+                if result.isError:
+                    span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    error_message = (
+                        result.content[0].text
+                        if len(result.content) > 0 and result.content[0].type == "text"
+                        else "Error calling tool"
+                    )
+                    span.record_exception(Exception(error_message))
+                else:
+                    for idx, content in enumerate(result.content):
+                        span.set_attribute(f"result.content.{idx}.type", content.type)
+                        if content.type == "text":
+                            span.set_attribute(
+                                f"result.content.{idx}.text", result.content[idx].text
+                            )
+
+            if name == HUMAN_INPUT_TOOL_NAME:
+                # Call the human input tool
+                result = await self._call_human_input_tool(arguments)
+                _annotate_span_for_result(result)
+                return result
+            elif name in self._function_tool_map:
+                # Call local function and return the result as a text response
+                tool = self._function_tool_map[name]
+                result = await tool.run(arguments)
+                result = CallToolResult(
+                    content=[TextContent(type="text", text=str(result))]
+                )
+                _annotate_span_for_result(result)
+                return result
+            else:
+                executor = self.context.executor
+                result: CallToolResult = await executor.execute(
+                    self._agent_tasks.call_tool_task,
+                    CallToolRequest(
+                        agent_name=self.name,
+                        name=name,
+                        arguments=arguments,
+                        server_name=server_name,
+                    ),
+                )
+                _annotate_span_for_result(result)
+                return result
 
     async def _call_human_input_tool(
         self, arguments: dict | None = None
@@ -531,7 +795,7 @@ class CallToolRequest(BaseModel):
     server_name: Optional[str] = None
 
     name: str
-    arguments: Optional[dict[str, str]] = None
+    arguments: Optional[dict[str, Any]] = None
 
 
 class ListPromptsRequest(BaseModel):

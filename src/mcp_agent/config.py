@@ -219,25 +219,64 @@ class UsageTelemetrySettings(BaseModel):
     """If enabled, detailed telemetry data, including prompts and agents, will be sent to the telemetry server."""
 
 
+class TracePathSettings(BaseModel):
+    """
+    Settings for configuring trace file paths with dynamic elements like timestamps or session IDs.
+    """
+
+    path_pattern: str = "traces/mcp-agent-trace-{unique_id}.jsonl"
+    """
+    Path pattern for trace files with a {unique_id} placeholder.
+    The placeholder will be replaced according to the unique_id setting.
+    Example: "traces/mcp-agent-trace-{unique_id}.jsonl"
+    """
+
+    unique_id: Literal["timestamp", "session_id"] = "timestamp"
+    """
+    Type of unique identifier to use in the trace filename:
+    """
+
+    timestamp_format: str = "%Y%m%d_%H%M%S"
+    """
+    Format string for timestamps when unique_id is set to "timestamp".
+    Uses Python's datetime.strftime format.
+    """
+
+
+class TraceOTLPSettings(BaseModel):
+    """
+    Settings for OTLP exporter in OpenTelemetry.
+    """
+
+    endpoint: str
+    """OTLP endpoint for exporting traces."""
+
+
 class OpenTelemetrySettings(BaseModel):
     """
     OTEL settings for the MCP Agent application.
     """
 
-    enabled: bool = True
+    enabled: bool = False
+
+    exporters: List[Literal["console", "file", "otlp"]] = []
+    """List of exporters to use (can enable multiple simultaneously)"""
 
     service_name: str = "mcp-agent"
     service_instance_id: str | None = None
     service_version: str | None = None
 
-    otlp_endpoint: str | None = None
-    """OTLP endpoint for OpenTelemetry tracing"""
-
-    console_debug: bool = False
-    """Log spans to console"""
-
     sample_rate: float = 1.0
     """Sample rate for tracing (1.0 = sample everything)"""
+
+    otlp_settings: TraceOTLPSettings | None = None
+    """OTLP settings for OpenTelemetry tracing. Required if using otlp exporter."""
+
+    # Settings for advanced trace path configuration for file exporter
+    path_settings: TracePathSettings | None = None
+    """
+    Save trace files with more advanced path semantics, like having timestamps or session id in the trace name.
+    """
 
 
 class LogPathSettings(BaseModel):

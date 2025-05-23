@@ -1,12 +1,17 @@
 import json
 from difflib import SequenceMatcher
 from importlib import resources
-from typing import Dict, List
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 from numpy import average
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from mcp.types import ModelHint, ModelPreferences
+from mcp_agent.core.context_dependent import ContextDependent
+from mcp_agent.tracing.telemetry import get_tracer
+
+if TYPE_CHECKING:
+    from mcp_agent.core.context import Context
 
 
 class ModelBenchmarks(BaseModel):
@@ -86,7 +91,7 @@ class ModelInfo(BaseModel):
     metrics: ModelMetrics
 
 
-class ModelSelector:
+class ModelSelector(ContextDependent):
     """
     A heuristic-based selector to choose the best model from a list of models.
 
@@ -103,7 +108,9 @@ class ModelSelector:
         self,
         models: List[ModelInfo] = None,
         benchmark_weights: Dict[str, float] | None = None,
+        context: Optional["Context"] = None,
     ):
+        super().__init__(context=context)
         if not models:
             self.models = load_default_models()
         else:
@@ -127,55 +134,79 @@ class ModelSelector:
         """
         Select the best model from a given list of models based on the given model preferences.
         """
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.select_best_model"
+        ) as span:
+            if self.context.tracing_enabled and self.benchmark_weights:
+                for k, v in self.benchmark_weights.items():
+                    span.set_attribute(f"benchmark_weights.{k}", v)
 
-        models: List[ModelInfo] = []
-        if provider:
-            models = self.models_by_provider[provider]
-        else:
-            models = self.models
+            models: List[ModelInfo] = []
+            if provider:
+                models = self.models_by_provider[provider]
+                span.set_attribute("provider", provider)
+            else:
+                models = self.models
 
-        if not models:
-            raise ValueError(f"No models available for selection. Provider={provider}")
+            if not models:
+                raise ValueError(
+                    f"No models available for selection. Provider={provider}"
+                )
 
-        candidate_models = models
-        # First check the model hints
-        if model_preferences.hints:
-            candidate_models = []
-            for model in models:
-                for hint in model_preferences.hints:
-                    if self._check_model_hint(model, hint):
-                        candidate_models.append(model)
+            span.set_attribute("models", [model.name for model in models])
 
-            if not candidate_models:
-                # If no hints match, we'll use all models and let the benchmark weights decide
-                candidate_models = models
+            candidate_models = models
+            # First check the model hints
+            if model_preferences.hints:
+                candidate_models = []
+                for model in models:
+                    for hint in model_preferences.hints:
+                        passes_hint = self._check_model_hint(model, hint)
+                        span.set_attribute(f"model_hint.{hint.name}", passes_hint)
+                        if passes_hint:
+                            candidate_models.append(model)
 
-        scores = []
+                if not candidate_models:
+                    # If no hints match, we'll use all models and let the benchmark weights decide
+                    candidate_models = models
 
-        # Next, we'll use the benchmark weights to decide the best model
-        for model in candidate_models:
-            cost_score = self._calculate_cost_score(
-                model, model_preferences, max_cost=self.max_values["max_cost"]
-            )
-            speed_score = self._calculate_speed_score(
-                model,
-                max_tokens_per_second=self.max_values["max_tokens_per_second"],
-                max_time_to_first_token_ms=self.max_values[
-                    "max_time_to_first_token_ms"
-                ],
-            )
-            intelligence_score = self._calculate_intelligence_score(
-                model, self.max_values
-            )
+            scores = []
 
-            model_score = (
-                (model_preferences.costPriority or 0) * cost_score
-                + (model_preferences.speedPriority or 0) * speed_score
-                + (model_preferences.intelligencePriority or 0) * intelligence_score
-            )
-            scores.append((model_score, model))
+            # Next, we'll use the benchmark weights to decide the best model
+            for model in candidate_models:
+                cost_score = self._calculate_cost_score(
+                    model, model_preferences, max_cost=self.max_values["max_cost"]
+                )
+                speed_score = self._calculate_speed_score(
+                    model,
+                    max_tokens_per_second=self.max_values["max_tokens_per_second"],
+                    max_time_to_first_token_ms=self.max_values[
+                        "max_time_to_first_token_ms"
+                    ],
+                )
+                intelligence_score = self._calculate_intelligence_score(
+                    model, self.max_values
+                )
 
-        return max(scores, key=lambda x: x[0])[1]
+                model_score = (
+                    (model_preferences.costPriority or 0) * cost_score
+                    + (model_preferences.speedPriority or 0) * speed_score
+                    + (model_preferences.intelligencePriority or 0) * intelligence_score
+                )
+                scores.append((model_score, model))
+
+                if self.context.tracing_enabled:
+                    span.set_attribute(f"model.{model.name}.cost_score", cost_score)
+                    span.set_attribute(f"model.{model.name}.speed_score", speed_score)
+                    span.set_attribute(
+                        f"model.{model.name}.intelligence_score", intelligence_score
+                    )
+                    span.set_attribute(f"model.{model.name}.total_score", model_score)
+
+            best_model = max(scores, key=lambda x: x[0])[1]
+            span.set_attribute("best_model", best_model.name)
+            return best_model
 
     def _models_by_provider(
         self, models: List[ModelInfo]

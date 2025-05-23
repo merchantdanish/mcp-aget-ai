@@ -28,6 +28,7 @@ from mcp_agent.executor.workflow_signal import (
     SignalValueT,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.tracing.telemetry import telemetry
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -163,7 +164,7 @@ class Executor(ABC, ContextDependent):
             payload: Optional data to include with the signal
             signal_description: Optional human-readable description
             workflow_id: Optional workflow ID to send the signal
-            workflow_id: Optional run ID of the workflow instance to signal
+            run_id: Optional run ID of the workflow instance to signal
         """
         signal = Signal[SignalValueT](
             name=signal_name,
@@ -280,6 +281,7 @@ class AsyncioExecutor(Executor):
         else:
             return await run_task(task)
 
+    @telemetry.traced()
     async def execute(
         self,
         task: Callable[..., R] | Coroutine[Any, Any, R],
@@ -305,6 +307,7 @@ class AsyncioExecutor(Executor):
                 **kwargs,
             )
 
+    @telemetry.traced()
     async def execute_many(
         self,
         tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
@@ -335,6 +338,7 @@ class AsyncioExecutor(Executor):
                 return_exceptions=True,
             )
 
+    @telemetry.traced()
     async def execute_streaming(
         self,
         tasks: List[Callable[..., R] | Coroutine[Any, Any, R]],
@@ -374,6 +378,7 @@ class AsyncioExecutor(Executor):
                 for future in done:
                     yield await future
 
+    @telemetry.traced()
     async def signal(
         self,
         signal_name: str,
@@ -386,6 +391,7 @@ class AsyncioExecutor(Executor):
             signal_name, payload, signal_description, workflow_id, run_id
         )
 
+    @telemetry.traced()
     async def wait_for_signal(
         self,
         signal_name: str,

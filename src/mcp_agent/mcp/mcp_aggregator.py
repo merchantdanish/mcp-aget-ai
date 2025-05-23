@@ -1,6 +1,8 @@
 import asyncio
 from typing import List, Literal, Dict, Optional, TypeVar, TYPE_CHECKING
 
+from mcp import ServerCapabilities
+from opentelemetry import trace
 from pydantic import BaseModel
 from mcp.client.session import ClientSession
 from mcp.server.lowlevel.server import Server
@@ -17,6 +19,8 @@ from mcp.types import (
 
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME, GEN_AI_TOOL_NAME
+from mcp_agent.tracing.telemetry import get_tracer, record_attributes
 from mcp_agent.mcp.gen_client import gen_client
 
 from mcp_agent.core.context_dependent import ContextDependent
@@ -122,103 +126,129 @@ class MCPAggregator(ContextDependent):
 
     async def initialize(self, force: bool = False):
         """Initialize the application."""
-        if self.initialized and not force:
-            return
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.initialize"
+        ) as span:
+            span.set_attribute("server_names", self.server_names)
+            span.set_attribute("force", force)
+            span.set_attribute("connection_persistence", self.connection_persistence)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+            span.set_attribute("initialized", self.initialized)
 
-        # Keep a connection manager to manage persistent connections for this aggregator
-        if self.connection_persistence:
-            # Try to get existing connection manager from context
-            # TODO: saqadri (FA1) - verify
-            # Initialize connection manager tracking on the context if not present
-            # These are placed on the context since it's shared across aggregators
+            if self.initialized and not force:
+                return
 
-            connection_manager: MCPConnectionManager | None = None
+            # Keep a connection manager to manage persistent connections for this aggregator
+            if self.connection_persistence:
+                # Try to get existing connection manager from context
+                # TODO: saqadri (FA1) - verify
+                # Initialize connection manager tracking on the context if not present
+                # These are placed on the context since it's shared across aggregators
 
-            if not hasattr(self.context, "_mcp_connection_manager_lock"):
-                self.context._mcp_connection_manager_lock = asyncio.Lock()
+                connection_manager: MCPConnectionManager | None = None
 
-            if not hasattr(self.context, "_mcp_connection_manager_ref_count"):
-                self.context._mcp_connection_manager_ref_count = int(0)
+                if not hasattr(self.context, "_mcp_connection_manager_lock"):
+                    self.context._mcp_connection_manager_lock = asyncio.Lock()
 
-            async with self.context._mcp_connection_manager_lock:
-                self.context._mcp_connection_manager_ref_count += 1
+                if not hasattr(self.context, "_mcp_connection_manager_ref_count"):
+                    self.context._mcp_connection_manager_ref_count = int(0)
 
-                if hasattr(self.context, "_mcp_connection_manager"):
-                    connection_manager = self.context._mcp_connection_manager
-                else:
-                    connection_manager = MCPConnectionManager(
-                        self.context.server_registry
-                    )
-                    await connection_manager.__aenter__()
-                    self.context._mcp_connection_manager = connection_manager
+                async with self.context._mcp_connection_manager_lock:
+                    self.context._mcp_connection_manager_ref_count += 1
 
-                self._persistent_connection_manager = connection_manager
+                    if hasattr(self.context, "_mcp_connection_manager"):
+                        connection_manager = self.context._mcp_connection_manager
+                    else:
+                        connection_manager = MCPConnectionManager(
+                            self.context.server_registry
+                        )
+                        await connection_manager.__aenter__()
+                        self.context._mcp_connection_manager = connection_manager
 
-        await self.load_servers()
-        self.initialized = True
+                    self._persistent_connection_manager = connection_manager
+
+            await self.load_servers()
+            span.add_event("initialized")
+            self.initialized = True
 
     async def close(self):
         """
         Close all persistent connections when the aggregator is deleted.
         """
-        # TODO: saqadri (FA1) - Verify implementation
-        if not self.connection_persistence or not self._persistent_connection_manager:
-            return
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(f"{self.__class__.__name__}.close") as span:
+            span.set_attribute("server_names", self.server_names)
+            span.set_attribute("connection_persistence", self.connection_persistence)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
 
-        try:
-            # We only need to manage reference counting if we're using connection persistence
-            if hasattr(self.context, "_mcp_connection_manager_lock") and hasattr(
-                self.context, "_mcp_connection_manager_ref_count"
+            # TODO: saqadri (FA1) - Verify implementation
+            if (
+                not self.connection_persistence
+                or not self._persistent_connection_manager
             ):
-                async with self.context._mcp_connection_manager_lock:
-                    # Decrement the reference count
-                    self.context._mcp_connection_manager_ref_count -= 1
-                    current_count = self.context._mcp_connection_manager_ref_count
-                    logger.debug(f"Decremented connection ref count to {current_count}")
+                return
 
-                    # Only proceed with cleanup if we're the last user
-                    if current_count == 0:
-                        logger.info(
-                            "Last aggregator closing, shutting down all persistent connections..."
+            try:
+                # We only need to manage reference counting if we're using connection persistence
+                if hasattr(self.context, "_mcp_connection_manager_lock") and hasattr(
+                    self.context, "_mcp_connection_manager_ref_count"
+                ):
+                    async with self.context._mcp_connection_manager_lock:
+                        # Decrement the reference count
+                        self.context._mcp_connection_manager_ref_count -= 1
+                        current_count = self.context._mcp_connection_manager_ref_count
+                        logger.debug(
+                            f"Decremented connection ref count to {current_count}"
                         )
 
-                        if (
-                            hasattr(self.context, "_mcp_connection_manager")
-                            and self.context._mcp_connection_manager
-                            == self._persistent_connection_manager
-                        ):
-                            # Add timeout protection for the disconnect operation
-                            try:
-                                await asyncio.wait_for(
-                                    self._persistent_connection_manager.disconnect_all(),
-                                    timeout=5.0,
-                                )
-                            except asyncio.TimeoutError:
-                                logger.warning(
-                                    "Timeout during disconnect_all(), forcing shutdown"
-                                )
-
-                            # Ensure the exit method is called regardless
-                            try:
-                                await self._persistent_connection_manager.__aexit__(
-                                    None, None, None
-                                )
-                            except Exception as e:
-                                logger.error(
-                                    f"Error during connection manager __aexit__: {e}"
-                                )
-
-                            # Clean up the connection manager from the context
-                            delattr(self.context, "_mcp_connection_manager")
+                        # Only proceed with cleanup if we're the last user
+                        if current_count == 0:
                             logger.info(
-                                "Connection manager successfully closed and removed from context"
+                                "Last aggregator closing, shutting down all persistent connections..."
                             )
 
-            self.initialized = False
-        except Exception as e:
-            logger.error(f"Error during connection manager cleanup: {e}", exc_info=True)
-            # TODO: saqadri (FA1) - Even if there's an error, we should mark ourselves as uninitialized
-            self.initialized = False
+                            if (
+                                hasattr(self.context, "_mcp_connection_manager")
+                                and self.context._mcp_connection_manager
+                                == self._persistent_connection_manager
+                            ):
+                                # Add timeout protection for the disconnect operation
+                                try:
+                                    await asyncio.wait_for(
+                                        self._persistent_connection_manager.disconnect_all(),
+                                        timeout=5.0,
+                                    )
+                                except asyncio.TimeoutError:
+                                    logger.warning(
+                                        "Timeout during disconnect_all(), forcing shutdown"
+                                    )
+
+                                # Ensure the exit method is called regardless
+                                try:
+                                    await self._persistent_connection_manager.__aexit__(
+                                        None, None, None
+                                    )
+                                except Exception as e:
+                                    logger.error(
+                                        f"Error during connection manager __aexit__: {e}"
+                                    )
+
+                                # Clean up the connection manager from the context
+                                delattr(self.context, "_mcp_connection_manager")
+                                logger.info(
+                                    "Connection manager successfully closed and removed from context"
+                                )
+
+                self.initialized = False
+            except Exception as e:
+                logger.error(
+                    f"Error during connection manager cleanup: {e}", exc_info=True
+                )
+                # TODO: saqadri (FA1) - Even if there's an error, we should mark ourselves as uninitialized
+                self.initialized = False
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                span.record_exception(e)
 
     @classmethod
     async def create(
@@ -241,108 +271,156 @@ class MCPAggregator(ContextDependent):
             connection_persistence=connection_persistence,
         )
 
-        try:
-            await instance.__aenter__()
+        tracer = get_tracer(instance.context)
+        with tracer.start_as_current_span(f"{cls.__name__}.create") as span:
+            span.set_attribute("server_names", server_names)
+            span.set_attribute("connection_persistence", connection_persistence)
 
-            logger.debug("Loading servers...")
-            await instance.load_servers()
+            try:
+                await instance.__aenter__()
 
-            logger.debug("MCPAggregator created and initialized.")
-            return instance
-        except Exception as e:
-            logger.error(f"Error creating MCPAggregator: {e}")
-            await instance.__aexit__(None, None, None)
+                logger.debug("Loading servers...")
+                await instance.load_servers()
+
+                logger.debug("MCPAggregator created and initialized.")
+                return instance
+            except Exception as e:
+                logger.error(f"Error creating MCPAggregator: {e}")
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                span.record_exception(e)
+                await instance.__aexit__(None, None, None)
 
     async def load_server(self, server_name: str):
         """
         Load tools and prompts from a single server and update the index of namespaced tool/prompt names for that server.
         """
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.load_server"
+        ) as span:
+            span.set_attribute("server_name", server_name)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
 
-        if server_name not in self.server_names:
-            raise ValueError(f"Server '{server_name}' not found in server list")
+            if server_name not in self.server_names:
+                raise ValueError(f"Server '{server_name}' not found in server list")
 
-        _, tools, prompts = await self._fetch_capabilities(server_name)
+            _, tools, prompts = await self._fetch_capabilities(server_name)
 
-        # Process tools
-        async with self._tool_map_lock:
-            self._server_to_tool_map[server_name] = []
-            for tool in tools:
-                namespaced_tool_name = f"{server_name}{SEP}{tool.name}"
-                namespaced_tool = NamespacedTool(
-                    tool=tool,
-                    server_name=server_name,
-                    namespaced_tool_name=namespaced_tool_name,
-                )
+            # Process tools
+            async with self._tool_map_lock:
+                self._server_to_tool_map[server_name] = []
+                for tool in tools:
+                    namespaced_tool_name = f"{server_name}{SEP}{tool.name}"
+                    namespaced_tool = NamespacedTool(
+                        tool=tool,
+                        server_name=server_name,
+                        namespaced_tool_name=namespaced_tool_name,
+                    )
 
-                self._namespaced_tool_map[namespaced_tool_name] = namespaced_tool
-                self._server_to_tool_map[server_name].append(namespaced_tool)
+                    self._namespaced_tool_map[namespaced_tool_name] = namespaced_tool
+                    self._server_to_tool_map[server_name].append(namespaced_tool)
 
-        # Process prompts
-        async with self._prompt_map_lock:
-            self._server_to_prompt_map[server_name] = []
-            for prompt in prompts:
-                namespaced_prompt_name = f"{server_name}{SEP}{prompt.name}"
-                namespaced_prompt = NamespacedPrompt(
-                    prompt=prompt,
-                    server_name=server_name,
-                    namespaced_prompt_name=namespaced_prompt_name,
-                )
+            # Process prompts
+            async with self._prompt_map_lock:
+                self._server_to_prompt_map[server_name] = []
+                for prompt in prompts:
+                    namespaced_prompt_name = f"{server_name}{SEP}{prompt.name}"
+                    namespaced_prompt = NamespacedPrompt(
+                        prompt=prompt,
+                        server_name=server_name,
+                        namespaced_prompt_name=namespaced_prompt_name,
+                    )
 
-                self._namespaced_prompt_map[namespaced_prompt_name] = namespaced_prompt
-                self._server_to_prompt_map[server_name].append(namespaced_prompt)
+                    self._namespaced_prompt_map[namespaced_prompt_name] = (
+                        namespaced_prompt
+                    )
+                    self._server_to_prompt_map[server_name].append(namespaced_prompt)
 
-        logger.debug(
-            f"MCP Aggregator initialized for server '{server_name}'",
-            data={
-                "progress_action": ProgressAction.INITIALIZED,
+            event_metadata = {
                 "server_name": server_name,
                 "agent_name": self.agent_name,
                 "tool_count": len(tools),
                 "prompt_count": len(prompts),
-            },
-        )
+            }
 
-        return tools, prompts
+            logger.debug(
+                f"MCP Aggregator initialized for server '{server_name}'",
+                data={"progress_action": ProgressAction.INITIALIZED, **event_metadata},
+            )
+
+            if self.context.tracing_enabled:
+                span.add_event(
+                    "load_server_complete",
+                    event_metadata,
+                )
+
+                for tool in tools:
+                    span.set_attribute(
+                        f"tool.{tool.name}", tool.description or "No description"
+                    )
+                for prompt in prompts:
+                    span.set_attribute(
+                        f"prompt.{prompt.name}", prompt.description or "No description"
+                    )
+
+            return tools, prompts
 
     async def load_servers(self, force: bool = False):
         """
         Discover tools and prompts from each server in parallel and build an index of namespaced tool/prompt names.
         """
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.load_servers"
+        ) as span:
+            span.set_attribute("server_names", self.server_names)
+            span.set_attribute("force", force)
+            span.set_attribute("connection_persistence", self.connection_persistence)
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+            span.set_attribute("initialized", self.initialized)
 
-        if self.initialized and not force:
-            logger.debug("MCPAggregator already initialized. Skipping reload.")
-            return
+            if self.initialized and not force:
+                logger.debug("MCPAggregator already initialized. Skipping reload.")
+                return
 
-        async with self._tool_map_lock:
-            self._namespaced_tool_map.clear()
-            self._server_to_tool_map.clear()
+            async with self._tool_map_lock:
+                self._namespaced_tool_map.clear()
+                self._server_to_tool_map.clear()
 
-        async with self._prompt_map_lock:
-            self._namespaced_prompt_map.clear()
-            self._server_to_prompt_map.clear()
+            async with self._prompt_map_lock:
+                self._namespaced_prompt_map.clear()
+                self._server_to_prompt_map.clear()
 
-        # TODO: saqadri (FA1) - Verify that this can be removed
-        # if self.connection_persistence:
-        #     # Start all the servers
-        #     await asyncio.gather(
-        #         *(self._start_server(server_name) for server_name in self.server_names),
-        #         return_exceptions=True,
-        #     )
+            # TODO: saqadri (FA1) - Verify that this can be removed
+            # if self.connection_persistence:
+            #     # Start all the servers
+            #     await asyncio.gather(
+            #         *(self._start_server(server_name) for server_name in self.server_names),
+            #         return_exceptions=True,
+            #     )
 
-        # Load tools and prompts from all servers concurrently
-        results = await asyncio.gather(
-            *(self.load_server(server_name) for server_name in self.server_names),
-            return_exceptions=True,
-        )
+            # Load tools and prompts from all servers concurrently
+            results = await asyncio.gather(
+                *(self.load_server(server_name) for server_name in self.server_names),
+                return_exceptions=True,
+            )
 
-        for result in results:
-            if isinstance(result, BaseException):
-                logger.error(
-                    f"Error loading server data: {result}. Attempting to continue"
-                )
-                continue
+            for server_name, result in zip(self.server_names, results):
+                if isinstance(result, BaseException):
+                    logger.error(
+                        f"Error loading server data: {result}. Attempting to continue"
+                    )
+                    span.record_exception(result, {"server_name": server_name})
+                    continue
+                else:
+                    span.add_event(
+                        "server_load_success",
+                        {
+                            "server_name": server_name,
+                        },
+                    )
 
-        self.initialized = True
+            self.initialized = True
 
     async def get_server(self, server_name: str) -> Optional[ClientSession]:
         """Get a server connection if available."""
@@ -374,79 +452,143 @@ class MCPAggregator(ContextDependent):
 
     async def get_capabilities(self, server_name: str):
         """Get server capabilities if available."""
-        if self.connection_persistence:
-            try:
-                server_conn = await self._persistent_connection_manager.get_server(
-                    server_name, client_session_factory=MCPAgentClientSession
-                )
-                # TODO: saqadri (FA1) - verify
-                # server_capabilities is a property, not a coroutine
-                return server_conn.server_capabilities
-            except Exception as e:
-                logger.warning(
-                    f"Error getting capabilities for server '{server_name}': {e}"
-                )
-                return None
-        else:
-            logger.debug(
-                f"Creating temporary connection to server: {server_name}",
-                data={
-                    "progress_action": ProgressAction.STARTING,
-                    "server_name": server_name,
-                    "agent_name": self.agent_name,
-                },
-            )
-            async with self.context.server_registry.start_server(
-                server_name, client_session_factory=MCPAgentClientSession
-            ) as session:
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.get_capabilitites"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+            span.set_attribute("server_names", self.server_names)
+            span.set_attribute("connection_persistence", self.connection_persistence)
+            span.set_attribute("server_name", server_name)
+
+            def _annotate_span_for_capabilities(capabilities: ServerCapabilities):
+                if not self.context.tracing_enabled:
+                    return
+
+                for attr in [
+                    "experimental",
+                    "logging",
+                    "prompts",
+                    "resources",
+                    "tools",
+                ]:
+                    value = getattr(capabilities, attr, None)
+                    span.set_attribute(
+                        f"{server_name}.capabilities.{attr}", value is not None
+                    )
+
+            if self.connection_persistence:
                 try:
-                    initialize_result = await session.initialize()
-                    return initialize_result.capabilities
+                    server_conn = await self._persistent_connection_manager.get_server(
+                        server_name, client_session_factory=MCPAgentClientSession
+                    )
+                    # TODO: saqadri (FA1) - verify
+                    # server_capabilities is a property, not a coroutine
+                    res = server_conn.server_capabilities
+                    _annotate_span_for_capabilities(res)
+                    return res
                 except Exception as e:
                     logger.warning(
                         f"Error getting capabilities for server '{server_name}': {e}"
                     )
+                    span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    span.record_exception(e)
                     return None
+            else:
+                logger.debug(
+                    f"Creating temporary connection to server: {server_name}",
+                    data={
+                        "progress_action": ProgressAction.STARTING,
+                        "server_name": server_name,
+                        "agent_name": self.agent_name,
+                    },
+                )
+                async with self.context.server_registry.start_server(
+                    server_name, client_session_factory=MCPAgentClientSession
+                ) as session:
+                    try:
+                        initialize_result = await session.initialize()
+                        res = initialize_result.capabilities
+                        _annotate_span_for_capabilities(res)
+                        return res
+                    except Exception as e:
+                        logger.warning(
+                            f"Error getting capabilities for server '{server_name}': {e}"
+                        )
+                        span.set_status(trace.Status(trace.StatusCode.ERROR))
+                        span.record_exception(e)
+                        return None
 
     async def refresh(self, server_name: str | None = None):
         """
         Refresh the tools and prompts from the specified server or all servers.
         """
-        if server_name:
-            await self.load_server(server_name)
-        else:
-            await self.load_servers(force=True)
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(f"{self.__class__.__name__}.refresh") as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+            if server_name:
+                span.set_attribute("server_name", server_name)
+                await self.load_server(server_name)
+            else:
+                await self.load_servers(force=True)
 
     async def list_servers(self) -> List[str]:
         """Return the list of server names aggregated by this agent."""
-        if not self.initialized:
-            await self.load_servers()
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.list_servers"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+            span.set_attribute("initialized", self.initialized)
+            if not self.initialized:
+                await self.load_servers()
 
-        return self.server_names
+            span.set_attribute("server_names", self.server_names)
+            return self.server_names
 
     async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
         """
         :return: Tools from all servers aggregated, and renamed to be dot-namespaced by server name.
         """
-        if not self.initialized:
-            await self.load_servers()
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.list_tools"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+            span.set_attribute("initialized", self.initialized)
+            if not self.initialized:
+                await self.load_servers()
 
-        if server_name:
-            return ListToolsResult(
-                prompts=[
-                    namespaced_tool.tool.model_copy(
-                        update={"name": namespaced_tool.namespaced_tool_name}
+            if server_name:
+                span.set_attribute("server_name", server_name)
+                result = ListToolsResult(
+                    tools=[
+                        namespaced_tool.tool.model_copy(
+                            update={"name": namespaced_tool.namespaced_tool_name}
+                        )
+                        for namespaced_tool in self._server_to_tool_map.get(
+                            server_name, []
+                        )
+                    ]
+                )
+            else:
+                result = ListToolsResult(
+                    tools=[
+                        namespaced_tool.tool.model_copy(
+                            update={"name": namespaced_tool_name}
+                        )
+                        for namespaced_tool_name, namespaced_tool in self._namespaced_tool_map.items()
+                    ]
+                )
+
+            if self.context.tracing_enabled:
+                span.set_attribute("tool_count", len(result.tools))
+                for tool in result.tools:
+                    span.set_attribute(
+                        f"tool.{tool.name}", tool.description or "No description"
                     )
-                    for namespaced_tool in self._server_to_tool_map.get(server_name, [])
-                ]
-            )
 
-        return ListToolsResult(
-            tools=[
-                namespaced_tool.tool.model_copy(update={"name": namespaced_tool_name})
-                for namespaced_tool_name, namespaced_tool in self._namespaced_tool_map.items()
-            ]
-        )
+            return result
 
     async def call_tool(
         self, name: str, arguments: dict | None = None, server_name: str | None = None
@@ -454,103 +596,199 @@ class MCPAggregator(ContextDependent):
         """
         Call a namespaced tool, e.g., 'server_name.tool_name'.
         """
-        if not self.initialized:
-            await self.load_servers()
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.call_tool"
+        ) as span:
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+                span.set_attribute(GEN_AI_TOOL_NAME, name)
 
-        server_name: str = None
-        local_tool_name: str = None
+                if arguments is not None:
+                    record_attributes(span, arguments, "arguments")
 
-        if server_name:
-            local_tool_name = name
-        else:
-            server_name, local_tool_name = self._parse_capability_name(name, "tool")
+            if not self.initialized:
+                await self.load_servers()
 
-        if server_name is None or local_tool_name is None:
-            logger.error(f"Error: Tool '{name}' not found")
-            return CallToolResult(
-                isError=True,
-                content=[TextContent(type="text", text=f"Tool '{name}' not found")],
-            )
+            server_name: str = None
+            local_tool_name: str = None
 
-        logger.info(
-            "Requesting tool call",
-            data={
-                "progress_action": ProgressAction.CALLING_TOOL,
-                "tool_name": local_tool_name,
-                "server_name": server_name,
-                "agent_name": self.agent_name,
-            },
-        )
+            if server_name:
+                span.set_attribute("server_name", server_name)
+                local_tool_name = name
+            else:
+                server_name, local_tool_name = self._parse_capability_name(name, "tool")
+                span.set_attribute("parsed_server_name", server_name)
+                span.set_attribute("parsed_tool_name", local_tool_name)
 
-        async def try_call_tool(client: ClientSession):
-            try:
-                return await client.call_tool(name=local_tool_name, arguments=arguments)
-            except Exception as e:
+            if server_name is None or local_tool_name is None:
+                logger.error(f"Error: Tool '{name}' not found")
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                span.record_exception(ValueError(f"Tool '{name}' not found"))
                 return CallToolResult(
                     isError=True,
-                    content=[
-                        TextContent(
-                            type="text",
-                            text=f"Failed to call tool '{local_tool_name}' on server '{server_name}': {str(e)}",
-                        )
-                    ],
+                    content=[TextContent(type="text", text=f"Tool '{name}' not found")],
                 )
 
-        if self.connection_persistence:
-            server_connection = await self._persistent_connection_manager.get_server(
-                server_name, client_session_factory=MCPAgentClientSession
-            )
-            return await try_call_tool(server_connection.session)
-        else:
-            logger.debug(
-                f"Creating temporary connection to server: {server_name}",
+            logger.info(
+                "Requesting tool call",
                 data={
-                    "progress_action": ProgressAction.STARTING,
+                    "progress_action": ProgressAction.CALLING_TOOL,
+                    "tool_name": local_tool_name,
                     "server_name": server_name,
                     "agent_name": self.agent_name,
                 },
             )
-            async with gen_client(
-                server_name, server_registry=self.context.server_registry
-            ) as client:
-                result = await try_call_tool(client)
+            span.add_event(
+                "request_tool_call",
+                {
+                    GEN_AI_AGENT_NAME: self.agent_name,
+                    GEN_AI_TOOL_NAME: local_tool_name,
+                    "server_name": server_name,
+                },
+            )
+
+            def _annotate_span_for_result(result: CallToolResult):
+                if not self.context.tracing_enabled:
+                    return
+                span.set_attribute("result.isError", result.isError)
+                if result.isError:
+                    span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    error_message = (
+                        result.content[0].text
+                        if len(result.content) > 0 and result.content[0].type == "text"
+                        else "Error calling tool"
+                    )
+                    span.record_exception(Exception(error_message))
+                else:
+                    for idx, content in enumerate(result.content):
+                        span.set_attribute(f"result.content.{idx}.type", content.type)
+                        if content.type == "text":
+                            span.set_attribute(
+                                f"result.content.{idx}.text", result.content[idx].text
+                            )
+
+            async def try_call_tool(client: ClientSession):
+                try:
+                    res = await client.call_tool(
+                        name=local_tool_name, arguments=arguments
+                    )
+                    _annotate_span_for_result(res)
+                    return res
+                except Exception as e:
+                    span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    span.record_exception(e)
+                    return CallToolResult(
+                        isError=True,
+                        content=[
+                            TextContent(
+                                type="text",
+                                text=f"Failed to call tool '{local_tool_name}' on server '{server_name}': {str(e)}",
+                            )
+                        ],
+                    )
+
+            if self.connection_persistence:
+                server_connection = (
+                    await self._persistent_connection_manager.get_server(
+                        server_name, client_session_factory=MCPAgentClientSession
+                    )
+                )
+                res = await try_call_tool(server_connection.session)
+                _annotate_span_for_result(res)
+                return res
+            else:
                 logger.debug(
-                    f"Closing temporary connection to server: {server_name}",
+                    f"Creating temporary connection to server: {server_name}",
                     data={
-                        "progress_action": ProgressAction.SHUTDOWN,
+                        "progress_action": ProgressAction.STARTING,
                         "server_name": server_name,
                         "agent_name": self.agent_name,
                     },
                 )
-                return result
+                span.add_event(
+                    "temporary_connection_created",
+                    {"server_name": server_name, GEN_AI_AGENT_NAME: self.agent_name},
+                )
+                async with gen_client(
+                    server_name, server_registry=self.context.server_registry
+                ) as client:
+                    result = await try_call_tool(client)
+                    logger.debug(
+                        f"Closing temporary connection to server: {server_name}",
+                        data={
+                            "progress_action": ProgressAction.SHUTDOWN,
+                            "server_name": server_name,
+                            "agent_name": self.agent_name,
+                        },
+                    )
+                    span.add_event(
+                        "temporary_connection_closed",
+                        {
+                            "server_name": server_name,
+                            GEN_AI_AGENT_NAME: self.agent_name,
+                        },
+                    )
+                    _annotate_span_for_result(result)
+                    return result
 
     async def list_prompts(self, server_name: str | None = None) -> ListPromptsResult:
         """
         :return: Prompts from all servers aggregated, and renamed to be dot-namespaced by server name.
         """
-        if not self.initialized:
-            await self.load_servers()
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.list_prompts"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+            span.set_attribute("initialized", self.initialized)
+            if not self.initialized:
+                await self.load_servers()
 
-        if server_name:
-            return ListPromptsResult(
-                prompts=[
-                    namespaced_prompt.prompt.model_copy(
-                        update={"name": namespaced_prompt.namespaced_prompt_name}
-                    )
-                    for namespaced_prompt in self._server_to_prompt_map.get(
-                        server_name, []
-                    )
-                ]
-            )
-
-        return ListPromptsResult(
-            prompts=[
-                namespaced_prompt.prompt.model_copy(
-                    update={"name": namespaced_prompt_name}
+            if server_name:
+                span.set_attribute("server_name", server_name)
+                res = ListPromptsResult(
+                    prompts=[
+                        namespaced_prompt.prompt.model_copy(
+                            update={"name": namespaced_prompt.namespaced_prompt_name}
+                        )
+                        for namespaced_prompt in self._server_to_prompt_map.get(
+                            server_name, []
+                        )
+                    ]
                 )
-                for namespaced_prompt_name, namespaced_prompt in self._namespaced_prompt_map.items()
-            ]
-        )
+            else:
+                res = ListPromptsResult(
+                    prompts=[
+                        namespaced_prompt.prompt.model_copy(
+                            update={"name": namespaced_prompt_name}
+                        )
+                        for namespaced_prompt_name, namespaced_prompt in self._namespaced_prompt_map.items()
+                    ]
+                )
+
+            if self.context.tracing_enabled:
+                span.set_attribute("prompts", [prompt.name for prompt in res.prompts])
+
+                for prompt in res.prompts:
+                    if prompt.description:
+                        span.set_attribute(
+                            f"prompt.{prompt.name}.description", prompt.description
+                        )
+                    if prompt.arguments:
+                        for arg in prompt.arguments:
+                            for attr in [
+                                "description",
+                                "required",
+                            ]:
+                                value = getattr(arg, attr, None)
+                                if value is not None:
+                                    span.set_attribute(
+                                        f"prompt.{prompt.name}.arguments.{arg.name}.{attr}",
+                                        value,
+                                    )
+
+            return res
 
     async def get_prompt(
         self,
@@ -570,83 +808,139 @@ class MCPAggregator(ContextDependent):
         Returns:
             Fully resolved prompt returned by the server
         """
-        if not self.initialized:
-            await self.load_servers()
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.get_prompt"
+        ) as span:
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+                span.set_attribute("name", name)
+                span.set_attribute("initialized", self.initialized)
 
-        if server_name:
-            local_prompt_name = name
-        else:
-            server_name, local_prompt_name = self._parse_capability_name(name, "prompt")
+                if arguments is not None:
+                    record_attributes(span, arguments, "arguments")
 
-        if server_name is None or local_prompt_name is None:
-            logger.error(f"Error: Prompt '{name}' not found")
-            return GetPromptResult(
-                isError=True, description=f"Prompt '{name}' not found", messages=[]
-            )
+            if not self.initialized:
+                await self.load_servers()
 
-        logger.info(
-            "Requesting prompt",
-            data={
-                # TODO: saqadri (FA1) - update progress action
-                "progress_action": ProgressAction.CALLING_TOOL,
-                "tool_name": local_prompt_name,
-                "server_name": server_name,
-                "agent_name": self.agent_name,
-            },
-        )
-
-        async def try_get_prompt(client: ClientSession):
-            try:
-                return await client.get_prompt(
-                    name=local_prompt_name, arguments=arguments
+            if server_name:
+                span.set_attribute("server_name", server_name)
+                local_prompt_name = name
+            else:
+                server_name, local_prompt_name = self._parse_capability_name(
+                    name, "prompt"
                 )
-            except Exception as e:
+                span.set_attribute("parsed_server_name", server_name)
+                span.set_attribute("parsed_prompt_name", local_prompt_name)
+
+            if server_name is None or local_prompt_name is None:
+                logger.error(f"Error: Prompt '{name}' not found")
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                span.record_exception(ValueError(f"Prompt '{name}' not found"))
                 return GetPromptResult(
-                    isError=True,
-                    description=f"Failed to call tool '{local_prompt_name}' on server '{server_name}': {str(e)}",
-                    messages=[],
+                    isError=True, description=f"Prompt '{name}' not found", messages=[]
                 )
 
-        result: GetPromptResult = GetPromptResult(messages=[])
-        if self.connection_persistence:
-            server_connection = await self._persistent_connection_manager.get_server(
-                server_name, client_session_factory=MCPAgentClientSession
-            )
-            result = await try_get_prompt(server_connection.session)
-        else:
-            logger.debug(
-                f"Creating temporary connection to server: {server_name}",
+            logger.info(
+                "Requesting prompt",
                 data={
-                    "progress_action": ProgressAction.STARTING,
+                    # TODO: saqadri (FA1) - update progress action
+                    "progress_action": ProgressAction.CALLING_TOOL,
+                    "tool_name": local_prompt_name,
                     "server_name": server_name,
                     "agent_name": self.agent_name,
                 },
             )
-            async with gen_client(
-                server_name, server_registry=self.context.server_registry
-            ) as client:
-                result = await try_get_prompt(client)
+
+            span.add_event(
+                "request_prompt",
+                {
+                    "prompt_name": local_prompt_name,
+                    "server_name": server_name,
+                    "agent_name": self.agent_name,
+                },
+            )
+
+            async def try_get_prompt(client: ClientSession):
+                try:
+                    return await client.get_prompt(
+                        name=local_prompt_name, arguments=arguments
+                    )
+                except Exception as e:
+                    span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    span.record_exception(e)
+                    return GetPromptResult(
+                        isError=True,
+                        description=f"Failed to get prompt '{local_prompt_name}' on server '{server_name}': {str(e)}",
+                        messages=[],
+                    )
+
+            result: GetPromptResult = GetPromptResult(messages=[])
+            if self.connection_persistence:
+                server_connection = (
+                    await self._persistent_connection_manager.get_server(
+                        server_name, client_session_factory=MCPAgentClientSession
+                    )
+                )
+                result = await try_get_prompt(server_connection.session)
+            else:
                 logger.debug(
-                    f"Closing temporary connection to server: {server_name}",
+                    f"Creating temporary connection to server: {server_name}",
                     data={
-                        "progress_action": ProgressAction.SHUTDOWN,
+                        "progress_action": ProgressAction.STARTING,
                         "server_name": server_name,
                         "agent_name": self.agent_name,
                     },
                 )
+                span.add_event(
+                    "temporary_connection_created",
+                    {"server_name": server_name, "agent_name": self.agent_name},
+                )
+                async with gen_client(
+                    server_name, server_registry=self.context.server_registry
+                ) as client:
+                    result = await try_get_prompt(client)
+                    logger.debug(
+                        f"Closing temporary connection to server: {server_name}",
+                        data={
+                            "progress_action": ProgressAction.SHUTDOWN,
+                            "server_name": server_name,
+                            "agent_name": self.agent_name,
+                        },
+                    )
+                    span.add_event(
+                        "temporary_connection_closed",
+                        {"server_name": server_name, "agent_name": self.agent_name},
+                    )
 
-        # Add namespaced name and source server to the result
-        # TODO: saqadri (FA1) - this code shouldn't be here.
-        # It should be wherever the prompt is being displayed
-        if result and result.messages:
-            result.server_name = server_name
-            result.prompt_name = local_prompt_name
-            result.namespaced_name = f"{server_name}{SEP}{local_prompt_name}"
+            # Add namespaced name and source server to the result
+            # TODO: saqadri (FA1) - this code shouldn't be here.
+            # It should be wherever the prompt is being displayed
+            if result and result.messages:
+                result.server_name = server_name
+                result.prompt_name = local_prompt_name
+                result.namespaced_name = f"{server_name}{SEP}{local_prompt_name}"
 
-            # Store the arguments in the result for display purposes
-            if arguments:
-                result.arguments = arguments
-        return result
+                # Store the arguments in the result for display purposes
+                if arguments:
+                    result.arguments = arguments
+
+                if self.context.tracing_enabled:
+                    for idx, message in enumerate(result.messages):
+                        span.set_attribute(f"prompt.message.{idx}.role", message.role)
+                        span.set_attribute(
+                            f"prompt.message.{idx}.content.type", message.content.type
+                        )
+                        if message.content.type == "text":
+                            span.set_attribute(
+                                f"prompt.message.{idx}.content.text",
+                                message.content.text,
+                            )
+
+                    if result.description:
+                        span.set_attribute("prompt.description", result.description)
+
+            return result
 
     def _parse_capability_name(
         self, name: str, capability: Literal["tool", "prompt"]
@@ -862,7 +1156,7 @@ class MCPCompoundServer(Server):
             return result
         except Exception as e:
             return GetPromptResult(
-                description=f"Error getting prompt: {e}", messages=[]
+                isError=True, description=f"Error getting prompt: {e}", messages=[]
             )
 
     async def run_stdio_async(self) -> None:

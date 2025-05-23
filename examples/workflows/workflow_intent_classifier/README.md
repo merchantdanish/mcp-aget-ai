@@ -29,6 +29,11 @@ cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
 
 Then open `mcp_agent.secrets.yaml` and add your OpenAI api key.
 
+## (Optional) Configure tracing
+
+In `mcp_agent.config.yaml`, you can set `otel` to `enabled` to enable OpenTelemetry tracing for the workflow.
+You can [run Jaeger locally](https://www.jaegertracing.io/docs/2.5/getting-started/) to view the traces in the Jaeger UI.
+
 ## `3` Run locally
 
 Run your MCP Agent app:
