@@ -747,7 +747,8 @@
             }
           ],
           "default": null,
-          "title": "Max Concurrent Activities"
+          "title": "Max Concurrent Activities",
+          "type": "integer"
         },
         "api_key": {
           "anyOf": [

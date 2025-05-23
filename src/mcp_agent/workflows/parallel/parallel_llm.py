@@ -1,6 +1,5 @@
 import json
 from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING
-import uuid
 
 from opentelemetry import trace
 
@@ -55,6 +54,7 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
         fan_in_agent: Agent | AugmentedLLM | Callable[[FanInInput], Any],
         fan_out_agents: List[Agent | AugmentedLLM] | None = None,
         fan_out_functions: List[Callable] | None = None,
+        name: str | None = None,
         llm_factory: Callable[[Agent], AugmentedLLM] = None,
         context: Optional["Context"] = None,
         **kwargs,
@@ -65,7 +65,7 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
         If an agent is provided, all other properties are optional
         """
         super().__init__(
-            name=f"parallel-{str(context.executor.uuid() if context else uuid.uuid4())}",
+            name=name,
             instruction="You are a parallel LLM workflow that can fan-out to multiple LLMs and fan-in to an aggregator LLM.",
             context=context,
             **kwargs,

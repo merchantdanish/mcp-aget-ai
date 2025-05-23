@@ -1047,7 +1047,7 @@ wheels = [
 
 [[package]]
 name = "mcp-agent"
-version = "0.0.22"
+version = "0.0.23"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },

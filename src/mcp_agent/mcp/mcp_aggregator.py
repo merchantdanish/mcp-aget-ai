@@ -409,14 +409,7 @@ class MCPAggregator(ContextDependent):
                     logger.error(
                         f"Error loading server data: {result}. Attempting to continue"
                     )
-                    span.add_event(
-                        "server_load_error",
-                        {
-                            "server_name": server_name,
-                            "exception.type": type(result).__name__,
-                            "exception.message": str(result),
-                        },
-                    )
+                    span.record_exception(result, {"server_name": server_name})
                     continue
                 else:
                     span.add_event(
@@ -427,6 +420,34 @@ class MCPAggregator(ContextDependent):
                     )
 
             self.initialized = True
+
+    async def get_server(self, server_name: str) -> Optional[ClientSession]:
+        """Get a server connection if available."""
+
+        if self.connection_persistence:
+            try:
+                server_conn = await self._persistent_connection_manager.get_server(
+                    server_name, client_session_factory=MCPAgentClientSession
+                )
+                return server_conn.session
+            except Exception as e:
+                logger.warning(
+                    f"Error getting server connection for '{server_name}': {e}"
+                )
+                return None
+        else:
+            logger.debug(
+                f"Creating temporary connection to server: {server_name}",
+                data={
+                    "progress_action": ProgressAction.STARTING,
+                    "server_name": server_name,
+                    "agent_name": self.agent_name,
+                },
+            )
+            async with gen_client(
+                server_name, server_registry=self.context.server_registry
+            ) as client:
+                return client
 
     async def get_capabilities(self, server_name: str):
         """Get server capabilities if available."""
@@ -501,6 +522,7 @@ class MCPAggregator(ContextDependent):
         tracer = self.context.tracer or trace.get_tracer("mcp-agent")
         with tracer.start_as_current_span(f"{self.__class__.__name__}.refresh") as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+
             if server_name:
                 span.set_attribute("server_name", server_name)
                 await self.load_server(server_name)
@@ -515,6 +537,7 @@ class MCPAggregator(ContextDependent):
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
             span.set_attribute("initialized", self.initialized)
+
             if not self.initialized:
                 await self.load_servers()
 
@@ -531,6 +554,7 @@ class MCPAggregator(ContextDependent):
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
             span.set_attribute("initialized", self.initialized)
+
             if not self.initialized:
                 await self.load_servers()
 
@@ -711,6 +735,7 @@ class MCPAggregator(ContextDependent):
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
             span.set_attribute("initialized", self.initialized)
+
             if not self.initialized:
                 await self.load_servers()
 
@@ -896,14 +921,13 @@ class MCPAggregator(ContextDependent):
                             f"prompt.message.{idx}.content.text", message.content.text
                         )
 
-                # Store the arguments in the result for display purposes
-                if arguments:
-                    result.arguments = arguments
+            # Store the arguments in the result for display purposes
+            if arguments:
+                result.arguments = arguments
 
-                if result.description:
-                    span.set_attribute("prompt.description", result.description)
-
-            return result
+            if result.description:
+                span.set_attribute("prompt.description", result.description)
+        return result
 
     def _parse_capability_name(
         self, name: str, capability: Literal["tool", "prompt"]

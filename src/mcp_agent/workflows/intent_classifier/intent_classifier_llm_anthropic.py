@@ -1,5 +1,4 @@
 from typing import List, Optional, TYPE_CHECKING
-import uuid
 
 from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.workflows.intent_classifier.intent_classifier_base import Intent
@@ -26,13 +25,13 @@ class AnthropicLLMIntentClassifier(LLMIntentClassifier):
         self,
         intents: List[Intent],
         classification_instruction: str | None = None,
+        name: str | None = None,
+        llm: AnthropicAugmentedLLM | None = None,
         context: Optional["Context"] = None,
         **kwargs,
     ):
-        anthropic_llm = AnthropicAugmentedLLM(
-            instruction=CLASSIFIER_SYSTEM_INSTRUCTION,
-            context=context,
-            name=f"intent-classifier-{str(context.executor.uuid() if context else uuid.uuid4())}",
+        anthropic_llm = llm or AnthropicAugmentedLLM(
+            name=name, instruction=CLASSIFIER_SYSTEM_INSTRUCTION, context=context
         )
 
         super().__init__(
@@ -46,8 +45,10 @@ class AnthropicLLMIntentClassifier(LLMIntentClassifier):
     @classmethod
     async def create(
         cls,
+        llm: AnthropicAugmentedLLM,
         intents: List[Intent],
         classification_instruction: str | None = None,
+        name: str | None = None,
         context: Optional["Context"] = None,
     ) -> "AnthropicLLMIntentClassifier":
         """
@@ -55,8 +56,10 @@ class AnthropicLLMIntentClassifier(LLMIntentClassifier):
         Use this instead of constructor since we need async initialization.
         """
         instance = cls(
+            llm=llm,
             intents=intents,
             classification_instruction=classification_instruction,
+            name=name,
             context=context,
         )
         await instance.initialize()
