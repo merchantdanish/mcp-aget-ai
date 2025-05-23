@@ -131,7 +131,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             span.set_attribute("plan_type", self.plan_type)
-            span.set_attribute("available_agents", str(self.agents.keys()))
+            span.set_attribute("available_agents", list(self.agents.keys()))
 
             params = self.get_request_params(request_params)
 
@@ -265,7 +265,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             f"{self.__class__.__name__}.{self.name}.execute"
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
-            span.set_attribute("available_agents", str(self.agents.keys()))
+            span.set_attribute("available_agents", list(self.agents.keys()))
             span.set_attribute("objective", objective)
             span.set_attribute("plan_type", self.plan_type)
 
