@@ -167,6 +167,7 @@ class OpenAIAugmentedLLM(
 
             system_prompt = self.instruction or params.systemPrompt
             if system_prompt and len(messages) == 0:
+                span.set_attribute("system_prompt", system_prompt)
                 messages.append(
                     ChatCompletionSystemMessageParam(
                         role="system", content=system_prompt
@@ -195,10 +196,12 @@ class OpenAIAugmentedLLM(
                 )
                 for tool in response.tools
             ]
-            span.set_attribute(
-                "available_tools",
-                [t.get("function", {}).get("name") for t in available_tools],
-            )
+
+            if self.context.tracing_enabled:
+                span.set_attribute(
+                    "available_tools",
+                    [t.get("function", {}).get("name") for t in available_tools],
+                )
             if not available_tools:
                 available_tools = None
 
@@ -369,10 +372,11 @@ class OpenAIAugmentedLLM(
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate_str"
         ) as span:
-            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
-            self._annotate_span_for_generation_message(span, message)
-            if self.context.tracing_enabled and request_params:
-                AugmentedLLM.annotate_span_with_request_params(span, request_params)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+                self._annotate_span_for_generation_message(span, message)
+                if request_params:
+                    AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             responses = await self.generate(
                 message=message,
@@ -486,9 +490,10 @@ class OpenAIAugmentedLLM(
             tool_call_id = tool_call.id
             tool_args = {}
 
-            span.set_attribute(GEN_AI_TOOL_CALL_ID, tool_call_id)
-            span.set_attribute(GEN_AI_TOOL_NAME, tool_name)
-            span.set_attribute("tool_args", tool_args_str)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_TOOL_CALL_ID, tool_call_id)
+                span.set_attribute(GEN_AI_TOOL_NAME, tool_name)
+                span.set_attribute("tool_args", tool_args_str)
 
             try:
                 if tool_args_str:
