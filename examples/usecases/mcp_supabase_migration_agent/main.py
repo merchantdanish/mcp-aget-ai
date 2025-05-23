@@ -1,7 +1,6 @@
 import asyncio
 import time
 import argparse
-import os
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
@@ -12,15 +11,15 @@ app = MCPApp(name="supabase_migration_codegen")
 
 
 async def supabase_migration_codegen(
-    github_owner: str, 
-    github_repo: str, 
+    github_owner: str,
+    github_repo: str,
     branch_name: str,
     project_path: str,
     migration_file: str,
 ):
     """
     Automated workflow to generate and commit types for a Supabase database migration.
-    
+
     Args:
         github_owner: GitHub repository owner
         github_repo: GitHub repository name
@@ -89,12 +88,14 @@ async def supabase_migration_codegen(
                 """
 
                 # Execute the workflow
-                print(f"Starting Supabase migration codegen workflow for {github_owner}/{github_repo}...")
+                print(
+                    f"Starting Supabase migration codegen workflow for {github_owner}/{github_repo}..."
+                )
                 print(f"Processing migration file: {migration_file}")
                 print(f"Target branch: {branch_name}")
-                
+
                 result = await llm.generate_str(prompt)
-                
+
                 print("Workflow completed!")
                 print("Summary of changes:")
                 print(result)
@@ -109,8 +110,14 @@ def parse_args():
     parser.add_argument("--owner", required=True, help="GitHub repository owner")
     parser.add_argument("--repo", required=True, help="GitHub repository name")
     parser.add_argument("--branch", required=True, help="Branch name for the changes")
-    parser.add_argument("--project-path", required=True, help="Path to the project within the repository")
-    parser.add_argument("--migration-file", required=True, help="Path to the migration SQL file")
+    parser.add_argument(
+        "--project-path",
+        required=True,
+        help="Path to the project within the repository",
+    )
+    parser.add_argument(
+        "--migration-file", required=True, help="Path to the migration SQL file"
+    )
     return parser.parse_args()
 
 
@@ -118,13 +125,15 @@ if __name__ == "__main__":
     args = parse_args()
     start = time.time()
     try:
-        asyncio.run(supabase_migration_codegen(
-            args.owner, 
-            args.repo, 
-            args.branch,
-            args.project_path,
-            args.migration_file
-        ))
+        asyncio.run(
+            supabase_migration_codegen(
+                args.owner,
+                args.repo,
+                args.branch,
+                args.project_path,
+                args.migration_file,
+            )
+        )
     except KeyboardInterrupt:
         print("\nReceived keyboard interrupt, shutting down gracefully...")
     except Exception as e:
