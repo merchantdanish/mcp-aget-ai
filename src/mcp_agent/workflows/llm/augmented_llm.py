@@ -35,6 +35,7 @@ from mcp_agent.tracing.semconv import (
     GEN_AI_TOOL_NAME,
 )
 from mcp_agent.tracing.telemetry import (
+    get_tracer,
     record_attribute,
     record_attributes,
 )
@@ -204,7 +205,6 @@ class ProviderToMCPConverter(Protocol, Generic[MessageParamT, MessageT]):
         """Convert an MCP tool result to an LLM input type"""
 
 
-# TODO: saqadri (MAC) - this likely needs to be converted to a Pydantic model
 class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, MessageT]):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
@@ -222,7 +222,6 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     def __init__(
         self,
         agent: Optional["Agent"] = None,
-        # TODO: saqadri (MAC) - Make this | None = None
         server_names: List[str] | None = None,
         instruction: str | None = None,
         name: str | None = None,
@@ -302,7 +301,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         Select an LLM based on the request parameters.
         If a model is specified in the request, it will override the model selection criteria.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.select_model"
         ) as span:
@@ -422,20 +421,21 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         tool_call_id: str | None = None,
     ) -> CallToolResult:
         """Call a tool with the given parameters and optional ID"""
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.call_tool"
         ) as span:
-            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
-            if tool_call_id:
-                span.set_attribute(GEN_AI_TOOL_CALL_ID, tool_call_id)
-                span.set_attribute("request.method", request.method)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+                if tool_call_id:
+                    span.set_attribute(GEN_AI_TOOL_CALL_ID, tool_call_id)
+                    span.set_attribute("request.method", request.method)
 
-            span.set_attribute("request.params.name", request.params.name)
-            if request.params.arguments:
-                record_attributes(
-                    span, request.params.arguments, "request.params.arguments"
-                )
+                span.set_attribute("request.params.name", request.params.name)
+                if request.params.arguments:
+                    record_attributes(
+                        span, request.params.arguments, "request.params.arguments"
+                    )
 
             try:
                 preprocess = await self.pre_tool_call(
@@ -465,7 +465,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                 tool_args = request.params.arguments
 
                 span.set_attribute(f"processed.request.{GEN_AI_TOOL_NAME}", tool_name)
-                if tool_args:
+                if self.context.tracing_enabled and tool_args:
                     record_attributes(span, tool_args, "processed.request.tool_args")
 
                 result = await self.agent.call_tool(tool_name, tool_args)
@@ -572,6 +572,9 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         message: str | MessageParamT | List[MessageParamT],
     ) -> None:
         """Annotate the span with the message content."""
+        if not self.context.tracing_enabled:
+            return
+
         if isinstance(message, str):
             span.set_attribute("message.content", message)
         elif isinstance(message, list):
@@ -601,6 +604,9 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         result: CallToolResult,
         processed: bool = False,
     ):
+        if not self.context.tracing_enabled:
+            return
+
         prefix = "processed.result" if processed else "result"
         span.set_attribute(f"{prefix}.isError", result.isError)
         if result.isError:

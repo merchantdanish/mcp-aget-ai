@@ -36,7 +36,7 @@ from mcp.types import (
 
 from mcp_agent.config import OpenAISettings
 from mcp_agent.executor.workflow_task import workflow_task
-from mcp_agent.tracing.telemetry import telemetry
+from mcp_agent.tracing.telemetry import get_tracer, telemetry
 from mcp_agent.tracing.semconv import (
     GEN_AI_AGENT_NAME,
     GEN_AI_REQUEST_MODEL,
@@ -149,7 +149,7 @@ class OpenAIAugmentedLLM(
         The default implementation uses OpenAI's ChatCompletion as the LLM.
         Override this method to use a different LLM.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate"
         ) as span:
@@ -158,7 +158,9 @@ class OpenAIAugmentedLLM(
 
             messages: List[ChatCompletionMessageParam] = []
             params = self.get_request_params(request_params)
-            AugmentedLLM.annotate_span_with_request_params(span, params)
+
+            if self.context.tracing_enabled:
+                AugmentedLLM.annotate_span_with_request_params(span, params)
 
             if params.use_history:
                 messages.extend(self.history.get())
@@ -338,15 +340,18 @@ class OpenAIAugmentedLLM(
 
             self._log_chat_finished(model=model)
 
-            span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)
-            span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
-            span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)
+                span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
+                span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
 
-            for i, res in enumerate(responses):
-                response_data = self.extract_response_message_attributes_for_tracing(
-                    res, prefix=f"response.{i}"
-                )
-                span.set_attributes(response_data)
+                for i, res in enumerate(responses):
+                    response_data = (
+                        self.extract_response_message_attributes_for_tracing(
+                            res, prefix=f"response.{i}"
+                        )
+                    )
+                    span.set_attributes(response_data)
 
             return responses
 
@@ -360,13 +365,13 @@ class OpenAIAugmentedLLM(
         The default implementation uses OpenAI's ChatCompletion as the LLM.
         Override this method to use a different LLM.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate_str"
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
-            if request_params:
+            if self.context.tracing_enabled and request_params:
                 AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             responses = await self.generate(
@@ -399,7 +404,7 @@ class OpenAIAugmentedLLM(
         # We need to do this in a two-step process because Instructor doesn't
         # know how to invoke MCP tools via call_tool, so we'll handle all the
         # processing first and then pass the final response through Instructor
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate_structured"
         ) as span:
@@ -407,7 +412,9 @@ class OpenAIAugmentedLLM(
             self._annotate_span_for_generation_message(span, message)
 
             params = self.get_request_params(request_params)
-            AugmentedLLM.annotate_span_with_request_params(span, params)
+
+            if self.context.tracing_enabled:
+                AugmentedLLM.annotate_span_with_request_params(span, params)
 
             response = await self.generate_str(
                 message=message,
@@ -442,15 +449,15 @@ class OpenAIAugmentedLLM(
             if isinstance(structured_response, dict):
                 structured_response = response_model.model_validate(structured_response)
 
-            try:
-                span.set_attribute(
-                    "structured_response_json",
-                    json.dumps(structured_response, default=str, indent=2)[
-                        :1000
-                    ],  # truncate to avoid massive strings
-                )
-            except Exception:
-                span.set_attribute("unstructured_response", response)
+            if self.context.tracing_enabled:
+                try:
+                    span.set_attribute(
+                        "structured_response_json",
+                        structured_response.model_dump_json(),
+                    )
+                # pylint: disable=broad-exception-caught
+                except Exception:
+                    span.set_attribute("unstructured_response", response)
 
             return structured_response
 
@@ -470,7 +477,7 @@ class OpenAIAugmentedLLM(
         Execute a single tool call and return the result message.
         Returns None if there's no content to add to messages.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.execute_tool_call"
         ) as span:
@@ -550,6 +557,8 @@ class OpenAIAugmentedLLM(
         message: ChatCompletionMessageParam | str | List[ChatCompletionMessageParam],
     ) -> None:
         """Annotate the span with the message content."""
+        if not self.context.tracing_enabled:
+            return
         if isinstance(message, str):
             span.set_attribute("message.content", message)
         elif isinstance(message, list):
@@ -573,6 +582,9 @@ class OpenAIAugmentedLLM(
         self, span: trace.Span, request: RequestCompletionRequest, turn: int
     ) -> None:
         """Annotate the span with the completion request as an event."""
+        if not self.context.tracing_enabled:
+            return
+
         event_data = {
             "completion.request.turn": turn,
             "config.reasoning_effort": request.config.reasoning_effort,
@@ -701,6 +713,9 @@ class OpenAIAugmentedLLM(
         self, span: trace.Span, response: ChatCompletion, turn: int
     ) -> None:
         """Annotate the span with the completion response as an event."""
+        if not self.context.tracing_enabled:
+            return
+
         event_data = {
             "completion.response.turn": turn,
         }
@@ -723,6 +738,9 @@ class OpenAIAugmentedLLM(
         """
         Extract relevant attributes from the ChatCompletionMessage for tracing.
         """
+        if not self.context.tracing_enabled:
+            return {}
+
         attr_prefix = f"{prefix}." if prefix else ""
         attrs = {
             f"{attr_prefix}role": message.role,
@@ -762,6 +780,9 @@ class OpenAIAugmentedLLM(
         """
         Extract relevant attributes from the ChatCompletion response for tracing.
         """
+        if not self.context.tracing_enabled:
+            return {}
+
         attr_prefix = f"{prefix}." if prefix else ""
         attrs = {
             f"{attr_prefix}id": response.id,

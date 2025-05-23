@@ -5,6 +5,7 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional, Type, TYPE_CH
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.core.context_dependent import ContextDependent
+from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -66,12 +67,12 @@ class FanOut(ContextDependent):
         Request fan-out agent/function generations, and return the results as a dictionary.
         The keys are the names of the agents or functions that generated the results.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.generate"
         ) as span:
             self._annotate_span_for_generation_message(span, message)
-            if request_params:
+            if self.context.tracing_enabled and request_params:
                 AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             tasks: List[
@@ -123,12 +124,12 @@ class FanOut(ContextDependent):
         The keys are the names of the agents or functions that generated the results.
         """
 
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.generate_str"
         ) as span:
             self._annotate_span_for_generation_message(span, message)
-            if request_params:
+            if self.context.tracing_enabled and request_params:
                 AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             def fn_result_to_string(fn, message):
@@ -178,7 +179,7 @@ class FanOut(ContextDependent):
         Request a structured fan-out agent/function generation and return the result as a Pydantic model.
         The keys are the names of the agents or functions that generated the results.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.generate_structured"
         ) as span:
@@ -187,7 +188,7 @@ class FanOut(ContextDependent):
                 "response_model",
                 f"{response_model.__module__}.{response_model.__name__}",
             )
-            if request_params:
+            if self.context.tracing_enabled and request_params:
                 AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             tasks = []
@@ -229,6 +230,8 @@ class FanOut(ContextDependent):
         message: MessageParamT | str | List[MessageParamT],
     ) -> None:
         """Annotate the span with the message content."""
+        if not self.context.tracing_enabled:
+            return
         if isinstance(message, str):
             span.set_attribute("message.content", message)
         elif isinstance(message, list):

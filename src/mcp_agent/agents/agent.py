@@ -19,7 +19,7 @@ from mcp.types import (
 
 from mcp_agent.core.context import Context
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME, GEN_AI_TOOL_NAME
-from mcp_agent.tracing.telemetry import record_attributes
+from mcp_agent.tracing.telemetry import get_tracer, record_attributes
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_aggregator import MCPAggregator, NamespacedPrompt, NamespacedTool
 from mcp_agent.human_input.types import (
@@ -161,7 +161,7 @@ class Agent(BaseModel):
         Returns:
             An instance of AugmentedLLM or one of its subclasses.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.attach_llm"
         ) as span:
@@ -182,7 +182,7 @@ class Agent(BaseModel):
 
     async def initialize(self, force: bool = False):
         """Initialize the agent."""
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.initialize"
         ) as span:
@@ -240,7 +240,7 @@ class Agent(BaseModel):
         """
         logger.debug(f"Shutting down agent {self.name}...")
 
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.shutdown"
         ) as span:
@@ -283,7 +283,7 @@ class Agent(BaseModel):
         """
         Get the capabilities of a specific server.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.get_capabilities"
         ) as span:
@@ -302,6 +302,8 @@ class Agent(BaseModel):
             def _annotate_span_for_capabilities(
                 server_name: str, capabilities: ServerCapabilities
             ):
+                if not self.context.tracing_enabled:
+                    return
                 for attr in [
                     "experimental",
                     "logging",
@@ -336,7 +338,7 @@ class Agent(BaseModel):
         Get the session data of a specific server.
         """
 
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.get_server_session"
         ) as span:
@@ -355,7 +357,7 @@ class Agent(BaseModel):
             return result
 
     async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.list_tools"
         ) as span:
@@ -401,6 +403,8 @@ class Agent(BaseModel):
                 )
 
             def _annotate_span_for_tools_result(result: ListToolsResult):
+                if not self.context.tracing_enabled:
+                    return
                 for tool in result.tools:
                     span.set_attribute(
                         f"tool.{tool.name}.description", tool.description
@@ -452,7 +456,7 @@ class Agent(BaseModel):
             return result
 
     async def list_prompts(self, server_name: str | None = None) -> ListPromptsResult:
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.list_prompts"
         ) as span:
@@ -472,37 +476,41 @@ class Agent(BaseModel):
                 ListToolsRequest(agent_name=self.name, server_name=server_name),
             )
 
-            span.set_attribute("prompts", [prompt.name for prompt in result.prompts])
-
-            for prompt in result.prompts:
+            if self.context.tracing_enabled:
                 span.set_attribute(
-                    f"prompt.{prompt.name}.description", prompt.description
+                    "prompts", [prompt.name for prompt in result.prompts]
                 )
-                for arg in prompt.arguments:
-                    for attr in [
-                        "description",
-                        "required",
-                    ]:
-                        value = getattr(arg, attr, None)
-                        if value is not None:
-                            span.set_attribute(
-                                f"prompt.{prompt.name}.arguments.{arg.name}.{attr}",
-                                value,
-                            )
+
+                for prompt in result.prompts:
+                    span.set_attribute(
+                        f"prompt.{prompt.name}.description", prompt.description
+                    )
+                    for arg in prompt.arguments:
+                        for attr in [
+                            "description",
+                            "required",
+                        ]:
+                            value = getattr(arg, attr, None)
+                            if value is not None:
+                                span.set_attribute(
+                                    f"prompt.{prompt.name}.arguments.{arg.name}.{attr}",
+                                    value,
+                                )
 
             return result
 
     async def get_prompt(
         self, name: str, arguments: dict[str, str] | None = None
     ) -> GetPromptResult:
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.get_prompt"
         ) as span:
-            span.set_attribute("name", name)
-            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
-            span.set_attribute("initialized", self.initialized)
-            record_attributes(span, arguments, "arguments")
+            if self.context.tracing_enabled:
+                span.set_attribute("name", name)
+                span.set_attribute(GEN_AI_AGENT_NAME, self.name)
+                span.set_attribute("initialized", self.initialized)
+                record_attributes(span, arguments, "arguments")
 
             if not self.initialized:
                 await self.initialize()
@@ -520,18 +528,19 @@ class Agent(BaseModel):
                     Exception(result.description or "Error getting prompt")
                 )
 
-            if result.description:
-                span.set_attribute("prompt.description", result.description)
+            if self.context.tracing_enabled:
+                if result.description:
+                    span.set_attribute("prompt.description", result.description)
 
-            for idx, message in enumerate(result.messages):
-                span.set_attribute(f"prompt.message.{idx}.role", message.role)
-                span.set_attribute(
-                    f"prompt.message.{idx}.content.type", message.content.type
-                )
-                if message.content.type == "text":
+                for idx, message in enumerate(result.messages):
+                    span.set_attribute(f"prompt.message.{idx}.role", message.role)
                     span.set_attribute(
-                        f"prompt.message.{idx}.content.text", message.content.text
+                        f"prompt.message.{idx}.content.type", message.content.type
                     )
+                    if message.content.type == "text":
+                        span.set_attribute(
+                            f"prompt.message.{idx}.content.text", message.content.text
+                        )
 
             return result
 
@@ -552,26 +561,27 @@ class Agent(BaseModel):
             TimeoutError: If the timeout is exceeded
             ValueError: If human_input_callback is not set or doesn't have the right signature
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.request_human_input"
         ) as span:
-            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
-            span.set_attribute("initialized", self.initialized)
-            span.set_attribute("request.prompt", request.prompt)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.name)
+                span.set_attribute("initialized", self.initialized)
+                span.set_attribute("request.prompt", request.prompt)
 
-            for attr in [
-                "description",
-                "request_id",
-                "workflow_id",
-                "timeout_seconds",
-            ]:
-                value = getattr(request, attr, None)
-                if value is not None:
-                    span.set_attribute(f"request.{attr}", value)
+                for attr in [
+                    "description",
+                    "request_id",
+                    "workflow_id",
+                    "timeout_seconds",
+                ]:
+                    value = getattr(request, attr, None)
+                    if value is not None:
+                        span.set_attribute(f"request.{attr}", value)
 
-            if request.metadata:
-                record_attributes(span, request.metadata, "request.metadata")
+                if request.metadata:
+                    record_attributes(span, request.metadata, "request.metadata")
 
             if not self.human_input_callback:
                 raise ValueError("Human input callback not set")
@@ -587,14 +597,15 @@ class Agent(BaseModel):
                 try:
                     user_input = await self.human_input_callback(request)
                     logger.debug("Received human input:", data=user_input)
-                    span.add_event(
-                        "human_input_received",
-                        {
-                            request_id: user_input.request_id,
-                            "response": user_input.response,
-                            "metadata": json.dumps(user_input.metadata or {}),
-                        },
-                    )
+                    if self.context.tracing_enabled:
+                        span.add_event(
+                            "human_input_received",
+                            {
+                                request_id: user_input.request_id,
+                                "response": user_input.response,
+                                "metadata": json.dumps(user_input.metadata or {}),
+                            },
+                        )
                     await self.context.executor.signal(
                         signal_name=request_id, payload=user_input
                     )
@@ -617,17 +628,19 @@ class Agent(BaseModel):
                 signal_type=HumanInputResponse,  # TODO: saqadri - should this be HumanInputResponse?
             )
 
-            span.add_event(
-                "human_input_signal_received",
-                {
-                    "signal_name": request_id,
-                    "request_id": request.request_id,
-                    "workflow_id": request.workflow_id,
-                    "signal_description": request.description or request.prompt,
-                    "timeout_seconds": request.timeout_seconds,
-                    "response": result.response,
-                },
-            )
+            if self.context.tracing_enabled:
+                span.add_event(
+                    "human_input_signal_received",
+                    {
+                        "signal_name": request_id,
+                        "request_id": request.request_id,
+                        "workflow_id": request.workflow_id,
+                        "signal_description": request.description or request.prompt,
+                        "timeout_seconds": request.timeout_seconds,
+                        "response": result.response,
+                    },
+                )
+
             logger.debug("Received human input signal", data=result)
             return result
 
@@ -636,24 +649,27 @@ class Agent(BaseModel):
     ) -> CallToolResult:
         # Call the tool on the server
 
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.call_tool"
         ) as span:
-            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
-            span.set_attribute(GEN_AI_TOOL_NAME, name)
-            span.set_attribute("initialized", self.initialized)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.name)
+                span.set_attribute(GEN_AI_TOOL_NAME, name)
+                span.set_attribute("initialized", self.initialized)
 
-            if server_name:
-                span.set_attribute("server_name", server_name)
+                if server_name:
+                    span.set_attribute("server_name", server_name)
 
-            if arguments is not None:
-                record_attributes(span, arguments, "arguments")
+                if arguments is not None:
+                    record_attributes(span, arguments, "arguments")
 
             if not self.initialized:
                 await self.initialize()
 
             def _annotate_span_for_result(result: CallToolResult):
+                if not self.context.tracing_enabled:
+                    return
                 span.set_attribute("result.isError", result.isError)
                 if result.isError:
                     span.set_status(trace.Status(trace.StatusCode.ERROR))

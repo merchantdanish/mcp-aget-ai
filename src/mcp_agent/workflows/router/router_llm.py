@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.tracing.semconv import GEN_AI_REQUEST_TOP_K
+from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 from mcp_agent.workflows.router.router_base import ResultT, Router, RouterResult
 from mcp_agent.logging.logger import get_logger
@@ -132,7 +133,7 @@ class LLMRouter(Router):
     async def route(
         self, request: str, top_k: int = 1
     ) -> List[LLMRouterResult[str | Agent | Callable]]:
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(f"{self.__class__.__name__}.route") as span:
             self._annotate_span_for_route_request(span, request, top_k)
 
@@ -146,7 +147,7 @@ class LLMRouter(Router):
     async def route_to_server(
         self, request: str, top_k: int = 1
     ) -> List[LLMRouterResult[str]]:
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.route_to_server"
         ) as span:
@@ -168,7 +169,7 @@ class LLMRouter(Router):
     async def route_to_agent(
         self, request: str, top_k: int = 1
     ) -> List[LLMRouterResult[Agent]]:
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.route_to_agent"
         ) as span:
@@ -190,7 +191,7 @@ class LLMRouter(Router):
     async def route_to_function(
         self, request: str, top_k: int = 1
     ) -> List[LLMRouterResult[Callable]]:
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.route_to_function"
         ) as span:
@@ -209,41 +210,6 @@ class LLMRouter(Router):
             self._annotate_span_for_router_result(span, res)
             return res
 
-    def _annotate_span_for_route_request(
-        self,
-        span: trace.Span,
-        request: str,
-        top_k: int,
-    ):
-        """Annotate the span with the request and top_k."""
-        span.set_attribute("request", request)
-        span.set_attribute(GEN_AI_REQUEST_TOP_K, top_k)
-        span.set_attribute("llm", self.llm.name)
-        span.set_attribute("agents", [a.name for a in self.agents])
-        span.set_attribute("servers", self.server_names)
-        span.set_attribute("functions", [f.__name__ for f in self.functions])
-
-    def _annotate_span_for_router_result(
-        self,
-        span: trace.Span,
-        result: List[LLMRouterResult],
-    ):
-        """Annotate the span with the router result."""
-        for i, res in enumerate(result):
-            span.set_attribute(f"result.{i}.confidence", res.confidence)
-            if res.reasoning:
-                span.set_attribute(f"result.{i}.reasoning", res.reasoning)
-            if res.p_score:
-                span.set_attribute(f"result.{i}.p_score", res.p_score)
-
-            result_key = f"result.{i}.result"
-            if isinstance(res.result, str):
-                span.set_attribute(result_key, res.result)
-            elif isinstance(res.result, Agent):
-                span.set_attribute(result_key, res.result.name)
-            elif callable(res.result):
-                span.set_attribute(result_key, res.result.__name__)
-
     async def _route_with_llm(
         self,
         request: str,
@@ -252,7 +218,7 @@ class LLMRouter(Router):
         include_agents: bool = True,
         include_functions: bool = True,
     ) -> List[LLMRouterResult]:
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}._route_with_llm"
         ) as span:
@@ -288,20 +254,23 @@ class LLMRouter(Router):
                 response_model=StructuredResponse,
             )
 
-            response_categories_data = {}
-            for i, r in enumerate(response.categories):
-                response_categories_data[f"category.{i}.category"] = r.category
-                response_categories_data[f"category.{i}.confidence"] = r.confidence
-                if r.reasoning:
-                    response_categories_data[f"category.{i}.reasoning"] = r.reasoning
+            if self.context.tracing_enabled:
+                response_categories_data = {}
+                for i, r in enumerate(response.categories):
+                    response_categories_data[f"category.{i}.category"] = r.category
+                    response_categories_data[f"category.{i}.confidence"] = r.confidence
+                    if r.reasoning:
+                        response_categories_data[f"category.{i}.reasoning"] = (
+                            r.reasoning
+                        )
 
-            span.add_event(
-                "routing.response",
-                {
-                    "prompt": prompt,
-                    **response_categories_data,
-                },
-            )
+                span.add_event(
+                    "routing.response",
+                    {
+                        "prompt": prompt,
+                        **response_categories_data,
+                    },
+                )
 
             # logger.debug(
             #     "Routing Response received",
@@ -331,6 +300,45 @@ class LLMRouter(Router):
             self._annotate_span_for_router_result(span, result)
 
             return result[:top_k]
+
+    def _annotate_span_for_route_request(
+        self,
+        span: trace.Span,
+        request: str,
+        top_k: int,
+    ):
+        """Annotate the span with the request and top_k."""
+        if not self.context.tracing_enabled:
+            return
+        span.set_attribute("request", request)
+        span.set_attribute(GEN_AI_REQUEST_TOP_K, top_k)
+        span.set_attribute("llm", self.llm.name)
+        span.set_attribute("agents", [a.name for a in self.agents])
+        span.set_attribute("servers", self.server_names)
+        span.set_attribute("functions", [f.__name__ for f in self.functions])
+
+    def _annotate_span_for_router_result(
+        self,
+        span: trace.Span,
+        result: List[LLMRouterResult],
+    ):
+        """Annotate the span with the router result."""
+        if not self.context.tracing_enabled:
+            return
+        for i, res in enumerate(result):
+            span.set_attribute(f"result.{i}.confidence", res.confidence)
+            if res.reasoning:
+                span.set_attribute(f"result.{i}.reasoning", res.reasoning)
+            if res.p_score:
+                span.set_attribute(f"result.{i}.p_score", res.p_score)
+
+            result_key = f"result.{i}.result"
+            if isinstance(res.result, str):
+                span.set_attribute(result_key, res.result)
+            elif isinstance(res.result, Agent):
+                span.set_attribute(result_key, res.result.name)
+            elif callable(res.result):
+                span.set_attribute(result_key, res.result.__name__)
 
     def _generate_context(
         self,

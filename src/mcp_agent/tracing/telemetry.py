@@ -48,7 +48,7 @@ class TelemetryManager(ContextDependent):
 
             @functools.wraps(func)
             async def async_wrapper(*args, **kwargs):
-                tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+                tracer = get_tracer(self.context)
                 with tracer.start_as_current_span(span_name, kind=kind) as span:
                     if attributes:
                         for k, v in attributes.items():
@@ -65,7 +65,7 @@ class TelemetryManager(ContextDependent):
 
             @functools.wraps(func)
             def sync_wrapper(*args, **kwargs):
-                tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+                tracer = get_tracer(self.context)
                 with tracer.start_as_current_span(span_name, kind=kind) as span:
                     if attributes:
                         for k, v in attributes.items():
@@ -198,6 +198,13 @@ def is_otel_serializable(value: Any) -> bool:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         return all(isinstance(item, allowed_types) for item in value)
     return False
+
+
+def get_tracer(context: "Context") -> trace.Tracer:
+    """
+    Get the OpenTelemetry tracer for the context.
+    """
+    return context.tracer or trace.get_tracer("mcp-agent")
 
 
 telemetry = TelemetryManager()

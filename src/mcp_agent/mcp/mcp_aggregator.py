@@ -20,7 +20,7 @@ from mcp.types import (
 from mcp_agent.logging.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME, GEN_AI_TOOL_NAME
-from mcp_agent.tracing.telemetry import record_attributes
+from mcp_agent.tracing.telemetry import get_tracer, record_attributes
 from mcp_agent.mcp.gen_client import gen_client
 
 from mcp_agent.core.context_dependent import ContextDependent
@@ -126,7 +126,7 @@ class MCPAggregator(ContextDependent):
 
     async def initialize(self, force: bool = False):
         """Initialize the application."""
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.initialize"
         ) as span:
@@ -169,14 +169,14 @@ class MCPAggregator(ContextDependent):
                     self._persistent_connection_manager = connection_manager
 
             await self.load_servers()
-            span.add_event("initialize_complete")
+            span.add_event("initialized")
             self.initialized = True
 
     async def close(self):
         """
         Close all persistent connections when the aggregator is deleted.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(f"{self.__class__.__name__}.close") as span:
             span.set_attribute("server_names", self.server_names)
             span.set_attribute("connection_persistence", self.connection_persistence)
@@ -271,7 +271,7 @@ class MCPAggregator(ContextDependent):
             connection_persistence=connection_persistence,
         )
 
-        tracer = cls.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(cls.context)
         with tracer.start_as_current_span(f"{cls.__class__.__name__}.create") as span:
             span.set_attribute("server_names", server_names)
             span.set_attribute("connection_persistence", connection_persistence)
@@ -294,7 +294,7 @@ class MCPAggregator(ContextDependent):
         """
         Load tools and prompts from a single server and update the index of namespaced tool/prompt names for that server.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.load_server"
         ) as span:
@@ -348,19 +348,20 @@ class MCPAggregator(ContextDependent):
                 data={"progress_action": ProgressAction.INITIALIZED, **event_metadata},
             )
 
-            span.add_event(
-                "load_server_complete",
-                event_metadata,
-            )
+            if self.context.tracing_enabled:
+                span.add_event(
+                    "load_server_complete",
+                    event_metadata,
+                )
 
-            for tool in tools:
-                span.set_attribute(
-                    f"tool.{tool.name}", tool.description or "No description"
-                )
-            for prompt in prompts:
-                span.set_attribute(
-                    f"prompt.{prompt.name}", prompt.description or "No description"
-                )
+                for tool in tools:
+                    span.set_attribute(
+                        f"tool.{tool.name}", tool.description or "No description"
+                    )
+                for prompt in prompts:
+                    span.set_attribute(
+                        f"prompt.{prompt.name}", prompt.description or "No description"
+                    )
 
             return tools, prompts
 
@@ -368,7 +369,7 @@ class MCPAggregator(ContextDependent):
         """
         Discover tools and prompts from each server in parallel and build an index of namespaced tool/prompt names.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.load_servers"
         ) as span:
@@ -451,7 +452,7 @@ class MCPAggregator(ContextDependent):
 
     async def get_capabilities(self, server_name: str):
         """Get server capabilities if available."""
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.get_capabilitites"
         ) as span:
@@ -461,6 +462,9 @@ class MCPAggregator(ContextDependent):
             span.set_attribute("server_name", server_name)
 
             def _annotate_span_for_capabilities(capabilities: ServerCapabilities):
+                if not self.context.tracing_enabled:
+                    return
+
                 for attr in [
                     "experimental",
                     "logging",
@@ -519,7 +523,7 @@ class MCPAggregator(ContextDependent):
         """
         Refresh the tools and prompts from the specified server or all servers.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(f"{self.__class__.__name__}.refresh") as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
             if server_name:
@@ -530,7 +534,7 @@ class MCPAggregator(ContextDependent):
 
     async def list_servers(self) -> List[str]:
         """Return the list of server names aggregated by this agent."""
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.list_servers"
         ) as span:
@@ -546,7 +550,7 @@ class MCPAggregator(ContextDependent):
         """
         :return: Tools from all servers aggregated, and renamed to be dot-namespaced by server name.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.list_tools"
         ) as span:
@@ -576,11 +580,14 @@ class MCPAggregator(ContextDependent):
                         for namespaced_tool_name, namespaced_tool in self._namespaced_tool_map.items()
                     ]
                 )
-            span.set_attribute("tool_count", len(result.tools))
-            for tool in result.tools:
-                span.set_attribute(
-                    f"tool.{tool.name}", tool.description or "No description"
-                )
+
+            if self.context.tracing_enabled:
+                span.set_attribute("tool_count", len(result.tools))
+                for tool in result.tools:
+                    span.set_attribute(
+                        f"tool.{tool.name}", tool.description or "No description"
+                    )
+
             return result
 
     async def call_tool(
@@ -589,15 +596,16 @@ class MCPAggregator(ContextDependent):
         """
         Call a namespaced tool, e.g., 'server_name.tool_name'.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.call_tool"
         ) as span:
-            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
-            span.set_attribute(GEN_AI_TOOL_NAME, name)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+                span.set_attribute(GEN_AI_TOOL_NAME, name)
 
-            if arguments is not None:
-                record_attributes(span, arguments, "arguments")
+                if arguments is not None:
+                    record_attributes(span, arguments, "arguments")
 
             if not self.initialized:
                 await self.load_servers()
@@ -641,6 +649,8 @@ class MCPAggregator(ContextDependent):
             )
 
             def _annotate_span_for_result(result: CallToolResult):
+                if not self.context.tracing_enabled:
+                    return
                 span.set_attribute("result.isError", result.isError)
                 if result.isError:
                     span.set_status(trace.Status(trace.StatusCode.ERROR))
@@ -726,7 +736,7 @@ class MCPAggregator(ContextDependent):
         """
         :return: Prompts from all servers aggregated, and renamed to be dot-namespaced by server name.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.list_prompts"
         ) as span:
@@ -757,23 +767,26 @@ class MCPAggregator(ContextDependent):
                     ]
                 )
 
-            span.set_attribute("prompts", [prompt.name for prompt in res.prompts])
+            if self.context.tracing_enabled:
+                span.set_attribute("prompts", [prompt.name for prompt in res.prompts])
 
-            for prompt in res.prompts:
-                span.set_attribute(
-                    f"prompt.{prompt.name}.description", prompt.description
-                )
-                for arg in prompt.arguments:
-                    for attr in [
-                        "description",
-                        "required",
-                    ]:
-                        value = getattr(arg, attr, None)
-                        if value is not None:
-                            span.set_attribute(
-                                f"prompt.{prompt.name}.arguments.{arg.name}.{attr}",
-                                value,
-                            )
+                for prompt in res.prompts:
+                    if prompt.description:
+                        span.set_attribute(
+                            f"prompt.{prompt.name}.description", prompt.description
+                        )
+                    if prompt.arguments:
+                        for arg in prompt.arguments:
+                            for attr in [
+                                "description",
+                                "required",
+                            ]:
+                                value = getattr(arg, attr, None)
+                                if value is not None:
+                                    span.set_attribute(
+                                        f"prompt.{prompt.name}.arguments.{arg.name}.{attr}",
+                                        value,
+                                    )
 
             return res
 
@@ -795,16 +808,17 @@ class MCPAggregator(ContextDependent):
         Returns:
             Fully resolved prompt returned by the server
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.get_prompt"
         ) as span:
-            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
-            span.set_attribute("name", name)
-            span.set_attribute("initialized", self.initialized)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+                span.set_attribute("name", name)
+                span.set_attribute("initialized", self.initialized)
 
-            if arguments is not None:
-                record_attributes(span, arguments, "arguments")
+                if arguments is not None:
+                    record_attributes(span, arguments, "arguments")
 
             if not self.initialized:
                 await self.load_servers()
@@ -907,22 +921,24 @@ class MCPAggregator(ContextDependent):
                 result.prompt_name = local_prompt_name
                 result.namespaced_name = f"{server_name}{SEP}{local_prompt_name}"
 
-                for idx, message in enumerate(result.messages):
-                    span.set_attribute(f"prompt.message.{idx}.role", message.role)
-                    span.set_attribute(
-                        f"prompt.message.{idx}.content.type", message.content.type
-                    )
-                    if message.content.type == "text":
-                        span.set_attribute(
-                            f"prompt.message.{idx}.content.text", message.content.text
-                        )
-
                 # Store the arguments in the result for display purposes
                 if arguments:
                     result.arguments = arguments
 
-                if result.description:
-                    span.set_attribute("prompt.description", result.description)
+                if self.context.tracing_enabled:
+                    for idx, message in enumerate(result.messages):
+                        span.set_attribute(f"prompt.message.{idx}.role", message.role)
+                        span.set_attribute(
+                            f"prompt.message.{idx}.content.type", message.content.type
+                        )
+                        if message.content.type == "text":
+                            span.set_attribute(
+                                f"prompt.message.{idx}.content.text",
+                                message.content.text,
+                            )
+
+                    if result.description:
+                        span.set_attribute("prompt.description", result.description)
 
             return result
 

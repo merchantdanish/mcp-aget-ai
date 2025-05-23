@@ -1,5 +1,4 @@
 import contextlib
-import json
 from typing import (
     Callable,
     Coroutine,
@@ -9,10 +8,10 @@ from typing import (
     Type,
     TYPE_CHECKING,
 )
-from opentelemetry import trace
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME
+from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -126,7 +125,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ) -> List[MessageT]:
         """Request an LLM generation, which may run multiple iterations, and return the result"""
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate"
         ) as span:
@@ -135,7 +134,9 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             span.set_attribute("available_agents", str(self.agents.keys()))
 
             params = self.get_request_params(request_params)
-            AugmentedLLM.annotate_span_with_request_params(span, params)
+
+            if self.context.tracing_enabled:
+                AugmentedLLM.annotate_span_with_request_params(span, params)
 
             # TODO: saqadri - history tracking is complicated in this multi-step workflow, so we will ignore it for now
             if params.use_history:
@@ -146,38 +147,39 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             objective = str(message)
             plan_result = await self.execute(objective=objective, request_params=params)
 
-            span.set_attribute("is_complete", plan_result.is_complete)
-            span.set_attribute("objective", plan_result.objective)
-            if plan_result.plan:
-                span.set_attribute("plan.is_complete", plan_result.plan.is_complete)
-                for idx, step in enumerate(plan_result.plan.steps):
-                    span.set_attribute(
-                        f"plan.steps.{idx}.description", step.description
-                    )
-                    for tidx, task in enumerate(step.tasks):
+            if self.context.tracing_enabled:
+                span.set_attribute("is_complete", plan_result.is_complete)
+                span.set_attribute("objective", plan_result.objective)
+                if plan_result.plan:
+                    span.set_attribute("plan.is_complete", plan_result.plan.is_complete)
+                    for idx, step in enumerate(plan_result.plan.steps):
                         span.set_attribute(
-                            f"plan.steps.{idx}.tasks.{tidx}.description",
-                            task.description,
+                            f"plan.steps.{idx}.description", step.description
+                        )
+                        for tidx, task in enumerate(step.tasks):
+                            span.set_attribute(
+                                f"plan.steps.{idx}.tasks.{tidx}.description",
+                                task.description,
+                            )
+                            span.set_attribute(
+                                f"plan.steps.{idx}.tasks.{tidx}.agent", task.agent
+                            )
+                for idx, step_result in enumerate(plan_result.step_results):
+                    span.set_attribute(
+                        f"plan.step_results.{idx}.step.description",
+                        step_result.step.description,
+                    )
+                    for tidx, task_result in enumerate(step_result.task_results):
+                        span.set_attribute(
+                            f"plan.step_results.{idx}.task_results.{tidx}.description",
+                            task_result.description,
                         )
                         span.set_attribute(
-                            f"plan.steps.{idx}.tasks.{tidx}.agent", task.agent
+                            f"plan.step_results.{idx}.task_results.{tidx}.result",
+                            task_result.result,
                         )
-            for idx, step_result in enumerate(plan_result.step_results):
-                span.set_attribute(
-                    f"plan.step_results.{idx}.step.description",
-                    step_result.step.description,
-                )
-                for tidx, task_result in enumerate(step_result.task_results):
-                    span.set_attribute(
-                        f"plan.step_results.{idx}.task_results.{tidx}.description",
-                        task_result.description,
-                    )
-                    span.set_attribute(
-                        f"plan.step_results.{idx}.task_results.{tidx}.result",
-                        task_result.result,
-                    )
-            if plan_result.result is not None:
-                span.set_attribute("result", plan_result.result)
+                if plan_result.result is not None:
+                    span.set_attribute("result", plan_result.result)
 
             return [plan_result.result]
 
@@ -187,7 +189,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ) -> str:
         """Request an LLM generation and return the string representation of the result"""
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate_str"
         ) as span:
@@ -195,7 +197,9 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             span.set_attribute("plan_type", self.plan_type)
 
             params = self.get_request_params(request_params)
-            AugmentedLLM.annotate_span_with_request_params(span, params)
+
+            if self.context.tracing_enabled:
+                AugmentedLLM.annotate_span_with_request_params(span, params)
 
             result = await self.generate(
                 message=message,
@@ -214,7 +218,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ) -> ModelT:
         """Request a structured LLM generation and return the result as a Pydantic model."""
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate_structured"
         ) as span:
@@ -222,7 +226,9 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             span.set_attribute("plan_type", self.plan_type)
 
             params = self.get_request_params(request_params)
-            AugmentedLLM.annotate_span_with_request_params(span, params)
+
+            if self.context.tracing_enabled:
+                AugmentedLLM.annotate_span_with_request_params(span, params)
 
             result_str = await self.generate_str(message=message, request_params=params)
 
@@ -239,15 +245,14 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 request_params=params,
             )
 
-            try:
-                span.set_attribute(
-                    "structured_response_json",
-                    json.dumps(structured_result, default=str, indent=2)[
-                        :1000
-                    ],  # truncate to avoid massive strings
-                )
-            except Exception:
-                span.set_attribute("unstructured_response", result_str)
+            if self.context.tracing_enabled:
+                try:
+                    span.set_attribute(
+                        "structured_response_json", structured_result.model_dump_json()
+                    )
+                # pylint: disable=broad-exception-caught
+                except Exception:
+                    span.set_attribute("unstructured_response", result_str)
 
             return structured_result
 
@@ -255,7 +260,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         self, objective: str, request_params: RequestParams | None = None
     ) -> PlanResult:
         """Execute task with result chaining between steps"""
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.execute"
         ) as span:
@@ -271,7 +276,9 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     use_history=False, max_iterations=30, maxTokens=16384
                 ),
             )
-            AugmentedLLM.annotate_span_with_request_params(span, params)
+
+            if self.context.tracing_enabled:
+                AugmentedLLM.annotate_span_with_request_params(span, params)
 
             plan_result = PlanResult(objective=objective, step_results=[])
 
@@ -288,21 +295,24 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     )
                     plan = Plan(steps=[next_step], is_complete=next_step.is_complete)
 
-                    next_step_tasks_event_data = {}
-                    for idx, task in enumerate(next_step.tasks):
-                        next_step_tasks_event_data[f"tasks.{idx}.description"] = (
-                            task.description
-                        )
-                        next_step_tasks_event_data[f"tasks.{idx}.agent"] = task.agent
+                    if self.context.tracing_enabled:
+                        next_step_tasks_event_data = {}
+                        for idx, task in enumerate(next_step.tasks):
+                            next_step_tasks_event_data[f"tasks.{idx}.description"] = (
+                                task.description
+                            )
+                            next_step_tasks_event_data[f"tasks.{idx}.agent"] = (
+                                task.agent
+                            )
 
-                    span.add_event(
-                        f"plan.iterative.{iterations}",
-                        {
-                            "is_complete": next_step.is_complete,
-                            "description": next_step.description,
-                            **next_step_tasks_event_data,
-                        },
-                    )
+                        span.add_event(
+                            f"plan.iterative.{iterations}",
+                            {
+                                "is_complete": next_step.is_complete,
+                                "description": next_step.description,
+                                **next_step_tasks_event_data,
+                            },
+                        )
                 elif self.plan_type == "full":
                     plan = await self._get_full_plan(
                         objective=objective,
@@ -311,25 +321,26 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     )
                     logger.debug(f"Iteration {iterations}: Full Plan:", data=plan)
 
-                    plan_steps_event_data = {}
-                    for idx, step in enumerate(plan.steps):
-                        plan_steps_event_data[f"steps.{idx}.description"] = (
-                            step.description
-                        )
-                        for tidx, task in enumerate(step.tasks):
-                            plan_steps_event_data[
-                                f"steps.{idx}.tasks.{tidx}.description"
-                            ] = task.description
-                            plan_steps_event_data[f"steps.{idx}.tasks.{tidx}.agent"] = (
-                                task.agent
+                    if self.context.tracing_enabled:
+                        plan_steps_event_data = {}
+                        for idx, step in enumerate(plan.steps):
+                            plan_steps_event_data[f"steps.{idx}.description"] = (
+                                step.description
                             )
-                    span.add_event(
-                        f"plan.full.{iterations}",
-                        {
-                            "is_complete": plan.is_complete,
-                            **plan_steps_event_data,
-                        },
-                    )
+                            for tidx, task in enumerate(step.tasks):
+                                plan_steps_event_data[
+                                    f"steps.{idx}.tasks.{tidx}.description"
+                                ] = task.description
+                                plan_steps_event_data[
+                                    f"steps.{idx}.tasks.{tidx}.agent"
+                                ] = task.agent
+                        span.add_event(
+                            f"plan.full.{iterations}",
+                            {
+                                "is_complete": plan.is_complete,
+                                **plan_steps_event_data,
+                            },
+                        )
                 else:
                     raise ValueError(f"Invalid plan type {self.plan_type}")
 
@@ -364,20 +375,22 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
 
                     plan_result.add_step_result(step_result)
 
-                    step_result_event_data = {
-                        f"step_results.{idx}.result": step_result.result,
-                        f"step_results.{idx}.description": step_result.step.description,
-                    }
-                    for tidx, task_result in enumerate(step_result.task_results):
-                        step_result_event_data[
-                            f"step_results.{idx}.task_results.{tidx}.description"
-                        ] = task_result.description
-                        step_result_event_data[
-                            f"step_results.{idx}.task_results.{tidx}.result"
-                        ] = task_result.result
-                    span.add_event(
-                        f"plan.{iterations}.step.{idx}.result", step_result_event_data
-                    )
+                    if self.context.tracing_enabled:
+                        step_result_event_data = {
+                            f"step_results.{idx}.result": step_result.result,
+                            f"step_results.{idx}.description": step_result.step.description,
+                        }
+                        for tidx, task_result in enumerate(step_result.task_results):
+                            step_result_event_data[
+                                f"step_results.{idx}.task_results.{tidx}.description"
+                            ] = task_result.description
+                            step_result_event_data[
+                                f"step_results.{idx}.task_results.{tidx}.result"
+                            ] = task_result.result
+                        span.add_event(
+                            f"plan.{iterations}.step.{idx}.result",
+                            step_result_event_data,
+                        )
 
                 logger.debug(
                     f"Iteration {iterations}: Intermediate plan result:",

@@ -46,6 +46,7 @@ from mcp_agent.tracing.semconv import (
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
+from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.utils.common import typed_dict_extras
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
@@ -128,7 +129,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         The default implementation uses Azure OpenAI 4o-mini as the LLM.
         Override this method to use a different LLM.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(f"llm_azure.{self.name}.generate") as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
@@ -137,14 +138,19 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             responses: list[ResponseMessage] = []
 
             params = self.get_request_params(request_params)
-            AugmentedLLM.annotate_span_with_request_params(span, params)
+
+            if self.context.tracing_enabled:
+                AugmentedLLM.annotate_span_with_request_params(span, params)
 
             if params.use_history:
+                span.set_attribute("use_history", params.use_history)
                 messages.extend(self.history.get())
 
             system_prompt = self.instruction or params.systemPrompt
+
             if system_prompt and len(messages) == 0:
                 messages.append(SystemMessage(content=system_prompt))
+                span.set_attribute("system_prompt", system_prompt)
 
             if isinstance(message, str):
                 messages.append(UserMessage(content=message))
@@ -264,15 +270,18 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
             self._log_chat_finished(model=model)
 
-            span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)
-            span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
-            span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)
+                span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
+                span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
 
-            for i, res in enumerate(responses):
-                response_data = self.extract_response_message_attributes_for_tracing(
-                    res, prefix=f"response.{i}"
-                )
-                span.set_attributes(response_data)
+                for i, res in enumerate(responses):
+                    response_data = (
+                        self.extract_response_message_attributes_for_tracing(
+                            res, prefix=f"response.{i}"
+                        )
+                    )
+                    span.set_attributes(response_data)
 
             return responses
 
@@ -412,6 +421,9 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         self, span: trace.Span, request: RequestCompletionRequest, turn: int
     ) -> None:
         """Annotate the span with the completion request as an event."""
+        if not self.context.tracing_enabled:
+            return
+
         event_data = {
             "completion.request.turn": turn,
             "config.endpoint": request.config.endpoint,
@@ -432,6 +444,9 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         self, span: trace.Span, response: ResponseMessage, turn: int
     ) -> None:
         """Annotate the span with the completion response as an event."""
+        if not self.context.tracing_enabled:
+            return
+
         event_data = {
             "completion.response.turn": turn,
         }

@@ -1,4 +1,3 @@
-import json
 from typing import Any, Iterable, List, Type, Union, cast
 
 from pydantic import BaseModel
@@ -44,7 +43,7 @@ from mcp_agent.tracing.semconv import (
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
-from mcp_agent.tracing.telemetry import is_otel_serializable, telemetry
+from mcp_agent.tracing.telemetry import get_tracer, is_otel_serializable, telemetry
 from mcp_agent.utils.common import ensure_serializable, typed_dict_extras, to_string
 from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
@@ -139,7 +138,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         The default implementation uses Claude as the LLM.
         Override this method to use a different LLM.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate"
         ) as span:
@@ -149,7 +148,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             config = self.context.config
             messages: List[MessageParam] = []
             params = self.get_request_params(request_params)
-            AugmentedLLM.annotate_span_with_request_params(span, params)
+
+            if self.context.tracing_enabled:
+                AugmentedLLM.annotate_span_with_request_params(span, params)
 
             if params.use_history:
                 messages.extend(self.history.get())
@@ -315,15 +316,18 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             self._log_chat_finished(model=model)
 
-            span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)
-            span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
-            span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)
+                span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
+                span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
 
-            for i, response in enumerate(responses):
-                response_data = self.extract_response_message_attributes_for_tracing(
-                    response, prefix=f"response.{i}"
-                )
-                span.set_attributes(response_data)
+                for i, response in enumerate(responses):
+                    response_data = (
+                        self.extract_response_message_attributes_for_tracing(
+                            response, prefix=f"response.{i}"
+                        )
+                    )
+                    span.set_attributes(response_data)
 
             return responses
 
@@ -337,13 +341,13 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         The default implementation uses Claude as the LLM.
         Override this method to use a different LLM.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate_str"
         ) as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
-            if request_params:
+            if self.context.tracing_enabled and request_params:
                 AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             responses: List[Message] = await self.generate(
@@ -376,7 +380,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         # We need to do this in a two-step process because Instructor doesn't
         # know how to invoke MCP tools via call_tool, so we'll handle all the
         # processing first and then pass the final response through Instructor
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate_structured"
         ) as span:
@@ -389,7 +393,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             )
 
             params = self.get_request_params(request_params)
-            AugmentedLLM.annotate_span_with_request_params(span, params)
+
+            if self.context.tracing_enabled:
+                AugmentedLLM.annotate_span_with_request_params(span, params)
 
             model = await self.select_model(params)
             span.set_attribute(GEN_AI_REQUEST_MODEL, model)
@@ -421,15 +427,15 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             if isinstance(structured_response, dict):
                 structured_response = response_model.model_validate(structured_response)
 
-            try:
-                span.set_attribute(
-                    "structured_response_json",
-                    json.dumps(structured_response, default=str, indent=2)[
-                        :1000
-                    ],  # truncate to avoid massive strings
-                )
-            except Exception:
-                span.set_attribute("unstructured_response", response)
+            if self.context.tracing_enabled:
+                try:
+                    span.set_attribute(
+                        "structured_response_json",
+                        structured_response.model_dump_json(),
+                    )
+                # pylint: disable=broad-exception-caught
+                except Exception:
+                    span.set_attribute("unstructured_response", response)
 
             return structured_response
 
@@ -497,6 +503,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         self, message_param: MessageParam, prefix: str = "message"
     ) -> dict[str, Any]:
         """Return a flat dict of span attributes for a given MessageParam."""
+        if not self.context.tracing_enabled:
+            return {}
+
         attrs = {}
         attrs[f"{prefix}.role"] = message_param.get("role")
         message_content = message_param.get("content")
@@ -597,6 +606,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         self, message: Message, prefix: str | None = None
     ) -> dict[str, Any]:
         """Return a flat dict of span attributes for a given Message."""
+        if not self.context.tracing_enabled:
+            return {}
+
         attr_prefix = f"{prefix}." if prefix else ""
         attrs = {
             f"{attr_prefix}id": message.id,
@@ -637,6 +649,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         self, span: trace.Span, request: RequestCompletionRequest, turn: int
     ):
         """Annotate the span with the completion request as an event."""
+        if not self.context.tracing_enabled:
+            return
+
         event_data = {
             "completion.request.turn": turn,
         }
@@ -670,6 +685,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         self, span: trace.Span, response: Message, turn: int
     ):
         """Annotate the span with the completion response as an event."""
+        if not self.context.tracing_enabled:
+            return
+
         event_data = {
             "completion.response.turn": turn,
         }

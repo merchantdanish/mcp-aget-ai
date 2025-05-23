@@ -70,6 +70,8 @@ class Context(BaseModel):
     workflow_registry: Optional["WorkflowRegistry"] = None
 
     tracer: Optional[trace.Tracer] = None
+    # Use this flag to conditionally serialize expensive data for tracing
+    tracing_enabled: bool = False
 
     model_config = ConfigDict(
         extra="allow",
@@ -190,7 +192,9 @@ async def initialize_context(
         context.decorator_registry = decorator_registry
 
     # Store the tracer in context if needed
-    context.tracer = trace.get_tracer(config.otel.service_name)
+    if config.otel.enabled:
+        context.tracing_enabled = True
+        context.tracer = trace.get_tracer(config.otel.service_name)
 
     if store_globally:
         global _global_context
