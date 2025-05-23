@@ -313,9 +313,13 @@ class LLMRouter(Router):
         span.set_attribute("request", request)
         span.set_attribute(GEN_AI_REQUEST_TOP_K, top_k)
         span.set_attribute("llm", self.llm.name)
-        span.set_attribute("agents", [a.name for a in self.agents])
-        span.set_attribute("servers", self.server_names)
-        span.set_attribute("functions", [f.__name__ for f in self.functions])
+        span.set_attribute(
+            "agents", [a.name for a in self.agents] if self.agents else []
+        )
+        span.set_attribute("servers", self.server_names or [])
+        span.set_attribute(
+            "functions", [f.__name__ for f in self.functions] if self.functions else []
+        )
 
     def _annotate_span_for_router_result(
         self,

@@ -174,7 +174,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
             span.set_attribute(
                 "available_tools",
-                [t.get("function", {}).get("name") for t in tools],
+                [t.function.name for t in tools],
             )
 
             model = await self.select_model(params)

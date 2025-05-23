@@ -271,8 +271,8 @@ class MCPAggregator(ContextDependent):
             connection_persistence=connection_persistence,
         )
 
-        tracer = get_tracer(cls.context)
-        with tracer.start_as_current_span(f"{cls.__class__.__name__}.create") as span:
+        tracer = get_tracer(instance.context)
+        with tracer.start_as_current_span(f"{cls.__name__}.create") as span:
             span.set_attribute("server_names", server_names)
             span.set_attribute("connection_persistence", connection_persistence)
 
@@ -562,7 +562,7 @@ class MCPAggregator(ContextDependent):
             if server_name:
                 span.set_attribute("server_name", server_name)
                 result = ListToolsResult(
-                    prompts=[
+                    tools=[
                         namespaced_tool.tool.model_copy(
                             update={"name": namespaced_tool.namespaced_tool_name}
                         )

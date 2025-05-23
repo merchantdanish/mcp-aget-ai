@@ -405,7 +405,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                 message=message, request_params=request_params
             )
 
-            res = await self.optimizer.generate_structured(
+            res = await self.optimizer_llm.generate_structured(
                 message=response_str,
                 response_model=response_model,
                 request_params=request_params,

@@ -217,7 +217,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
                 if notification.root.params:
                     record_attributes(
                         span,
-                        notification.root.parms.model_dump(),
+                        notification.root.params.model_dump(),
                         MCP_REQUEST_ARGUMENT_KEY,
                     )
 
@@ -259,7 +259,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         processed.
         """
         logger.debug(
-            "send_progress_notification: progress_token={progress_token}, progress={progress}, total={total}, message={message}"
+            f"send_progress_notification: progress_token={progress_token}, progress={progress}, total={total}, message={message}"
         )
 
         tracer = get_tracer(self.context)
