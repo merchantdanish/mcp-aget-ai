@@ -151,7 +151,6 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 span.set_attribute("is_complete", plan_result.is_complete)
                 span.set_attribute("objective", plan_result.objective)
                 if plan_result.plan:
-                    span.set_attribute("plan.is_complete", plan_result.plan.is_complete)
                     for idx, step in enumerate(plan_result.plan.steps):
                         span.set_attribute(
                             f"plan.steps.{idx}.description", step.description

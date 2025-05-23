@@ -44,8 +44,15 @@ class OpenAIEmbeddingModel(EmbeddingModel):
             )
 
             span.set_attribute(GEN_AI_RESPONSE_MODEL, response.model)
-            span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, response.usage.prompt_tokens)
-            span.set_attribute("gen_ai.usage.total_tokens", response.usage.total_tokens)
+            if response.usage:
+                if response.usage.prompt_tokens is not None:
+                    span.set_attribute(
+                        GEN_AI_USAGE_INPUT_TOKENS, response.usage.prompt_tokens
+                    )
+                if response.usage.total_tokens is not None:
+                    span.set_attribute(
+                        "gen_ai.usage.total_tokens", response.usage.total_tokens
+                    )
 
             # Sort the embeddings by their index to ensure correct order
             sorted_embeddings = sorted(response.data, key=lambda x: x.index)
