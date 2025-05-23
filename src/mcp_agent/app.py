@@ -5,7 +5,6 @@ from datetime import timedelta
 import asyncio
 import sys
 from contextlib import asynccontextmanager
-from opentelemetry import trace
 
 from mcp import ServerSession
 from mcp_agent.core.context import Context, initialize_context, cleanup_context
