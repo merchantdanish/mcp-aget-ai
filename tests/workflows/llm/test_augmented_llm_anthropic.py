@@ -1,7 +1,8 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import BaseModel
+from mcp_agent.config import AnthropicSettings
 
 from mcp.types import TextContent, SamplingMessage
 from anthropic.types import Message, TextBlock, ToolUseBlock, Usage
@@ -30,9 +31,8 @@ class TestAnthropicAugmentedLLM:
         """
         # Setup mock objects
         mock_context = MagicMock()
-        mock_context.config.anthropic = MagicMock()
-        mock_context.config.anthropic.default_model = "claude-3-7-sonnet-latest"
-        mock_context.config.anthropic.api_key = "test_key"
+        mock_context.config.anthropic = AnthropicSettings(api_key="test_key")
+        mock_context.config.default_model = "claude-3-7-sonnet-latest"
 
         # Create LLM instance
         llm = AnthropicAugmentedLLM(name="test", context=mock_context)
@@ -139,7 +139,7 @@ class TestAnthropicAugmentedLLM:
         """
         call_count = 0
 
-        async def side_effect(fn, **kwargs):
+        async def side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
 
@@ -148,15 +148,15 @@ class TestAnthropicAugmentedLLM:
                 messages
             )
 
-            if has_final_iteration_prompt:
-                return [
-                    self.create_text_message(
-                        "Here is my final answer based on all the tool results gathered so far...",
-                        default_usage,
-                    )
-                ]
+            # Return a final text message with stop_reason="end_turn" on the last iteration
+            if call_count == max_iterations or has_final_iteration_prompt:
+                return self.create_text_message(
+                    "Here is my final answer based on all the tool results gathered so far...",
+                    default_usage,
+                    stop_reason="end_turn",
+                )
             else:
-                return [self.create_tool_use_message(call_count, default_usage)]
+                return self.create_tool_use_message(call_count, default_usage)
 
         return side_effect
 
@@ -168,9 +168,9 @@ class TestAnthropicAugmentedLLM:
         """
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[
-                self.create_text_message("This is a test response", default_usage)
-            ]
+            return_value=self.create_text_message(
+                "This is a test response", default_usage
+            )
         )
 
         # Call LLM with default parameters
@@ -182,10 +182,10 @@ class TestAnthropicAugmentedLLM:
         assert mock_llm.executor.execute.call_count == 1
 
         # Check the arguments passed to execute
-        first_call_args = mock_llm.executor.execute.call_args[1]
-        assert first_call_args["model"] == "claude-3-7-sonnet-latest"
-        assert first_call_args["messages"][0]["role"] == "user"
-        assert first_call_args["messages"][0]["content"] == "Test query"
+        first_call_args = mock_llm.executor.execute.call_args[0][1]
+        assert first_call_args.payload["model"] == "claude-3-7-sonnet-latest"
+        assert first_call_args.payload["messages"][0]["role"] == "user"
+        assert first_call_args.payload["messages"][0]["content"] == "Test query"
 
     # Test 2: Generate String
     @pytest.mark.asyncio
@@ -195,9 +195,9 @@ class TestAnthropicAugmentedLLM:
         """
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[
-                self.create_text_message("This is a test response", default_usage)
-            ]
+            return_value=self.create_text_message(
+                "This is a test response", default_usage
+            )
         )
 
         # Call LLM with default parameters
@@ -219,31 +219,23 @@ class TestAnthropicAugmentedLLM:
             name: str
             value: int
 
-        # Mock the generate_str method
+        # Mock the generate_str method to return a string that will be parsed by the instructor mock
         mock_llm.generate_str = AsyncMock(return_value="name: Test, value: 42")
 
-        # Mock instructor from_anthropic
-        with patch("instructor.from_anthropic") as mock_instructor:
-            mock_client = MagicMock()
-            mock_client.chat.completions.create.return_value = TestResponseModel(
-                name="Test", value=42
-            )
-            mock_instructor.return_value = mock_client
+        # Patch executor.execute to return the expected TestResponseModel instance
+        mock_llm.executor.execute = AsyncMock(
+            return_value=TestResponseModel(name="Test", value=42)
+        )
 
-            # Call the method
-            result = await mock_llm.generate_structured("Test query", TestResponseModel)
+        # Call the method
+        result = await AnthropicAugmentedLLM.generate_structured(
+            mock_llm, "Test query", TestResponseModel
+        )
 
-            # Assertions
-            assert isinstance(result, TestResponseModel)
-            assert result.name == "Test"
-            assert result.value == 42
-
-            # Verify instructor was called correctly
-            mock_instructor.assert_called_once()
-            mock_client.chat.completions.create.assert_called_once()
-            call_args = mock_client.chat.completions.create.call_args[1]
-            assert call_args["model"] == "claude-3-7-sonnet-latest"
-            assert call_args["response_model"] == TestResponseModel
+        # Assertions
+        assert isinstance(result, TestResponseModel)
+        assert result.name == "Test"
+        assert result.value == 42
 
     # Test 4: With History
     @pytest.mark.asyncio
@@ -257,9 +249,9 @@ class TestAnthropicAugmentedLLM:
 
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[
-                self.create_text_message("Response with history", default_usage)
-            ]
+            return_value=self.create_text_message(
+                "Response with history", default_usage
+            )
         )
 
         # Call LLM with history enabled
@@ -271,10 +263,10 @@ class TestAnthropicAugmentedLLM:
         assert len(responses) == 1
 
         # Verify history was included in the request
-        first_call_args = mock_llm.executor.execute.call_args[1]
-        assert len(first_call_args["messages"]) >= 2
-        assert first_call_args["messages"][0] == history_message
-        assert first_call_args["messages"][1]["content"] == "Follow-up query"
+        first_call_args = mock_llm.executor.execute.call_args[0][1]
+        assert len(first_call_args.payload["messages"]) >= 2
+        assert first_call_args.payload["messages"][0] == history_message
+        assert first_call_args.payload["messages"][1]["content"] == "Follow-up query"
 
     # Test 5: Without History
     @pytest.mark.asyncio
@@ -290,9 +282,9 @@ class TestAnthropicAugmentedLLM:
 
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[
-                self.create_text_message("Response without history", default_usage)
-            ]
+            return_value=self.create_text_message(
+                "Response without history", default_usage
+            )
         )
 
         # Call LLM with history disabled
@@ -303,14 +295,14 @@ class TestAnthropicAugmentedLLM:
         mock_history.assert_not_called()
 
         # Check arguments passed to execute
-        call_args = mock_llm.executor.execute.call_args[1]
+        call_args = mock_llm.executor.execute.call_args[0][1]
 
         # Verify history not included in messages
         assert (
             len(
                 [
                     content
-                    for content in call_args["messages"]
+                    for content in call_args.payload["messages"]
                     if content == "Ignored history"
                 ]
             )
@@ -326,20 +318,18 @@ class TestAnthropicAugmentedLLM:
         # Create a custom side effect function for execute
         call_count = 0
 
-        async def custom_side_effect(fn, **kwargs):
+        async def custom_side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
 
             # First call - LLM generates a tool call
             if call_count == 1:
-                return [self.create_tool_use_message(1, default_usage)]
+                return self.create_tool_use_message(1, default_usage)
             # Second call - LLM generates final response after tool call
             else:
-                return [
-                    self.create_text_message(
-                        "Final response after tool use", default_usage
-                    )
-                ]
+                return self.create_text_message(
+                    "Final response after tool use", default_usage
+                )
 
         # Setup mocks
         mock_llm.executor.execute = AsyncMock(side_effect=custom_side_effect)
@@ -370,18 +360,18 @@ class TestAnthropicAugmentedLLM:
         # Create a custom side effect function for execute
         call_count = 0
 
-        async def custom_side_effect(fn, **kwargs):
+        async def custom_side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
 
             # First call - LLM generates a tool call
             if call_count == 1:
-                return [self.create_tool_use_message(1, default_usage)]
+                return self.create_tool_use_message(1, default_usage)
             # Second call - LLM generates final response after tool call
             else:
-                return [
-                    self.create_text_message("Response after tool error", default_usage)
-                ]
+                return self.create_text_message(
+                    "Response after tool error", default_usage
+                )
 
         # Setup mocks
         mock_llm.executor.execute = AsyncMock(side_effect=custom_side_effect)
@@ -411,7 +401,7 @@ class TestAnthropicAugmentedLLM:
         Tests handling of API errors.
         """
         # Setup mock executor to raise an exception
-        mock_llm.executor.execute = AsyncMock(return_value=[Exception("API Error")])
+        mock_llm.executor.execute = AsyncMock(return_value=Exception("API Error"))
 
         # Call LLM
         responses = await mock_llm.generate("Test query with API error")
@@ -431,9 +421,7 @@ class TestAnthropicAugmentedLLM:
 
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[
-                self.create_text_message("Model selection test", default_usage)
-            ]
+            return_value=self.create_text_message("Model selection test", default_usage)
         )
 
         # Call LLM with a specific model in request_params
@@ -453,7 +441,7 @@ class TestAnthropicAugmentedLLM:
         """
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_message("Params test", default_usage)]
+            return_value=self.create_text_message("Params test", default_usage)
         )
 
         # Create custom request params that override some defaults
@@ -555,7 +543,7 @@ class TestAnthropicAugmentedLLM:
         """
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_message("System prompt test", default_usage)]
+            return_value=self.create_text_message("System prompt test", default_usage)
         )
 
         # Call LLM with a system prompt
@@ -564,8 +552,8 @@ class TestAnthropicAugmentedLLM:
         await mock_llm.generate("Ahoy matey", request_params)
 
         # Assertions
-        call_args = mock_llm.executor.execute.call_args[1]
-        assert call_args["system"] == system_prompt
+        call_args = mock_llm.executor.execute.call_args[0][1]
+        assert call_args.payload["system"] == system_prompt
 
     # Test 15: Typed Dict Extras Helper
     def test_typed_dict_extras(self):
@@ -635,8 +623,8 @@ class TestAnthropicAugmentedLLM:
 
         # 3. Verify final prompt was added before the last request
         calls = mock_llm.executor.execute.call_args_list
-        final_call_args = calls[-1][1]  # Arguments of the last call
-        messages = final_call_args["messages"]
+        final_call_args = calls[-1][0][1]  # Arguments of the last call
+        messages = final_call_args.payload["messages"]
 
         # Check for the presence of the final answer request message
         assert self.check_final_iteration_prompt_in_messages(
