@@ -57,7 +57,7 @@ filter = ToolFilter(allowed=["filesystem_read_file", "filesystem_list_directory"
 ```
 
 ### 2. Excluded List (Blacklist)
-Block specific tools:
+Block-specific tools:
 ```python
 filter = ToolFilter(excluded=["filesystem_delete_file", "filesystem_write_file"])
 ```

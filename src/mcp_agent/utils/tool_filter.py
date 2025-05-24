@@ -5,6 +5,7 @@ This module provides a non-invasive way to filter MCP tools at the LLM level,
 allowing you to control which tools are available without modifying the core code.
 """
 
+import asyncio
 from typing import List, Dict, Optional, Callable
 from mcp.types import Tool
 
@@ -153,6 +154,10 @@ def apply_tool_filter(llm_instance, tool_filter: Optional[ToolFilter]):
     if not hasattr(llm_instance, '_original_generate'):
         llm_instance._original_generate = llm_instance.generate
     
+    # Create a lock for this instance if it doesn't exist
+    if not hasattr(llm_instance, '_filter_lock'):
+        llm_instance._filter_lock = asyncio.Lock()
+    
     # If no filter, restore original method
     if tool_filter is None:
         if hasattr(llm_instance, '_original_generate'):
@@ -175,20 +180,22 @@ def apply_tool_filter(llm_instance, tool_filter: Optional[ToolFilter]):
     
     # Create wrapper function that applies filtering
     async def filtered_generate(message, request_params=None):
-        # Temporarily wrap the agent's list_tools method
-        original_list_tools = llm_instance.agent.list_tools
-        
-        async def filtered_list_tools(server_name=None):
-            result = await original_list_tools(server_name)
-            if tool_filter:
-                result.tools = tool_filter.filter_tools(result.tools)
-            return result
-        
-        llm_instance.agent.list_tools = filtered_list_tools
-        try:
-            return await llm_instance._original_generate(message, request_params)
-        finally:
-            llm_instance.agent.list_tools = original_list_tools
+        # Use lock to prevent concurrent modifications
+        async with llm_instance._filter_lock:
+            # Temporarily wrap the agent's list_tools method
+            original_list_tools = llm_instance.agent.list_tools
+            
+            async def filtered_list_tools(server_name=None):
+                result = await original_list_tools(server_name)
+                if tool_filter:
+                    result.tools = tool_filter.filter_tools(result.tools)
+                return result
+            
+            llm_instance.agent.list_tools = filtered_list_tools
+            try:
+                return await llm_instance._original_generate(message, request_params)
+            finally:
+                llm_instance.agent.list_tools = original_list_tools
     
     # Apply the wrapped method
     llm_instance.generate = filtered_generate

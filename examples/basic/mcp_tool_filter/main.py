@@ -210,7 +210,7 @@ def main():
         
         if choice == 'all':
             print("\nRunning all examples...")
-            for name, func in examples:
+            for _, func in examples:
                 print(f"\n{'=' * 60}")
                 asyncio.run(func())
         elif choice.isdigit() and 1 <= int(choice) <= len(examples):
