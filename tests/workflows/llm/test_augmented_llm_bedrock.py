@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from mcp import Tool
 import pytest
@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from mcp.types import TextContent, SamplingMessage, ImageContent, ListToolsResult
 
+from mcp_agent.config import BedrockSettings
 from mcp_agent.workflows.llm.augmented_llm_bedrock import (
     BedrockAugmentedLLM,
     RequestParams,
@@ -28,11 +29,7 @@ class TestBedrockAugmentedLLM:
         """
         # Setup Bedrock-specific context attributes
         mock_context.config.bedrock = MagicMock()
-        mock_context.config.bedrock.profile = "default"
-        mock_context.config.bedrock.aws_access_key_id = "test_key_id"
-        mock_context.config.bedrock.aws_secret_access_key = "test_secret_key"
-        mock_context.config.bedrock.aws_session_token = "test_session_token"
-        mock_context.config.bedrock.aws_region = "us-west-2"
+        mock_context.config.bedrock = BedrockSettings(api_key="test_key")
         mock_context.config.bedrock.default_model = "us.amazon.nova-lite-v1:0"
 
         # Create LLM instance
@@ -131,7 +128,7 @@ class TestBedrockAugmentedLLM:
         """
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_response("This is a test response")]
+            return_value=self.create_text_response("This is a test response")
         )
 
         # Call LLM with default parameters
@@ -143,12 +140,12 @@ class TestBedrockAugmentedLLM:
         assert mock_llm.executor.execute.call_count == 1
 
         # Check the first call arguments passed to execute
-        first_call_args = mock_llm.executor.execute.call_args_list[0][0]
-        assert first_call_args[0] == mock_llm.bedrock_client.converse
-        kwargs = mock_llm.executor.execute.call_args_list[0][1]
-        assert kwargs["modelId"] == "us.amazon.nova-lite-v1:0"
-        assert kwargs["messages"][0]["role"] == "user"
-        assert kwargs["messages"][0]["content"][0]["text"] == "Test query"
+        first_call_args = mock_llm.executor.execute.call_args[0][1]
+        assert first_call_args.payload["modelId"] == "us.amazon.nova-lite-v1:0"
+        assert first_call_args.payload["messages"][0]["role"] == "user"
+        assert (
+            first_call_args.payload["messages"][0]["content"][0]["text"] == "Test query"
+        )
 
     # Test 2: Generate String
     @pytest.mark.asyncio
@@ -158,7 +155,7 @@ class TestBedrockAugmentedLLM:
         """
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_response("This is a test response")]
+            return_value=self.create_text_response("This is a test response")
         )
 
         # Call LLM with default parameters
@@ -183,28 +180,20 @@ class TestBedrockAugmentedLLM:
         # Mock the generate_str method
         mock_llm.generate_str = AsyncMock(return_value="name: Test, value: 42")
 
-        # Mock instructor from_bedrock
-        with patch("instructor.from_bedrock") as mock_instructor:
-            mock_client = MagicMock()
-            mock_client.chat.completions.create.return_value = TestResponseModel(
-                name="Test", value=42
-            )
-            mock_instructor.return_value = mock_client
+        # Patch executor.execute to return the expected TestResponseModel instance
+        mock_llm.executor.execute = AsyncMock(
+            return_value=TestResponseModel(name="Test", value=42)
+        )
 
-            # Call the method
-            result = await mock_llm.generate_structured("Test query", TestResponseModel)
+        # Call the method
+        result = await BedrockAugmentedLLM.generate_structured(
+            mock_llm, "Test query", TestResponseModel
+        )
 
-            # Assertions
-            assert isinstance(result, TestResponseModel)
-            assert result.name == "Test"
-            assert result.value == 42
-
-            # Verify instructor was called correctly
-            mock_instructor.assert_called_once_with(mock_llm.bedrock_client)
-            mock_client.chat.completions.create.assert_called_once()
-            call_args = mock_client.chat.completions.create.call_args[1]
-            assert call_args["modelId"] == "us.amazon.nova-lite-v1:0"
-            assert call_args["response_model"] == TestResponseModel
+        # Assertions
+        assert isinstance(result, TestResponseModel)
+        assert result.name == "Test"
+        assert result.value == 42
 
     # Test 4: With History
     @pytest.mark.asyncio
@@ -218,7 +207,7 @@ class TestBedrockAugmentedLLM:
 
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_response("Response with history")]
+            return_value=self.create_text_response("Response with history")
         )
 
         # Call LLM with history enabled
@@ -230,10 +219,13 @@ class TestBedrockAugmentedLLM:
         assert len(responses) == 1
 
         # Verify history was included in the request
-        first_call_args = mock_llm.executor.execute.call_args_list[0][1]
-        assert len(first_call_args["messages"]) >= 2
-        assert first_call_args["messages"][0] == history_message
-        assert first_call_args["messages"][1]["content"][0]["text"] == "Follow-up query"
+        first_call_args = mock_llm.executor.execute.call_args[0][1]
+        assert len(first_call_args.payload["messages"]) >= 2
+        assert first_call_args.payload["messages"][0] == history_message
+        assert (
+            first_call_args.payload["messages"][1]["content"][0]["text"]
+            == "Follow-up query"
+        )
 
     # Test 5: Without History
     @pytest.mark.asyncio
@@ -249,7 +241,7 @@ class TestBedrockAugmentedLLM:
 
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_response("Response without history")]
+            return_value=self.create_text_response("Response without history")
         )
 
         # Call LLM with history disabled
@@ -260,14 +252,14 @@ class TestBedrockAugmentedLLM:
         mock_history.assert_not_called()
 
         # Check arguments passed to execute
-        call_args = mock_llm.executor.execute.call_args[1]
+        call_args = mock_llm.executor.execute.call_args[0][1]
 
         # Verify history not added to messages
         assert (
             len(
                 [
                     m
-                    for m in call_args["messages"]
+                    for m in call_args.payload["messages"]
                     if m.get("content") == "Ignored history"
                 ]
             )
@@ -289,18 +281,14 @@ class TestBedrockAugmentedLLM:
 
             # First call is for the regular execute
             if call_count == 1:
-                return [
-                    self.create_tool_use_response(
-                        "test_tool", {"query": "test query"}, "tool_123"
-                    )
-                ]
+                return self.create_tool_use_response(
+                    "test_tool", {"query": "test query"}, "tool_123"
+                )
             # Second call is for the final response after tool call
             else:
-                return [
-                    self.create_text_response(
-                        "Final response after tool use", stop_reason="end_turn"
-                    )
-                ]
+                return self.create_text_response(
+                    "Final response after tool use", stop_reason="end_turn"
+                )
 
         # Setup mocks
         mock_llm.executor.execute = AsyncMock(side_effect=custom_side_effect)
@@ -336,18 +324,14 @@ class TestBedrockAugmentedLLM:
 
             # First call is for the regular execute
             if call_count == 1:
-                return [
-                    self.create_tool_use_response(
-                        "test_tool", {"query": "test query"}, "tool_123"
-                    )
-                ]
+                return self.create_tool_use_response(
+                    "test_tool", {"query": "test query"}, "tool_123"
+                )
             # Second call is for the final response after tool call
             else:
-                return [
-                    self.create_text_response(
-                        "Response after tool error", stop_reason="end_turn"
-                    )
-                ]
+                return self.create_text_response(
+                    "Response after tool error", stop_reason="end_turn"
+                )
 
         # Setup mocks
         mock_llm.executor.execute = AsyncMock(side_effect=custom_side_effect)
@@ -376,7 +360,7 @@ class TestBedrockAugmentedLLM:
         Tests handling of API errors.
         """
         # Setup mock executor to raise an exception
-        mock_llm.executor.execute = AsyncMock(return_value=[Exception("API Error")])
+        mock_llm.executor.execute = AsyncMock(return_value=Exception("API Error"))
 
         # Call LLM
         responses = await mock_llm.generate("Test query with API error")
@@ -396,7 +380,7 @@ class TestBedrockAugmentedLLM:
 
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_response("Model selection test")]
+            return_value=self.create_text_response("Model selection test")
         )
 
         # Call LLM with a specific model in request_params
@@ -416,7 +400,7 @@ class TestBedrockAugmentedLLM:
         """
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_response("Params test")]
+            return_value=self.create_text_response("Params test")
         )
 
         # Create custom request params that override some defaults
@@ -500,11 +484,9 @@ class TestBedrockAugmentedLLM:
 
         for stop_reason in stop_reasons:
             mock_llm.executor.execute = AsyncMock(
-                return_value=[
-                    self.create_text_response(
-                        f"Response with {stop_reason}", stop_reason=stop_reason
-                    )
-                ]
+                return_value=self.create_text_response(
+                    f"Response with {stop_reason}", stop_reason=stop_reason
+                )
             )
 
             responses = await mock_llm.generate(f"Test query with {stop_reason}")
@@ -547,8 +529,8 @@ class TestBedrockAugmentedLLM:
         """
         Tests that tool configuration is properly set up.
         """
-        # Setup aggregator to return tools
-        mock_llm.aggregator.list_tools = AsyncMock(
+        # Setup agent to return tools
+        mock_llm.agent.list_tools = AsyncMock(
             return_value=ListToolsResult(
                 tools=[
                     Tool(
@@ -565,15 +547,18 @@ class TestBedrockAugmentedLLM:
 
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_response("Tool config test")]
+            return_value=self.create_text_response("Tool config test")
         )
 
         # Call LLM
         await mock_llm.generate("Test query with tools")
 
         # Assertions
-        call_kwargs = mock_llm.executor.execute.call_args[1]
-        assert "toolConfig" in call_kwargs
-        assert len(call_kwargs["toolConfig"]["tools"]) == 1
-        assert call_kwargs["toolConfig"]["tools"][0]["toolSpec"]["name"] == "test_tool"
-        assert call_kwargs["toolConfig"]["toolChoice"]["auto"] == {}
+        call_kwargs = mock_llm.executor.execute.call_args[0][1]
+        assert "toolConfig" in call_kwargs.payload
+        assert len(call_kwargs.payload["toolConfig"]["tools"]) == 1
+        assert (
+            call_kwargs.payload["toolConfig"]["tools"][0]["toolSpec"]["name"]
+            == "test_tool"
+        )
+        assert call_kwargs.payload["toolConfig"]["toolChoice"]["auto"] == {}
