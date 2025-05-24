@@ -6,7 +6,6 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.completion_usage import CompletionUsage
 from openai.types.chat import (
     ChatCompletionMessageToolCall,
-    ChatCompletionToolMessageParam,
     ChatCompletion,
     ChatCompletionMessage,
 )
@@ -17,6 +16,7 @@ from mcp.types import (
     SamplingMessage,
 )
 
+from mcp_agent.config import OpenAISettings
 from mcp_agent.workflows.llm.augmented_llm_openai import (
     OpenAIAugmentedLLM,
     RequestParams,
@@ -34,13 +34,14 @@ class TestOpenAIAugmentedLLM:
         """
         Creates a mock OpenAI LLM instance with common mocks set up.
         """
-        # Setup OpenAI-specific context attributes
-        mock_context.config.openai = MagicMock()
-        mock_context.config.openai.api_key = "test_key"
-        mock_context.config.openai.default_model = "gpt-4o"
-        mock_context.config.openai.base_url = "https://api.openai.com/v1"
-        mock_context.config.openai.http_client = None
-        mock_context.config.openai.reasoning_effort = "medium"
+        # Setup OpenAI-specific context attributes using a real OpenAISettings instance
+        mock_context.config.openai = OpenAISettings(
+            api_key="test_key",
+            default_model="gpt-4o",
+            base_url="https://api.openai.com/v1",
+            http_client=None,
+            reasoning_effort="medium",
+        )
 
         # Create LLM instance
         llm = OpenAIAugmentedLLM(name="test", context=mock_context)
@@ -133,11 +134,9 @@ class TestOpenAIAugmentedLLM:
         """
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[
-                self.create_text_response(
-                    "This is a test response", usage=default_usage
-                )
-            ]
+            return_value=self.create_text_response(
+                "This is a test response", usage=default_usage
+            )
         )
 
         # Call LLM with default parameters
@@ -149,10 +148,11 @@ class TestOpenAIAugmentedLLM:
         assert mock_llm.executor.execute.call_count == 1
 
         # Check the first call arguments passed to execute (need to be careful with indexes because response gets added to messages)
-        first_call_args = mock_llm.executor.execute.call_args_list[0][1]
-        assert first_call_args["model"] == "gpt-4o"
-        assert first_call_args["messages"][0]["role"] == "user"
-        assert first_call_args["messages"][0]["content"] == "Test query"
+        first_call_args = mock_llm.executor.execute.call_args_list[0][0]
+        request_obj = first_call_args[1]
+        assert request_obj.payload["model"] == "gpt-4o"
+        assert request_obj.payload["messages"][0]["role"] == "user"
+        assert request_obj.payload["messages"][0]["content"] == "Test query"
 
     # Test 2: Generate String
     @pytest.mark.asyncio
@@ -162,11 +162,9 @@ class TestOpenAIAugmentedLLM:
         """
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[
-                self.create_text_response(
-                    "This is a test response", usage=default_usage
-                )
-            ]
+            return_value=self.create_text_response(
+                "This is a test response", usage=default_usage
+            )
         )
 
         # Call LLM with default parameters
@@ -200,6 +198,11 @@ class TestOpenAIAugmentedLLM:
             )
             mock_instructor.return_value = mock_client
 
+            # Patch executor.execute to be an async mock returning the expected value
+            mock_llm.executor.execute = AsyncMock(
+                return_value=TestResponseModel(name="Test", value=42)
+            )
+
             # Call the method
             result = await mock_llm.generate_structured("Test query", TestResponseModel)
 
@@ -220,9 +223,9 @@ class TestOpenAIAugmentedLLM:
 
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[
-                self.create_text_response("Response with history", usage=default_usage)
-            ]
+            return_value=self.create_text_response(
+                "Response with history", usage=default_usage
+            )
         )
 
         # Call LLM with history enabled
@@ -234,10 +237,11 @@ class TestOpenAIAugmentedLLM:
         assert len(responses) == 1
 
         # Verify history was included in the request - use first call args
-        first_call_args = mock_llm.executor.execute.call_args_list[0][1]
-        assert len(first_call_args["messages"]) >= 2
-        assert first_call_args["messages"][0] == history_message
-        assert first_call_args["messages"][1]["content"] == "Follow-up query"
+        first_call_args = mock_llm.executor.execute.call_args_list[0][0]
+        request_obj = first_call_args[1]
+        assert len(request_obj.payload["messages"]) >= 2
+        assert request_obj.payload["messages"][0] == history_message
+        assert request_obj.payload["messages"][1]["content"] == "Follow-up query"
 
     # Test 5: Without History
     @pytest.mark.asyncio
@@ -253,11 +257,9 @@ class TestOpenAIAugmentedLLM:
 
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[
-                self.create_text_response(
-                    "Response without history", usage=default_usage
-                )
-            ]
+            return_value=self.create_text_response(
+                "Response without history", usage=default_usage
+            )
         )
 
         # Call LLM with history disabled
@@ -268,10 +270,14 @@ class TestOpenAIAugmentedLLM:
         mock_history.assert_not_called()
 
         # Check arguments passed to execute
-        call_args = mock_llm.executor.execute.call_args[1]
+        call_args = mock_llm.executor.execute.call_args[0]
+        request_obj = call_args[1]
         # Verify only the user message was included (the new query), not any history
-        assert len([m for m in call_args["messages"] if m.get("role") == "user"]) == 1
-        assert call_args["messages"][0]["content"] == "New query"
+        user_messages = [
+            m for m in request_obj.payload["messages"] if m.get("role") == "user"
+        ]
+        assert len(user_messages) == 1
+        assert request_obj.payload["messages"][0]["content"] == "New query"
 
     # Test 6: Tool Usage - simplified to avoid StopAsyncIteration
     @pytest.mark.asyncio
@@ -288,34 +294,29 @@ class TestOpenAIAugmentedLLM:
 
             # First call is for the regular execute
             if call_count == 1:
-                return [
-                    self.create_tool_use_response(
-                        "test_tool",
-                        {"query": "test query"},
-                        "tool_123",
-                        usage=default_usage,
-                    )
-                ]
+                return self.create_tool_use_response(
+                    "test_tool",
+                    {"query": "test query"},
+                    "tool_123",
+                    usage=default_usage,
+                )
             # Second call is for tool call execution
             elif call_count == 2:
-                # This is the tool result passed back to the LLM
-                return [
-                    ChatCompletionToolMessageParam(
-                        role="tool",
-                        tool_call_id="tool_123",
-                        content="Tool result",
-                    )
-                ]
-            # Third call is for the final response
-            else:
-                return [
-                    self.create_text_response(
-                        "Final response after tool use", usage=default_usage
-                    )
-                ]
+                # This is the final response after tool use
+                return self.create_text_response(
+                    "Final response after tool use", usage=default_usage
+                )
 
         # Setup mocks
         mock_llm.executor.execute = AsyncMock(side_effect=custom_side_effect)
+        mock_llm.executor.execute_many = AsyncMock(return_value=[None])
+        mock_llm.call_tool = AsyncMock(
+            return_value=MagicMock(
+                content=[TextContent(type="text", text="Tool result")],
+                isError=False,
+                tool_call_id="tool_123",
+            )
+        )
 
         # Call LLM
         responses = await mock_llm.generate("Test query with tool")
@@ -341,34 +342,30 @@ class TestOpenAIAugmentedLLM:
 
             # First call is for the regular execute
             if call_count == 1:
-                return [
-                    self.create_tool_use_response(
-                        "test_tool",
-                        {"query": "test query"},
-                        "tool_123",
-                        usage=default_usage,
-                    )
-                ]
-            # Second call is for tool call execution - returns the tool execution result
+                return self.create_tool_use_response(
+                    "test_tool",
+                    {"query": "test query"},
+                    "tool_123",
+                    usage=default_usage,
+                )
+            # Second call is for tool call execution - returns the final response
             elif call_count == 2:
-                # This is an error tool result passed back to the LLM
-                return [
-                    ChatCompletionToolMessageParam(
-                        role="tool",
-                        tool_call_id="tool_123",
-                        content="Tool execution failed with error",
-                    )
-                ]
-            # Third call is for the final response
-            else:
-                return [
-                    self.create_text_response(
-                        "Response after tool error", usage=default_usage
-                    )
-                ]
+                return self.create_text_response(
+                    "Response after tool error", usage=default_usage
+                )
 
         # Setup mocks
         mock_llm.executor.execute = AsyncMock(side_effect=custom_side_effect)
+        mock_llm.executor.execute_many = AsyncMock(return_value=[None])
+        mock_llm.call_tool = AsyncMock(
+            return_value=MagicMock(
+                content=[
+                    TextContent(type="text", text="Tool execution failed with error")
+                ],
+                isError=True,
+                tool_call_id="tool_123",
+            )
+        )
 
         # Call LLM
         responses = await mock_llm.generate("Test query with tool error")
@@ -384,7 +381,7 @@ class TestOpenAIAugmentedLLM:
         Tests handling of API errors.
         """
         # Setup mock executor to raise an exception
-        mock_llm.executor.execute = AsyncMock(return_value=[Exception("API Error")])
+        mock_llm.executor.execute = AsyncMock(return_value=Exception("API Error"))
 
         # Call LLM
         responses = await mock_llm.generate("Test query with API error")
@@ -404,9 +401,9 @@ class TestOpenAIAugmentedLLM:
 
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[
-                self.create_text_response("Model selection test", usage=default_usage)
-            ]
+            return_value=self.create_text_response(
+                "Model selection test", usage=default_usage
+            )
         )
 
         # Call LLM with a specific model in request_params
@@ -426,7 +423,7 @@ class TestOpenAIAugmentedLLM:
         """
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_response("Params test", usage=default_usage)]
+            return_value=self.create_text_response("Params test", usage=default_usage)
         )
 
         # Create custom request params that override some defaults

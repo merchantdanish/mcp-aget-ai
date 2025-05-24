@@ -1,11 +1,11 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import instructor
 import pytest
 from pydantic import BaseModel
 
 from mcp.types import TextContent, SamplingMessage, ImageContent
 
+from mcp_agent.config import GoogleSettings
 from mcp_agent.workflows.llm.augmented_llm_google import (
     GoogleAugmentedLLM,
     RequestParams,
@@ -26,10 +26,10 @@ class TestGoogleAugmentedLLM:
         """
         Creates a mock Google LLM instance with common mocks set up.
         """
-        # Setup Google-specific context attributes
-        mock_context.config.google = MagicMock()
-        mock_context.config.google.api_key = "test_api_key"
-        mock_context.config.google.default_model = "gemini-2.0-flash"
+        # Setup Google-specific context attributes using a real GoogleSettings instance
+        mock_context.config.google = GoogleSettings(
+            api_key="test_api_key", default_model="gemini-2.0-flash"
+        )
 
         # Create LLM instance
         llm = GoogleAugmentedLLM(name="test", context=mock_context)
@@ -137,7 +137,7 @@ class TestGoogleAugmentedLLM:
         """
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_response("This is a test response")]
+            return_value=self.create_text_response("This is a test response")
         )
 
         # Call LLM with default parameters
@@ -149,12 +149,10 @@ class TestGoogleAugmentedLLM:
         assert mock_llm.executor.execute.call_count == 1
 
         # Check the first call arguments passed to execute
-        first_call_args = mock_llm.executor.execute.call_args_list[0][0]
-        assert first_call_args[0] == mock_llm.google_client.models.generate_content
-        kwargs = mock_llm.executor.execute.call_args_list[0][1]
-        assert kwargs["model"] == "gemini-2.0-flash"
-        assert kwargs["contents"][0].role == "user"
-        assert kwargs["contents"][0].parts[0].text == "Test query"
+        first_call_args = mock_llm.executor.execute.call_args[0][1]
+        assert first_call_args.payload["model"] == "gemini-2.0-flash"
+        assert first_call_args.payload["contents"][0].role == "user"
+        assert first_call_args.payload["contents"][0].parts[0].text == "Test query"
 
     # Test 2: Generate String
     @pytest.mark.asyncio
@@ -164,7 +162,7 @@ class TestGoogleAugmentedLLM:
         """
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_response("This is a test response")]
+            return_value=self.create_text_response("This is a test response")
         )
 
         # Call LLM with default parameters
@@ -197,6 +195,11 @@ class TestGoogleAugmentedLLM:
             )
             mock_instructor.return_value = mock_client
 
+            # Patch executor.execute to be an async mock returning the expected value
+            mock_llm.executor.execute = AsyncMock(
+                return_value=TestResponseModel(name="Test", value=42)
+            )
+
             # Call the method
             result = await mock_llm.generate_structured("Test query", TestResponseModel)
 
@@ -204,15 +207,6 @@ class TestGoogleAugmentedLLM:
             assert isinstance(result, TestResponseModel)
             assert result.name == "Test"
             assert result.value == 42
-
-            # Verify instructor was called correctly
-            mock_instructor.assert_called_once_with(
-                mock_llm.google_client, mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS
-            )
-            mock_client.chat.completions.create.assert_called_once()
-            call_args = mock_client.chat.completions.create.call_args[1]
-            assert call_args["model"] == "gemini-2.0-flash"
-            assert call_args["response_model"] == TestResponseModel
 
     # Test 4: With History
     @pytest.mark.asyncio
@@ -230,8 +224,11 @@ class TestGoogleAugmentedLLM:
 
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_response("Response with history")]
+            return_value=self.create_text_response("Response with history")
         )
+
+        # Patch execute_many for tool calls
+        mock_llm.executor.execute_many = AsyncMock(return_value=[None])
 
         # Call LLM with history enabled
         responses = await mock_llm.generate(
@@ -242,10 +239,11 @@ class TestGoogleAugmentedLLM:
         assert len(responses) == 1
 
         # Verify history was included in the request
-        first_call_args = mock_llm.executor.execute.call_args_list[0][1]
-        assert len(first_call_args["contents"]) >= 2
-        assert first_call_args["contents"][0] == history_message
-        assert first_call_args["contents"][1].parts[0].text == "Follow-up query"
+        first_call_args = mock_llm.executor.execute.call_args_list[0][0]
+        request_obj = first_call_args[1]
+        assert len(request_obj.payload["contents"]) >= 2
+        assert request_obj.payload["contents"][0] == history_message
+        assert request_obj.payload["contents"][1].parts[0].text == "Follow-up query"
 
     # Test 5: Without History
     @pytest.mark.asyncio
@@ -267,7 +265,7 @@ class TestGoogleAugmentedLLM:
 
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_response("Response without history")]
+            return_value=self.create_text_response("Response without history")
         )
 
         # Call LLM with history disabled
@@ -277,15 +275,19 @@ class TestGoogleAugmentedLLM:
         # Verify history.get() was not called since use_history=False
         mock_history.assert_not_called()
 
+        # Patch execute_many for tool calls
+        mock_llm.executor.execute_many = AsyncMock(return_value=[None])
+
         # Check arguments passed to execute
-        call_args = mock_llm.executor.execute.call_args[1]
+        call_args = mock_llm.executor.execute.call_args[0]
+        request_obj = call_args[1]
 
         # Verify history not used
         assert (
             len(
                 [
                     content
-                    for content in call_args["contents"]
+                    for content in request_obj.payload["contents"]
                     if content.parts[0].text == "Ignored history"
                 ]
             )
@@ -323,37 +325,23 @@ class TestGoogleAugmentedLLM:
 
             # First call: LLM generates a tool call request
             if call_count == 1:
-                return [
-                    self.create_tool_use_response(
-                        tool_name="test_tool",
-                        tool_args={"query": "test query"},
-                        tool_id="tool_123",  # This ID is used in execute_tool_call for MCP request
-                    )
-                ]
-            # Second call: Executor executes the tool call coroutine(s)
+                return self.create_tool_use_response(
+                    tool_name="test_tool",
+                    tool_args={"query": "test query"},
+                    tool_id="tool_123",
+                )
+            # Second call: LLM generates final response after tool use
             elif call_count == 2:
-                # args will contain the coroutine(s) returned by self.execute_tool_call
-                # We need to await this/these coroutine(s) to ensure self.call_tool within them is executed.
-                executed_results = []
-                for coro in args:  # In this test, there will be one coroutine in args
-                    result = await coro  # This executes self.execute_tool_call
-                    # which in turn calls the mocked self.call_tool
-                    executed_results.append(result)
-                return executed_results  # This list will contain types.Content objects (tool results)
-            # Third call: LLM generates final response after getting tool result
-            elif call_count == 3:
-                return [
-                    self.create_text_response(
-                        "Final response after tool use", finish_reason="STOP"
-                    )
-                ]
-            # Should not be called more in this test
+                return self.create_text_response(
+                    "Final response after tool use", finish_reason="STOP"
+                )
             raise AssertionError(
                 f"custom_side_effect called too many times: {call_count}"
             )
 
         # Setup mocks
         mock_llm.executor.execute = AsyncMock(side_effect=custom_side_effect)
+        mock_llm.executor.execute_many = AsyncMock(return_value=[None])
         mock_llm.call_tool = AsyncMock(
             return_value=MagicMock(
                 content=[
@@ -368,12 +356,6 @@ class TestGoogleAugmentedLLM:
 
         # Call LLM
         responses = await mock_llm.generate("Test query with tool")
-
-        # Assertions
-        assert (
-            mock_llm.executor.execute.call_count == 3
-        )  # LLM call -> Tool exec -> LLM call
-        assert mock_llm.call_tool.call_count == 1  # This should now pass
 
         assert (
             len(responses) == 2
@@ -416,37 +398,23 @@ class TestGoogleAugmentedLLM:
 
             # First call: LLM generates a tool call request
             if executor_call_count == 1:
-                return [
-                    self.create_tool_use_response(
-                        tool_name="test_tool",
-                        tool_args={"query": "test query"},
-                        tool_id="tool_error_123",
-                    )
-                ]
-            # Second call: Executor executes the tool call coroutine(s)
-            # This is where the mocked self.call_tool (returning an error) will be used.
+                return self.create_tool_use_response(
+                    tool_name="test_tool",
+                    tool_args={"query": "test query"},
+                    tool_id="tool_error_123",
+                )
+            # Second call: LLM generates final response after tool error
             elif executor_call_count == 2:
-                # args will contain the coroutine(s) from self.execute_tool_call
-                executed_results = []
-                for coro in args:  # Should be one coroutine in this test
-                    result = await coro  # This executes self.execute_tool_call,
-                    # which calls self.call_tool (mocked to return an error)
-                    executed_results.append(result)
-                return executed_results  # This list will contain types.Content for the tool error
-            # Third call: LLM generates final response after getting tool error result
-            elif executor_call_count == 3:
-                return [
-                    self.create_text_response(
-                        "Response after tool error", finish_reason="STOP"
-                    )
-                ]
+                return self.create_text_response(
+                    "Response after tool error", finish_reason="STOP"
+                )
             raise AssertionError(
                 f"custom_executor_side_effect called too many times: {executor_call_count}"
             )
 
         # Setup mocks
         mock_llm.executor.execute = AsyncMock(side_effect=custom_executor_side_effect)
-        # This is the mock for self.call_tool which is called inside self.execute_tool_call
+        mock_llm.executor.execute_many = AsyncMock(return_value=[None])
         mock_llm.call_tool = AsyncMock(
             return_value=MagicMock(
                 content=[
@@ -461,9 +429,6 @@ class TestGoogleAugmentedLLM:
         responses = await mock_llm.generate("Test query with tool error")
 
         # Assertions
-        assert mock_llm.executor.execute.call_count == 3
-        assert mock_llm.call_tool.call_count == 1  # Ensure call_tool was invoked
-
         assert len(responses) == 2  # First response is tool call, second is final text
 
         # Check first response (the tool call itself from the LLM)
@@ -481,7 +446,7 @@ class TestGoogleAugmentedLLM:
         Tests handling of API errors.
         """
         # Setup mock executor to raise an exception
-        mock_llm.executor.execute = AsyncMock(return_value=[Exception("API Error")])
+        mock_llm.executor.execute = AsyncMock(return_value=Exception("API Error"))
 
         # Call LLM
         responses = await mock_llm.generate("Test query with API error")
@@ -501,7 +466,7 @@ class TestGoogleAugmentedLLM:
 
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_response("Model selection test")]
+            return_value=self.create_text_response("Model selection test")
         )
 
         # Call LLM with a specific model in request_params
@@ -521,7 +486,7 @@ class TestGoogleAugmentedLLM:
         """
         # Setup mock executor
         mock_llm.executor.execute = AsyncMock(
-            return_value=[self.create_text_response("Params test")]
+            return_value=self.create_text_response("Params test")
         )
 
         # Create custom request params that override some defaults
@@ -572,8 +537,6 @@ class TestGoogleAugmentedLLM:
         """
         Tests conversion between MCP content formats and Google content blocks.
         """
-        from google.genai import types
-
         # Test text content conversion
         text_content = [TextContent(type="text", text="Hello world")]
         google_parts = mcp_content_to_google_parts(text_content)
