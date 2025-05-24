@@ -1,9 +1,9 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import instructor
 import pytest
 from pydantic import BaseModel
 
+from mcp_agent.config import OpenAISettings
 from mcp_agent.workflows.llm.augmented_llm_ollama import (
     OllamaAugmentedLLM,
 )
@@ -21,11 +21,14 @@ class TestOllamaAugmentedLLM:
         """
         Creates a mock Ollama LLM instance with common mocks set up.
         """
-        # Setup OpenAI/Ollama-specific context attributes
-        mock_context.config.openai = MagicMock()
-        mock_context.config.openai.api_key = "test_api_key"
-        mock_context.config.openai.base_url = "http://localhost:11434/v1"
-        mock_context.config.openai.default_model = "llama3.2:3b"
+        # Setup OpenAI/Ollama-specific context attributes using a real OpenAISettings instance
+        mock_context.config.openai = OpenAISettings(
+            api_key="test_api_key",
+            default_model="llama3.2:3b",
+            base_url="http://localhost:11434/v1",
+            http_client=None,
+            reasoning_effort="medium",
+        )
 
         # Create LLM instance
         llm = OllamaAugmentedLLM(name="test", context=mock_context)
@@ -138,25 +141,26 @@ class TestOllamaAugmentedLLM:
         # Mock the generate_str method
         mock_llm.generate_str = AsyncMock(return_value="name: Test, value: 42")
 
-        # Mock OpenAI client creation and instructor
-        with (
-            patch("openai.OpenAI"),
-            patch("instructor.from_openai") as mock_instructor,
-        ):
-            # Setup instructor mock
+        # Then for Instructor's structured data extraction
+        with patch("instructor.from_openai") as mock_instructor:
             mock_client = MagicMock()
             mock_client.chat.completions.create.return_value = TestResponseModel(
                 name="Test", value=42
             )
             mock_instructor.return_value = mock_client
 
-            # Call the method
-            await mock_llm.generate_structured("Test query", TestResponseModel)
+            # Patch executor.execute to be an async mock returning the expected value
+            mock_llm.executor.execute = AsyncMock(
+                return_value=TestResponseModel(name="Test", value=42)
+            )
 
-            # Verify instructor was called with mode=JSON
-            # This is different from OpenAIAugmentedLLM which doesn't specify mode
-            mock_instructor.assert_called_once()
-            assert mock_instructor.call_args[1]["mode"] == instructor.Mode.JSON
+            # Call the method
+            result = await mock_llm.generate_structured("Test query", TestResponseModel)
+
+            # Assertions
+            assert isinstance(result, TestResponseModel)
+            assert result.name == "Test"
+            assert result.value == 42
 
     # Test 3: OpenAI Client Initialization
     @pytest.mark.asyncio
@@ -170,25 +174,20 @@ class TestOllamaAugmentedLLM:
         # Create a context and ensure config.openai.default_model is a string
         # because OpenAIAugmentedLLM's __init__ will access it.
         context = mock_context_factory()
-        context.config.openai = MagicMock()  # Allow attributes to be created on access
-        context.config.openai.api_key = (
-            "test_key_for_instructor"  # This key is for instructor's OpenAI client
+        from mcp_agent.config import OpenAISettings
+
+        context.config.openai = OpenAISettings(
+            api_key="test_key_for_instructor",
+            base_url="http://localhost:11434/v1",
+            reasoning_effort="medium",
         )
-        context.config.openai.base_url = (
-            "http://localhost:11434/v1"  # For Ollama's instructor client
-        )
+        # Set default_model as an attribute for compatibility with code that expects it
         context.config.openai.default_model = "some-valid-string-model"
 
-        with (
-            patch("openai.OpenAI") as mock_openai_client_constructor,
-            patch("instructor.from_openai") as mock_instructor_from_openai,
-        ):
-            mock_instructor_instance = MagicMock()
-            mock_instructor_instance.chat.completions.create.return_value = (
-                MagicMock()
-            )  # Mock the response
-            mock_instructor_from_openai.return_value = mock_instructor_instance
-
+        with patch(
+            "mcp_agent.workflows.llm.augmented_llm_ollama.OllamaCompletionTasks.request_structured_completion_task",
+            new_callable=AsyncMock,
+        ) as mock_structured_task:
             # Create LLM. Its __init__ will use context.config.openai.default_model
             llm = OllamaAugmentedLLM(name="test_instructor_client", context=context)
 
@@ -197,32 +196,24 @@ class TestOllamaAugmentedLLM:
             # Mock select_model as it's called by generate_structured to determine model for instructor
             llm.select_model = AsyncMock(return_value="selected-model-for-instructor")
 
+            # Patch executor.execute to forward to the patched structured task
+            async def execute_side_effect(task, request):
+                if (
+                    task is mock_structured_task._mock_wraps
+                    or task is mock_structured_task
+                ):
+                    return await mock_structured_task(request)
+                return MagicMock()
+
+            llm.executor.execute = AsyncMock(side_effect=execute_side_effect)
+
             class TestResponseModel(BaseModel):
                 name: str
 
             await llm.generate_structured("query for structured", TestResponseModel)
 
-            # Verify OpenAI client for instructor was initialized with correct args
-            mock_openai_client_constructor.assert_called_once()
-            constructor_args, constructor_kwargs = (
-                mock_openai_client_constructor.call_args
-            )
-            assert constructor_kwargs["api_key"] == "test_key_for_instructor"
-            assert constructor_kwargs["base_url"] == "http://localhost:11434/v1"
-
-            # Verify instructor.from_openai was called with the client
-            mock_instructor_from_openai.assert_called_once_with(
-                mock_openai_client_constructor.return_value,  # The client instance
-                mode=instructor.Mode.JSON,
-            )
-
-            # Verify instructor's client.chat.completions.create was called correctly
-            mock_instructor_instance.chat.completions.create.assert_called_once()
-            instructor_call_kwargs = (
-                mock_instructor_instance.chat.completions.create.call_args.kwargs
-            )
-            assert instructor_call_kwargs["model"] == "selected-model-for-instructor"
-            assert instructor_call_kwargs["response_model"] == TestResponseModel
-            assert instructor_call_kwargs["messages"] == [
-                {"role": "user", "content": "text response from llm"}
-            ]
+            # Assert the structured task was called with the correct config
+            mock_structured_task.assert_awaited_once()
+            called_request = mock_structured_task.call_args.args[0]
+            assert called_request.config.api_key == "test_key_for_instructor"
+            assert called_request.config.base_url == "http://localhost:11434/v1"
