@@ -5,7 +5,7 @@ This module provides a non-invasive way to filter MCP tools at the LLM level,
 allowing you to control which tools are available without modifying the core code.
 """
 
-from typing import List, Set, Dict, Optional, Callable, Union
+from typing import List, Set, Dict, Optional, Callable
 from mcp.types import Tool
 
 from mcp_agent.logging.logger import get_logger
@@ -194,3 +194,22 @@ def apply_tool_filter(llm_instance, tool_filter: Optional[ToolFilter]):
     llm_instance.generate = filtered_generate
     
     return llm_instance
+
+
+async def get_filtered_tools(agent, tool_filter: Optional[ToolFilter]) -> List[Tool]:
+    """
+    Helper function to get the filtered list of tools.
+    
+    This simulates what tools the LLM would see after filtering.
+    
+    Args:
+        agent: The Agent instance
+        tool_filter: The ToolFilter to apply (or None for no filtering)
+        
+    Returns:
+        List of filtered tools
+    """
+    result = await agent.list_tools()
+    if tool_filter:
+        return tool_filter.filter_tools(result.tools)
+    return result.tools

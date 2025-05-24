@@ -6,6 +6,7 @@ This is the minimal code needed to use tool filtering.
 """
 
 import asyncio
+import os
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
@@ -16,7 +17,15 @@ async def main():
     # Create app
     app = MCPApp(name="quickstart")
     
-    async with app.run():
+    async with app.run() as agent_app:
+        context = agent_app.context
+        
+        # Configure filesystem server
+        if "filesystem" in context.config.mcp.servers:
+            cwd = os.getcwd()
+            if cwd not in context.config.mcp.servers["filesystem"].args:
+                context.config.mcp.servers["filesystem"].args.append(cwd)
+        
         # Create agent
         agent = Agent(
             name="my_agent",

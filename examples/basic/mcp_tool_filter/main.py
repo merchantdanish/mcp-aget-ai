@@ -88,11 +88,19 @@ async def example_2_excluded_filter():
             
             logger.info("Filter applied: Write/delete operations excluded")
             
-            # List available tools
-            tools = await agent.list_tools()
-            logger.info(f"Available tools after filtering: {len(tools.tools)}")
-            for tool in tools.tools:
-                logger.info(f"  - {tool.name}")
+            # Demonstrate filtering through actual LLM interaction
+            # This shows what tools the LLM actually sees
+            result = await llm.generate_str(
+                "Please list all the tools you have available. "
+                "For each tool, briefly describe what it does."
+            )
+            logger.info(f"LLM's view of available tools:\n{result}")
+            
+            # Try to use an excluded tool (should fail gracefully)
+            result = await llm.generate_str(
+                "Try to create a file called test.txt with some content."
+            )
+            logger.info(f"Attempt to use excluded tool:\n{result}")
 
 
 async def example_3_server_specific():
@@ -147,6 +155,12 @@ async def example_4_dynamic_filtering():
     
     async with app.run() as agent_app:
         logger = agent_app.logger
+        context = agent_app.context
+
+        if "filesystem" in context.config.mcp.servers:
+            cwd = os.getcwd()
+            if cwd not in context.config.mcp.servers["filesystem"].args:
+                context.config.mcp.servers["filesystem"].args.append(cwd)
         
         agent = Agent(
             name="dynamic_agent",
