@@ -179,8 +179,8 @@ class TestOrchestratorMethods:
 
         # Create a mock executor
         orchestrator.executor = MagicMock()
-        # Mock the execute method to return the agent results
-        orchestrator.executor.execute = AsyncMock(
+        # Mock the execute_many method to return the agent results
+        orchestrator.executor.execute_many = AsyncMock(
             return_value=[f"Result from {task.agent}" for task in sample_step.tasks]
         )
 
@@ -190,7 +190,7 @@ class TestOrchestratorMethods:
         )
 
         # Check that the executor was called
-        orchestrator.executor.execute.assert_called_once()
+        orchestrator.executor.execute_many.assert_called_once()
 
         # Check that the result is a StepResult
         assert isinstance(result, StepResult)
@@ -296,8 +296,12 @@ class TestOrchestratorMethods:
                     plan_type="full",
                 )
 
-                # Set the planner
+                # Set the planner and synthesizer
                 orchestrator.planner = mock_planner
+                orchestrator.synthesizer = MagicMock()
+                orchestrator.synthesizer.generate_str = AsyncMock(
+                    return_value="Final result"
+                )
 
                 # Call execute
                 result = await orchestrator.execute(objective="Test objective")
@@ -310,8 +314,8 @@ class TestOrchestratorMethods:
         assert len(sample_plan.steps) == 1
         assert mock_execute_step.call_count == 1
 
-        # Check that the planner's generate_str was called
-        mock_planner.generate_str.assert_called_once()
+        # Check that the synthesizer's generate_str was called
+        orchestrator.synthesizer.generate_str.assert_called_once()
 
         # Check that the result is a PlanResult with is_complete=True and the final result
         assert isinstance(result, PlanResult)
@@ -352,8 +356,12 @@ class TestOrchestratorMethods:
                     plan_type="iterative",
                 )
 
-                # Set the planner
+                # Set the planner and synthesizer
                 orchestrator.planner = mock_planner
+                orchestrator.synthesizer = MagicMock()
+                orchestrator.synthesizer.generate_str = AsyncMock(
+                    return_value="Final result"
+                )
 
                 # Call execute
                 result = await orchestrator.execute(objective="Test objective")
@@ -364,8 +372,8 @@ class TestOrchestratorMethods:
         # Check that _execute_step was called once
         assert mock_execute_step.call_count == 1
 
-        # Check that the planner's generate_str was called to synthesize the result
-        orchestrator.planner.generate_str.assert_called_once()
+        # Check that the synthesizer's generate_str was called to synthesize the result
+        orchestrator.synthesizer.generate_str.assert_called_once()
 
         # Check that the result is a PlanResult with is_complete=True and the final result
         assert isinstance(result, PlanResult)
