@@ -5,7 +5,7 @@ This module provides a non-invasive way to filter MCP tools at the LLM level,
 allowing you to control which tools are available without modifying the core code.
 """
 
-from typing import List, Set, Dict, Optional, Callable
+from typing import List, Dict, Optional, Callable
 from mcp.types import Tool
 
 from mcp_agent.logging.logger import get_logger
