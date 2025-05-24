@@ -58,6 +58,62 @@ class ToolFilter:
         self.server_filters = server_filters or {}
         self.custom_filter = custom_filter
     
+    def _extract_server_and_tool_name(self, tool_name: str) -> tuple[Optional[str], str]:
+        """
+        Extract server name and tool name from a namespaced tool.
+        
+        Args:
+            tool_name: The full tool name (potentially namespaced)
+            
+        Returns:
+            Tuple of (server_name, tool_name) where server_name may be None
+        """
+        if "_" not in tool_name:
+            return None, tool_name
+        
+        # First, try to match against known server filters
+        if self.server_filters:
+            # Check all configured server names, preferring longer matches
+            # This handles cases where server names might contain underscores
+            for srv_name in sorted(self.server_filters.keys(), key=len, reverse=True):
+                prefix = srv_name + "_"
+                if tool_name.startswith(prefix):
+                    return srv_name, tool_name[len(prefix):]
+        
+        # If no server filter matched, try simple split for global filters
+        # This assumes the first part before "_" is the server name
+        parts = tool_name.split("_", 1)
+        if len(parts) == 2:
+            return parts[0], parts[1]
+        
+        return None, tool_name
+    
+    def _check_server_filters(self, server_name: str, tool_name: str) -> Optional[bool]:
+        """
+        Check server-specific filtering rules.
+        
+        Args:
+            server_name: The server name
+            tool_name: The tool name (without server prefix)
+            
+        Returns:
+            True if tool should be included, False if excluded, None if no server filter applies
+        """
+        if server_name not in self.server_filters:
+            return None
+        
+        server_filter = self.server_filters[server_name]
+        
+        # Server-specific allowed list
+        if "allowed" in server_filter:
+            return tool_name in server_filter["allowed"]
+        
+        # Server-specific excluded list
+        if "excluded" in server_filter:
+            return tool_name not in server_filter["excluded"]
+        
+        return None
+    
     def should_include_tool(self, tool: Tool) -> bool:
         """
         Determine if a tool should be included.
@@ -72,51 +128,22 @@ class ToolFilter:
         if self.custom_filter:
             return self.custom_filter(tool)
         
-        tool_name = tool.name
-        server_name = None
-        
-        # Extract server name from namespaced tools (format: "server_toolname")
-        if "_" in tool_name:
-            # First, try to match against known server filters
-            if self.server_filters:
-                # Check all configured server names, preferring longer matches
-                # This handles cases where server names might contain underscores
-                for srv_name in sorted(self.server_filters.keys(), key=len, reverse=True):
-                    prefix = srv_name + "_"
-                    if tool_name.startswith(prefix):
-                        server_name = srv_name
-                        tool_name = tool_name[len(prefix):]
-                        break
-            
-            # If no server filter matched, try simple split for global filters
-            # This assumes the first part before "_" is the server name
-            if server_name is None:
-                parts = tool_name.split("_", 1)
-                if len(parts) == 2:
-                    # Keep the original tool.name for full name matching
-                    # but also prepare the extracted tool name
-                    server_name = parts[0]
-                    tool_name = parts[1]
+        # Extract server and tool names
+        server_name, extracted_tool_name = self._extract_server_and_tool_name(tool.name)
         
         # Check server-specific filters first
-        if server_name and server_name in self.server_filters:
-            server_filter = self.server_filters[server_name]
-            
-            # Server-specific allowed list
-            if "allowed" in server_filter:
-                return tool_name in server_filter["allowed"]
-            
-            # Server-specific excluded list
-            if "excluded" in server_filter:
-                return tool_name not in server_filter["excluded"]
+        if server_name:
+            server_result = self._check_server_filters(server_name, extracted_tool_name)
+            if server_result is not None:
+                return server_result
         
         # Check global allowed list
         if self.allowed_global is not None:
-            return tool.name in self.allowed_global or tool_name in self.allowed_global
+            return tool.name in self.allowed_global or extracted_tool_name in self.allowed_global
         
         # Check global excluded list
         if self.excluded_global is not None:
-            return tool.name not in self.excluded_global and tool_name not in self.excluded_global
+            return tool.name not in self.excluded_global and extracted_tool_name not in self.excluded_global
         
         # Default: include all tools
         return True
@@ -194,6 +221,9 @@ def apply_tool_filter(llm_instance, tool_filter: Optional[ToolFilter]):
             llm_instance.agent.list_tools = filtered_list_tools
             try:
                 return await llm_instance._original_generate(message, request_params)
+            except Exception as e:
+                logger.error(f"Error during filtered generate: {e}")
+                raise
             finally:
                 llm_instance.agent.list_tools = original_list_tools
     
