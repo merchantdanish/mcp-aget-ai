@@ -104,7 +104,9 @@ class TestAnthropicLLMIntentClassifier:
             MockAnthropicAugmentedLLM,
         ):
             # Create classifier using factory method
+            mock_llm = MockAnthropicAugmentedLLM(context=setup_anthropic_context)
             classifier = await AnthropicLLMIntentClassifier.create(
+                llm=mock_llm,
                 intents=test_intents,
                 context=setup_anthropic_context,
             )
@@ -130,7 +132,9 @@ class TestAnthropicLLMIntentClassifier:
             "mcp_agent.workflows.intent_classifier.intent_classifier_llm_anthropic.AnthropicAugmentedLLM",
             MockAnthropicAugmentedLLM,
         ):
+            mock_llm = MockAnthropicAugmentedLLM(context=setup_anthropic_context)
             classifier = await AnthropicLLMIntentClassifier.create(
+                llm=mock_llm,
                 intents=test_intents,
                 classification_instruction=custom_instruction,
                 context=setup_anthropic_context,
@@ -153,7 +157,9 @@ class TestAnthropicLLMIntentClassifier:
             MockAnthropicAugmentedLLM,
         ):
             # Create and initialize classifier
+            mock_llm = MockAnthropicAugmentedLLM(context=setup_anthropic_context)
             classifier = await AnthropicLLMIntentClassifier.create(
+                llm=mock_llm,
                 intents=test_intents,
                 context=setup_anthropic_context,
             )
@@ -207,7 +213,9 @@ class TestAnthropicLLMIntentClassifier:
             MockAnthropicAugmentedLLM,
         ):
             # Create and initialize classifier
+            mock_llm = MockAnthropicAugmentedLLM(context=setup_anthropic_context)
             classifier = await AnthropicLLMIntentClassifier.create(
+                llm=mock_llm,
                 intents=test_intents,
                 context=setup_anthropic_context,
             )
@@ -363,7 +371,9 @@ class TestAnthropicLLMIntentClassifier:
             MockAnthropicAugmentedLLM,
         ):
             # Create and initialize classifier
+            mock_llm = MockAnthropicAugmentedLLM(context=setup_anthropic_context)
             classifier = await AnthropicLLMIntentClassifier.create(
+                llm=mock_llm,
                 intents=test_intents,
                 context=setup_anthropic_context,
             )
@@ -422,7 +432,9 @@ class TestAnthropicLLMIntentClassifier:
             MockAnthropicAugmentedLLM,
         ):
             # Create and initialize classifier
+            mock_llm = MockAnthropicAugmentedLLM(context=setup_anthropic_context)
             classifier = await AnthropicLLMIntentClassifier.create(
+                llm=mock_llm,
                 intents=test_intents,
                 context=setup_anthropic_context,
             )

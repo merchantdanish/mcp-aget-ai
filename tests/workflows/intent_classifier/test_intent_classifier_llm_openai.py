@@ -94,7 +94,9 @@ class TestOpenAILLMIntentClassifier:
             MockOpenAIAugmentedLLM,
         ):
             # Create classifier using factory method
+            mock_llm = MockOpenAIAugmentedLLM(context=mock_context)
             classifier = await OpenAILLMIntentClassifier.create(
+                llm=mock_llm,
                 intents=test_intents,
                 context=mock_context,
             )
@@ -118,7 +120,9 @@ class TestOpenAILLMIntentClassifier:
             "mcp_agent.workflows.intent_classifier.intent_classifier_llm_openai.OpenAIAugmentedLLM",
             MockOpenAIAugmentedLLM,
         ):
+            mock_llm = MockOpenAIAugmentedLLM(context=mock_context)
             classifier = await OpenAILLMIntentClassifier.create(
+                llm=mock_llm,
                 intents=test_intents,
                 classification_instruction=custom_instruction,
                 context=mock_context,
@@ -141,7 +145,9 @@ class TestOpenAILLMIntentClassifier:
             MockOpenAIAugmentedLLM,
         ):
             # Create and initialize classifier
+            mock_llm = MockOpenAIAugmentedLLM(context=mock_context)
             classifier = await OpenAILLMIntentClassifier.create(
+                llm=mock_llm,
                 intents=test_intents,
                 context=mock_context,
             )
@@ -195,7 +201,9 @@ class TestOpenAILLMIntentClassifier:
             MockOpenAIAugmentedLLM,
         ):
             # Create and initialize classifier
+            mock_llm = MockOpenAIAugmentedLLM(context=mock_context)
             classifier = await OpenAILLMIntentClassifier.create(
+                llm=mock_llm,
                 intents=test_intents,
                 context=mock_context,
             )
@@ -349,7 +357,9 @@ class TestOpenAILLMIntentClassifier:
             MockOpenAIAugmentedLLM,
         ):
             # Create and initialize classifier
+            mock_llm = MockOpenAIAugmentedLLM(context=mock_context)
             classifier = await OpenAILLMIntentClassifier.create(
+                llm=mock_llm,
                 intents=test_intents,
                 context=mock_context,
             )
@@ -408,7 +418,9 @@ class TestOpenAILLMIntentClassifier:
             MockOpenAIAugmentedLLM,
         ):
             # Create and initialize classifier
+            mock_llm = MockOpenAIAugmentedLLM(context=mock_context)
             classifier = await OpenAILLMIntentClassifier.create(
+                llm=mock_llm,
                 intents=test_intents,
                 context=mock_context,
             )
