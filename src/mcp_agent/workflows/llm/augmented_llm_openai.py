@@ -522,10 +522,9 @@ class OpenAIAugmentedLLM(
                 return ChatCompletionToolMessageParam(
                     role="tool",
                     tool_call_id=tool_call_id,
-                    content="\n".join(
-                        str(mcp_content_to_openai_content_part(c))
-                        for c in result.content
-                    ),
+                    content=[
+                        mcp_content_to_openai_content_part(c) for c in result.content
+                    ],
                 )
 
             return None
