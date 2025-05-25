@@ -22,7 +22,7 @@ class TestGoogleAugmentedLLM:
     """
 
     @pytest.fixture
-    def mock_llm(self, mock_context, mock_aggregator):
+    def mock_llm(self, mock_context):
         """
         Creates a mock Google LLM instance with common mocks set up.
         """
@@ -35,7 +35,6 @@ class TestGoogleAugmentedLLM:
         llm = GoogleAugmentedLLM(name="test", context=mock_context)
 
         # Apply common mocks
-        llm.aggregator = mock_aggregator
         llm.history = MagicMock()
         llm.history.get = MagicMock(return_value=[])
         llm.history.set = MagicMock()
@@ -312,9 +311,6 @@ class TestGoogleAugmentedLLM:
         mock_tool_declaration.name = "test_tool"
         mock_tool_declaration.description = "A tool that executes a test query."
         mock_tool_declaration.inputSchema = mock_tool_schema
-        mock_llm.aggregator.list_tools = AsyncMock(
-            return_value=MagicMock(tools=[mock_tool_declaration])
-        )
 
         # Create a custom side effect function for executor.execute
         call_count = 0
@@ -385,9 +381,6 @@ class TestGoogleAugmentedLLM:
         mock_tool_declaration.name = "test_tool"
         mock_tool_declaration.description = "A test tool."
         mock_tool_declaration.inputSchema = mock_tool_schema
-        mock_llm.aggregator.list_tools = AsyncMock(
-            return_value=MagicMock(tools=[mock_tool_declaration])
-        )
 
         # Create a custom side effect function for executor.execute
         executor_call_count = 0

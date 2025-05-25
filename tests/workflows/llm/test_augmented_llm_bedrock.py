@@ -23,7 +23,7 @@ class TestBedrockAugmentedLLM:
     """
 
     @pytest.fixture
-    def mock_llm(self, mock_context, mock_aggregator):
+    def mock_llm(self, mock_context):
         """
         Creates a mock Bedrock LLM instance with common mocks set up.
         """
@@ -36,7 +36,6 @@ class TestBedrockAugmentedLLM:
         llm = BedrockAugmentedLLM(name="test", context=mock_context)
 
         # Apply common mocks
-        llm.aggregator = mock_aggregator
         llm.history = MagicMock()
         llm.history.get = MagicMock(return_value=[])
         llm.history.set = MagicMock()

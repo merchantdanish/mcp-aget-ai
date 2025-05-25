@@ -30,7 +30,7 @@ class TestOpenAIAugmentedLLM:
     """
 
     @pytest.fixture
-    def mock_llm(self, mock_context, mock_aggregator):
+    def mock_llm(self, mock_context):
         """
         Creates a mock OpenAI LLM instance with common mocks set up.
         """
@@ -47,7 +47,6 @@ class TestOpenAIAugmentedLLM:
         llm = OpenAIAugmentedLLM(name="test", context=mock_context)
 
         # Apply common mocks
-        llm.aggregator = mock_aggregator
         llm.history = MagicMock()
         llm.history.get = MagicMock(return_value=[])
         llm.history.set = MagicMock()

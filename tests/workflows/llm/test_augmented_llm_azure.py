@@ -38,7 +38,7 @@ class TestAzureAugmentedLLM:
     """
 
     @pytest.fixture
-    def mock_llm(self, mock_context, mock_aggregator):
+    def mock_llm(self, mock_context):
         """
         Creates a mock Azure LLM instance with common mocks set up.
         """
@@ -58,7 +58,6 @@ class TestAzureAugmentedLLM:
         llm = AzureAugmentedLLM(name="test", context=mock_context)
 
         # Apply common mocks
-        llm.aggregator = mock_aggregator
         llm.history = MagicMock()
         llm.history.get = MagicMock(return_value=[])
         llm.history.set = MagicMock()

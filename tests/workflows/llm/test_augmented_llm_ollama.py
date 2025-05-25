@@ -17,7 +17,7 @@ class TestOllamaAugmentedLLM:
     """
 
     @pytest.fixture
-    def mock_llm(self, mock_context, mock_aggregator):
+    def mock_llm(self, mock_context):
         """
         Creates a mock Ollama LLM instance with common mocks set up.
         """
@@ -34,7 +34,6 @@ class TestOllamaAugmentedLLM:
         llm = OllamaAugmentedLLM(name="test", context=mock_context)
 
         # Apply common mocks
-        llm.aggregator = mock_aggregator
         llm.select_model = AsyncMock(return_value="llama3.2:3b")
 
         return llm
