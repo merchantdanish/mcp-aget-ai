@@ -20,11 +20,10 @@ class MockOpenAIEmbeddingModel:
         """Mock embed method that returns random embeddings."""
         embedding_dim = 1536
         embeddings = np.ones((len(data), embedding_dim), dtype=np.float32)
-        for i in range(len(data)):
-            # Simple hashing to create different embeddings for different strings
-            seed = sum(ord(c) for c in data[i])
-            np.random.seed(seed)
-            embeddings[i] = np.random.rand(embedding_dim).astype(np.float32)
+        for i, text in enumerate(data):
+            seed = sum(ord(c) for c in text)
+            local_rng = np.random.default_rng(seed)
+            embeddings[i] = local_rng.random(embedding_dim, dtype=np.float32)
         return embeddings
 
 
@@ -225,7 +224,8 @@ class TestOpenAIEmbeddingRouter:
             # Results should include either server or agent
             result_values = [r.result for r in results]
             assert any(
-                val == "test_server" or val == mock_agent for val in result_values
+                val == "test_server" or (getattr(val, "name", None) == mock_agent.name)
+                for val in result_values
             )
 
     # Test 8: Integration with parent EmbeddingRouter methods
