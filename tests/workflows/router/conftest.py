@@ -89,7 +89,7 @@ def mock_embedding_model():
     mock = MagicMock(spec=EmbeddingModel)
 
     # Generate deterministic but different embeddings for testing
-    def embed_side_effect(data: List[str]) -> FloatArray:
+    async def embed_side_effect(data: List[str]) -> FloatArray:
         embedding_dim = 1536
         embeddings = np.ones((len(data), embedding_dim), dtype=np.float32)
         for i in range(len(data)):
