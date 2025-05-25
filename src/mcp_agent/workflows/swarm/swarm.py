@@ -84,13 +84,18 @@ class SwarmAgent(Agent):
         self,
         name: str,
         instruction: str | Callable[[Dict], str] = "You are a helpful agent.",
-        server_names: list[str] = [],
-        functions: List["AgentFunctionCallable"] = [],
+        server_names: list[str] = None,
+        functions: List["AgentFunctionCallable"] = None,
         parallel_tool_calls: bool = False,
         human_input_callback: HumanInputCallback = None,
         context: Optional["Context"] = None,
         **kwargs,
     ):
+        if server_names is None:
+            server_names = []
+        if functions is None:
+            functions = []
+
         super().__init__(
             name=name,
             instruction=instruction,
