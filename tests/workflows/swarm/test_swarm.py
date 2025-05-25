@@ -33,7 +33,7 @@ class TestSwarmAgent:
             server_names=["server1", "server2"],
             functions=[],
             parallel_tool_calls=True,
-            context=None,
+            context=Context(),
         )
 
         # Assert agent properties
