@@ -222,8 +222,8 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
                 self._annotate_span_for_completion_response(span, response, i)
 
-                total_input_tokens += response.usage.prompt_tokens
-                total_output_tokens += response.usage.completion_tokens
+                total_input_tokens += response.usage["prompt_tokens"]
+                total_output_tokens += response.usage["completion_tokens"]
                 finish_reasons.append(response.choices[0].finish_reason)
 
                 message = response.choices[0].message
