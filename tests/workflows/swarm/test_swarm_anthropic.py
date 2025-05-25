@@ -28,7 +28,7 @@ class TestAnthropicSwarm:
         )
 
         # Assert swarm properties
-        assert swarm.aggregator == mock_swarm_agent
+        assert swarm.agent == mock_swarm_agent
         assert swarm.context_variables == context_variables
         assert swarm.instruction == mock_swarm_agent.instruction
 
@@ -180,7 +180,7 @@ class TestAnthropicSwarm:
         mock_response = MagicMock()
 
         # Set the agent to a DoneAgent
-        mock_anthropic_swarm.aggregator = done_agent
+        mock_anthropic_swarm.agent = done_agent
 
         # Ensure we only make one iteration
         mock_anthropic_swarm.should_continue = MagicMock(side_effect=[True, False])

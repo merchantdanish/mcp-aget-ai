@@ -29,7 +29,7 @@ class TestOpenAISwarm:
         swarm = OpenAISwarm(agent=mock_swarm_agent, context_variables=context_variables)
 
         # Assert swarm properties
-        assert swarm.aggregator == mock_swarm_agent
+        assert swarm.agent == mock_swarm_agent
         assert swarm.context_variables == context_variables
         assert swarm.instruction == mock_swarm_agent.instruction
 
@@ -171,7 +171,7 @@ class TestOpenAISwarm:
         mock_response = MagicMock()
 
         # Set the agent to a DoneAgent
-        mock_openai_swarm.aggregator = done_agent
+        mock_openai_swarm.agent = done_agent
 
         # Ensure we only make one iteration
         mock_openai_swarm.should_continue = MagicMock(side_effect=[True, False])

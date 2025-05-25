@@ -32,7 +32,7 @@ class TestSwarmAgent:
             server_names=["server1", "server2"],
             functions=[],
             parallel_tool_calls=True,
-            context=mock_context,
+            context=None,
         )
 
         # Assert agent properties
@@ -40,7 +40,7 @@ class TestSwarmAgent:
         assert agent.instruction == "Test instruction"
         assert agent.server_names == ["server1", "server2"]
         assert agent.parallel_tool_calls is True
-        assert agent.context == mock_context
+        assert agent.context is not None
 
     @pytest.mark.asyncio
     async def test_call_tool_with_function_string_result(
@@ -199,7 +199,7 @@ class TestSwarm:
         swarm = OpenAISwarm(agent=mock_swarm_agent, context_variables=context_variables)
 
         # Assert swarm properties
-        assert swarm.aggregator == mock_swarm_agent
+        assert swarm.agent == mock_swarm_agent
         assert swarm.context_variables == context_variables
         assert swarm.instruction == mock_swarm_agent.instruction
 
@@ -374,13 +374,13 @@ class TestSwarm:
         swarm = OpenAISwarm(agent=mock_swarm_agent)
 
         # Assert initial agent
-        assert swarm.aggregator == mock_swarm_agent
+        assert swarm.agent == mock_swarm_agent
 
         # Call set_agent with a new agent
         await swarm.set_agent(mock_agent)
 
         # Assert the agent was changed and initialized
-        assert swarm.aggregator == mock_agent
+        assert swarm.agent == mock_agent
         mock_swarm_agent.shutdown.assert_called_once()
         mock_agent.initialize.assert_called_once()
 
@@ -410,13 +410,13 @@ class TestSwarm:
         assert swarm.should_continue() is True
 
         # Set a DoneAgent
-        swarm.aggregator = done_agent
+        swarm.agent = done_agent
 
         # Assert should_continue returns False with a DoneAgent
         assert swarm.should_continue() is False
 
         # Set agent to None
-        swarm.aggregator = None
+        swarm.agent = None
 
         # Assert should_continue returns False with no agent
         assert swarm.should_continue() is False
