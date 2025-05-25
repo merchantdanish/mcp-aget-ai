@@ -248,6 +248,7 @@ class TestSwarm:
 
         # Create a request
         request = CallToolRequest(
+            agent_name=swarm.agent.name,
             method="tools/call",
             params=CallToolRequestParams(name=tool_name, arguments={"arg": "value"}),
         )
@@ -269,6 +270,7 @@ class TestSwarm:
 
         # Create a request
         request = CallToolRequest(
+            agent_name=swarm.agent.name,
             method="tools/call",
             params=CallToolRequestParams(
                 name="non_existent_tool", arguments={"arg": "value"}
