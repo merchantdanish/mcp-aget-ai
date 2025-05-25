@@ -2,10 +2,10 @@ import pytest
 import anyio
 from types import SimpleNamespace
 
-from src.mcp_agent.mcp.mcp_connection_manager import (
+from mcp_agent.mcp.mcp_connection_manager import (
     MCPConnectionManager,
 )
-from src.mcp_agent.config import MCPServerSettings
+from mcp_agent.config import MCPServerSettings
 
 # ---------------------------
 # Test Doubles
