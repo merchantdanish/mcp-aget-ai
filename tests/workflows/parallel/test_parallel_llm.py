@@ -113,39 +113,11 @@ class TestParallelLLM:
         """
         Creates a ParallelLLM instance with a function for fan-in and a list of agents for fan-out.
         """
-        # Create a full mock that simulates ParallelLLM
-        parallel_llm = MagicMock()
-        parallel_llm.fan_in = None
-        parallel_llm.fan_in_fn = mock_fan_in_fn
-        parallel_llm.fan_out = MagicMock()
-        parallel_llm.fan_out.generate = AsyncMock()
-        parallel_llm.context = mock_context
-
-        # Define the behavior for the generate methods
-        async def generate_mock(message, request_params=None):
-            fan_out_response = await parallel_llm.fan_out.generate(
-                message, request_params
-            )
-            return await mock_fan_in_fn(fan_out_response)
-
-        async def generate_str_mock(message, request_params=None):
-            fan_out_response = await parallel_llm.fan_out.generate(
-                message, request_params
-            )
-            return await mock_fan_in_fn(fan_out_response)
-
-        async def generate_structured_mock(
-            message, response_model, request_params=None
-        ):
-            fan_out_response = await parallel_llm.fan_out.generate(
-                message, request_params
-            )
-            return await mock_fan_in_fn(fan_out_response)
-
-        parallel_llm.generate = generate_mock
-        parallel_llm.generate_str = generate_str_mock
-        parallel_llm.generate_structured = generate_structured_mock
-
+        parallel_llm = ParallelLLM(
+            fan_in_agent=mock_fan_in_fn,
+            fan_out_agents=[mock_llm_with_name],
+            context=mock_context,
+        )
         return parallel_llm
 
     @pytest.fixture
@@ -208,7 +180,9 @@ class TestParallelLLM:
         assert parallel_llm_with_function.fan_in_fn == mock_fan_in_fn
         assert parallel_llm_with_function.context == mock_context
         assert parallel_llm_with_function.fan_in is None
-        assert isinstance(parallel_llm_with_function.fan_out, MagicMock)
+        from mcp_agent.workflows.parallel.fan_out import FanOut
+
+        assert isinstance(parallel_llm_with_function.fan_out, FanOut)
 
     def test_init_with_agent_and_functions(
         self,
@@ -256,7 +230,7 @@ class TestParallelLLM:
 
         # Verify method calls
         parallel_llm_with_function.fan_out.generate.assert_called_once_with(
-            message, request_params
+            message=message, request_params=request_params
         )
         mock_fan_in_fn.assert_called_once_with(fan_out_response)
 
@@ -322,7 +296,7 @@ class TestParallelLLM:
 
         # Verify method calls
         parallel_llm_with_function.fan_out.generate.assert_called_once_with(
-            message, request_params
+            message=message, request_params=request_params
         )
         mock_fan_in_fn.assert_called_once_with(fan_out_response)
 
@@ -395,7 +369,7 @@ class TestParallelLLM:
 
         # Verify method calls
         parallel_llm_with_function.fan_out.generate.assert_called_once_with(
-            message, request_params
+            message=message, request_params=request_params
         )
         mock_fan_in_fn.assert_called_once_with(fan_out_response)
 
