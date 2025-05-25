@@ -1,10 +1,9 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 import numpy as np
-from typing import List, Dict, Callable, Optional, Any
+from typing import List
 
 from mcp_agent.core.context import Context
-from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.embedding.embedding_base import FloatArray, EmbeddingModel
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 from mcp_agent.workflows.router.router_base import (
@@ -42,14 +41,14 @@ def mock_context():
     # Setup server registry
     mock.server_registry = MagicMock()
 
-    # Create a proper server config mock that returns string values
-    server_config = MagicMock()
-    server_config.name = "test_server"  # Use string value, not a mock
-    server_config.description = (
-        "A test server for routing"  # Use string value, not a mock
-    )
-    server_config.embedding = MagicMock()
+    # Create a proper server config object that returns string values
+    class ServerConfig:
+        def __init__(self):
+            self.name = "test_server"
+            self.description = "A test server for routing"
+            self.embedding = None
 
+    server_config = ServerConfig()
     mock.server_registry.get_server_config = MagicMock(return_value=server_config)
 
     return mock
@@ -58,18 +57,16 @@ def mock_context():
 @pytest.fixture
 def mock_agent():
     """
-    Returns a mock Agent instance for testing.
+    Returns a real Agent instance for testing.
     """
-    mock = MagicMock(spec=Agent)
-    mock.name = "test_agent"
-    mock.instruction = "This is a test agent instruction"
-    mock.server_names = ["test_server"]
+    from mcp_agent.agents.agent import Agent
 
-    # Make context manager methods work
-    mock.__aenter__ = AsyncMock(return_value=mock)
-    mock.__aexit__ = AsyncMock(return_value=None)
-
-    return mock
+    agent = Agent(
+        name="test_agent",
+        instruction="This is a test agent instruction",
+        server_names=["test_server"],
+    )
+    return agent
 
 
 @pytest.fixture
