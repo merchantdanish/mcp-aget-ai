@@ -4,17 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 from mcp.types import CallToolResult, TextContent
 
 from mcp_agent.agents.agent import Agent
+from mcp_agent.core.context import Context
 from mcp_agent.workflows.swarm.swarm import SwarmAgent, AgentFunctionResult, DoneAgent
-
-
-@pytest.fixture
-def mock_context():
-    """Common mock context fixture usable by all swarm tests"""
-    mock_context = MagicMock()
-    mock_context.executor = MagicMock()
-    mock_context.model_selector = MagicMock()
-    mock_context.logger = MagicMock()
-    return mock_context
 
 
 @pytest.fixture
@@ -31,7 +22,7 @@ def mock_agent():
 
 
 @pytest.fixture
-def mock_swarm_agent(mock_context):
+def mock_swarm_agent():
     """Mock swarm agent fixture"""
     agent = MagicMock(spec=SwarmAgent)
     agent.name = "test_swarm_agent"
@@ -41,7 +32,7 @@ def mock_swarm_agent(mock_context):
     agent.shutdown = AsyncMock()
     agent.parallel_tool_calls = False
     agent.functions = []
-    agent.context = mock_context
+    agent.context = Context()
     agent._function_tool_map = {}
     return agent
 

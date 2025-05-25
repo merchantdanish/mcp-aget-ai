@@ -24,7 +24,7 @@ class TestSwarmAgent:
     """Tests for the SwarmAgent class."""
 
     @pytest.mark.asyncio
-    async def test_swarm_agent_initialization(self, mock_context):
+    async def test_swarm_agent_initialization(self):
         """Test SwarmAgent initialization."""
         # Create a SwarmAgent instance
         agent = SwarmAgent(
@@ -44,9 +44,7 @@ class TestSwarmAgent:
         assert agent.context is not None
 
     @pytest.mark.asyncio
-    async def test_call_tool_with_function_string_result(
-        self, mock_context, test_function_result
-    ):
+    async def test_call_tool_with_function_string_result(self, test_function_result):
         """Test call_tool with a function that returns a string."""
         # Create a real SwarmAgent instance
         agent = SwarmAgent(
@@ -72,7 +70,7 @@ class TestSwarmAgent:
         assert result.content[0].text == test_function_result
 
     @pytest.mark.asyncio
-    async def test_call_tool_with_function_agent_result(self, mock_context):
+    async def test_call_tool_with_function_agent_result(self):
         """Test call_tool with a function that returns an agent."""
         # Create the agent under test
         agent = SwarmAgent(
@@ -108,7 +106,7 @@ class TestSwarmAgent:
 
     @pytest.mark.asyncio
     async def test_call_tool_with_function_agent_function_result(
-        self, mock_context, test_function_agent_function_result
+        self, test_function_agent_function_result
     ):
         """Test call_tool with a function that returns an AgentFunctionResult."""
         # Create the agent under test
@@ -137,7 +135,7 @@ class TestSwarmAgent:
         assert result.content[0].result == test_function_agent_function_result
 
     @pytest.mark.asyncio
-    async def test_call_tool_with_function_dict_result(self, mock_context):
+    async def test_call_tool_with_function_dict_result(self):
         """Test call_tool with a function that returns a dictionary."""
         # Create the agent under test
         agent = SwarmAgent(
@@ -164,7 +162,7 @@ class TestSwarmAgent:
         assert result.content[0].text == str(dict_result)
 
     @pytest.mark.asyncio
-    async def test_call_tool_with_unknown_result_type(self, mock_context):
+    async def test_call_tool_with_unknown_result_type(self):
         """Test call_tool with a function that returns an unknown type."""
 
         # Create a class that isn't explicitly handled
