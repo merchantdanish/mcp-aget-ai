@@ -173,7 +173,7 @@ class TestFanOut:
 
         # Set up mocks
         mock_llm_with_name.generate.return_value = expected_result
-        mock_context.executor.execute = AsyncMock(return_value=[expected_result])
+        mock_context.executor.execute_many = AsyncMock(return_value=[expected_result])
 
         # Call the method
         result = await fan_out_with_llms.generate(message, request_params)
@@ -206,7 +206,7 @@ class TestFanOut:
         # Set up mocks
         mock_llm_with_name.generate.return_value = expected_result
         mock_agent_with_name.attach_llm = AsyncMock(return_value=mock_llm_with_name)
-        mock_context.executor.execute = AsyncMock(return_value=[expected_result])
+        mock_context.executor.execute_many = AsyncMock(return_value=[expected_result])
 
         # Create a patch for contextlib.AsyncExitStack
         with patch("contextlib.AsyncExitStack") as MockAsyncExitStack:
@@ -242,7 +242,7 @@ class TestFanOut:
         # Set up mocks
         # We don't call functions directly in the fan-out implementation,
         # they are wrapped in functools.partial and executed by the executor
-        mock_context.executor.execute = AsyncMock(return_value=[expected_result])
+        mock_context.executor.execute_many = AsyncMock(return_value=[expected_result])
 
         # Call the method
         result = await fan_out_with_functions.generate(message)
@@ -252,7 +252,7 @@ class TestFanOut:
 
         # In the implementation, we create a bound function with functools.partial
         # and the executor handles its execution, so we don't verify a direct call here
-        mock_context.executor.execute.assert_called_once()
+        mock_context.executor.execute_many.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_generate_with_mixed(
@@ -280,7 +280,7 @@ class TestFanOut:
         # No need to mock function return value as it's executed by the executor
 
         # Set up executor to return multiple results
-        mock_context.executor.execute = AsyncMock(
+        mock_context.executor.execute_many = AsyncMock(
             return_value=[agent_result, llm_result, function_result]
         )
 
@@ -307,7 +307,7 @@ class TestFanOut:
         mock_llm_with_name.generate.assert_any_call(
             message=message, request_params=request_params
         )
-        assert mock_context.executor.execute.call_count == 1
+        mock_context.executor.execute_many.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_generate_str_with_llms(
@@ -323,7 +323,7 @@ class TestFanOut:
 
         # Set up mocks
         mock_llm_with_name.generate_str.return_value = expected_result
-        mock_context.executor.execute = AsyncMock(return_value=[expected_result])
+        mock_context.executor.execute_many = AsyncMock(return_value=[expected_result])
 
         # Call the method
         result = await fan_out_with_llms.generate_str(message, request_params)
@@ -356,7 +356,7 @@ class TestFanOut:
         # Set up mocks
         mock_llm_with_name.generate_str.return_value = expected_result
         mock_agent_with_name.attach_llm = AsyncMock(return_value=mock_llm_with_name)
-        mock_context.executor.execute = AsyncMock(return_value=[expected_result])
+        mock_context.executor.execute_many = AsyncMock(return_value=[expected_result])
 
         # Create a patch for contextlib.AsyncExitStack
         with patch("contextlib.AsyncExitStack") as MockAsyncExitStack:
@@ -391,7 +391,7 @@ class TestFanOut:
 
         # Set up mocks
         mock_function.return_value = expected_result
-        mock_context.executor.execute = AsyncMock(return_value=[expected_result])
+        mock_context.executor.execute_many = AsyncMock(return_value=[expected_result])
 
         # Call the method
         result = await fan_out_with_functions.generate_str(message)
@@ -400,7 +400,7 @@ class TestFanOut:
         assert result == {"mock_function": expected_result}
 
         # Verify method calls
-        mock_context.executor.execute.assert_called_once()
+        mock_context.executor.execute_many.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_generate_structured_with_llms(
@@ -421,7 +421,7 @@ class TestFanOut:
 
         # Set up mocks
         mock_llm_with_name.generate_structured.return_value = expected_result
-        mock_context.executor.execute = AsyncMock(return_value=[expected_result])
+        mock_context.executor.execute_many = AsyncMock(return_value=[expected_result])
 
         # Call the method
         result = await fan_out_with_llms.generate_structured(
@@ -463,7 +463,7 @@ class TestFanOut:
         # Set up mocks
         mock_llm_with_name.generate_structured.return_value = expected_result
         mock_agent_with_name.attach_llm = AsyncMock(return_value=mock_llm_with_name)
-        mock_context.executor.execute = AsyncMock(return_value=[expected_result])
+        mock_context.executor.execute_many = AsyncMock(return_value=[expected_result])
 
         # Create a patch for contextlib.AsyncExitStack
         with patch("contextlib.AsyncExitStack") as MockAsyncExitStack:
@@ -506,7 +506,7 @@ class TestFanOut:
         expected_result = TestResponseModel()
 
         # Set up mocks
-        mock_context.executor.execute = AsyncMock(return_value=[expected_result])
+        mock_context.executor.execute_many = AsyncMock(return_value=[expected_result])
 
         # Call the method
         result = await fan_out_with_functions.generate_structured(
@@ -518,7 +518,7 @@ class TestFanOut:
 
         # In the implementation, we create a bound function with functools.partial
         # and the executor handles its execution, so we don't verify a direct call here
-        mock_context.executor.execute.assert_called_once()
+        mock_context.executor.execute_many.assert_called_once()
 
     # Test 3: Edge Case Tests
     @pytest.mark.asyncio
@@ -534,7 +534,7 @@ class TestFanOut:
 
         # Set up mocks
         mock_llm_with_name.generate.return_value = expected_result
-        mock_context.executor.execute = AsyncMock(return_value=[expected_result])
+        mock_context.executor.execute_many = AsyncMock(return_value=[expected_result])
 
         # Call the method
         result = await fan_out_with_llms.generate(message)
@@ -560,7 +560,7 @@ class TestFanOut:
 
         # Set up mocks
         mock_llm_with_name.generate.return_value = expected_result
-        mock_context.executor.execute = AsyncMock(return_value=[expected_result])
+        mock_context.executor.execute_many = AsyncMock(return_value=[expected_result])
 
         # Call the method
         result = await fan_out_with_llms.generate(message)

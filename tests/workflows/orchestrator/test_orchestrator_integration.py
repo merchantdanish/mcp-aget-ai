@@ -92,7 +92,7 @@ class TestOrchestratorIntegration:
 
         # Set up the executor to execute functions in parallel
         orchestrator.executor = MagicMock()
-        orchestrator.executor.execute = AsyncMock(
+        orchestrator.executor.execute_many = AsyncMock(
             side_effect=[
                 # Results for step 1
                 ["Analysis completed"],
@@ -101,6 +101,12 @@ class TestOrchestratorIntegration:
                 # Results for step 3
                 ["Implementation complete", "Testing complete"],
             ]
+        )
+
+        # Set up the synthesizer to return the expected result
+        orchestrator.synthesizer = MagicMock()
+        orchestrator.synthesizer.generate_str = AsyncMock(
+            return_value="Final result summary"
         )
 
         # Mock the agent context manager to return an Agent that returns our mock LLMs
@@ -221,7 +227,7 @@ class TestOrchestratorIntegration:
 
         # Set up the executor to execute functions in parallel
         orchestrator.executor = MagicMock()
-        orchestrator.executor.execute = AsyncMock(
+        orchestrator.executor.execute_many = AsyncMock(
             side_effect=[
                 # Results for step 1
                 ["Analysis completed"],
@@ -230,6 +236,12 @@ class TestOrchestratorIntegration:
                 # Results for step 3
                 ["Implementation complete", "Testing complete"],
             ]
+        )
+
+        # Set up the synthesizer to return the expected result
+        orchestrator.synthesizer = MagicMock()
+        orchestrator.synthesizer.generate_str = AsyncMock(
+            return_value="Final result summary"
         )
 
         # Mock the agent context manager to return an Agent that returns our mock LLMs
