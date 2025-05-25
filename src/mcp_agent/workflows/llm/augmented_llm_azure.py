@@ -259,6 +259,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                                 continue
                             elif isinstance(result, ToolMessage):
                                 messages.append(result)
+                                responses.append(result)
                 else:
                     self.logger.debug(
                         f"Iteration {i}: Stopping because finish_reason is '{response.choices[0].finish_reason}'"
