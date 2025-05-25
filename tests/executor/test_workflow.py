@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 from mcp_agent.executor.workflow import WorkflowState, WorkflowResult, Workflow
 from unittest.mock import MagicMock
@@ -123,11 +124,23 @@ class TestWorkflowAsyncMethods:
         workflow.context.config.execution_engine = "asyncio"
         workflow.executor.uuid.return_value = "uuid-123"
         workflow.context.workflow_registry.register = AsyncMock()
-        workflow.executor.wait_for_signal = AsyncMock(return_value=None)
+
+        # Make wait_for_signal never return so cancel task never completes
+        async def never_return(*args, **kwargs):
+            await asyncio.Future()
+
+        workflow.executor.wait_for_signal = AsyncMock(side_effect=never_return)
         run_id = await workflow.run_async()
         assert run_id == "uuid-123"
         assert workflow._run_id == "uuid-123"
-        assert workflow.state.status in ("scheduled", "running", "completed")
+        # verify status transitions
+        assert workflow.state.status == "scheduled"
+        # allow the runner to pick up the task
+        await asyncio.sleep(0)
+        assert workflow.state.status == "running"
+        # wait for completion
+        await workflow._run_task
+        assert workflow.state.status == "completed"
 
     @pytest.mark.asyncio
     async def test_cancel_no_run_id(self, workflow):
