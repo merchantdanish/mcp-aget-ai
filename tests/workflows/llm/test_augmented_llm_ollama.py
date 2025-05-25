@@ -48,32 +48,19 @@ class TestOllamaAugmentedLLM:
 
         return factory
 
-    # Test 1: Initialization
-    def test_initialization(
-        self, mock_context_factory
-    ):  # Use a factory for clean contexts
+    def test_initialization_no_openai_default_model(self, mock_context_factory):
         """
-        Tests that the OllamaAugmentedLLM constructor properly sets up defaults
-        when the OpenAI parent class does NOT find a default model in its own config.
+        Tests OllamaAugmentedLLM initialization when config.openai does NOT have 'default_model'.
+        Should use Ollama's internal default ("llama3.2:3b").
         """
-
-        # --- Test with Ollama's internal default model ("llama3.2:3b") ---
-        # Create a context where config.openai does not have 'default_model'
         context_no_openai_default = mock_context_factory()
-        # Define what attributes config.openai is expected to have by the parent, excluding 'default_model'
-        # Add any other attributes OpenAIAugmentedLLM might access from config.openai during init
         openai_spec = [
             "api_key",
             "base_url",
             "reasoning_effort",
-        ]  # Adjust as per OpenAIAugmentedLLM
-
-        # Ensure the basic structure required by OpenAIAugmentedLLM for config.openai
-        # but specifically make 'default_model' not present for hasattr checks.
-        # We also need to provide other attributes OpenAIAugmentedLLM might access.
+        ]
         mock_openai_config = MagicMock(spec=openai_spec)
         mock_openai_config.api_key = "test_api_key"
-
         context_no_openai_default.config.openai = mock_openai_config
 
         llm_default = OllamaAugmentedLLM(
@@ -81,16 +68,21 @@ class TestOllamaAugmentedLLM:
         )
 
         assert llm_default.provider == "Ollama"
-        # The default_model from OllamaAugmentedLLM's init ("llama3.2:3b") should be used
-        # because context_no_openai_default.config.openai.default_model is not found by hasattr.
         assert llm_default.default_request_params.model == "llama3.2:3b"
 
-        # --- Test with custom default_model passed to OllamaAugmentedLLM ---
-        # Re-use or create a similar clean context
+    def test_initialization_with_custom_default_model(self, mock_context_factory):
+        """
+        Tests OllamaAugmentedLLM initialization with a custom default_model argument.
+        Should use the custom value ("mistral:7b").
+        """
         context_no_openai_default_for_custom = mock_context_factory()
+        openai_spec = [
+            "api_key",
+            "base_url",
+            "reasoning_effort",
+        ]
         mock_openai_config_for_custom = MagicMock(spec=openai_spec)
         mock_openai_config_for_custom.api_key = "test_api_key"
-        # mock_openai_config_for_custom.reasoning_effort = "medium"
         context_no_openai_default_for_custom.config.openai = (
             mock_openai_config_for_custom
         )
@@ -101,25 +93,24 @@ class TestOllamaAugmentedLLM:
             default_model="mistral:7b",
         )
         assert llm_custom.provider == "Ollama"
-        # The custom default_model ("mistral:7b") passed to OllamaAugmentedLLM should be used.
         assert llm_custom.default_request_params.model == "mistral:7b"
 
-        # --- Test scenario: OpenAI context config *does* have a default model ---
-        # This would test that the OpenAI parent's config takes precedence.
+    def test_initialization_with_openai_default_model(self, mock_context_factory):
+        """
+        Tests OllamaAugmentedLLM initialization when config.openai *does* have a default_model.
+        Should use the parent's config value ("openai-parent-default:v1").
+        """
         context_with_openai_default = mock_context_factory()
-        # Now, config.openai *will* have a default_model.
-        # No need for spec here if we want MagicMock's default behavior of creating attrs on access.
         context_with_openai_default.config.openai = MagicMock()
         context_with_openai_default.config.openai.api_key = "test_api_key"
         context_with_openai_default.config.openai.default_model = (
-            "openai-parent-default:v1"  # Must be a string
+            "openai-parent-default:v1"
         )
 
         llm_parent_override = OllamaAugmentedLLM(
             name="test_parent_override", context=context_with_openai_default
         )
         assert llm_parent_override.provider == "Ollama"
-        # The default_model from context_with_openai_default.config.openai should take precedence.
         assert (
             llm_parent_override.default_request_params.model
             == "openai-parent-default:v1"
