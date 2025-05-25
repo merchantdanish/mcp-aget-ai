@@ -1,17 +1,15 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
-from mcp_agent.workflows.parallel.fan_in import FanIn
-from mcp_agent.workflows.parallel.fan_out import FanOut
 
 
 class TestParallelLLM:
     """
     Tests for the ParallelLLM class.
     """
-    
+
     @pytest.fixture
     def mock_context(self):
         """
@@ -69,14 +67,18 @@ class TestParallelLLM:
         return fn
 
     @pytest.fixture
-    def parallel_llm_with_agent(self, mock_context, mock_agent, mock_llm_factory, mock_llm_with_name):
+    def parallel_llm_with_agent(
+        self, mock_context, mock_agent, mock_llm_factory, mock_llm_with_name
+    ):
         """
         Creates a ParallelLLM instance with an Agent for fan-in and a list of agents for fan-out.
         """
         # Make sure agent is properly set up as fan-in agent
         parallel_llm = ParallelLLM(
             fan_in_agent=mock_agent,
-            fan_out_agents=[mock_llm_with_name],  # Use just one LLM to avoid Agent issues
+            fan_out_agents=[
+                mock_llm_with_name
+            ],  # Use just one LLM to avoid Agent issues
             llm_factory=mock_llm_factory,
             context=mock_context,
         )
@@ -93,7 +95,9 @@ class TestParallelLLM:
         """
         parallel_llm = ParallelLLM(
             fan_in_agent=mock_llm,
-            fan_out_agents=[mock_llm_with_name],  # Use just one LLM to avoid Agent issues
+            fan_out_agents=[
+                mock_llm_with_name
+            ],  # Use just one LLM to avoid Agent issues
             context=mock_context,
         )
         # Patch the FanIn and FanOut instances
@@ -103,7 +107,9 @@ class TestParallelLLM:
         return parallel_llm
 
     @pytest.fixture
-    def parallel_llm_with_function(self, mock_context, mock_fan_in_fn, mock_llm_with_name):
+    def parallel_llm_with_function(
+        self, mock_context, mock_fan_in_fn, mock_llm_with_name
+    ):
         """
         Creates a ParallelLLM instance with a function for fan-in and a list of agents for fan-out.
         """
@@ -114,28 +120,38 @@ class TestParallelLLM:
         parallel_llm.fan_out = MagicMock()
         parallel_llm.fan_out.generate = AsyncMock()
         parallel_llm.context = mock_context
-        
+
         # Define the behavior for the generate methods
         async def generate_mock(message, request_params=None):
-            fan_out_response = await parallel_llm.fan_out.generate(message, request_params)
+            fan_out_response = await parallel_llm.fan_out.generate(
+                message, request_params
+            )
             return await mock_fan_in_fn(fan_out_response)
-            
+
         async def generate_str_mock(message, request_params=None):
-            fan_out_response = await parallel_llm.fan_out.generate(message, request_params)
+            fan_out_response = await parallel_llm.fan_out.generate(
+                message, request_params
+            )
             return await mock_fan_in_fn(fan_out_response)
-            
-        async def generate_structured_mock(message, response_model, request_params=None):
-            fan_out_response = await parallel_llm.fan_out.generate(message, request_params)
+
+        async def generate_structured_mock(
+            message, response_model, request_params=None
+        ):
+            fan_out_response = await parallel_llm.fan_out.generate(
+                message, request_params
+            )
             return await mock_fan_in_fn(fan_out_response)
-            
+
         parallel_llm.generate = generate_mock
         parallel_llm.generate_str = generate_str_mock
         parallel_llm.generate_structured = generate_structured_mock
-        
+
         return parallel_llm
 
     @pytest.fixture
-    def parallel_llm_with_functions(self, mock_context, mock_agent, mock_llm_factory, mock_functions_list):
+    def parallel_llm_with_functions(
+        self, mock_context, mock_agent, mock_llm_factory, mock_functions_list
+    ):
         """
         Creates a ParallelLLM instance with an Agent for fan-in and a list of functions for fan-out.
         """
@@ -153,7 +169,12 @@ class TestParallelLLM:
 
     # Test 1: Initialization Tests
     def test_init_with_agent_and_agents(
-        self, parallel_llm_with_agent, mock_agent, mock_llm_with_name, mock_llm_factory, mock_context
+        self,
+        parallel_llm_with_agent,
+        mock_agent,
+        mock_llm_with_name,
+        mock_llm_factory,
+        mock_context,
     ):
         """
         Tests initialization with an Agent for fan-in and a list of agents for fan-out.
@@ -190,7 +211,12 @@ class TestParallelLLM:
         assert isinstance(parallel_llm_with_function.fan_out, MagicMock)
 
     def test_init_with_agent_and_functions(
-        self, parallel_llm_with_functions, mock_agent, mock_functions_list, mock_llm_factory, mock_context
+        self,
+        parallel_llm_with_functions,
+        mock_agent,
+        mock_functions_list,
+        mock_llm_factory,
+        mock_context,
     ):
         """
         Tests initialization with an Agent for fan-in and a list of functions for fan-out.
@@ -217,7 +243,9 @@ class TestParallelLLM:
         request_params = RequestParams(temperature=0.7)
 
         # Set up mocks
-        parallel_llm_with_function.fan_out.generate = AsyncMock(return_value=fan_out_response)
+        parallel_llm_with_function.fan_out.generate = AsyncMock(
+            return_value=fan_out_response
+        )
         mock_fan_in_fn.return_value = expected_result
 
         # Call the method
@@ -246,8 +274,12 @@ class TestParallelLLM:
         request_params = RequestParams(temperature=0.7)
 
         # Set up mocks
-        parallel_llm_with_agent.fan_out.generate = AsyncMock(return_value=fan_out_response)
-        parallel_llm_with_agent.fan_in.generate = AsyncMock(return_value=expected_result)
+        parallel_llm_with_agent.fan_out.generate = AsyncMock(
+            return_value=fan_out_response
+        )
+        parallel_llm_with_agent.fan_in.generate = AsyncMock(
+            return_value=expected_result
+        )
 
         # Call the method
         result = await parallel_llm_with_agent.generate(message, request_params)
@@ -277,7 +309,9 @@ class TestParallelLLM:
         request_params = RequestParams(temperature=0.7)
 
         # Set up mocks
-        parallel_llm_with_function.fan_out.generate = AsyncMock(return_value=fan_out_response)
+        parallel_llm_with_function.fan_out.generate = AsyncMock(
+            return_value=fan_out_response
+        )
         mock_fan_in_fn.return_value = expected_result
 
         # Call the method
@@ -306,8 +340,12 @@ class TestParallelLLM:
         request_params = RequestParams(temperature=0.7)
 
         # Set up mocks
-        parallel_llm_with_agent.fan_out.generate = AsyncMock(return_value=fan_out_response)
-        parallel_llm_with_agent.fan_in.generate_str = AsyncMock(return_value=expected_result)
+        parallel_llm_with_agent.fan_out.generate = AsyncMock(
+            return_value=fan_out_response
+        )
+        parallel_llm_with_agent.fan_in.generate_str = AsyncMock(
+            return_value=expected_result
+        )
 
         # Call the method
         result = await parallel_llm_with_agent.generate_str(message, request_params)
@@ -342,7 +380,9 @@ class TestParallelLLM:
         expected_result = TestResponseModel()
 
         # Set up mocks
-        parallel_llm_with_function.fan_out.generate = AsyncMock(return_value=fan_out_response)
+        parallel_llm_with_function.fan_out.generate = AsyncMock(
+            return_value=fan_out_response
+        )
         mock_fan_in_fn.return_value = expected_result
 
         # Call the method
@@ -378,8 +418,12 @@ class TestParallelLLM:
         expected_result = TestResponseModel()
 
         # Set up mocks
-        parallel_llm_with_agent.fan_out.generate = AsyncMock(return_value=fan_out_response)
-        parallel_llm_with_agent.fan_in.generate_structured = AsyncMock(return_value=expected_result)
+        parallel_llm_with_agent.fan_out.generate = AsyncMock(
+            return_value=fan_out_response
+        )
+        parallel_llm_with_agent.fan_in.generate_structured = AsyncMock(
+            return_value=expected_result
+        )
 
         # Call the method
         result = await parallel_llm_with_agent.generate_structured(
