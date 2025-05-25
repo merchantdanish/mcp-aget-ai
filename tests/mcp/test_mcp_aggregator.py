@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 import pytest
 import asyncio
 
@@ -246,6 +247,26 @@ async def test_mcp_aggregator_call_tool_persistent(monkeypatch):
     assert result.content == "called"
 
 
+class DummySession:
+    async def call_tool(self, name, arguments=None):
+        return SimpleNamespace(isError=False, content="called_nonpersistent")
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
+class DummyRegistry:
+    def start_server(self, *_args, **_kw):
+        return DummySession()
+
+    @asynccontextmanager
+    async def initialize_server(self, *args, **kwargs):
+        yield DummySession()
+
+
 @pytest.mark.asyncio
 async def test_mcp_aggregator_call_tool_nonpersistent(monkeypatch):
     # Setup aggregator with non-persistent connection
@@ -276,20 +297,9 @@ async def test_mcp_aggregator_call_tool_nonpersistent(monkeypatch):
     # Patch _parse_capability_name to always return ("srv1", "toolA")
     aggregator._parse_capability_name = lambda name, cap: ("srv1", "toolA")
 
-    # Patch gen_client context manager and client session
-    class DummyClient:
-        async def call_tool(self, name, arguments=None):
-            return SimpleNamespace(isError=False, content="called_nonpersistent")
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc_val, exc_tb):
-            pass
-
-    monkeypatch.setattr(
-        mcp_aggregator_mod, "gen_client", lambda *a, **kw: DummyClient()
-    )
+    # Patch the *server_registry* so the non-persistent path receives
+    # a session with the expected `call_tool` coroutine.
+    aggregator.context.server_registry = DummyRegistry()
 
     # Call the tool
     result = await aggregator.call_tool("srv1_toolA", arguments={"x": 2})
