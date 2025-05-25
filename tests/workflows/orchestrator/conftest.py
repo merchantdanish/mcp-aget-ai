@@ -29,13 +29,15 @@ class MockAugmentedLLM(AugmentedLLM):
         self.generate_structured_mock = AsyncMock()
 
     async def generate(self, message, request_params=None):
-        return self.generate_mock(message, request_params)
+        return await self.generate_mock(message, request_params)
 
     async def generate_str(self, message, request_params=None):
-        return self.generate_str_mock(message, request_params)
+        return await self.generate_str_mock(message, request_params)
 
     async def generate_structured(self, message, response_model, request_params=None):
-        return self.generate_structured_mock(message, response_model, request_params)
+        return await self.generate_structured_mock(
+            message, response_model, request_params
+        )
 
 
 @pytest.fixture
