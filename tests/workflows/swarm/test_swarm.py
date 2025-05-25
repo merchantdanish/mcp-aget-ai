@@ -17,6 +17,7 @@ from mcp_agent.workflows.swarm.swarm import (
     create_agent_function_result_resource,
 )
 from mcp_agent.workflows.swarm.swarm_openai import OpenAISwarm
+from mcp_agent.core.context import Context
 
 
 class TestSwarmAgent:
@@ -44,101 +45,126 @@ class TestSwarmAgent:
 
     @pytest.mark.asyncio
     async def test_call_tool_with_function_string_result(
-        self, mock_swarm_agent, test_function_result
+        self, mock_context, test_function_result
     ):
         """Test call_tool with a function that returns a string."""
-        # Setup mocks
-        expected_content = [TextContent(type="text", text=test_function_result)]
-        expected_result = CallToolResult(content=expected_content)
+        # Create a real SwarmAgent instance
+        agent = SwarmAgent(
+            name="test_agent",
+            instruction="Test instruction",
+            server_names=[],
+            functions=[],
+            parallel_tool_calls=True,
+            context=Context(),
+        )
+        # Setup function tool
         mock_function_tool = MagicMock()
         mock_function_tool.run = AsyncMock(return_value=test_function_result)
-        mock_swarm_agent._function_tool_map = {"test_function": mock_function_tool}
-        mock_swarm_agent.initialized = True
-        mock_swarm_agent.call_tool = AsyncMock(return_value=expected_result)
+        agent._function_tool_map = {"test_function": mock_function_tool}
+        agent.initialized = True
 
-        # Call the method
-        result = await mock_swarm_agent.call_tool("test_function", {"arg": "value"})
+        # Call the real method
+        result = await agent.call_tool("test_function", {"arg": "value"})
 
         # Assert the expected result
-        assert result == expected_result
         assert len(result.content) == 1
         assert result.content[0].type == "text"
         assert result.content[0].text == test_function_result
 
     @pytest.mark.asyncio
-    async def test_call_tool_with_function_agent_result(
-        self, mock_swarm_agent, test_function_agent_result
-    ):
+    async def test_call_tool_with_function_agent_result(self, mock_context):
         """Test call_tool with a function that returns an agent."""
-        # Setup mocks
-        agent_resource = create_agent_resource(test_function_agent_result)
-        expected_result = CallToolResult(content=[agent_resource])
+        # Create the agent under test
+        agent = SwarmAgent(
+            name="test_agent",
+            instruction="Test instruction",
+            server_names=[],
+            functions=[],
+            parallel_tool_calls=True,
+            context=Context(),
+        )
+        # Create another SwarmAgent to return as the function result
+        returned_agent = SwarmAgent(
+            name="returned_agent",
+            instruction="Returned agent",
+            server_names=[],
+            functions=[],
+            parallel_tool_calls=True,
+            context=Context(),
+        )
+        # Setup function tool
         mock_function_tool = MagicMock()
-        mock_function_tool.run = AsyncMock(return_value=test_function_agent_result)
-        mock_swarm_agent._function_tool_map = {"test_function": mock_function_tool}
-        mock_swarm_agent.initialized = True
-        mock_swarm_agent.call_tool = AsyncMock(return_value=expected_result)
+        mock_function_tool.run = AsyncMock(return_value=returned_agent)
+        agent._function_tool_map = {"test_function": mock_function_tool}
+        agent.initialized = True
 
-        # Call the method
-        result = await mock_swarm_agent.call_tool("test_function", {"arg": "value"})
+        # Call the real method
+        result = await agent.call_tool("test_function", {"arg": "value"})
 
         # Assert the expected result
-        assert result == expected_result
         assert len(result.content) == 1
         assert result.content[0].type == "resource"
-        assert result.content[0].agent == test_function_agent_result
+        assert result.content[0].agent == returned_agent
 
     @pytest.mark.asyncio
     async def test_call_tool_with_function_agent_function_result(
-        self, mock_swarm_agent, test_function_agent_function_result
+        self, mock_context, test_function_agent_function_result
     ):
         """Test call_tool with a function that returns an AgentFunctionResult."""
-        # Setup mocks
-        result_resource = create_agent_function_result_resource(
-            test_function_agent_function_result
+        # Create the agent under test
+        agent = SwarmAgent(
+            name="test_agent",
+            instruction="Test instruction",
+            server_names=[],
+            functions=[],
+            parallel_tool_calls=True,
+            context=Context(),
         )
-        expected_result = CallToolResult(content=[result_resource])
+        # Setup function tool
         mock_function_tool = MagicMock()
         mock_function_tool.run = AsyncMock(
             return_value=test_function_agent_function_result
         )
-        mock_swarm_agent._function_tool_map = {"test_function": mock_function_tool}
-        mock_swarm_agent.initialized = True
-        mock_swarm_agent.call_tool = AsyncMock(return_value=expected_result)
+        agent._function_tool_map = {"test_function": mock_function_tool}
+        agent.initialized = True
 
-        # Call the method
-        result = await mock_swarm_agent.call_tool("test_function", {"arg": "value"})
+        # Call the real method
+        result = await agent.call_tool("test_function", {"arg": "value"})
 
         # Assert the expected result
-        assert result == expected_result
         assert len(result.content) == 1
         assert result.content[0].type == "resource"
         assert result.content[0].result == test_function_agent_function_result
 
     @pytest.mark.asyncio
-    async def test_call_tool_with_function_dict_result(self, mock_swarm_agent):
+    async def test_call_tool_with_function_dict_result(self, mock_context):
         """Test call_tool with a function that returns a dictionary."""
-        # Setup mocks
+        # Create the agent under test
+        agent = SwarmAgent(
+            name="test_agent",
+            instruction="Test instruction",
+            server_names=[],
+            functions=[],
+            parallel_tool_calls=True,
+            context=Context(),
+        )
+        # Setup function tool
         dict_result = {"key": "value"}
-        expected_content = [TextContent(type="text", text=str(dict_result))]
-        expected_result = CallToolResult(content=expected_content)
         mock_function_tool = MagicMock()
         mock_function_tool.run = AsyncMock(return_value=dict_result)
-        mock_swarm_agent._function_tool_map = {"test_function": mock_function_tool}
-        mock_swarm_agent.initialized = True
-        mock_swarm_agent.call_tool = AsyncMock(return_value=expected_result)
+        agent._function_tool_map = {"test_function": mock_function_tool}
+        agent.initialized = True
 
-        # Call the method
-        result = await mock_swarm_agent.call_tool("test_function", {"arg": "value"})
+        # Call the real method
+        result = await agent.call_tool("test_function", {"arg": "value"})
 
         # Assert the expected result
-        assert result == expected_result
         assert len(result.content) == 1
         assert result.content[0].type == "text"
         assert result.content[0].text == str(dict_result)
 
     @pytest.mark.asyncio
-    async def test_call_tool_with_unknown_result_type(self, mock_swarm_agent):
+    async def test_call_tool_with_unknown_result_type(self, mock_context):
         """Test call_tool with a function that returns an unknown type."""
 
         # Create a class that isn't explicitly handled
@@ -148,20 +174,25 @@ class TestSwarmAgent:
 
         unknown_result = UnknownType()
 
-        # Setup mocks
-        expected_content = [TextContent(type="text", text=str(unknown_result))]
-        expected_result = CallToolResult(content=expected_content)
+        # Create the agent under test
+        agent = SwarmAgent(
+            name="test_agent",
+            instruction="Test instruction",
+            server_names=[],
+            functions=[],
+            parallel_tool_calls=True,
+            context=Context(),
+        )
+        # Setup function tool
         mock_function_tool = MagicMock()
         mock_function_tool.run = AsyncMock(return_value=unknown_result)
-        mock_swarm_agent._function_tool_map = {"test_function": mock_function_tool}
-        mock_swarm_agent.initialized = True
-        mock_swarm_agent.call_tool = AsyncMock(return_value=expected_result)
+        agent._function_tool_map = {"test_function": mock_function_tool}
+        agent.initialized = True
 
-        # Call the method
-        result = await mock_swarm_agent.call_tool("test_function", {"arg": "value"})
+        # Call the real method
+        result = await agent.call_tool("test_function", {"arg": "value"})
 
         # Assert the expected result
-        assert result == expected_result
         assert len(result.content) == 1
         assert result.content[0].type == "text"
         assert result.content[0].text == str(unknown_result)
