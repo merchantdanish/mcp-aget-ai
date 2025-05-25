@@ -390,7 +390,7 @@ class PydanticTypeSerializer(BaseModel):
                     "description": make_serializable(
                         getattr(field_info, "description", None)
                     ),
-                    "required": field_info.is_required()
+                    "required": field_info.is_required(),
                 }
 
                 # Add constraints if defined
@@ -690,13 +690,14 @@ class PydanticTypeSerializer(BaseModel):
                 )
             else:
                 if is_required:
-                    field_definitions[field_name] = (field_type, Field(
-                        default=...
-                    ))
+                    field_definitions[field_name] = (field_type, Field(default=...))
                 else:
-                    field_definitions[field_name] = (field_type, Field(
-                        default=default,
-                    ))
+                    field_definitions[field_name] = (
+                        field_type,
+                        Field(
+                            default=default,
+                        ),
+                    )
 
         # Create model config
         model_config = ConfigDict(**config_dict) if config_dict else None
@@ -714,6 +715,24 @@ class PydanticTypeSerializer(BaseModel):
         reconstructed_model = create_model(
             name, __config__=model_config, **field_definitions, **private_attr_kwargs
         )
+
+        # Patch __init__ to ensure private attributes are initialized on instance
+        private_attrs = getattr(reconstructed_model, "__private_attributes__", {})
+        if private_attrs:
+            orig_init = reconstructed_model.__init__
+
+            def _init_with_private_attrs(self, *args, **kwargs):
+                orig_init(self, *args, **kwargs)
+                for attr_name, private_attr in private_attrs.items():
+                    # Only set if not already set
+                    if not hasattr(self, attr_name):
+                        default = private_attr.default
+                        # If default is ... (Ellipsis), treat as None
+                        if default is ...:
+                            default = None
+                        setattr(self, attr_name, default)
+
+            reconstructed_model.__init__ = _init_with_private_attrs
 
         # Add validators (this gets complex and may require exec/eval)
         if validators:
