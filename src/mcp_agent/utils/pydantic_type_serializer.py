@@ -186,7 +186,7 @@ class PydanticTypeSerializer(BaseModel):
                 return {
                     "kind": "generic",
                     "origin": "Literal",
-                    "literal_values": list(args),
+                    "literal_values": [make_serializable(a) for a in args],
                     "repr": str(typ),
                 }
             serialized_args = [
