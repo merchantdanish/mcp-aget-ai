@@ -58,10 +58,12 @@ class MockEmbeddingModel:
         """
         embeddings = np.ones((len(data), self._embedding_dim), dtype=np.float32)
         for i in range(len(data)):
-            # Simple hashing to create different embeddings for different strings
+            # Create different embeddings for different strings
+            # Use hash() for better distribution and create local generator
+            seed = hash(data[i]) & 0x7FFFFFFF  # Ensure positive seed
+            rng = np.random.Generator(np.random.PCG64(seed))
             seed = sum(ord(c) for c in data[i])
-            np.random.seed(seed)
-            embeddings[i] = np.random.rand(self._embedding_dim).astype(np.float32)
+            embeddings[i] = rng.random(self._embedding_dim, dtype=np.float32)
         return embeddings
 
     @property
