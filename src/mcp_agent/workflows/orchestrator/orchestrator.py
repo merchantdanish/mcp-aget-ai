@@ -355,7 +355,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                         plan_result=format_plan_result(plan_result)
                     )
 
-                    plan_result.result = await self.sythesizer.generate_str(
+                    plan_result.result = await self.synthesizer.generate_str(
                         message=synthesis_prompt,
                         request_params=params.model_copy(update={"max_iterations": 1}),
                     )
