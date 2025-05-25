@@ -390,7 +390,11 @@ class PydanticTypeSerializer(BaseModel):
                     "description": make_serializable(
                         getattr(field_info, "description", None)
                     ),
-                    "required": field_info.is_required(),
+                    "required": getattr(
+                        field_info,
+                        "is_required",
+                        lambda: getattr(field_info, "required", True),
+                    )(),
                 }
 
                 # Add constraints if defined
