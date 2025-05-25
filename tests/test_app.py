@@ -169,7 +169,7 @@ class TestMCPApp:
 
         with import_patch, platform_patch, set_policy_patch as mock_set_policy:
             # Now create the app which should trigger the code path
-            app = MCPApp(name="test_app")
+            MCPApp(name="test_app")
 
             # Verify set_event_loop_policy was called
             mock_set_policy.assert_called_once()
@@ -179,7 +179,7 @@ class TestMCPApp:
     @patch("asyncio.set_event_loop_policy")
     async def test_non_windows_event_loop_policy(self, mock_set_policy):
         """Test Windows event loop policy is not set on non-Windows platforms."""
-        app = MCPApp(name="test_app")
+        MCPApp(name="test_app")
 
         mock_set_policy.assert_not_called()
 

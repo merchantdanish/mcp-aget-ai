@@ -1,8 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from typing import Callable, List
 
-from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.router.router_base import (
     AgentRouterCategory,
     RouterCategory,

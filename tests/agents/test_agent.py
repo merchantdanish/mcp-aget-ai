@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from mcp.server.fastmcp.tools import Tool as FastTool
-from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool
+from mcp.types import CallToolResult, TextContent, Tool
 
 from mcp_agent.agents.agent import Agent, HUMAN_INPUT_TOOL_NAME
 from mcp_agent.human_input.types import (

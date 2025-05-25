@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 
 from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows.router.router_base import Router
 from mcp_agent.workflows.router.router_embedding import (
     EmbeddingRouter,
     EmbeddingRouterCategory,
