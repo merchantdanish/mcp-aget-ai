@@ -57,6 +57,33 @@ async def test_resume_workflow(registry, mock_executor):
 
 
 @pytest.mark.asyncio
+async def test_resume_workflow_signal_error(registry, mock_executor, caplog):
+    mock_workflow = MagicMock(name="test_workflow")
+    run_id = "run-id"
+    workflow_id = "workflow-id"
+    mock_workflow.name = workflow_id
+    await registry.register(mock_workflow, run_id, workflow_id)
+
+    # Mock handle whose signal method raises an exception
+    class SignalError(Exception):
+        pass
+
+    mock_handle = MagicMock()
+
+    async def raise_signal_error(*args, **kwargs):
+        raise SignalError("signal failed")
+
+    mock_handle.signal = AsyncMock(side_effect=raise_signal_error)
+    mock_executor.client.get_workflow_handle = MagicMock(return_value=mock_handle)
+
+    with caplog.at_level("ERROR"):
+        result = await registry.resume_workflow(
+            run_id, signal_name="resume", payload={"data": "value"}
+        )
+    assert result is False
+
+
+@pytest.mark.asyncio
 async def test_cancel_workflow(registry, mock_executor):
     mock_workflow = MagicMock(name="test_workflow")
     run_id = "run-id"
