@@ -40,6 +40,8 @@ class TestFanOut:
         """
         Creates a FanOut instance with agents and an LLM factory.
         """
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         return FanOut(
             agents=[mock_agent_with_name],
             llm_factory=mock_llm_factory,
@@ -51,6 +53,8 @@ class TestFanOut:
         """
         Creates a FanOut instance with AugmentedLLMs.
         """
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         return FanOut(
             agents=[mock_llm_with_name],
             context=mock_context,
@@ -61,6 +65,8 @@ class TestFanOut:
         """
         Creates a FanOut instance with functions.
         """
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         return FanOut(
             functions=[mock_function],
             context=mock_context,
@@ -78,6 +84,8 @@ class TestFanOut:
         """
         Creates a FanOut instance with a mix of agents, LLMs, and functions.
         """
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         return FanOut(
             agents=[mock_agent_with_name, mock_llm_with_name],
             functions=[mock_function],

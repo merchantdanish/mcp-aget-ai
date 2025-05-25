@@ -23,6 +23,9 @@ class TestMCPApp:
         mock_context.executor = MagicMock()
         mock_context.executor.execution_engine = MagicMock()
         mock_context.session_id = "test-session-id"
+        mock_context.tracer = (
+            MagicMock()
+        )  # Add tracer attribute for tests that require it
         return mock_context
 
     @pytest.fixture
@@ -239,8 +242,11 @@ class TestMCPApp:
             mock_cleanup.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_run_context_manager(self, basic_app):
+    async def test_run_context_manager(self, basic_app, mock_context):
         """Test run context manager."""
+        basic_app._context = (
+            mock_context  # Ensure context is set since initialize is mocked
+        )
         with patch.object(basic_app, "initialize", AsyncMock()) as mock_init:
             with patch.object(basic_app, "cleanup", AsyncMock()) as mock_cleanup:
                 async with basic_app.run() as running_app:
@@ -251,8 +257,11 @@ class TestMCPApp:
                 mock_cleanup.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_run_context_manager_with_exception(self, basic_app):
+    async def test_run_context_manager_with_exception(self, basic_app, mock_context):
         """Test run context manager when an exception occurs."""
+        basic_app._context = (
+            mock_context  # Ensure context is set since initialize is mocked
+        )
         with patch.object(basic_app, "initialize", AsyncMock()) as mock_init:
             with patch.object(basic_app, "cleanup", AsyncMock()) as mock_cleanup:
                 try:
@@ -266,8 +275,11 @@ class TestMCPApp:
                 mock_cleanup.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_run_with_cancelled_cleanup(self, basic_app):
+    async def test_run_with_cancelled_cleanup(self, basic_app, mock_context):
         """Test run context manager when cleanup is cancelled."""
+        basic_app._context = (
+            mock_context  # Ensure context is set since initialize is mocked
+        )
         with patch.object(basic_app, "initialize", AsyncMock()) as mock_init:
             # We need to handle the CancelledError inside the async context manager
             # by capturing it rather than letting it propagate
@@ -664,7 +676,10 @@ class TestMCPApp:
             assert activity_name in activities
             registered_task = basic_app._task_registry.get_activity(activity_name)
             assert registered_task is decorated
-            assert registered_task.execution_metadata["schedule_to_close_timeout"] == custom_timeout
+            assert (
+                registered_task.execution_metadata["schedule_to_close_timeout"]
+                == custom_timeout
+            )
 
     @pytest.mark.asyncio
     async def test_workflow_task_decorator_with_retry_policy(

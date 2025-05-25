@@ -20,6 +20,8 @@ class TestOrchestratorIntegration:
         self, mock_llm_factory, mock_agents, mock_context
     ):
         """Test a complete workflow execution with the full plan mode"""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # Create the orchestrator with the full plan mode
         orchestrator = Orchestrator(
             llm_factory=mock_llm_factory,
@@ -163,6 +165,8 @@ class TestOrchestratorIntegration:
         self, mock_llm_factory, mock_agents, mock_context
     ):
         """Test a complete workflow execution with the iterative plan mode"""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # Create the orchestrator with the iterative plan mode
         orchestrator = Orchestrator(
             llm_factory=mock_llm_factory,
@@ -297,6 +301,8 @@ class TestOrchestratorIntegration:
         self, mock_llm_factory, mock_agents, mock_context
     ):
         """Test the simple generate method for the orchestrator"""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # Create the orchestrator
         orchestrator = Orchestrator(
             llm_factory=mock_llm_factory,

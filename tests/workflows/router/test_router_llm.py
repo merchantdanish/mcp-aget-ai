@@ -21,6 +21,8 @@ class TestLLMRouter:
     # Test 1: Basic initialization
     def test_initialization(self, mock_context, mock_llm, mock_agent, test_function):
         """Tests basic initialization of the LLM router."""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         router = LLMRouter(
             llm=mock_llm,
             server_names=["test_server"],
@@ -42,7 +44,8 @@ class TestLLMRouter:
     @pytest.mark.asyncio
     async def test_create_factory_method(self, mock_context, mock_llm, mock_agent):
         """Tests the factory method for creating and initializing a router."""
-
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # Create router using factory method
         router = await LLMRouter.create(
             llm=mock_llm,
@@ -64,6 +67,8 @@ class TestLLMRouter:
     # Test 3: Default routing instruction
     def test_default_routing_instruction(self, mock_context, mock_llm):
         """Tests that the default routing instruction is used when none is provided."""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         router = LLMRouter(
             llm=mock_llm,
             server_names=["test_server"],
@@ -95,6 +100,8 @@ class TestLLMRouter:
     # Test 4: Custom routing instruction
     def test_custom_routing_instruction(self, mock_context, mock_llm):
         """Tests that a custom routing instruction is used when provided."""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         custom_instruction = "Custom routing instruction: {context}, {request}, {top_k}"
 
         router = LLMRouter(
@@ -131,6 +138,8 @@ class TestLLMRouter:
         self, mock_context, mock_llm, mock_agent, test_function
     ):
         """Tests the _route_with_llm method."""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
             llm=mock_llm,
@@ -178,6 +187,8 @@ class TestLLMRouter:
     @pytest.mark.asyncio
     async def test_route_method(self, mock_context, mock_llm, mock_agent):
         """Tests the route method."""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
             llm=mock_llm,
@@ -216,6 +227,8 @@ class TestLLMRouter:
     @pytest.mark.asyncio
     async def test_route_to_server_method(self, mock_context, mock_llm):
         """Tests the route_to_server method."""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
             llm=mock_llm,
@@ -254,6 +267,8 @@ class TestLLMRouter:
     @pytest.mark.asyncio
     async def test_route_to_agent_method(self, mock_context, mock_llm, mock_agent):
         """Tests the route_to_agent method."""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
             llm=mock_llm,
@@ -294,6 +309,8 @@ class TestLLMRouter:
         self, mock_context, mock_llm, test_function
     ):
         """Tests the route_to_function method."""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
             llm=mock_llm,
@@ -332,6 +349,8 @@ class TestLLMRouter:
     @pytest.mark.asyncio
     async def test_empty_llm_response(self, mock_context, mock_llm):
         """Tests handling of empty response from the LLM."""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
             llm=mock_llm,
@@ -355,6 +374,8 @@ class TestLLMRouter:
     @pytest.mark.asyncio
     async def test_invalid_category_in_llm_response(self, mock_context, mock_llm):
         """Tests handling of invalid category in LLM response."""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
             llm=mock_llm,
@@ -395,6 +416,8 @@ class TestLLMRouter:
     # Test 12: Generate context
     def test_generate_context(self, mock_context, mock_llm, mock_agent, test_function):
         """Tests the _generate_context method."""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # Setup router
         router = LLMRouter(
             llm=mock_llm,

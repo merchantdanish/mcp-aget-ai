@@ -48,6 +48,8 @@ class TestAnthropicLLMRouter:
         mock_context.config.anthropic = MagicMock()
         mock_context.config.anthropic.api_key = "test_api_key"
         mock_context.config.anthropic.default_model = "claude-3-7-sonnet-latest"
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         return mock_context
 
     # Test 1: Basic initialization

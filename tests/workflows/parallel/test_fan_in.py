@@ -15,6 +15,8 @@ class TestFanIn:
         """
         Creates a FanIn instance with an Agent and LLM factory.
         """
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         return FanIn(
             aggregator_agent=mock_agent,
             llm_factory=mock_llm_factory,
@@ -26,6 +28,8 @@ class TestFanIn:
         """
         Creates a FanIn instance with an AugmentedLLM.
         """
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         return FanIn(
             aggregator_agent=mock_llm,
             context=mock_context,

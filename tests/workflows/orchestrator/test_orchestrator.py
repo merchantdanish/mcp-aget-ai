@@ -72,6 +72,8 @@ class TestOrchestratorMethods:
 
     async def test_generate(self, mock_llm_factory, mock_context, sample_plan_result):
         """Test that generate calls execute and returns the result"""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         orchestrator = Orchestrator(llm_factory=mock_llm_factory, context=mock_context)
 
         # Mock the execute method
@@ -99,6 +101,8 @@ class TestOrchestratorMethods:
         self, mock_llm_factory, mock_context, sample_plan_result
     ):
         """Test that generate_str calls generate and returns a string"""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         orchestrator = Orchestrator(llm_factory=mock_llm_factory, context=mock_context)
 
         # Mock the generate method
@@ -263,6 +267,8 @@ class TestOrchestratorMethods:
         sample_step_result,
     ):
         """Test that execute executes a full plan"""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # First create the mocks
         # We need to ensure the plan is NOT complete so steps get executed
         sample_plan.is_complete = False
@@ -326,6 +332,8 @@ class TestOrchestratorMethods:
         self, mock_llm_factory, mock_agents, mock_context, sample_step_result
     ):
         """Test that execute executes an iterative plan"""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # First create the mocks
         # Create next steps that will be returned by _get_next_step
         next_step_1 = NextStep(
@@ -384,6 +392,8 @@ class TestOrchestratorMethods:
         self, mock_llm_factory, mock_agents, mock_context
     ):
         """Test that execute raises an error when max iterations is reached"""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         # Create a next step that is never complete
         next_step = NextStep(
             description="Never-ending step",
@@ -480,6 +490,8 @@ class TestOrchestratorMethods:
 
     async def test_generate_with_history(self, mock_llm_factory, mock_context):
         """Test that generate raises an error when history tracking is enabled"""
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         orchestrator = Orchestrator(llm_factory=mock_llm_factory, context=mock_context)
 
         # Call generate with history tracking enabled

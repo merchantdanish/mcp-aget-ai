@@ -9,6 +9,9 @@ import src.mcp_agent.mcp.mcp_aggregator as mcp_aggregator_mod
 
 class DummyContext:
     def __init__(self):
+        self.tracer = None
+        self.tracing_enabled = False
+
         # Provide a server_registry with a start_server async context manager
         class DummySession:
             async def initialize(self):
@@ -433,7 +436,7 @@ async def test_mcp_aggregator_get_prompt(monkeypatch):
 
     result = await aggregator.get_prompt("srv1_promptA", arguments={})
     assert result.isError is True
-    assert "Failed to call tool" in result.description
+    assert "Failed to get prompt" in result.description
 
 
 @pytest.mark.asyncio

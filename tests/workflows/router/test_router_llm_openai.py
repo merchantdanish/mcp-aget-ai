@@ -48,6 +48,8 @@ class TestOpenAILLMRouter:
         mock_context.config.openai = MagicMock()
         mock_context.config.openai.api_key = "test_api_key"
         mock_context.config.openai.default_model = "gpt-4o"
+        mock_context.tracer = None
+        mock_context.tracing_enabled = False
         return mock_context
 
     # Test 1: Basic initialization
@@ -159,7 +161,7 @@ class TestOpenAILLMRouter:
         ) as mock_llm_class:
             mock_llm_class.return_value = MagicMock()
 
-            router = OpenAILLMRouter(
+            OpenAILLMRouter(
                 server_names=["test_server"],
                 context=setup_openai_context,
             )
