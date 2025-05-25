@@ -12,9 +12,8 @@ from typing import (
     TYPE_CHECKING,
 )
 
-from pydantic import BaseModel, ConfigDict, Field
-from temporalio import workflow
 
+from pydantic import BaseModel, ConfigDict, Field
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.temporal import TemporalExecutor
 from mcp_agent.executor.temporal.workflow_signal import (
@@ -361,6 +360,8 @@ class Workflow(ABC, Generic[T], ContextDependent):
         @workflow.signal(dynamic=True)
         async def _signal_receiver(self, name: str, args: Sequence[RawValue]):
             """Dynamic signal handler for Temporal workflows."""
+            from temporalio import workflow
+
             self._logger.debug(f"Dynamic signal received: name={name}, args={args}")
 
             # Extract payload and update mailbox

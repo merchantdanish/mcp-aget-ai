@@ -2,9 +2,13 @@ $schema: ../../../schema/mcp-agent.config.schema.json
 
 execution_engine: asyncio
 logger:
-  type: console
+  transports: [file]
   level: debug
-  path: "router.jsonl"
+  progress_display: true
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp" # Options: "timestamp" or "session_id"
+    timestamp_format: "%Y%m%d_%H%M%S"
 
 mcp:
   servers:
@@ -17,12 +21,13 @@ mcp:
 
 openai:
   # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored
+  #  default_model: "o3-mini"
   default_model: "gpt-4o-mini"
 
 otel:
-  enabled: false
-  exporters: ["console"]
+  enabled: true
+  exporters: ["console", "file"]
   # If running jaeger locally, uncomment the following lines and add "otlp" to the exporters list
   # otlp_settings:
   #   endpoint: "http://localhost:4318/v1/traces"
-  service_name: "WorkflowIntentClassifierExample"
+  service_name: "BasicTracingAgentExample"

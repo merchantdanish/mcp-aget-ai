@@ -6,6 +6,8 @@ The MCP Agent Server exposes agentic workflows as MCP tools.
 
 It shows how to build, run, and connect to an MCP server using the asyncio execution engine.
 
+https://github.com/user-attachments/assets/f651af86-222d-4df0-8241-616414df66e4
+
 ## Concepts Demonstrated
 
 - Creating workflows with the `Workflow` base class
