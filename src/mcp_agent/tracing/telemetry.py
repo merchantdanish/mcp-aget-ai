@@ -7,14 +7,9 @@ import asyncio
 from collections.abc import Sequence
 import functools
 import inspect
-from typing import Any, Dict, Callable, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Callable, Optional, TYPE_CHECKING
 
 from opentelemetry import trace
-from opentelemetry.context import Context as OtelContext
-from opentelemetry.propagate import extract as otel_extract
-from opentelemetry.trace import set_span_in_context
-from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from mcp_agent.core.context_dependent import ContextDependent
@@ -147,45 +142,6 @@ def record_attributes(span, attributes: Dict[str, Any], prefix: str = ""):
     serialized = serialize_attributes(attributes, prefix)
     for attr_key, attr_value in serialized.items():
         span.set_attribute(attr_key, attr_value)
-
-
-class MCPRequestTrace:
-    """Helper class for trace context propagation in MCP"""
-
-    @staticmethod
-    def start_span_from_mcp_request(
-        method: str, params: Dict[str, Any]
-    ) -> Tuple[trace.Span, OtelContext]:
-        """Extract trace context from incoming MCP request and start a new span"""
-        # Extract trace context from _meta if present
-        carrier = {}
-        _meta = params.get("_meta", {})
-        if "traceparent" in _meta:
-            carrier["traceparent"] = _meta["traceparent"]
-        if "tracestate" in _meta:
-            carrier["tracestate"] = _meta["tracestate"]
-
-        # Extract context and start span
-        ctx = otel_extract(carrier, context=OtelContext())
-        tracer = trace.get_tracer(__name__)
-        span = tracer.start_span(method, context=ctx, kind=SpanKind.SERVER)
-        return span, set_span_in_context(span)
-
-    @staticmethod
-    def inject_trace_context(arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Inject current trace context into outgoing MCP request arguments"""
-        carrier = {}
-        TraceContextTextMapPropagator().inject(carrier)
-
-        # Create or update _meta with trace context
-        _meta = arguments.get("_meta", {})
-        if "traceparent" in carrier:
-            _meta["traceparent"] = carrier["traceparent"]
-        if "tracestate" in carrier:
-            _meta["tracestate"] = carrier["tracestate"]
-        arguments["_meta"] = _meta
-
-        return arguments
 
 
 def is_otel_serializable(value: Any) -> bool:

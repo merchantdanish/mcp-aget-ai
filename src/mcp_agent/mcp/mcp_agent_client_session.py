@@ -6,16 +6,15 @@ It adds logging and supports sampling requests.
 from datetime import timedelta
 from typing import Any, Callable, Optional, TYPE_CHECKING
 from opentelemetry import trace
+from opentelemetry.propagate import inject
 
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from mcp import ClientSession
+from mcp import ClientNotification, ClientRequest, ClientSession
 from mcp.shared.session import (
     ReceiveResultT,
     ReceiveNotificationT,
     RequestId,
-    SendNotificationT,
-    SendRequestT,
     SendResultT,
     ProgressFnT,
 )
@@ -42,6 +41,8 @@ from mcp.types import (
     ServerRequest,
     TextContent,
     ListRootsResult,
+    NotificationParams,
+    RequestParams,
     Root,
 )
 
@@ -137,7 +138,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
 
     async def send_request(
         self,
-        request: SendRequestT,
+        request: ClientRequest,
         result_type: type[ReceiveResultT],
         request_read_timeout_seconds: timedelta | None = None,
         metadata: MessageMetadata = None,
@@ -170,6 +171,20 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
                             span, params.model_dump(), MCP_REQUEST_ARGUMENT_KEY
                         )
 
+                # Propagate trace context in request.params._meta
+                trace_headers = {}
+                inject(trace_headers)
+                if "traceparent" in trace_headers or "tracestate" in trace_headers:
+                    if params is None:
+                        params = RequestParams()
+                    if params.meta is None:
+                        params.meta = RequestParams.Meta()
+                    if "traceparent" in trace_headers:
+                        params.meta.traceparent = trace_headers["traceparent"]
+                    if "tracestate" in trace_headers:
+                        params.meta.tracestate = trace_headers["tracestate"]
+                    request.root.params = params
+
                 if metadata and metadata.resumption_token:
                     span.set_attribute(
                         "metadata.resumption_token", metadata.resumption_token
@@ -201,7 +216,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
 
     async def send_notification(
         self,
-        notification: SendNotificationT,
+        notification: ClientNotification,
         related_request_id: RequestId | None = None,
     ) -> None:
         logger.debug("send_notification:", data=notification.model_dump())
@@ -214,12 +229,28 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
                 span.set_attribute(MCP_METHOD_NAME, notification.root.method)
                 if related_request_id:
                     span.set_attribute(MCP_REQUEST_ID, str(related_request_id))
-                if notification.root.params:
+
+                params = notification.root.params
+                if params:
                     record_attributes(
                         span,
-                        notification.root.params.model_dump(),
+                        params.model_dump(),
                         MCP_REQUEST_ARGUMENT_KEY,
                     )
+
+                # Propagate trace context in request.params._meta
+                trace_headers = {}
+                inject(trace_headers)
+                if "traceparent" in trace_headers or "tracestate" in trace_headers:
+                    if params is None:
+                        params = NotificationParams()
+                    if params.meta is None:
+                        params.meta = NotificationParams.Meta()
+                    if "traceparent" in trace_headers:
+                        params.meta.traceparent = trace_headers["traceparent"]
+                    if "tracestate" in trace_headers:
+                        params.meta.tracestate = trace_headers["tracestate"]
+                    notification.root.params = params
 
             try:
                 return await super().send_notification(notification, related_request_id)
