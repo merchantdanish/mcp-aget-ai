@@ -237,8 +237,6 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
                         params.model_dump(),
                         MCP_REQUEST_ARGUMENT_KEY,
                     )
-                else:
-                    params = NotificationParams()
 
                 # Propagate trace context in request.params._meta
                 trace_headers = {}
