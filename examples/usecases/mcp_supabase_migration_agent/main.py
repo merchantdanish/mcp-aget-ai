@@ -139,6 +139,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error during execution: {e}")
         raise
+
     finally:
         end = time.time()
         t = end - start
