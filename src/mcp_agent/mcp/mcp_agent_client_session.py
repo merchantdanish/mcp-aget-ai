@@ -170,17 +170,19 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
                         record_attributes(
                             span, params.model_dump(), MCP_REQUEST_ARGUMENT_KEY
                         )
-                else:
-                    params = RequestParams()
 
                 # Propagate trace context in request.params._meta
                 trace_headers = {}
                 inject(trace_headers)
-                if trace_headers.get("traceparent") is not None:
+                if "traceparent" in trace_headers or "tracestate" in trace_headers:
+                    if params is None:
+                        params = RequestParams()
                     if params.meta is None:
-                        params.meta = {}
-                    # Exclude larger tracestate for now
-                    params.meta["traceparent"] = trace_headers["traceparent"]
+                        params.meta = RequestParams.Meta()
+                    if "traceparent" in trace_headers:
+                        params.meta.traceparent = trace_headers["traceparent"]
+                    if "tracestate" in trace_headers:
+                        params.meta.tracestate = trace_headers["tracestate"]
                     request.root.params = params
 
                 if metadata and metadata.resumption_token:
@@ -241,11 +243,16 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
                 # Propagate trace context in request.params._meta
                 trace_headers = {}
                 inject(trace_headers)
-                if trace_headers.get("traceparent") is not None:
+                if "traceparent" in trace_headers or "tracestate" in trace_headers:
+                    if params is None:
+                        params = NotificationParams()
                     if params.meta is None:
-                        params.meta = {}
-                    # Exclude larger tracestate for now
-                    params.meta["traceparent"] = trace_headers["traceparent"]
+                        params.meta = NotificationParams.Meta()
+                    if "traceparent" in trace_headers:
+                        params.meta.traceparent = trace_headers["traceparent"]
+                    if "tracestate" in trace_headers:
+                        params.meta.tracestate = trace_headers["tracestate"]
+                    notification.root.params = params
 
             try:
                 return await super().send_notification(notification, related_request_id)
