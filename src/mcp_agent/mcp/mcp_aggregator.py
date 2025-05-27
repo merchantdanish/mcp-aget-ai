@@ -1,7 +1,7 @@
 import asyncio
 from typing import List, Literal, Dict, Optional, TypeVar, TYPE_CHECKING
 
-from mcp import ServerCapabilities
+from mcp import ListResourcesResult, ServerCapabilities
 from opentelemetry import trace
 from pydantic import BaseModel
 from mcp.client.session import ClientSession
@@ -15,6 +15,7 @@ from mcp.types import (
     Prompt,
     Tool,
     TextContent,
+    Resource,
 )
 
 from mcp_agent.logging.event_progress import ProgressAction
@@ -60,6 +61,16 @@ class NamespacedPrompt(BaseModel):
     prompt: Prompt
     server_name: str
     namespaced_prompt_name: str
+
+
+class NamespacedResource(BaseModel):
+    """
+    A resource that is namespaced by server name.
+    """
+
+    resource: Resource
+    server_name: str
+    namespaced_resource_name: str
 
 
 class MCPAggregator(ContextDependent):
@@ -123,6 +134,12 @@ class MCPAggregator(ContextDependent):
         # Cache for prompt objects, maps server_name -> list of prompt objects
         self._server_to_prompt_map: Dict[str, List[NamespacedPrompt]] = {}
         self._prompt_map_lock = asyncio.Lock()
+
+        # Maps namespaced_resource_name -> namespaced resource info
+        self._namespaced_resource_map: Dict[str, NamespacedResource] = {}
+        # Cache for resource objects, maps server_name -> list of resource objects
+        self._server_to_resource_map: Dict[str, List[NamespacedResource]] = {}
+        self._resource_map_lock = asyncio.Lock()
 
     async def initialize(self, force: bool = False):
         """Initialize the application."""
@@ -304,7 +321,7 @@ class MCPAggregator(ContextDependent):
             if server_name not in self.server_names:
                 raise ValueError(f"Server '{server_name}' not found in server list")
 
-            _, tools, prompts = await self._fetch_capabilities(server_name)
+            _, tools, prompts, resources = await self._fetch_capabilities(server_name)
 
             # Process tools
             async with self._tool_map_lock:
@@ -336,11 +353,30 @@ class MCPAggregator(ContextDependent):
                     )
                     self._server_to_prompt_map[server_name].append(namespaced_prompt)
 
+            # Process resources
+            async with self._resource_map_lock:
+                self._server_to_resource_map[server_name] = []
+                for resource in resources:
+                    namespaced_resource_name = f"{server_name}{SEP}{resource.name}"
+                    namespaced_resource = NamespacedResource(
+                        resource=resource,
+                        server_name=server_name,
+                        namespaced_resource_name=namespaced_resource_name,
+                    )
+
+                    self._namespaced_resource_map[namespaced_resource_name] = (
+                        namespaced_resource
+                    )
+                    self._server_to_resource_map[server_name].append(
+                        namespaced_resource
+                    )
+
             event_metadata = {
                 "server_name": server_name,
                 "agent_name": self.agent_name,
                 "tool_count": len(tools),
                 "prompt_count": len(prompts),
+                "resource_count": len(resources),
             }
 
             logger.debug(
@@ -361,6 +397,12 @@ class MCPAggregator(ContextDependent):
                 for prompt in prompts:
                     span.set_attribute(
                         f"prompt.{prompt.name}", prompt.description or "No description"
+                    )
+
+                for resource in resources:
+                    span.set_attribute(
+                        f"resource.{resource.name}",
+                        resource.description or "No description",
                     )
 
             return tools, prompts
@@ -390,6 +432,10 @@ class MCPAggregator(ContextDependent):
             async with self._prompt_map_lock:
                 self._namespaced_prompt_map.clear()
                 self._server_to_prompt_map.clear()
+
+            async with self._resource_map_lock:
+                self._namespaced_resource_map.clear()
+                self._server_to_resource_map.clear()
 
             # TODO: saqadri (FA1) - Verify that this can be removed
             # if self.connection_persistence:
@@ -589,6 +635,101 @@ class MCPAggregator(ContextDependent):
                     )
 
             return result
+
+    async def list_resources(self, server_name: str | None = None):
+        """
+        :return: Resources from all servers aggregated, and renamed to be dot-namespaced by server name.
+        """
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.list_resources"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+            span.set_attribute("initialized", self.initialized)
+            if not self.initialized:
+                await self.load_servers()
+
+            if server_name:
+                span.set_attribute("server_name", server_name)
+                result = ListResourcesResult(
+                    resources=[
+                        namespaced_resource.resource.model_copy(
+                            update={
+                                "name": namespaced_resource.namespaced_resource_name
+                            }
+                        )
+                        for namespaced_resource in self._server_to_resource_map.get(
+                            server_name, []
+                        )
+                    ]
+                )
+
+            else:
+                result = ListResourcesResult(
+                    resources=[
+                        namespaced_resource.resource.model_copy(
+                            update={"name": namespaced_resource_name}
+                        )
+                        for namespaced_resource_name, namespaced_resource in self._namespaced_resource_map.items()
+                    ]
+                )
+
+            if self.context.tracing_enabled:
+                span.set_attribute("resource_count", len(result.resources))
+                for resource in result.resources:
+                    span.set_attribute(
+                        f"resource.{resource.name}",
+                        resource.description or "No description",
+                    )
+
+            return result
+
+    async def read_resource(self, name: str, server_name: str | None = None):
+        """
+        Read a resource from a server.
+
+        Args:
+            name: Name of the resource, optionally namespaced with server name
+                using the format 'server_name-resource_name'
+        Returns:
+            Resource object, or None if not found
+        """
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.read_resource"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent_name)
+            span.set_attribute("initialized", self.initialized)
+            if not self.initialized:
+                await self.load_servers()
+
+            if server_name:
+                span.set_attribute("server_name", server_name)
+                local_resource_name = name
+            else:
+                # Use the same separator logic as for tools/prompts
+                server_name, local_resource_name = self._parse_capability_name(
+                    name, "resource"
+                )
+                span.set_attribute("parsed_server_name", server_name)
+                span.set_attribute("parsed_resource_name", local_resource_name)
+
+            if server_name is None or local_resource_name is None:
+                logger.error(f"Error: Resource '{name}' not found")
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                span.record_exception(ValueError(f"Resource '{name}' not found"))
+                return None
+
+            # Find the resource in the map
+            namespaced_resource_name = f"{server_name}{SEP}{local_resource_name}"
+            resource = self._namespaced_resource_map.get(namespaced_resource_name)
+            if resource:
+                return resource.resource.model_copy(
+                    update={"name": namespaced_resource_name}
+                )
+            else:
+                logger.error(f"Resource '{namespaced_resource_name}' not found")
+                return None
 
     async def call_tool(
         self, name: str, arguments: dict | None = None, server_name: str | None = None
@@ -976,6 +1117,11 @@ class MCPAggregator(ContextDependent):
 
             def getter(item: NamespacedPrompt):
                 return item.prompt.name
+        elif capability == "resource":
+            capability_map = self._server_to_resource_map
+
+            def getter(item: NamespacedResource):
+                return item.resource.name
         else:
             raise ValueError(f"Unsupported capability: {capability}")
 
@@ -1080,9 +1226,42 @@ class MCPAggregator(ContextDependent):
             logger.error(f"Error loading prompts from server '{server_name}': {e}")
             return prompts
 
+    async def _fetch_resources(
+        self, client: ClientSession, server_name: str
+    ) -> list[Resource]:
+        # Only fetch resources if the server supports them
+        capabilities = await self.get_capabilities(server_name)
+        if not capabilities or not getattr(capabilities, "resources", None):
+            logger.debug(f"Server '{server_name}' does not support resources")
+            return []
+
+        resources: List[Resource] = []
+
+        try:
+            result = await client.list_resources()
+            if not result:
+                return resources
+
+            cursor = getattr(result, "nextCursor", None)
+            resources.extend(getattr(result, "resources", []) or [])
+
+            while cursor:
+                result = await client.list_resources(cursor=cursor)
+                if not result:
+                    return resources
+
+                cursor = getattr(result, "nextCursor", None)
+                resources.extend(getattr(result, "resources", []) or [])
+
+            return resources
+        except Exception as e:
+            logger.error(f"Error loading resources from server '{server_name}': {e}")
+            return resources
+
     async def _fetch_capabilities(self, server_name: str):
         tools: List[Tool] = []
         prompts: List[Prompt] = []
+        resources: List[Resource] = []
 
         if self.connection_persistence:
             server_connection = await self._persistent_connection_manager.get_server(
@@ -1090,14 +1269,18 @@ class MCPAggregator(ContextDependent):
             )
             tools = await self._fetch_tools(server_connection.session, server_name)
             prompts = await self._fetch_prompts(server_connection.session, server_name)
+            resources = await self._fetch_resources(
+                server_connection.session, server_name
+            )
         else:
             async with gen_client(
                 server_name, server_registry=self.context.server_registry
             ) as client:
                 tools = await self._fetch_tools(client, server_name)
                 prompts = await self._fetch_prompts(client, server_name)
+                resources = await self._fetch_resources(client, server_name)
 
-        return server_name, tools, prompts
+        return server_name, tools, prompts, resources
 
 
 class MCPCompoundServer(Server):
@@ -1109,12 +1292,13 @@ class MCPCompoundServer(Server):
         super().__init__(name)
         self.aggregator = MCPAggregator(server_names)
 
-        # Register handlers for tools, prompts
-        # TODO: saqadri - once we support resources, add handlers for those as well
+        # Register handlers for tools, prompts, and resources
         self.list_tools()(self._list_tools)
         self.call_tool()(self._call_tool)
         self.list_prompts()(self._list_prompts)
         self.get_prompt()(self._get_prompt)
+        self.list_resources()(self._list_resources)
+        self.read_resource()(self._read_resource)
 
     async def _list_tools(self) -> List[Tool]:
         """List all tools aggregated from connected MCP servers."""
@@ -1158,6 +1342,24 @@ class MCPCompoundServer(Server):
             return GetPromptResult(
                 isError=True, description=f"Error getting prompt: {e}", messages=[]
             )
+
+    async def _list_resources(self):
+        """List available resources from the connected MCP servers."""
+        resources = await self.aggregator.list_resources()
+        return resources
+
+    async def _read_resource(self, name: str, server_name: str | None = None):
+        """
+        Get a resource from the aggregated servers.
+
+        Args:
+            name: Name of the resource to get (optionally namespaced)
+            server_name: Optional server name
+        """
+        resource = await self.aggregator.read_resource(
+            name=name, server_name=server_name
+        )
+        return resource
 
     async def run_stdio_async(self) -> None:
         """Run the server using stdio transport."""

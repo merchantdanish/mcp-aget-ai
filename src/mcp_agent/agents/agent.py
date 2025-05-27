@@ -15,13 +15,20 @@ from mcp.types import (
     ServerCapabilities,
     TextContent,
     Tool,
+    ListResourcesResult,
+    ReadResourceResult,
 )
 
 from mcp_agent.core.context import Context
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME, GEN_AI_TOOL_NAME
 from mcp_agent.tracing.telemetry import get_tracer, record_attributes
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
-from mcp_agent.mcp.mcp_aggregator import MCPAggregator, NamespacedPrompt, NamespacedTool
+from mcp_agent.mcp.mcp_aggregator import (
+    MCPAggregator,
+    NamespacedPrompt,
+    NamespacedTool,
+    NamespacedResource,
+)
 from mcp_agent.human_input.types import (
     HumanInputRequest,
     HumanInputResponse,
@@ -117,6 +124,15 @@ class Agent(BaseModel):
     )
     # Cache for prompt objects, maps server_name -> list of prompt objects
     _server_to_prompt_map: Dict[str, List[NamespacedPrompt]] = PrivateAttr(
+        default_factory=dict
+    )
+
+    # Maps namespaced_resource_name -> namespaced resource info
+    _namespaced_resource_map: Dict[str, NamespacedResource] = PrivateAttr(
+        default_factory=dict
+    )
+    # Cache for resource objects, maps server_name -> list of resource objects
+    _server_to_resource_map: Dict[str, List[NamespacedResource]] = PrivateAttr(
         default_factory=dict
     )
 
@@ -228,6 +244,9 @@ class Agent(BaseModel):
 
                 self._server_to_prompt_map.clear()
                 self._server_to_prompt_map.update(result.server_to_prompt_map)
+
+                self._server_to_resource_map.clear()
+                self._server_to_resource_map.update(result.server_to_resource_map)
 
                 self.initialized = result.initialized
                 span.add_event("initialize_complete")
@@ -453,6 +472,57 @@ class Agent(BaseModel):
 
             _annotate_span_for_tools_result(result)
 
+            return result
+
+    async def list_resources(
+        self, server_name: str | None = None
+    ) -> ListResourcesResult:
+        """
+        List resources available to the agent from MCP servers.
+        """
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.list_resources"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
+            span.set_attribute("initialized", self.initialized)
+            if server_name:
+                span.set_attribute("server_name", server_name)
+
+            if not self.initialized:
+                await self.initialize()
+
+            executor = self.context.executor
+            result: ListResourcesResult = await executor.execute(
+                self._agent_tasks.list_resources_task,
+                ListResourcesRequest(agent_name=self.name, server_name=server_name),
+            )
+            return result
+
+    async def read_resource(self, uri: str, server_name: str | None = None):
+        """
+        Read a resource from an MCP server.
+        """
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.read_resource"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.name)
+            span.set_attribute("initialized", self.initialized)
+            span.set_attribute("uri", uri)
+            if server_name:
+                span.set_attribute("server_name", server_name)
+
+            if not self.initialized:
+                await self.initialize()
+
+            executor = self.context.executor
+            result: ReadResourceResult = await executor.execute(
+                self._agent_tasks.read_resource_task,
+                ReadResourceRequest(
+                    agent_name=self.name, uri=uri, server_name=server_name
+                ),
+            )
             return result
 
     async def list_prompts(self, server_name: str | None = None) -> ListPromptsResult:
@@ -776,6 +846,11 @@ class InitAggregatorResponse(BaseModel):
         default_factory=dict
     )
 
+    namespaced_resource_map: Dict[str, NamespacedResource] = Field(default_factory=dict)
+    server_to_resource_map: Dict[str, List[NamespacedResource]] = Field(
+        default_factory=dict
+    )
+
 
 class ListToolsRequest(BaseModel):
     """
@@ -835,6 +910,25 @@ class GetServerSessionRequest(BaseModel):
 
     agent_name: str
     server_name: str
+
+
+class ListResourcesRequest(BaseModel):
+    """
+    Request to list resources for an agent.
+    """
+
+    agent_name: str
+    server_name: Optional[str] = None
+
+
+class ReadResourceRequest(BaseModel):
+    """
+    Request to read a resource for an agent.
+    """
+
+    agent_name: str
+    uri: str
+    server_name: Optional[str] = None
 
 
 class GetServerSessionResponse(BaseModel):
@@ -899,6 +993,8 @@ class AgentTasks:
             server_to_tool_map=aggregator._server_to_tool_map,
             namespaced_prompt_map=aggregator._namespaced_prompt_map,
             server_to_prompt_map=aggregator._server_to_prompt_map,
+            namespaced_resource_map=aggregator._namespaced_resource_map,
+            server_to_resource_map=aggregator._server_to_resource_map,
         )
 
     async def shutdown_aggregator_task(self, agent_name: str) -> bool:
@@ -1048,3 +1144,30 @@ class AgentTasks:
         return GetServerSessionResponse(
             session_id=session_id,
         )
+
+    async def list_resources_task(self, request: ListResourcesRequest):
+        """
+        List resources for an agent.
+        """
+        agent_name = request.agent_name
+        server_name = request.server_name
+
+        aggregator = self.server_aggregators_for_agent.get(agent_name)
+        if not aggregator:
+            raise ValueError(f"Server aggregator for agent '{agent_name}' not found")
+
+        return await aggregator.list_resources(server_name=server_name)
+
+    async def read_resource_task(self, request: ReadResourceRequest):
+        """
+        Read a resource for an agent.
+        """
+        agent_name = request.agent_name
+        uri = request.uri
+        server_name = request.server_name
+
+        aggregator = self.server_aggregators_for_agent.get(agent_name)
+        if not aggregator:
+            raise ValueError(f"Server aggregator for agent '{agent_name}' not found")
+
+        return await aggregator.read_resource(uri=uri, server_name=server_name)
