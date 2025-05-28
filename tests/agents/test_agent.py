@@ -290,11 +290,12 @@ class TestAgent:
         """Test that list_tools returns parent tool from internal state."""
         # Patch executor.execute to return InitAggregatorResponse with parent_tool
         from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
-        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+
+        parent_tool = Tool(
+            name="parent_tool", description="A parent tool", inputSchema={}
+        )
         namespaced_tool = NamespacedTool(
-            namespaced_tool_name="parent_tool",
-            tool=parent_tool,
-            server_name="server1"
+            namespaced_tool_name="parent_tool", tool=parent_tool, server_name="server1"
         )
         init_response = InitAggregatorResponse(
             initialized=True,
@@ -304,7 +305,9 @@ class TestAgent:
             server_to_prompt_map={},
         )
         with patch.object(
-            basic_agent.context.executor, "execute", AsyncMock(return_value=init_response)
+            basic_agent.context.executor,
+            "execute",
+            AsyncMock(return_value=init_response),
         ):
             # Force re-initialization
             basic_agent.initialized = False
@@ -315,11 +318,12 @@ class TestAgent:
     async def test_list_tools_with_functions(self, agent_with_functions, test_function):
         """Test that list_tools includes function tools."""
         from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
-        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+
+        parent_tool = Tool(
+            name="parent_tool", description="A parent tool", inputSchema={}
+        )
         namespaced_tool = NamespacedTool(
-            namespaced_tool_name="parent_tool",
-            tool=parent_tool,
-            server_name="server1"
+            namespaced_tool_name="parent_tool", tool=parent_tool, server_name="server1"
         )
         init_response = InitAggregatorResponse(
             initialized=True,
@@ -329,7 +333,9 @@ class TestAgent:
             server_to_prompt_map={},
         )
         with patch.object(
-            agent_with_functions.context.executor, "execute", AsyncMock(return_value=init_response)
+            agent_with_functions.context.executor,
+            "execute",
+            AsyncMock(return_value=init_response),
         ):
             agent_with_functions.initialized = False  # Force re-initialization
             result = await agent_with_functions.list_tools()
@@ -344,11 +350,12 @@ class TestAgent:
     async def test_list_tools_with_human_input(self, agent_with_human_input):
         """Test that list_tools includes human input tool when callback is set."""
         from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
-        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+
+        parent_tool = Tool(
+            name="parent_tool", description="A parent tool", inputSchema={}
+        )
         namespaced_tool = NamespacedTool(
-            namespaced_tool_name="parent_tool",
-            tool=parent_tool,
-            server_name="server1"
+            namespaced_tool_name="parent_tool", tool=parent_tool, server_name="server1"
         )
         init_response = InitAggregatorResponse(
             initialized=True,
@@ -358,7 +365,9 @@ class TestAgent:
             server_to_prompt_map={},
         )
         with patch.object(
-            agent_with_human_input.context.executor, "execute", AsyncMock(return_value=init_response)
+            agent_with_human_input.context.executor,
+            "execute",
+            AsyncMock(return_value=init_response),
         ):
             agent_with_human_input.initialized = False  # Force re-initialization
             result = await agent_with_human_input.list_tools()
@@ -378,11 +387,12 @@ class TestAgent:
     async def test_list_tools_without_human_input(self, basic_agent):
         """Test that list_tools doesn't include human input tool when callback is not set."""
         from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
-        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+
+        parent_tool = Tool(
+            name="parent_tool", description="A parent tool", inputSchema={}
+        )
         namespaced_tool = NamespacedTool(
-            namespaced_tool_name="parent_tool",
-            tool=parent_tool,
-            server_name="server1"
+            namespaced_tool_name="parent_tool", tool=parent_tool, server_name="server1"
         )
         init_response = InitAggregatorResponse(
             initialized=True,
@@ -392,7 +402,9 @@ class TestAgent:
             server_to_prompt_map={},
         )
         with patch.object(
-            basic_agent.context.executor, "execute", AsyncMock(return_value=init_response)
+            basic_agent.context.executor,
+            "execute",
+            AsyncMock(return_value=init_response),
         ):
             basic_agent.initialized = False  # Force re-initialization
             result = await basic_agent.list_tools()
@@ -409,16 +421,17 @@ class TestAgent:
     async def test_call_tool_parent(self, basic_agent):
         """Test calling a parent tool."""
         from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+
         tool_name = "parent_tool"
         arguments = {"arg1": "value1"}
         mock_result = CallToolResult(
             content=[TextContent(type="text", text="Tool result")]
         )
-        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+        parent_tool = Tool(
+            name="parent_tool", description="A parent tool", inputSchema={}
+        )
         namespaced_tool = NamespacedTool(
-            namespaced_tool_name="parent_tool",
-            tool=parent_tool,
-            server_name="server1"
+            namespaced_tool_name="parent_tool", tool=parent_tool, server_name="server1"
         )
         init_response = InitAggregatorResponse(
             initialized=True,
@@ -427,6 +440,7 @@ class TestAgent:
             namespaced_prompt_map={},
             server_to_prompt_map={},
         )
+
         # Patch executor.execute to return InitAggregatorResponse for initialization,
         # and CallToolResult for the tool call
         def execute_side_effect(*args, **kwargs):
@@ -435,7 +449,9 @@ class TestAgent:
             return mock_result
 
         with patch.object(
-            basic_agent.context.executor, "execute", AsyncMock(side_effect=execute_side_effect)
+            basic_agent.context.executor,
+            "execute",
+            AsyncMock(side_effect=execute_side_effect),
         ):
             basic_agent.initialized = False  # Force re-initialization
             result = await basic_agent.call_tool(tool_name, arguments)
@@ -445,13 +461,14 @@ class TestAgent:
     async def test_call_tool_function(self, agent_with_functions, test_function):
         """Test calling a function tool."""
         from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+
         tool_name = test_function.__name__  # Should be "function" not "test_function"
         arguments = {"param1": "test", "param2": 42}
-        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+        parent_tool = Tool(
+            name="parent_tool", description="A parent tool", inputSchema={}
+        )
         namespaced_tool = NamespacedTool(
-            namespaced_tool_name="parent_tool",
-            tool=parent_tool,
-            server_name="server1"
+            namespaced_tool_name="parent_tool", tool=parent_tool, server_name="server1"
         )
         init_response = InitAggregatorResponse(
             initialized=True,
@@ -461,7 +478,9 @@ class TestAgent:
             server_to_prompt_map={},
         )
         with patch.object(
-            agent_with_functions.context.executor, "execute", AsyncMock(return_value=init_response)
+            agent_with_functions.context.executor,
+            "execute",
+            AsyncMock(return_value=init_response),
         ):
             agent_with_functions.initialized = False  # Force re-initialization
             result = await agent_with_functions.call_tool(tool_name, arguments)
@@ -473,6 +492,7 @@ class TestAgent:
     async def test_call_tool_human_input(self, agent_with_human_input):
         """Test calling the human input tool."""
         from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+
         tool_name = HUMAN_INPUT_TOOL_NAME
         arguments = {
             "request": {
@@ -480,11 +500,11 @@ class TestAgent:
                 "description": "This is a test",
             }
         }
-        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+        parent_tool = Tool(
+            name="parent_tool", description="A parent tool", inputSchema={}
+        )
         namespaced_tool = NamespacedTool(
-            namespaced_tool_name="parent_tool",
-            tool=parent_tool,
-            server_name="server1"
+            namespaced_tool_name="parent_tool", tool=parent_tool, server_name="server1"
         )
         init_response = InitAggregatorResponse(
             initialized=True,
@@ -497,7 +517,9 @@ class TestAgent:
         response = HumanInputResponse(request_id="test-id", response="User input")
         agent_with_human_input.request_human_input = AsyncMock(return_value=response)
         with patch.object(
-            agent_with_human_input.context.executor, "execute", AsyncMock(return_value=init_response)
+            agent_with_human_input.context.executor,
+            "execute",
+            AsyncMock(return_value=init_response),
         ):
             agent_with_human_input.initialized = False  # Force re-initialization
             result = await agent_with_human_input.call_tool(tool_name, arguments)
@@ -509,6 +531,7 @@ class TestAgent:
     async def test_call_tool_human_input_timeout(self, agent_with_human_input):
         """Test calling the human input tool with timeout."""
         from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+
         tool_name = HUMAN_INPUT_TOOL_NAME
         arguments = {
             "request": {
@@ -517,11 +540,11 @@ class TestAgent:
                 "timeout_seconds": 5,
             }
         }
-        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+        parent_tool = Tool(
+            name="parent_tool", description="A parent tool", inputSchema={}
+        )
         namespaced_tool = NamespacedTool(
-            namespaced_tool_name="parent_tool",
-            tool=parent_tool,
-            server_name="server1"
+            namespaced_tool_name="parent_tool", tool=parent_tool, server_name="server1"
         )
         init_response = InitAggregatorResponse(
             initialized=True,
@@ -535,7 +558,9 @@ class TestAgent:
             side_effect=TimeoutError("Timeout occurred")
         )
         with patch.object(
-            agent_with_human_input.context.executor, "execute", AsyncMock(return_value=init_response)
+            agent_with_human_input.context.executor,
+            "execute",
+            AsyncMock(return_value=init_response),
         ):
             agent_with_human_input.initialized = False  # Force re-initialization
             result = await agent_with_human_input.call_tool(tool_name, arguments)
@@ -547,6 +572,7 @@ class TestAgent:
     async def test_call_tool_human_input_error(self, agent_with_human_input):
         """Test calling the human input tool with general error."""
         from mcp_agent.agents.agent import InitAggregatorResponse, NamespacedTool
+
         tool_name = HUMAN_INPUT_TOOL_NAME
         arguments = {
             "request": {
@@ -554,11 +580,11 @@ class TestAgent:
                 "description": "This is a test",
             }
         }
-        parent_tool = Tool(name="parent_tool", description="A parent tool", inputSchema={})
+        parent_tool = Tool(
+            name="parent_tool", description="A parent tool", inputSchema={}
+        )
         namespaced_tool = NamespacedTool(
-            namespaced_tool_name="parent_tool",
-            tool=parent_tool,
-            server_name="server1"
+            namespaced_tool_name="parent_tool", tool=parent_tool, server_name="server1"
         )
         init_response = InitAggregatorResponse(
             initialized=True,
@@ -573,7 +599,9 @@ class TestAgent:
             side_effect=Exception(error_message)
         )
         with patch.object(
-            agent_with_human_input.context.executor, "execute", AsyncMock(return_value=init_response)
+            agent_with_human_input.context.executor,
+            "execute",
+            AsyncMock(return_value=init_response),
         ):
             agent_with_human_input.initialized = False  # Force re-initialization
             result = await agent_with_human_input.call_tool(tool_name, arguments)
