@@ -1192,7 +1192,7 @@ class MCPAggregator(ContextDependent):
         capability_map = self._server_to_resource_map
 
         def getter(item: NamespacedResource):
-            return item.resource.uri
+            return str(item.resource.uri)
 
         for server_name, resources in capability_map.items():
             for resource in resources:
