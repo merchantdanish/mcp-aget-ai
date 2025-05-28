@@ -1,7 +1,7 @@
 import asyncio
 from typing import List, Literal, Dict, Optional, TypeVar, TYPE_CHECKING
 
-from mcp import ListResourcesResult, ServerCapabilities
+from mcp import ListResourcesResult, ReadResourceResult, ServerCapabilities
 from opentelemetry import trace
 from pydantic import BaseModel
 from mcp.client.session import ClientSession
@@ -684,13 +684,14 @@ class MCPAggregator(ContextDependent):
 
             return result
 
-    async def read_resource(self, name: str, server_name: str | None = None):
+    async def read_resource(self, uri: str, server_name: str | None = None):
         """
-        Read a resource from a server.
+        Read a resource from a server by its URI.
 
         Args:
-            name: Name of the resource, optionally namespaced with server name
-                using the format 'server_name-resource_name'
+            uri: The URI of the resource to read.
+            server_name: Optionally restrict search to a specific server.
+
         Returns:
             Resource object, or None if not found
         """
@@ -703,33 +704,82 @@ class MCPAggregator(ContextDependent):
             if not self.initialized:
                 await self.load_servers()
 
+            span.set_attribute("uri", uri)
+
+            # If server_name is provided, use that server
             if server_name:
                 span.set_attribute("server_name", server_name)
-                local_resource_name = name
             else:
-                # Use the same separator logic as for tools/prompts
-                server_name, local_resource_name = self._parse_capability_name(
-                    name, "resource"
-                )
+                # Use the URI to find the server name
+                server_name = self._find_server_name_from_uri(uri)
                 span.set_attribute("parsed_server_name", server_name)
-                span.set_attribute("parsed_resource_name", local_resource_name)
 
-            if server_name is None or local_resource_name is None:
-                logger.error(f"Error: Resource '{name}' not found")
+            if server_name is None:
+                logger.error(f"Resource with uri '{uri}' not found in any server")
                 span.set_status(trace.Status(trace.StatusCode.ERROR))
-                span.record_exception(ValueError(f"Resource '{name}' not found"))
-                return None
-
-            # Find the resource in the map
-            namespaced_resource_name = f"{server_name}{SEP}{local_resource_name}"
-            resource = self._namespaced_resource_map.get(namespaced_resource_name)
-            if resource:
-                return resource.resource.model_copy(
-                    update={"name": namespaced_resource_name}
+                span.record_exception(
+                    ValueError(f"Resource with uri '{uri}' not found in any server")
                 )
+                return ReadResourceResult(contents=[])
+
+            async def try_read_resource(client: ClientSession):
+                try:
+                    res = await client.read_resource(uri=uri)
+                    return res
+                except Exception as e:
+                    logger.error(
+                        f"Error reading resource with uri '{uri}'"
+                        + (f" from server '{server_name}'" if server_name else "")
+                        + f": {e}"
+                    )
+                    span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    span.record_exception(e)
+                    return ReadResourceResult(contents=[])
+
+            if self.connection_persistence:
+                server_conn = await self._persistent_connection_manager.get_server(
+                    server_name, client_session_factory=MCPAgentClientSession
+                )
+                res = await try_read_resource(server_conn.session)
+                # TODO: jerron - annotate span for result
+                return res
             else:
-                logger.error(f"Resource '{namespaced_resource_name}' not found")
-                return None
+                logger.debug(
+                    f"Creating temporary connection to server: {server_name}",
+                    data={
+                        "progress_action": ProgressAction.STARTING,
+                        "server_name": server_name,
+                        "agent_name": self.agent_name,
+                    },
+                )
+                span.add_event(
+                    "temporary_connection_created",
+                    {
+                        "server_name": server_name,
+                        GEN_AI_AGENT_NAME: self.agent_name,
+                    },
+                )
+                async with gen_client(
+                    server_name, server_registry=self.context.server_registry
+                ) as client:
+                    result = await try_read_resource(client)
+                    logger.debug(
+                        f"Closing temporary connection to server: {server_name}",
+                        data={
+                            "progress_action": ProgressAction.SHUTDOWN,
+                            "server_name": server_name,
+                            "agent_name": self.agent_name,
+                        },
+                    )
+                    span.add_event(
+                        "temporary_connection_closed",
+                        {
+                            "server_name": server_name,
+                            GEN_AI_AGENT_NAME: self.agent_name,
+                        },
+                    )
+                    # TODO: jerron - annotate span for result
+                    return result
 
     async def call_tool(
         self, name: str, arguments: dict | None = None, server_name: str | None = None
@@ -1117,11 +1167,6 @@ class MCPAggregator(ContextDependent):
 
             def getter(item: NamespacedPrompt):
                 return item.prompt.name
-        elif capability == "resource":
-            capability_map = self._server_to_resource_map
-
-            def getter(item: NamespacedResource):
-                return item.resource.name
         else:
             raise ValueError(f"Unsupported capability: {capability}")
 
@@ -1133,6 +1178,29 @@ class MCPAggregator(ContextDependent):
 
         # No match found
         return None, None
+
+    def _find_server_name_from_uri(self, uri: str) -> str:
+        """
+        Find the server name from a resource URI.
+
+        Args:
+            uri: The URI of the resource.
+
+        Returns:
+            Server name if found, None otherwise
+        """
+        capability_map = self._server_to_resource_map
+
+        def getter(item: NamespacedResource):
+            return item.resource.uri
+
+        for server_name, resources in capability_map.items():
+            for resource in resources:
+                if uri == getter(resource):
+                    return server_name
+
+        # No match found
+        return None
 
     async def _start_server(self, server_name: str):
         if self.connection_persistence:
@@ -1348,17 +1416,15 @@ class MCPCompoundServer(Server):
         resources = await self.aggregator.list_resources()
         return resources
 
-    async def _read_resource(self, name: str, server_name: str | None = None):
+    async def _read_resource(self, uri: str, server_name: str | None = None):
         """
-        Get a resource from the aggregated servers.
+        Get a resource from the aggregated servers by URI.
 
         Args:
-            name: Name of the resource to get (optionally namespaced)
+            uri: The URI of the resource to get.
             server_name: Optional server name
         """
-        resource = await self.aggregator.read_resource(
-            name=name, server_name=server_name
-        )
+        resource = await self.aggregator.read_resource(uri=uri, server_name=server_name)
         return resource
 
     async def run_stdio_async(self) -> None:
