@@ -159,6 +159,10 @@ class OpenAISettings(BaseModel):
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
+    user: str | None = None
+
+    default_headers: Dict[str, str] | None = None
+
 
 class AzureSettings(BaseModel):
     """
