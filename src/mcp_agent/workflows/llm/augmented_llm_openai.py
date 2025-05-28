@@ -221,6 +221,9 @@ class OpenAIAugmentedLLM(
                     "stop": params.stopSequences,
                     "tools": available_tools,
                 }
+                user_value = getattr(self.context.config.openai, "user", None)
+                if user_value:
+                    arguments["user"] = user_value
                 if self._reasoning(model):
                     arguments = {
                         **arguments,
@@ -842,6 +845,9 @@ class OpenAICompletionTasks:
             base_url=request.config.base_url,
             http_client=request.config.http_client
             if hasattr(request.config, "http_client")
+            else None,
+            default_headers=request.config.default_headers
+            if hasattr(request.config, "default_headers")
             else None,
         )
 
