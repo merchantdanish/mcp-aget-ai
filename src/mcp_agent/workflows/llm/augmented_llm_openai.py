@@ -48,7 +48,10 @@ from mcp_agent.tracing.semconv import (
 )
 from mcp_agent.tracing.telemetry import is_otel_serializable
 from mcp_agent.utils.common import ensure_serializable, typed_dict_extras
+from mcp_agent.utils.content_utils import get_image_data, get_resource_uri, get_text
+from mcp_agent.utils.mime_utils import is_image_mime_type, is_text_mime_type
 from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
+from mcp_agent.utils.resource_utils import extract_title_from_uri
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -143,7 +146,12 @@ class OpenAIAugmentedLLM(
 
         return ChatCompletionAssistantMessageParam(**assistant_message_params)
 
-    async def generate(self, message, request_params: RequestParams | None = None):
+    async def generate(
+        self,
+        message,
+        resource_uri: str | None = None,
+        request_params: RequestParams | None = None,
+    ):
         """
         Process a query using an LLM and available tools.
         The default implementation uses OpenAI's ChatCompletion as the LLM.
@@ -204,6 +212,17 @@ class OpenAIAugmentedLLM(
                 )
             if not available_tools:
                 available_tools = None
+
+            # Read resource if any
+            if resource_uri:
+                resource_result = await self.agent.read_resource(uri=resource_uri)
+                contents = [
+                    mcp_resource_content_to_openai_content(
+                        EmbeddedResource(type="resource", resource=content)
+                    )
+                    for content in resource_result.contents
+                ]
+                messages.extend(contents)
 
             responses: List[ChatCompletionMessage] = []
             model = await self.select_model(params)
@@ -361,6 +380,7 @@ class OpenAIAugmentedLLM(
     async def generate_str(
         self,
         message,
+        resource_uri,
         request_params: RequestParams | None = None,
     ):
         """
@@ -380,6 +400,7 @@ class OpenAIAugmentedLLM(
 
             responses = await self.generate(
                 message=message,
+                resource_uri=resource_uri,
                 request_params=request_params,
             )
 
@@ -402,6 +423,7 @@ class OpenAIAugmentedLLM(
         self,
         message,
         response_model: Type[ModelT],
+        resource_uri: str | None = None,
         request_params: RequestParams | None = None,
     ) -> ModelT:
         # First we invoke the LLM to generate a string response
@@ -422,6 +444,7 @@ class OpenAIAugmentedLLM(
 
             response = await self.generate_str(
                 message=message,
+                resource_uri=resource_uri,
                 request_params=params,
             )
 
@@ -1100,3 +1123,108 @@ def openai_content_to_mcp_content(
                 raise ValueError(f"Unexpected content type: {c.type}")
 
     return mcp_content
+
+
+def is_supported_image_type(mime_type: str) -> bool:
+    """
+    Check if the given MIME type is supported by OpenAI's image API.
+
+    Args:
+        mime_type: The MIME type to check
+
+    Returns:
+        True if the MIME type is generally supported, False otherwise
+    """
+    return (
+        mime_type is not None
+        and is_image_mime_type(mime_type)
+        and mime_type != "image/svg+xml"
+    )
+
+
+def mcp_resource_content_to_openai_content(
+    resource: EmbeddedResource,
+) -> ChatCompletionContentPartParam:
+    """
+    Convert MCP resource content to OpenAI content.
+    """
+    resource_content = resource.resource
+    uri_str = get_resource_uri(resource)
+    uri = getattr(resource_content, "uri", None)
+    is_url = uri and str(uri).startswith(("http://", "https://"))
+    title = extract_title_from_uri(uri) if uri else "resource"
+    mime_type = resource_content.mimeType
+
+    # Handle different resource types based on MIME type
+
+    # Handle images
+    if is_supported_image_type(mime_type):
+        if is_url and uri_str:
+            return {"type": "image_url", "image_url": {"url": uri_str}}
+
+        # Try to get image data
+        image_data = get_image_data(resource)
+        if image_data:
+            return {
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime_type};base64,{image_data}"},
+            }
+        else:
+            return {"type": "text", "text": f"[Image missing data: {title}]"}
+
+    # Handle PDFs
+    elif mime_type == "application/pdf":
+        if is_url and uri_str:
+            # OpenAI doesn't directly support PDF URLs, explain this limitation
+            return {
+                "type": "text",
+                "text": f"[PDF URL: {uri_str}]\nOpenAI requires PDF files to be uploaded or provided as base64 data.",
+            }
+        elif hasattr(resource_content, "blob"):
+            return {
+                "type": "file",
+                "file": {
+                    "filename": title or "document.pdf",
+                    "file_data": f"data:application/pdf;base64,{resource_content.blob}",
+                },
+            }
+
+    # Handle SVG (convert to text)
+    elif mime_type == "image/svg+xml":
+        text = get_text(resource)
+        if text:
+            file_text = (
+                f'<mcp-agent:file title="{title}" mimetype="{mime_type}">\n'
+                f"{text}\n"
+                f"</mcp-agent:file>"
+            )
+            return {"type": "text", "text": file_text}
+
+    # Handle text files
+    elif is_text_mime_type(mime_type):
+        text = get_text(resource)
+        if text:
+            file_text = (
+                f'<mcp-agent:file title="{title}" mimetype="{mime_type}">\n'
+                f"{text}\n"
+                f"</mcp-agent:file>"
+            )
+            return {"type": "text", "text": file_text}
+
+    # Default fallback for text resources
+    text = get_text(resource)
+    if text:
+        return {"type": "text", "text": text}
+
+    # Default fallback for binary resources
+    elif hasattr(resource_content, "blob"):
+        return {
+            "type": "text",
+            "text": f"[Binary resource: {title} ({mime_type})]",
+        }
+
+    # Last resort fallback
+    return {
+        "type": "text",
+        "text": f"[Unsupported resource: {title} ({mime_type})]",
+    }
