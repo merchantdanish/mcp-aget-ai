@@ -19,6 +19,7 @@ from anthropic.types import (
     Base64PDFSourceParam,
     ThinkingBlockParam,
     RedactedThinkingBlockParam,
+    ContentBlockParam,
 )
 from opentelemetry import trace
 from mcp.types import (
@@ -56,6 +57,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     CallToolResult,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.llm.multipart_converter_anthropic import AnthropicConverter
 
 MessageParamContent = Union[
     str,
@@ -131,6 +133,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
     async def generate(
         self,
         message,
+        resource_uris,
         request_params: RequestParams | None = None,
     ):
         """
@@ -171,6 +174,22 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 }
                 for tool in response.tools
             ]
+
+            # Read resource if any
+            content_blocks: list[ContentBlockParam] = []
+            if resource_uris:
+                for uri in resource_uris:
+                    resource = await self.agent.read_resource(uri=uri)
+                    blocks = [
+                        AnthropicConverter._convert_embedded_resource(
+                            EmbeddedResource(type="resource", resource=content)
+                        )
+                        for content in resource.contents
+                    ]
+                    content_blocks.extend(blocks)
+                # Combine content parts into a user message
+                if len(content_blocks) > 0:
+                    messages.append(MessageParam(role="user", content=content_blocks))
 
             responses: List[Message] = []
             model = await self.select_model(params)
