@@ -29,6 +29,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
     CallToolResult,
 )
+from mcp_agent.workflows.llm.multipart_converter_google import GoogleConverter
 
 
 class GoogleAugmentedLLM(
@@ -71,7 +72,9 @@ class GoogleAugmentedLLM(
             use_history=True,
         )
 
-    async def generate(self, message, request_params: RequestParams | None = None):
+    async def generate(
+        self, message, resource_uris, request_params: RequestParams | None = None
+    ):
         """
         Process a query using an LLM and available tools.
         The default implementation uses AWS Nova's ChatCompletion as the LLM.
@@ -107,6 +110,22 @@ class GoogleAugmentedLLM(
             )
             for tool in response.tools
         ]
+
+        # Read resource if any
+        content_parts: list[types.Part] = []
+        if resource_uris:
+            for uri in resource_uris:
+                resource = await self.agent.read_resource(uri=uri)
+                contents = [
+                    GoogleConverter._convert_embedded_resource(
+                        EmbeddedResource(type="resource", resource=content)
+                    )
+                    for content in resource.contents
+                ]
+                content_parts.extend(contents)
+            # Combine content parts into a user message
+            if len(content_parts) > 0:
+                messages.append(types.Content(role="user", parts=content_parts))
 
         responses: list[types.Content] = []
         model = await self.select_model(params)
@@ -201,6 +220,7 @@ class GoogleAugmentedLLM(
     async def generate_str(
         self,
         message,
+        resource_uris,
         request_params: RequestParams | None = None,
     ):
         """
@@ -210,6 +230,7 @@ class GoogleAugmentedLLM(
         """
         contents = await self.generate(
             message=message,
+            resource_uris=resource_uris,
             request_params=request_params,
         )
 
@@ -230,10 +251,12 @@ class GoogleAugmentedLLM(
         self,
         message,
         response_model: Type[ModelT],
+        resource_uris,
         request_params: RequestParams | None = None,
     ) -> ModelT:
         response = await self.generate_str(
             message=message,
+            resource_uris=resource_uris,
             request_params=request_params,
         )
 
