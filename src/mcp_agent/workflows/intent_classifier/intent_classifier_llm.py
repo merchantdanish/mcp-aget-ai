@@ -3,7 +3,7 @@ from opentelemetry import trace
 from pydantic import BaseModel
 
 from mcp_agent.tracing.semconv import GEN_AI_REQUEST_TOP_K
-from mcp_agent.tracing.telemetry import record_attributes
+from mcp_agent.tracing.telemetry import get_tracer, record_attributes
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 from mcp_agent.workflows.intent_classifier.intent_classifier_base import (
     Intent,
@@ -105,25 +105,26 @@ class LLMIntentClassifier(IntentClassifier):
     async def classify(
         self, request: str, top_k: int = 1
     ) -> List[LLMIntentClassificationResult]:
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.classify"
         ) as span:
-            span.set_attribute("request", request)
-            span.set_attribute("intents", list(self.intents.keys()))
-            for intent in self.intents.values():
-                span.set_attribute(
-                    f"intent.{intent.name}.description", intent.description
-                )
-                if intent.examples:
+            if self.context.tracing_enabled:
+                span.set_attribute("request", request)
+                span.set_attribute("intents", list(self.intents.keys()))
+                for intent in self.intents.values():
                     span.set_attribute(
-                        f"intent.{intent.name}.examples", intent.examples
+                        f"intent.{intent.name}.description", intent.description
                     )
-                if intent.metadata:
-                    record_attributes(
-                        span, intent.metadata, f"intent.{intent.name}.metadata"
-                    )
-            span.set_attribute(GEN_AI_REQUEST_TOP_K, top_k)
+                    if intent.examples:
+                        span.set_attribute(
+                            f"intent.{intent.name}.examples", intent.examples
+                        )
+                    if intent.metadata:
+                        record_attributes(
+                            span, intent.metadata, f"intent.{intent.name}.metadata"
+                        )
+                span.set_attribute(GEN_AI_REQUEST_TOP_K, top_k)
 
             if not self.initialized:
                 await self.initialize()
@@ -148,16 +149,17 @@ class LLMIntentClassifier(IntentClassifier):
                 message=prompt, response_model=StructuredIntentResponse
             )
 
-            response_event_data = {}
-            if response and isinstance(response, StructuredIntentResponse):
-                for idx, classification in enumerate(response.classifications):
-                    response_event_data.update(
-                        self._extract_classification_attributes_for_tracing(
-                            classification, f"classification.{idx}"
+            if self.context.tracing_enabled:
+                response_event_data = {}
+                if response and isinstance(response, StructuredIntentResponse):
+                    for idx, classification in enumerate(response.classifications):
+                        response_event_data.update(
+                            self._extract_classification_attributes_for_tracing(
+                                classification, f"classification.{idx}"
+                            )
                         )
-                    )
 
-            span.add_event("classification.response", response_event_data)
+                span.add_event("classification.response", response_event_data)
 
             if not response or not response.classifications:
                 return []
@@ -177,12 +179,13 @@ class LLMIntentClassifier(IntentClassifier):
 
             top_results = results[:top_k]
 
-            for idx, classification in enumerate(top_results):
-                span.set_attributes(
-                    self._extract_classification_attributes_for_tracing(
-                        classification, f"result.{idx}"
+            if self.context.tracing_enabled:
+                for idx, classification in enumerate(top_results):
+                    span.set_attributes(
+                        self._extract_classification_attributes_for_tracing(
+                            classification, f"result.{idx}"
+                        )
                     )
-                )
 
             return top_results
 
@@ -193,6 +196,9 @@ class LLMIntentClassifier(IntentClassifier):
         Extract attributes from the classification result for tracing.
         This is a placeholder method and can be customized as needed.
         """
+        if not self.context.tracing_enabled:
+            return {}
+
         attr_prefix = f"{prefix}." if prefix else ""
         attributes = {
             f"{attr_prefix}intent": classification.intent,

@@ -10,6 +10,8 @@ The MCP Agent Server pattern represents a significant evolution in agent archite
 - **Agent Interoperability**: Enable multi-agent interactions through a standard protocol
 - **Decoupled Architecture**: Separate agent logic from client interfaces
 
+https://github.com/user-attachments/assets/f651af86-222d-4df0-8241-616414df66e4
+
 ## Why Expose Agents as MCP Servers?
 
 1. **Agent Composition**: Build complex multi-agent systems where agents can interact with each other

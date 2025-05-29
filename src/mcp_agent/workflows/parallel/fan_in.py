@@ -4,6 +4,7 @@ from typing import Callable, Dict, List, Optional, Type, TYPE_CHECKING
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.core.context_dependent import ContextDependent
+from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -68,11 +69,11 @@ class FanIn(ContextDependent):
         Request fan-in agent generation from a list of messages from multiple sources/agents.
         Internally aggregates the messages and then calls the aggregator agent to generate a response.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.generate"
         ) as span:
-            if request_params:
+            if self.context.tracing_enabled and request_params:
                 AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             message: (
@@ -89,10 +90,21 @@ class FanIn(ContextDependent):
                     ctx_agent = await stack.enter_async_context(self.aggregator_agent)
                     llm = await ctx_agent.attach_llm(self.llm_factory)
 
-                return await llm.generate(
+                response = await llm.generate(
                     message=message,
                     request_params=request_params,
                 )
+
+                if self.context.tracing_enabled:
+                    for i, msg in enumerate(response):
+                        response_data = (
+                            llm.extract_response_message_attributes_for_tracing(
+                                msg, prefix=f"response.{i}"
+                            )
+                        )
+                        span.set_attributes(response_data)
+
+                return response
 
     async def generate_str(
         self,
@@ -104,11 +116,11 @@ class FanIn(ContextDependent):
         Internally aggregates the messages and then calls the aggregator agent to generate a
         response, which is returned as a string.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.generate_str"
         ) as span:
-            if request_params:
+            if self.context.tracing_enabled and request_params:
                 AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             message: (
@@ -125,9 +137,11 @@ class FanIn(ContextDependent):
                     ctx_agent = await stack.enter_async_context(self.aggregator_agent)
                     llm = await ctx_agent.attach_llm(self.llm_factory)
 
-                return await llm.generate_str(
+                response = await llm.generate_str(
                     message=message, request_params=request_params
                 )
+                span.set_attribute("response", response)
+                return response
 
     async def generate_structured(
         self,
@@ -140,7 +154,7 @@ class FanIn(ContextDependent):
         from multiple sources/agents. Internally aggregates the messages and then calls
         the aggregator agent to generate a response, which is returned as a Pydantic model.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.generate_structured"
         ) as span:
@@ -148,7 +162,7 @@ class FanIn(ContextDependent):
                 "response_model",
                 f"{response_model.__module__}.{response_model.__name__}",
             )
-            if request_params:
+            if self.context.tracing_enabled and request_params:
                 AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             message: (
@@ -165,11 +179,23 @@ class FanIn(ContextDependent):
                     ctx_agent = await stack.enter_async_context(self.aggregator_agent)
                     llm = await ctx_agent.attach_llm(self.llm_factory)
 
-                return await llm.generate_structured(
+                structured_response = await llm.generate_structured(
                     message=message,
                     response_model=response_model,
                     request_params=request_params,
                 )
+
+                if self.context.tracing_enabled:
+                    try:
+                        span.set_attribute(
+                            "structured_response_json",
+                            structured_response.model_dump_json(),
+                        )
+                    # pylint: disable=broad-exception-caught
+                    except Exception:
+                        pass  # no-op for best-effort tracing
+
+                return structured_response
 
     async def aggregate_messages(
         self, messages: FanInInput
@@ -382,6 +408,9 @@ class FanIn(ContextDependent):
         message: MessageParamT | str | List[MessageParamT],
     ) -> None:
         """Annotate the span with the message content."""
+        if not self.context.tracing_enabled:
+            return
+
         if isinstance(message, str):
             span.set_attribute("message.content", message)
         elif isinstance(message, list):

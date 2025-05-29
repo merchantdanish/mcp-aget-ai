@@ -27,32 +27,35 @@ MAX_ITERATIONS = 3
 # Initialize app
 app = MCPApp(name="unified_stock_analyzer", human_input_callback=None)
 
+
 async def main():
     # Create output directory and set up file paths
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_file = f"{COMPANY_NAME.lower().replace(' ', '_')}_report_{timestamp}.md"
     output_path = os.path.join(OUTPUT_DIR, output_file)
-    
+
     async with app.run() as analyzer_app:
         context = analyzer_app.context
         logger = analyzer_app.logger
-        
+
         # Configure filesystem server to use current directory
         if "filesystem" in context.config.mcp.servers:
             context.config.mcp.servers["filesystem"].args.extend([os.getcwd()])
             logger.info("Filesystem server configured")
         else:
             logger.warning("Filesystem server not configured - report saving may fail")
-            
+
         # Check for g-search server
         if "g-search" not in context.config.mcp.servers:
-            logger.warning("Google Search server not found! This script requires g-search-mcp")
+            logger.warning(
+                "Google Search server not found! This script requires g-search-mcp"
+            )
             logger.info("You can install it with: npm install -g g-search-mcp")
             return False
-        
+
         # --- DEFINE AGENTS ---
-        
+
         # Research agent: Collects data using Google Search
         research_agent = Agent(
             name="search_finder",
@@ -96,14 +99,14 @@ async def main():
             rating should not exceed FAIR.""",
         )
 
-        # Create the research EvaluatorOptimizerLLM component 
+        # Create the research EvaluatorOptimizerLLM component
         research_quality_controller = EvaluatorOptimizerLLM(
             optimizer=research_agent,
             evaluator=research_evaluator,
             llm_factory=OpenAIAugmentedLLM,
             min_rating=QualityRating.EXCELLENT,
         )
-        
+
         # Analyst agent: Analyzes the research data
         analyst_agent = Agent(
             name="financial_analyst",
@@ -117,7 +120,7 @@ async def main():
             Be specific with numbers and cite any sources of information.""",
             server_names=["fetch"],
         )
-        
+
         # Report writer: Creates the final report
         report_writer = Agent(
             name="report_writer",
@@ -146,22 +149,22 @@ async def main():
             Save the report to "{output_path}".""",
             server_names=["filesystem"],
         )
-        
+
         # --- CREATE THE ORCHESTRATOR ---
         logger.info(f"Initializing stock analysis workflow for {COMPANY_NAME}")
-        
+
         # The updated Orchestrator can now take AugmentedLLM instances directly
         orchestrator = Orchestrator(
             llm_factory=OpenAIAugmentedLLM,
             available_agents=[
                 # We can now pass the EvaluatorOptimizerLLM directly as a component
                 research_quality_controller,
-                analyst_agent, 
+                analyst_agent,
                 report_writer,
             ],
             plan_type="full",
         )
-        
+
         # Define the task for the orchestrator
         task = f"""Create a high-quality stock analysis report for {COMPANY_NAME} by following these steps:
 
@@ -180,15 +183,14 @@ async def main():
            "{output_path}"
         
         The final report should be professional, fact-based, and include all relevant financial information."""
-        
+
         # Run the orchestrator
         logger.info("Starting the stock analysis workflow")
         try:
             await orchestrator.generate_str(
-                message=task, 
-                request_params=RequestParams(model="gpt-4o")
+                message=task, request_params=RequestParams(model="gpt-4o")
             )
-            
+
             # Check if report was successfully created
             if os.path.exists(output_path):
                 logger.info(f"Report successfully generated: {output_path}")
@@ -196,10 +198,11 @@ async def main():
             else:
                 logger.error(f"Failed to create report at {output_path}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"Error during workflow execution: {str(e)}")
             return False
+
 
 if __name__ == "__main__":
     asyncio.run(main())

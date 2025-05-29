@@ -172,8 +172,8 @@ examples/mcp_root_test/test_data/*.png
 uv.lock
 
 # File generated from promptify script (to create an LLM-friendly prompt for the repo)
-project_contents.md
+prompt.md
 
 # example logs
 examples/**/*.jsonl
-.DS_Store
+**/.DS_Store

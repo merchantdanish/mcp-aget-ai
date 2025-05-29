@@ -5,7 +5,11 @@ from opentelemetry import trace
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME
-from mcp_agent.tracing.telemetry import record_attributes, serialize_attributes
+from mcp_agent.tracing.telemetry import (
+    get_tracer,
+    record_attributes,
+    serialize_attributes,
+)
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -102,14 +106,15 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
         message: str | MessageParamT | List[MessageParamT],
         request_params: RequestParams | None = None,
     ) -> List[MessageT] | Any:
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate"
         ) as span:
-            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
-            self._annotate_span_for_generation_message(span, message)
-            if request_params:
-                AugmentedLLM.annotate_span_with_request_params(span, request_params)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+                self._annotate_span_for_generation_message(span, message)
+                if request_params:
+                    AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             # First, we fan-out
             responses = await self.fan_out.generate(
@@ -117,18 +122,22 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
                 request_params=request_params,
             )
 
-            for agent_name, fan_out_responses in responses.items():
-                res_attributes = {}
-                for i, res in enumerate(fan_out_responses):
-                    try:
-                        res_dict = res if isinstance(res, dict) else res.model_dump()
-                        res_attributes.update(
-                            serialize_attributes(res_dict, f"response.{i}")
-                        )
-                    except Exception:
-                        # Just no-op, best-effort tracing
-                        continue
-                span.add_event(f"fan_out.{agent_name}.responses", res_attributes)
+            if self.context.tracing_enabled:
+                for agent_name, fan_out_responses in responses.items():
+                    res_attributes = {}
+                    for i, res in enumerate(fan_out_responses):
+                        try:
+                            res_dict = (
+                                res if isinstance(res, dict) else res.model_dump()
+                            )
+                            res_attributes.update(
+                                serialize_attributes(res_dict, f"response.{i}")
+                            )
+                        # pylint: disable=broad-exception-caught
+                        except Exception:
+                            # Just no-op, best-effort tracing
+                            continue
+                    span.add_event(f"fan_out.{agent_name}.responses", res_attributes)
 
             # Then, we fan-in
             if self.fan_in_fn:
@@ -139,19 +148,23 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
                     request_params=request_params,
                 )
 
-            try:
-                if isinstance(result, list):
-                    for i, res in enumerate(result):
-                        res_dict = res if isinstance(res, dict) else res.model_dump()
-                        record_attributes(span, res_dict, f"response.{i}")
-                else:
-                    res_dict = (
-                        result if isinstance(result, dict) else result.model_dump()
-                    )
-                    record_attributes(span, res_dict, "response")
-            except Exception:
-                # Just no-op, best-effort tracing
-                pass
+            if self.context.tracing_enabled:
+                try:
+                    if isinstance(result, list):
+                        for i, res in enumerate(result):
+                            res_dict = (
+                                res if isinstance(res, dict) else res.model_dump()
+                            )
+                            record_attributes(span, res_dict, f"response.{i}")
+                    else:
+                        res_dict = (
+                            result if isinstance(result, dict) else result.model_dump()
+                        )
+                        record_attributes(span, res_dict, "response")
+                # pylint: disable=broad-exception-caught
+                except Exception:
+                    # Just no-op, best-effort tracing
+                    pass
 
             return result
 
@@ -161,14 +174,15 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ) -> str:
         """Request an LLM generation and return the string representation of the result"""
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate_str"
         ) as span:
-            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
-            self._annotate_span_for_generation_message(span, message)
-            if request_params:
-                AugmentedLLM.annotate_span_with_request_params(span, request_params)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+                self._annotate_span_for_generation_message(span, message)
+                if request_params:
+                    AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             # First, we fan-out
             responses = await self.fan_out.generate(
@@ -176,18 +190,22 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
                 request_params=request_params,
             )
 
-            for agent_name, fan_out_responses in responses.items():
-                res_attributes = {}
-                for i, res in enumerate(fan_out_responses):
-                    try:
-                        res_dict = res if isinstance(res, dict) else res.model_dump()
-                        res_attributes.update(
-                            serialize_attributes(res_dict, f"response.{i}")
-                        )
-                    except Exception:
-                        # Just no-op, best-effort tracing
-                        continue
-                span.add_event(f"fan_out.{agent_name}.responses", res_attributes)
+            if self.context.tracing_enabled:
+                for agent_name, fan_out_responses in responses.items():
+                    res_attributes = {}
+                    for i, res in enumerate(fan_out_responses):
+                        try:
+                            res_dict = (
+                                res if isinstance(res, dict) else res.model_dump()
+                            )
+                            res_attributes.update(
+                                serialize_attributes(res_dict, f"response.{i}")
+                            )
+                        # pylint: disable=broad-exception-caught
+                        except Exception:
+                            # Just no-op, best-effort tracing
+                            continue
+                    span.add_event(f"fan_out.{agent_name}.responses", res_attributes)
 
             # Then, we fan-in
             if self.fan_in_fn:
@@ -207,17 +225,18 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ) -> ModelT:
         """Request a structured LLM generation and return the result as a Pydantic model."""
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.generate_structured"
         ) as span:
-            self._annotate_span_for_generation_message(span, message)
-            span.set_attribute(
-                "response_model",
-                f"{response_model.__module__}.{response_model.__name__}",
-            )
-            if request_params:
-                AugmentedLLM.annotate_span_with_request_params(span, request_params)
+            if self.context.tracing_enabled:
+                self._annotate_span_for_generation_message(span, message)
+                span.set_attribute(
+                    "response_model",
+                    f"{response_model.__module__}.{response_model.__name__}",
+                )
+                if request_params:
+                    AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
             # First, we fan-out
             responses = await self.fan_out.generate(
@@ -225,18 +244,22 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
                 request_params=request_params,
             )
 
-            for agent_name, fan_out_responses in responses.items():
-                res_attributes = {}
-                for i, res in enumerate(fan_out_responses):
-                    try:
-                        res_dict = res if isinstance(res, dict) else res.model_dump()
-                        res_attributes.update(
-                            serialize_attributes(res_dict, f"response.{i}")
-                        )
-                    except Exception:
-                        # Just no-op, best-effort tracing
-                        continue
-                span.add_event(f"fan_out.{agent_name}.responses", res_attributes)
+            if self.context.tracing_enabled:
+                for agent_name, fan_out_responses in responses.items():
+                    res_attributes = {}
+                    for i, res in enumerate(fan_out_responses):
+                        try:
+                            res_dict = (
+                                res if isinstance(res, dict) else res.model_dump()
+                            )
+                            res_attributes.update(
+                                serialize_attributes(res_dict, f"response.{i}")
+                            )
+                        # pylint: disable=broad-exception-caught
+                        except Exception:
+                            # Just no-op, best-effort tracing
+                            continue
+                    span.add_event(f"fan_out.{agent_name}.responses", res_attributes)
 
             # Then, we fan-in
             if self.fan_in_fn:
@@ -248,14 +271,13 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
                     request_params=request_params,
                 )
 
-            try:
-                span.set_attribute(
-                    "structured_response_json",
-                    json.dumps(result, default=str, indent=2)[
-                        :1000
-                    ],  # truncate to avoid massive strings
-                )
-            except Exception:
-                pass  # Just no-op, best-effort tracing
+            if self.context.tracing_enabled:
+                try:
+                    span.set_attribute(
+                        "structured_response_json", result.model_dump_json()
+                    )
+                # pylint: disable=broad-exception-caught
+                except Exception:
+                    pass  # Just no-op, best-effort tracing
 
             return result

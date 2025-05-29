@@ -7,14 +7,9 @@ import asyncio
 from collections.abc import Sequence
 import functools
 import inspect
-from typing import Any, Dict, Callable, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Callable, Optional, TYPE_CHECKING
 
 from opentelemetry import trace
-from opentelemetry.context import Context as OtelContext
-from opentelemetry.propagate import extract as otel_extract
-from opentelemetry.trace import set_span_in_context
-from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from mcp_agent.core.context_dependent import ContextDependent
@@ -48,7 +43,7 @@ class TelemetryManager(ContextDependent):
 
             @functools.wraps(func)
             async def async_wrapper(*args, **kwargs):
-                tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+                tracer = get_tracer(self.context)
                 with tracer.start_as_current_span(span_name, kind=kind) as span:
                     if attributes:
                         for k, v in attributes.items():
@@ -65,7 +60,7 @@ class TelemetryManager(ContextDependent):
 
             @functools.wraps(func)
             def sync_wrapper(*args, **kwargs):
-                tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+                tracer = get_tracer(self.context)
                 with tracer.start_as_current_span(span_name, kind=kind) as span:
                     if attributes:
                         for k, v in attributes.items():
@@ -100,7 +95,7 @@ def serialize_attribute(key: str, value: Any) -> Dict[str, Any]:
     serialized = {}
 
     if is_otel_serializable(value):
-        serialized[key] = str(value)
+        serialized[key] = value
 
     elif isinstance(value, dict):
         for sub_key, sub_value in value.items():
@@ -149,45 +144,6 @@ def record_attributes(span, attributes: Dict[str, Any], prefix: str = ""):
         span.set_attribute(attr_key, attr_value)
 
 
-class MCPRequestTrace:
-    """Helper class for trace context propagation in MCP"""
-
-    @staticmethod
-    def start_span_from_mcp_request(
-        method: str, params: Dict[str, Any]
-    ) -> Tuple[trace.Span, OtelContext]:
-        """Extract trace context from incoming MCP request and start a new span"""
-        # Extract trace context from _meta if present
-        carrier = {}
-        _meta = params.get("_meta", {})
-        if "traceparent" in _meta:
-            carrier["traceparent"] = _meta["traceparent"]
-        if "tracestate" in _meta:
-            carrier["tracestate"] = _meta["tracestate"]
-
-        # Extract context and start span
-        ctx = otel_extract(carrier, context=OtelContext())
-        tracer = trace.get_tracer(__name__)
-        span = tracer.start_span(method, context=ctx, kind=SpanKind.SERVER)
-        return span, set_span_in_context(span)
-
-    @staticmethod
-    def inject_trace_context(arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Inject current trace context into outgoing MCP request arguments"""
-        carrier = {}
-        TraceContextTextMapPropagator().inject(carrier)
-
-        # Create or update _meta with trace context
-        _meta = arguments.get("_meta", {})
-        if "traceparent" in carrier:
-            _meta["traceparent"] = carrier["traceparent"]
-        if "tracestate" in carrier:
-            _meta["tracestate"] = carrier["tracestate"]
-        arguments["_meta"] = _meta
-
-        return arguments
-
-
 def is_otel_serializable(value: Any) -> bool:
     """
     Check if a value is serializable by OpenTelemetry
@@ -198,6 +154,13 @@ def is_otel_serializable(value: Any) -> bool:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         return all(isinstance(item, allowed_types) for item in value)
     return False
+
+
+def get_tracer(context: "Context") -> trace.Tracer:
+    """
+    Get the OpenTelemetry tracer for the context.
+    """
+    return context.tracer or trace.get_tracer("mcp-agent")
 
 
 telemetry = TelemetryManager()

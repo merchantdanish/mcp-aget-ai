@@ -14,7 +14,7 @@ from opentelemetry import trace
 
 from mcp_agent.config import get_settings
 from mcp_agent.config import Settings
-from mcp_agent.executor.executor import Executor
+from mcp_agent.executor.executor import AsyncioExecutor, Executor
 from mcp_agent.executor.decorator_registry import (
     DecoratorRegistry,
     register_asyncio_decorators,
@@ -22,7 +22,6 @@ from mcp_agent.executor.decorator_registry import (
 )
 from mcp_agent.executor.signal_registry import SignalRegistry
 from mcp_agent.executor.task_registry import ActivityRegistry
-from mcp_agent.executor.executor import AsyncioExecutor
 
 from mcp_agent.logging.events import EventFilter
 from mcp_agent.logging.logger import LoggingConfig
@@ -71,6 +70,8 @@ class Context(BaseModel):
     workflow_registry: Optional["WorkflowRegistry"] = None
 
     tracer: Optional[trace.Tracer] = None
+    # Use this flag to conditionally serialize expensive data for tracing
+    tracing_enabled: bool = False
 
     model_config = ConfigDict(
         extra="allow",
@@ -166,11 +167,6 @@ async def initialize_context(
     context.config = config
     context.server_registry = ServerRegistry(config=config)
 
-    # Configure logging and telemetry
-    await configure_otel(config)
-    await configure_logger(config, context.session_id)
-    await configure_usage_telemetry(config)
-
     # Configure the executor
     context.executor = await configure_executor(config)
     context.workflow_registry = await configure_workflow_registry(
@@ -178,6 +174,11 @@ async def initialize_context(
     )
 
     context.session_id = str(context.executor.uuid())
+
+    # Configure logging and telemetry
+    await configure_otel(config, context.session_id)
+    await configure_logger(config, context.session_id)
+    await configure_usage_telemetry(config)
 
     context.task_registry = task_registry or ActivityRegistry()
 
@@ -191,7 +192,9 @@ async def initialize_context(
         context.decorator_registry = decorator_registry
 
     # Store the tracer in context if needed
-    context.tracer = trace.get_tracer(config.otel.service_name)
+    if config.otel.enabled:
+        context.tracing_enabled = True
+        context.tracer = trace.get_tracer(config.otel.service_name)
 
     if store_globally:
         global _global_context

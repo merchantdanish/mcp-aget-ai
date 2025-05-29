@@ -35,6 +35,7 @@ from mcp_agent.tracing.semconv import (
     GEN_AI_TOOL_NAME,
 )
 from mcp_agent.tracing.telemetry import (
+    get_tracer,
     record_attribute,
     record_attributes,
 )
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
     from mcp_agent.core.context import Context
     from mcp_agent.logging.logger import Logger
     from mcp_agent.agents.agent import Agent
+
 
 MessageParamT = TypeVar("MessageParamT")
 """A type representing an input message to an LLM."""
@@ -253,7 +255,12 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
             self.agent = Agent(
                 name=self.name,
-                instruction=self.instruction,
+                # Only pass instruction if it's not None
+                **(
+                    {"instruction": self.instruction}
+                    if self.instruction is not None
+                    else {}
+                ),
                 server_names=server_names or [],
                 llm=self,
             )
@@ -301,7 +308,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         Select an LLM based on the request parameters.
         If a model is specified in the request, it will override the model selection criteria.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.select_model"
         ) as span:
@@ -421,20 +428,21 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         tool_call_id: str | None = None,
     ) -> CallToolResult:
         """Call a tool with the given parameters and optional ID"""
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.{self.name}.call_tool"
         ) as span:
-            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
-            if tool_call_id:
-                span.set_attribute(GEN_AI_TOOL_CALL_ID, tool_call_id)
-                span.set_attribute("request.method", request.method)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+                if tool_call_id:
+                    span.set_attribute(GEN_AI_TOOL_CALL_ID, tool_call_id)
+                    span.set_attribute("request.method", request.method)
 
-            span.set_attribute("request.params.name", request.params.name)
-            if request.params.arguments:
-                record_attributes(
-                    span, request.params.arguments, "request.params.arguments"
-                )
+                span.set_attribute("request.params.name", request.params.name)
+                if request.params.arguments:
+                    record_attributes(
+                        span, request.params.arguments, "request.params.arguments"
+                    )
 
             try:
                 preprocess = await self.pre_tool_call(
@@ -464,7 +472,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                 tool_args = request.params.arguments
 
                 span.set_attribute(f"processed.request.{GEN_AI_TOOL_NAME}", tool_name)
-                if tool_args:
+                if self.context.tracing_enabled and tool_args:
                     record_attributes(span, tool_args, "processed.request.tool_args")
 
                 result = await self.agent.call_tool(tool_name, tool_args)
@@ -518,6 +526,121 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         """Log a chat finished event"""
         data = {"progress_action": "Finished", "model": model, "agent_name": self.name}
         self.logger.debug("Chat finished", data=data)
+
+    @staticmethod
+    def annotate_span_with_request_params(
+        span: trace.Span, request_params: RequestParams
+    ):
+        """Annotate the span with request parameters"""
+        span.set_attribute(GEN_AI_REQUEST_MAX_TOKENS, request_params.maxTokens)
+        span.set_attribute(
+            "request_params.max_iterations", request_params.max_iterations
+        )
+        span.set_attribute(GEN_AI_REQUEST_TEMPERATURE, request_params.temperature)
+        span.set_attribute("request_params.use_history", request_params.use_history)
+        span.set_attribute(
+            "request_params.parallel_tool_calls", request_params.parallel_tool_calls
+        )
+        if request_params.model:
+            span.set_attribute(GEN_AI_REQUEST_MODEL, request_params.model)
+        if request_params.modelPreferences:
+            for attr, value in request_params.modelPreferences.model_dump(
+                exclude_unset=True
+            ).items():
+                if attr == "hints" and value is not None:
+                    span.set_attribute(
+                        "request_params.modelPreferences.hints",
+                        [hint.name for hint in value],
+                    )
+                else:
+                    record_attribute(
+                        span, f"request_params.modelPreferences.{attr}", value
+                    )
+        if request_params.systemPrompt:
+            span.set_attribute(
+                "request_params.systemPrompt", request_params.systemPrompt
+            )
+        if request_params.includeContext:
+            span.set_attribute(
+                "request_params.includeContext",
+                request_params.includeContext,
+            )
+        if request_params.stopSequences:
+            span.set_attribute(
+                GEN_AI_REQUEST_STOP_SEQUENCES,
+                request_params.stopSequences,
+            )
+        if request_params.metadata:
+            record_attributes(span, request_params.metadata, "request_params.metadata")
+
+    def _annotate_span_for_generation_message(
+        self,
+        span: trace.Span,
+        message: str | MessageParamT | List[MessageParamT],
+    ) -> None:
+        """Annotate the span with the message content."""
+        if not self.context.tracing_enabled:
+            return
+
+        if isinstance(message, str):
+            span.set_attribute("message.content", message)
+        elif isinstance(message, list):
+            for i, msg in enumerate(message):
+                attributes = self._extract_message_param_attributes_for_tracing(
+                    msg, prefix=f"message.{i}"
+                )
+                span.set_attributes(attributes)
+        else:
+            attributes = self._extract_message_param_attributes_for_tracing(
+                message, prefix="message"
+            )
+            span.set_attributes(attributes)
+
+    def _extract_message_param_attributes_for_tracing(
+        self, message_param: MessageParamT, prefix: str = "message"
+    ) -> dict[str, Any]:
+        """
+        Return a flat dict of span attributes for a given MessageParamT.
+        Override this for the AugmentedLLM subclass MessageParamT type.
+        """
+        return {}
+
+    def _annotate_span_for_call_tool_result(
+        self,
+        span: trace.Span,
+        result: CallToolResult,
+        processed: bool = False,
+    ):
+        if not self.context.tracing_enabled:
+            return
+
+        prefix = "processed.result" if processed else "result"
+        span.set_attribute(f"{prefix}.isError", result.isError)
+        if result.isError:
+            span.set_status(trace.Status(trace.StatusCode.ERROR))
+            error_message = (
+                result.content[0].text
+                if len(result.content) > 0 and result.content[0].type == "text"
+                else "Error calling tool"
+            )
+            span.record_exception(Exception(error_message))
+        else:
+            for idx, content in enumerate(result.content):
+                span.set_attribute(f"{prefix}.content.{idx}.type", content.type)
+                if content.type == "text":
+                    span.set_attribute(
+                        f"{prefix}.content.{idx}.text",
+                        result.content[idx].text,
+                    )
+
+    def extract_response_message_attributes_for_tracing(
+        self, message: MessageT, prefix: str | None = None
+    ) -> dict[str, Any]:
+        """
+        Return a flat dict of span attributes for a given MessageT.
+        Override this for the AugmentedLLM subclass MessageT type.
+        """
+        return {}
 
     def _gen_name(self, name: str | None, prefix: str | None) -> str:
         """

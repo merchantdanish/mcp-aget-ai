@@ -632,6 +632,33 @@
           ],
           "default": null,
           "title": "Base Url"
+        },
+        "user": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User"
+        },
+        "default_headers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Headers"
         }
       },
       "title": "OpenAISettings",
@@ -747,8 +774,7 @@
             }
           ],
           "default": null,
-          "title": "Max Concurrent Activities",
-          "type": "integer"
+          "title": "Max Concurrent Activities"
         },
         "api_key": {
           "anyOf": [

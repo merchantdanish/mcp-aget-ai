@@ -6,6 +6,8 @@ It adds logging and supports sampling requests.
 from datetime import timedelta
 from typing import Any, Callable, Optional, TYPE_CHECKING
 from opentelemetry import trace
+from opentelemetry.propagate import inject
+
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientNotification, ClientRequest, ClientSession
@@ -39,6 +41,8 @@ from mcp.types import (
     ServerRequest,
     TextContent,
     ListRootsResult,
+    NotificationParams,
+    RequestParams,
     Root,
 )
 
@@ -53,7 +57,7 @@ from mcp_agent.tracing.semconv import (
     MCP_SESSION_ID,
     MCP_TOOL_NAME,
 )
-from mcp_agent.tracing.telemetry import record_attributes
+from mcp_agent.tracing.telemetry import get_tracer, record_attributes
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -141,40 +145,55 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         progress_callback: ProgressFnT | None = None,
     ) -> ReceiveResultT:
         logger.debug("send_request: request=", data=request.model_dump())
-
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.send_request", kind=trace.SpanKind.CLIENT
         ) as span:
-            span.set_attribute(MCP_SESSION_ID, self.get_session_id() or "unknown")
-            span.set_attribute("result_type", str(result_type))
-            span.set_attribute(MCP_METHOD_NAME, request.root.method)
+            if self.context.tracing_enabled:
+                span.set_attribute(MCP_SESSION_ID, self.get_session_id() or "unknown")
+                span.set_attribute("result_type", str(result_type))
+                span.set_attribute(MCP_METHOD_NAME, request.root.method)
 
-            params = request.root.params
-            if params:
-                if isinstance(params, GetPromptRequestParams):
-                    span.set_attribute(MCP_PROMPT_NAME, params.name)
-                    record_attributes(
-                        span, params.arguments or {}, MCP_REQUEST_ARGUMENT_KEY
-                    )
-                elif isinstance(params, CallToolRequestParams):
-                    span.set_attribute(MCP_TOOL_NAME, params.name)
-                    record_attributes(
-                        span, params.arguments or {}, MCP_REQUEST_ARGUMENT_KEY
-                    )
-                else:
-                    record_attributes(
-                        span, params.model_dump(), MCP_REQUEST_ARGUMENT_KEY
-                    )
+                params = request.root.params
+                if params:
+                    if isinstance(params, GetPromptRequestParams):
+                        span.set_attribute(MCP_PROMPT_NAME, params.name)
+                        record_attributes(
+                            span, params.arguments or {}, MCP_REQUEST_ARGUMENT_KEY
+                        )
+                    elif isinstance(params, CallToolRequestParams):
+                        span.set_attribute(MCP_TOOL_NAME, params.name)
+                        record_attributes(
+                            span, params.arguments or {}, MCP_REQUEST_ARGUMENT_KEY
+                        )
+                    else:
+                        record_attributes(
+                            span, params.model_dump(), MCP_REQUEST_ARGUMENT_KEY
+                        )
 
-            if metadata and metadata.resumption_token:
-                span.set_attribute(
-                    "metadata.resumption_token", metadata.resumption_token
-                )
-            if request_read_timeout_seconds is not None:
-                span.set_attribute(
-                    "request_read_timeout_seconds", str(request_read_timeout_seconds)
-                )
+                # Propagate trace context in request.params._meta
+                trace_headers = {}
+                inject(trace_headers)
+                if "traceparent" in trace_headers or "tracestate" in trace_headers:
+                    if params is None:
+                        params = RequestParams()
+                    if params.meta is None:
+                        params.meta = RequestParams.Meta()
+                    if "traceparent" in trace_headers:
+                        params.meta.traceparent = trace_headers["traceparent"]
+                    if "tracestate" in trace_headers:
+                        params.meta.tracestate = trace_headers["tracestate"]
+                    request.root.params = params
+
+                if metadata and metadata.resumption_token:
+                    span.set_attribute(
+                        "metadata.resumption_token", metadata.resumption_token
+                    )
+                if request_read_timeout_seconds is not None:
+                    span.set_attribute(
+                        "request_read_timeout_seconds",
+                        str(request_read_timeout_seconds),
+                    )
 
             try:
                 result = await super().send_request(
@@ -184,8 +203,12 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
                     metadata,
                     progress_callback,
                 )
-                logger.debug("send_request: response=", data=result.model_dump())
-                record_attributes(span, result.model_dump(), "result")
+                res_data = result.model_dump()
+                logger.debug("send_request: response=", data=res_data)
+
+                if self.context.tracing_enabled:
+                    record_attributes(span, res_data, "result")
+
                 return result
             except Exception as e:
                 logger.error(f"send_request failed: {e}")
@@ -197,19 +220,38 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         related_request_id: RequestId | None = None,
     ) -> None:
         logger.debug("send_notification:", data=notification.model_dump())
-
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.send_notification", kind=trace.SpanKind.CLIENT
         ) as span:
-            span.set_attribute(MCP_SESSION_ID, self.get_session_id() or "unknown")
-            span.set_attribute(MCP_METHOD_NAME, notification.root.method)
-            if related_request_id:
-                span.set_attribute(MCP_REQUEST_ID, str(related_request_id))
-            if notification.root.params:
-                record_attributes(
-                    span, notification.root.parms.model_dump(), MCP_REQUEST_ARGUMENT_KEY
-                )
+            if self.context.tracing_enabled:
+                span.set_attribute(MCP_SESSION_ID, self.get_session_id() or "unknown")
+                span.set_attribute(MCP_METHOD_NAME, notification.root.method)
+                if related_request_id:
+                    span.set_attribute(MCP_REQUEST_ID, str(related_request_id))
+
+                params = notification.root.params
+                if params:
+                    record_attributes(
+                        span,
+                        params.model_dump(),
+                        MCP_REQUEST_ARGUMENT_KEY,
+                    )
+
+                # Propagate trace context in request.params._meta
+                trace_headers = {}
+                inject(trace_headers)
+                if "traceparent" in trace_headers or "tracestate" in trace_headers:
+                    if params is None:
+                        params = NotificationParams()
+                    if params.meta is None:
+                        params.meta = NotificationParams.Meta()
+                    if "traceparent" in trace_headers:
+                        params.meta.traceparent = trace_headers["traceparent"]
+                    if "tracestate" in trace_headers:
+                        params.meta.tracestate = trace_headers["tracestate"]
+                    notification.root.params = params
+
             try:
                 return await super().send_notification(notification, related_request_id)
             except Exception as e:
@@ -248,22 +290,23 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         processed.
         """
         logger.debug(
-            "send_progress_notification: progress_token={progress_token}, progress={progress}, total={total}, message={message}"
+            f"send_progress_notification: progress_token={progress_token}, progress={progress}, total={total}, message={message}"
         )
 
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.send_progress_notification",
             kind=trace.SpanKind.CLIENT,
         ) as span:
-            span.set_attribute(MCP_SESSION_ID, self.get_session_id() or "unknown")
-            span.set_attribute(MCP_METHOD_NAME, "notifications/progress")
-            span.set_attribute("progress_token", progress_token)
-            span.set_attribute("progress", progress)
-            if total is not None:
-                span.set_attribute("total", total)
-            if message:
-                span.set_attribute("message", message)
+            if self.context.tracing_enabled:
+                span.set_attribute(MCP_SESSION_ID, self.get_session_id() or "unknown")
+                span.set_attribute(MCP_METHOD_NAME, "notifications/progress")
+                span.set_attribute("progress_token", progress_token)
+                span.set_attribute("progress", progress)
+                if total is not None:
+                    span.set_attribute("total", total)
+                if message:
+                    span.set_attribute("message", message)
 
             return await super().send_progress_notification(
                 progress_token=progress_token,

@@ -91,6 +91,11 @@ class SwarmAgent(Agent):
         context: Optional["Context"] = None,
         **kwargs,
     ):
+        if server_names is None:
+            server_names = []
+        if functions is None:
+            functions = []
+
         super().__init__(
             name=name,
             instruction=instruction,
@@ -252,15 +257,17 @@ class Swarm(AugmentedLLM[MessageParamT, MessageT], Generic[MessageParamT, Messag
                 # Set the new agent as the current agent
                 await self.set_agent(content.agent)
                 contents.append(TextContent(type="text", text=content.resource.text))
-            elif isinstance(content, AgentFunctionResult):
+            elif isinstance(
+                content, AgentFunctionResultResource
+            ):  # TODO: jerron - should this be AgentFunctionResult or AgentFunctionResultResource?
                 logger.info(
                     "Updating context variables with new context variables from agent function result",
-                    data=content.context_variables,
+                    data=content.result.context_variables,
                 )
-                self.context_variables.update(content.context_variables)
-                if content.agent:
+                self.context_variables.update(content.result.context_variables)
+                if content.result.agent:
                     # Set the new agent as the current agent
-                    await self.set_agent(content.agent)
+                    await self.set_agent(content.result.agent)
 
                 contents.append(TextContent(type="text", text=content.resource.text))
             else:

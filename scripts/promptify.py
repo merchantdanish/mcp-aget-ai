@@ -431,9 +431,7 @@ def package_project(
 
 def main(
     path: str = typer.Argument(".", help="Path to the project directory"),
-    output: str = typer.Option(
-        "project_contents.md", "--output", "-o", help="Output file path"
-    ),
+    output: str = typer.Option("prompt.md", "--output", "-o", help="Output file path"),
     include: Optional[List[str]] = typer.Option(
         None, "--include", "-i", help="Patterns to ONLY include (e.g. '*.py')"
     ),
@@ -492,7 +490,6 @@ def main(
         # Config files
         "**/uv.lock",
         "**/.pre-commit-config.yaml",
-        "**/.goosehints",
         "**/.python-version",
         "**/.gitignore",
         # Common directories to ignore
@@ -508,12 +505,16 @@ def main(
         "**/CONTRIBUTING.md",
         "**/CLAUDE.md",
         "**/README.md",
+        "**/LLMS.txt",
+        "**/Makefile",
         "**/pyproject.toml",
         "**/requirements.txt",
         "**/mcp_agent.config.yaml",
         "**/mcp_agent.secrets.yaml",
         "**/mcp_agent.config.yaml.example",
-        "**/project_contents.md",
+        "**/prompt.md",
+        "**/.DS_Store",
+        "**/py.typed",
     ]
     ignore_patterns.extend(default_ignores)
 

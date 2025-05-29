@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from mcp.types import ModelHint, ModelPreferences
 from mcp_agent.core.context_dependent import ContextDependent
+from mcp_agent.tracing.telemetry import get_tracer
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -134,11 +135,11 @@ class ModelSelector(ContextDependent):
         """
         Select the best model from a given list of models based on the given model preferences.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.select_best_model"
         ) as span:
-            if self.benchmark_weights:
+            if self.context.tracing_enabled and self.benchmark_weights:
                 for k, v in self.benchmark_weights.items():
                     span.set_attribute(f"benchmark_weights.{k}", v)
 
@@ -196,12 +197,13 @@ class ModelSelector(ContextDependent):
                 )
                 scores.append((model_score, model))
 
-                span.set_attribute(f"model.{model.name}.cost_score", cost_score)
-                span.set_attribute(f"model.{model.name}.speed_score", speed_score)
-                span.set_attribute(
-                    f"model.{model.name}.intelligence_score", intelligence_score
-                )
-                span.set_attribute(f"model.{model.name}.total_score", model_score)
+                if self.context.tracing_enabled:
+                    span.set_attribute(f"model.{model.name}.cost_score", cost_score)
+                    span.set_attribute(f"model.{model.name}.speed_score", speed_score)
+                    span.set_attribute(
+                        f"model.{model.name}.intelligence_score", intelligence_score
+                    )
+                    span.set_attribute(f"model.{model.name}.total_score", model_score)
 
             best_model = max(scores, key=lambda x: x[0])[1]
             span.set_attribute("best_model", best_model.name)

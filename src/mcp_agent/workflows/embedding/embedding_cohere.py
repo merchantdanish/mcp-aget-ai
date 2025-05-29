@@ -10,6 +10,7 @@ from mcp_agent.tracing.semconv import (
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
+from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.workflows.embedding.embedding_base import EmbeddingModel, FloatArray
 
 if TYPE_CHECKING:
@@ -41,7 +42,7 @@ class CohereEmbeddingModel(EmbeddingModel):
         }[model]
 
     async def embed(self, data: List[str]) -> FloatArray:
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(f"{self.__class__.__name__}.embed") as span:
             span.set_attribute(GEN_AI_REQUEST_MODEL, self.model)
             span.set_attribute(GEN_AI_OPERATION_NAME, "embeddings")

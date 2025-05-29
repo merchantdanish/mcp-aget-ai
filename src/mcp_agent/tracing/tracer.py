@@ -140,28 +140,3 @@ class TracingConfig:
             )
 
         cls._initialized = True
-
-    @classmethod
-    async def cleanup(cls):
-        """Clean up resources used for tracing."""
-        if not cls._initialized:
-            return
-        trace.get_tracer_provider().force_flush()
-        trace.get_tracer_provider().shutdown()
-
-
-# TODO: Figure out how to implement this with agnostic context manager for sync/async
-# def start_traced_span(name: str, context: "Context"):
-#     """
-#     Start a new span in the context with the given name.
-
-#     Args:
-#         name: The name of the span.
-#         context: The context to use for the span.
-
-#     Returns:
-#         A new span object.
-#     """
-#     tracer = context.tracer or trace.get_tracer("mcp-agent")
-#     with tracer.start_as_current_span(name) as span:
-#         yield span

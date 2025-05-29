@@ -46,6 +46,7 @@ from mcp_agent.tracing.semconv import (
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
+from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.utils.common import typed_dict_extras
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
@@ -128,7 +129,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         The default implementation uses Azure OpenAI 4o-mini as the LLM.
         Override this method to use a different LLM.
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(f"llm_azure.{self.name}.generate") as span:
             span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
             self._annotate_span_for_generation_message(span, message)
@@ -137,14 +138,19 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             responses: list[ResponseMessage] = []
 
             params = self.get_request_params(request_params)
-            AugmentedLLM.annotate_span_with_request_params(span, params)
+
+            if self.context.tracing_enabled:
+                AugmentedLLM.annotate_span_with_request_params(span, params)
 
             if params.use_history:
+                span.set_attribute("use_history", params.use_history)
                 messages.extend(self.history.get())
 
             system_prompt = self.instruction or params.systemPrompt
+
             if system_prompt and len(messages) == 0:
                 messages.append(SystemMessage(content=system_prompt))
+                span.set_attribute("system_prompt", system_prompt)
 
             if isinstance(message, str):
                 messages.append(UserMessage(content=message))
@@ -168,7 +174,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
             span.set_attribute(
                 "available_tools",
-                [t.get("function", {}).get("name") for t in tools],
+                [t.function.name for t in tools],
             )
 
             model = await self.select_model(params)
@@ -216,8 +222,8 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
                 self._annotate_span_for_completion_response(span, response, i)
 
-                total_input_tokens += response.usage.prompt_tokens
-                total_output_tokens += response.usage.completion_tokens
+                total_input_tokens += response.usage["prompt_tokens"]
+                total_output_tokens += response.usage["completion_tokens"]
                 finish_reasons.append(response.choices[0].finish_reason)
 
                 message = response.choices[0].message
@@ -231,7 +237,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 ):
                     if (
                         response.choices[0].message.tool_calls is not None
-                        and len(response.choices[0].message.tool_calls) == 1
+                        and len(response.choices[0].message.tool_calls) > 0
                     ):
                         tool_tasks = [
                             self.execute_tool_call(tool_call)
@@ -253,6 +259,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                                 continue
                             elif isinstance(result, ToolMessage):
                                 messages.append(result)
+                                responses.append(result)
                 else:
                     self.logger.debug(
                         f"Iteration {i}: Stopping because finish_reason is '{response.choices[0].finish_reason}'"
@@ -264,15 +271,18 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
             self._log_chat_finished(model=model)
 
-            span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)
-            span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
-            span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)
+                span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
+                span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
 
-            for i, res in enumerate(responses):
-                response_data = self.extract_response_message_attributes_for_tracing(
-                    res, prefix=f"response.{i}"
-                )
-                span.set_attributes(response_data)
+                for i, res in enumerate(responses):
+                    response_data = (
+                        self.extract_response_message_attributes_for_tracing(
+                            res, prefix=f"response.{i}"
+                        )
+                    )
+                    span.set_attributes(response_data)
 
             return responses
 
@@ -364,23 +374,34 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 tool_call_id=tool_call_id,
                 content=f"Invalid JSON provided in tool call arguments for '{tool_name}'. Failed to load JSON: {str(e)}",
             )
-
-        tool_call_request = CallToolRequest(
-            method="tools/call",
-            params=CallToolRequestParams(name=tool_name, arguments=tool_args),
-        )
-
-        result = await self.call_tool(
-            request=tool_call_request, tool_call_id=tool_call_id
-        )
-
-        if result.content:
+        except Exception as e:
             return ToolMessage(
                 tool_call_id=tool_call_id,
-                content=mcp_content_to_azure_content(result.content),
+                content=f"Error executing tool '{tool_name}': {str(e)}",
             )
 
-        return None
+        try:
+            tool_call_request = CallToolRequest(
+                method="tools/call",
+                params=CallToolRequestParams(name=tool_name, arguments=tool_args),
+            )
+
+            result = await self.call_tool(
+                request=tool_call_request, tool_call_id=tool_call_id
+            )
+
+            if result.content:
+                return ToolMessage(
+                    tool_call_id=tool_call_id,
+                    content=mcp_content_to_azure_content(result.content),
+                )
+
+            return None
+        except Exception as e:
+            return ToolMessage(
+                tool_call_id=tool_call_id,
+                content=f"Error executing tool '{tool_name}': {str(e)}",
+            )
 
     def message_param_str(self, message: MessageParam) -> str:
         """Convert an input message to a string representation."""
@@ -412,6 +433,9 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         self, span: trace.Span, request: RequestCompletionRequest, turn: int
     ) -> None:
         """Annotate the span with the completion request as an event."""
+        if not self.context.tracing_enabled:
+            return
+
         event_data = {
             "completion.request.turn": turn,
             "config.endpoint": request.config.endpoint,
@@ -432,6 +456,9 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         self, span: trace.Span, response: ResponseMessage, turn: int
     ) -> None:
         """Annotate the span with the completion response as an event."""
+        if not self.context.tracing_enabled:
+            return
+
         event_data = {
             "completion.response.turn": turn,
         }
@@ -518,7 +545,7 @@ class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ResponseMessage
         return MCPMessageResult(
             role=result.role,
             content=TextContent(type="text", text=result.content),
-            model=None,
+            model="",
             stopReason=None,
         )
 
@@ -642,8 +669,9 @@ def azure_content_to_mcp_content(
     content: str | list[ContentItem] | None,
 ) -> Iterable[TextContent | ImageContent | EmbeddedResource]:
     mcp_content: Iterable[TextContent | ImageContent | EmbeddedResource] = []
-
-    if isinstance(content, str):
+    if content is None:
+        return mcp_content
+    elif isinstance(content, str):
         return [TextContent(type="text", text=content)]
 
     for item in content:

@@ -5,7 +5,7 @@ from opentelemetry import trace
 from pydantic import ConfigDict
 
 from mcp_agent.tracing.semconv import GEN_AI_REQUEST_TOP_K
-from mcp_agent.tracing.telemetry import record_attributes
+from mcp_agent.tracing.telemetry import get_tracer, record_attributes
 from mcp_agent.workflows.embedding.embedding_base import (
     FloatArray,
     EmbeddingModel,
@@ -110,25 +110,26 @@ class EmbeddingIntentClassifier(IntentClassifier):
         Returns:
             List of classification results, ordered by confidence
         """
-        tracer = self.context.tracer or trace.get_tracer("mcp-agent")
+        tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.classify"
         ) as span:
-            span.set_attribute("request", request)
-            span.set_attribute("intents", list(self.intents.keys()))
-            for intent in self.intents.values():
-                span.set_attribute(
-                    f"intent.{intent.name}.description", intent.description
-                )
-                if intent.examples:
+            if self.context.tracing_enabled:
+                span.set_attribute("request", request)
+                span.set_attribute("intents", list(self.intents.keys()))
+                for intent in self.intents.values():
                     span.set_attribute(
-                        f"intent.{intent.name}.examples", intent.examples
+                        f"intent.{intent.name}.description", intent.description
                     )
-                if intent.metadata:
-                    record_attributes(
-                        span, intent.metadata, f"intent.{intent.name}.metadata"
-                    )
-            span.set_attribute(GEN_AI_REQUEST_TOP_K, top_k)
+                    if intent.examples:
+                        span.set_attribute(
+                            f"intent.{intent.name}.examples", intent.examples
+                        )
+                    if intent.metadata:
+                        record_attributes(
+                            span, intent.metadata, f"intent.{intent.name}.metadata"
+                        )
+                span.set_attribute(GEN_AI_REQUEST_TOP_K, top_k)
 
             if not self.initialized:
                 await self.initialize()
@@ -151,9 +152,14 @@ class EmbeddingIntentClassifier(IntentClassifier):
                 # Compute overall confidence score
                 confidence = compute_confidence(similarity_scores)
 
-                span.set_attribute(f"classification.{intent_name}.p_score", confidence)
-                for metric, score in similarity_scores.items():
-                    span.set_attribute(f"classification.{intent_name}.{metric}", score)
+                if self.context.tracing_enabled:
+                    span.set_attribute(
+                        f"classification.{intent_name}.p_score", confidence
+                    )
+                    for metric, score in similarity_scores.items():
+                        span.set_attribute(
+                            f"classification.{intent_name}.{metric}", score
+                        )
 
                 results.append(
                     IntentClassificationResult(
@@ -165,8 +171,9 @@ class EmbeddingIntentClassifier(IntentClassifier):
             results.sort(key=lambda x: x.p_score, reverse=True)
             top_results = results[:top_k]
 
-            for i, result in enumerate(top_results):
-                span.set_attribute(f"result.{i}.intent", result.intent)
-                span.set_attribute(f"result.{i}.p_score", result.p_score)
+            if self.context.tracing_enabled:
+                for i, result in enumerate(top_results):
+                    span.set_attribute(f"result.{i}.intent", result.intent)
+                    span.set_attribute(f"result.{i}.p_score", result.p_score)
 
             return top_results

@@ -164,7 +164,7 @@ class Executor(ABC, ContextDependent):
             payload: Optional data to include with the signal
             signal_description: Optional human-readable description
             workflow_id: Optional workflow ID to send the signal
-            workflow_id: Optional run ID of the workflow instance to signal
+            run_id: Optional run ID of the workflow instance to signal
         """
         signal = Signal[SignalValueT](
             name=signal_name,
