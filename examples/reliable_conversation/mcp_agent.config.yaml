@@ -3,9 +3,9 @@ $schema: ../../schema/mcp-agent.config.schema.json
 execution_engine: asyncio # Change to temporal later
 
 logger:
-  transports: [console, file]
+  transports: [file]  # Only file logging - we have custom console output
   level: debug
-  progress_display: true
+  progress_display: false  # Disable progress display for clean output
   path_settings:
     path_pattern: "logs/rcm-{unique_id}.jsonl"
     unique_id: "timestamp"

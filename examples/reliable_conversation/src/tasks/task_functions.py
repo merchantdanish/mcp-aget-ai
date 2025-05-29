@@ -16,6 +16,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.config import get_llm_class
 from utils.logging import get_rcm_logger
 from models.conversation_models import ConversationState, QualityMetrics, Requirement
+from utils.progress_reporter import (
+    report_step, report_thinking, report_quality_check, 
+    report_requirement_extraction, report_context_consolidation,
+    show_llm_interaction
+)
 
 # Quality evaluation prompt from paper Appendix
 QUALITY_EVALUATOR_PROMPT = """You are an expert evaluator assessing conversation quality based on research findings.
@@ -135,6 +140,9 @@ ADDITIONAL CONTEXT:
 Evaluate each dimension carefully and return JSON with exact format specified in your instructions."""
 
             result = await llm.generate_str(evaluation_prompt)
+            
+            # Show the LLM interaction for transparency
+            show_llm_interaction("Quality Evaluator", evaluation_prompt, result, truncate_at=800)
 
             # Parse JSON response with validation
             try:
@@ -258,6 +266,9 @@ Extract requirements and return JSON array with the exact format specified in yo
 
             result = await llm.generate_str(extraction_prompt)
             
+            # Show the LLM interaction for transparency
+            show_llm_interaction("Requirement Extractor", extraction_prompt, result, truncate_at=800)
+            
             try:
                 requirements_data = json.loads(result)
             except json.JSONDecodeError:
@@ -376,6 +387,9 @@ PREVIOUS CONSOLIDATED CONTEXT:
 Create a consolidated context following your instructions. Focus on preserving middle turn information and all requirements."""
 
             result = await llm.generate_str(consolidation_prompt)
+            
+            # Show the LLM interaction for transparency
+            show_llm_interaction("Context Consolidator", consolidation_prompt, result, truncate_at=800)
 
             logger.info("Context consolidated", data={
                 "original_length": len(conversation_text),
@@ -490,6 +504,9 @@ PENDING REQUIREMENTS:
 Respond naturally while being mindful of quality guidelines. {'Address these previous issues: ' + str(previous_issues) if previous_issues else ''}"""
 
             response = await llm.generate_str(generation_prompt)
+            
+            # Show the LLM interaction for transparency
+            show_llm_interaction("Response Generator", generation_prompt, response, truncate_at=800)
 
             logger.info("Response generated", data={
                 "attempt": attempt + 1,
@@ -546,25 +563,31 @@ async def process_turn_with_quality(params: Dict[str, Any]) -> Dict[str, Any]:
         "conversation_id": state.conversation_id,
         "turn": state.current_turn
     })
+    
+    report_thinking("Starting quality-controlled turn processing")
 
     try:
         # Step 1: Extract requirements (with fallback)
+        report_step("Extracting requirements from conversation")
         requirements = await extract_requirements_with_llm({
             "messages": [m.to_dict() for m in state.messages],
             "existing_requirements": [r.to_dict() for r in state.requirements],
             "config": config
         })
+        report_requirement_extraction(len(requirements))
 
         # Step 2: Consolidate context if needed (with fallback)
         consolidated_context = state.consolidated_context
         context_consolidated = False
 
         if _should_consolidate_context(state, config):
+            report_step("Context consolidation needed", f"turn {state.current_turn}")
             logger.info("Consolidating context", data={
                 "turn": state.current_turn,
                 "trigger": "consolidation_interval"
             })
             
+            old_length = len(state.consolidated_context)
             consolidated_context = await consolidate_context_with_llm({
                 "messages": [m.to_dict() for m in state.messages],
                 "requirements": requirements,
@@ -572,13 +595,19 @@ async def process_turn_with_quality(params: Dict[str, Any]) -> Dict[str, Any]:
                 "config": config
             })
             context_consolidated = True
+            report_context_consolidation(old_length, len(consolidated_context))
+        else:
+            report_step("Context consolidation skipped", "not needed this turn")
 
         # Step 3: Generate response with quality refinement loop (with fallbacks)
         best_response = ""
         best_metrics = None
         max_attempts = config.get("max_refinement_attempts", 3)
+        
+        report_step("Starting response generation", f"max {max_attempts} attempts")
 
         for attempt in range(max_attempts):
+            report_step(f"Generating response attempt {attempt + 1}/{max_attempts}")
             logger.info("Generating response attempt", data={
                 "attempt": attempt + 1,
                 "max_attempts": max_attempts
@@ -595,6 +624,7 @@ async def process_turn_with_quality(params: Dict[str, Any]) -> Dict[str, Any]:
             })
 
             # Evaluate quality (with fallback)
+            report_step("Evaluating response quality")
             evaluation = await evaluate_quality_with_llm({
                 "response": response,
                 "consolidated_context": consolidated_context,
@@ -616,9 +646,13 @@ async def process_turn_with_quality(params: Dict[str, Any]) -> Dict[str, Any]:
                     "overall_score": overall_score
                 }
 
+            # Report quality evaluation
+            report_quality_check(overall_score, len(evaluation.get("issues", [])))
+
             # Check quality threshold
             quality_threshold = config.get("quality_threshold", 0.8)
             if overall_score >= quality_threshold:
+                report_step("Quality threshold met", f"score {overall_score:.0%} >= {quality_threshold:.0%}")
                 logger.info("Quality threshold met", data={
                     "attempt": attempt + 1,
                     "score": overall_score,
@@ -626,6 +660,7 @@ async def process_turn_with_quality(params: Dict[str, Any]) -> Dict[str, Any]:
                 })
                 break
             else:
+                report_step("Quality below threshold", f"score {overall_score:.0%} < {quality_threshold:.0%}, continuing")
                 logger.info("Quality below threshold, continuing refinement", data={
                     "attempt": attempt + 1,
                     "score": overall_score,

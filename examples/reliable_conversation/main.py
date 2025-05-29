@@ -16,6 +16,7 @@ from mcp_agent.app import MCPApp
 from workflows.conversation_workflow import ConversationWorkflow
 from models.conversation_models import ConversationConfig, ConversationState
 from utils.logging import get_rcm_logger
+from utils.logging_config import setup_readable_logging
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -37,6 +38,15 @@ class RegisteredConversationWorkflow(ConversationWorkflow):
 
 async def run_repl():
     """Run the RCM REPL interface"""
+    
+    # Set up readable logging
+    setup_readable_logging(
+        level="DEBUG",
+        console_output=False,  # We'll use Rich console for user interaction
+        file_output=True,
+        log_file="logs/rcm_readable.log",
+        show_summaries=True
+    )
 
     async with app.run() as rcm_app:
         logger = get_rcm_logger("main")

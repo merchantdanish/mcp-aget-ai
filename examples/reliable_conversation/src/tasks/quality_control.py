@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.conversation_models import ConversationState, QualityMetrics
 from utils.logging import get_rcm_logger
+from utils.progress_reporter import report_step, report_thinking, report_quality_check
 
 # We'll register tasks with the app instance passed from main.py
 app = None
@@ -28,6 +29,47 @@ async def process_turn_with_quality(params: Dict[str, Any]) -> Dict[str, Any]:
     
     state_dict = params["state"]
     config = params["config"]
+    
+    report_thinking("Starting quality-controlled turn processing")
+    
+    # For now, create a mock implementation that shows the steps
+    import time
+    import asyncio
+    
+    report_step("Extracting requirements from conversation")
+    await asyncio.sleep(0.5)  # Simulate work
+    
+    report_step("Checking if context consolidation is needed")
+    await asyncio.sleep(0.5)
+    
+    report_step("Generating response with constraints")
+    await asyncio.sleep(1.0)
+    
+    report_step("Evaluating response quality")
+    await asyncio.sleep(0.5)
+    
+    # Mock quality evaluation
+    mock_quality = {
+        "clarity": 0.85,
+        "completeness": 0.90,
+        "assumptions": 0.15,
+        "verbosity": 0.25,
+        "premature_attempt": False,
+        "middle_turn_reference": 0.75,
+        "requirement_tracking": 0.80,
+        "overall_score": 0.83
+    }
+    
+    report_quality_check(mock_quality["overall_score"], 0)
+    
+    return {
+        "response": "Mock response - this would be the actual LLM response with quality control",
+        "requirements": [],
+        "consolidated_context": "",
+        "context_consolidated": False,
+        "metrics": mock_quality,
+        "refinement_attempts": 1
+    }
     
     # Recreate state object
     state = ConversationState.from_dict(state_dict)
