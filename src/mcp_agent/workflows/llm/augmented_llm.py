@@ -273,7 +273,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     async def generate(
         self,
         message: str | MessageParamT | List[MessageParamT],
-        resource_uri: str | None = None,
+        resource_uris: list[str] | None = None,
         request_params: RequestParams | None = None,
     ) -> List[MessageT]:
         """Request an LLM generation, which may run multiple iterations, and return the result"""
@@ -282,7 +282,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
     async def generate_str(
         self,
         message: str | MessageParamT | List[MessageParamT],
-        resource_uri: str | None = None,
+        resource_uris: list[str] | None = None,
         request_params: RequestParams | None = None,
     ) -> str:
         """Request an LLM generation and return the string representation of the result"""
@@ -292,7 +292,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         self,
         message: str | MessageParamT | List[MessageParamT],
         response_model: Type[ModelT],
-        resource_uri: str | None = None,
+        resource_uris: list[str] | None = None,
         request_params: RequestParams | None = None,
     ) -> ModelT:
         """Request a structured LLM generation and return the result as a Pydantic model."""

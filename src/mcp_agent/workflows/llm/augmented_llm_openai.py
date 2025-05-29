@@ -149,7 +149,7 @@ class OpenAIAugmentedLLM(
     async def generate(
         self,
         message,
-        resource_uri: str | None = None,
+        resource_uris,
         request_params: RequestParams | None = None,
     ):
         """
@@ -214,15 +214,24 @@ class OpenAIAugmentedLLM(
                 available_tools = None
 
             # Read resource if any
-            if resource_uri:
-                resource_result = await self.agent.read_resource(uri=resource_uri)
-                contents = [
-                    mcp_resource_content_to_openai_content(
-                        EmbeddedResource(type="resource", resource=content)
+            content_parts: List[ChatCompletionContentPartParam] = []
+            if resource_uris:
+                for uri in resource_uris:
+                    resource = await self.agent.read_resource(uri=uri)
+                    contents = [
+                        embedded_resource_to_openai_content_part(
+                            EmbeddedResource(type="resource", resource=content)
+                        )
+                        for content in resource.contents
+                    ]
+                    content_parts.extend(contents)
+                # Combine content parts into a user message
+                if len(content_parts) > 0:
+                    messages.append(
+                        ChatCompletionUserMessageParam(
+                            role="user", content=content_parts
+                        )
                     )
-                    for content in resource_result.contents
-                ]
-                messages.extend(contents)
 
             responses: List[ChatCompletionMessage] = []
             model = await self.select_model(params)
@@ -380,7 +389,7 @@ class OpenAIAugmentedLLM(
     async def generate_str(
         self,
         message,
-        resource_uri,
+        resource_uris,
         request_params: RequestParams | None = None,
     ):
         """
@@ -400,7 +409,7 @@ class OpenAIAugmentedLLM(
 
             responses = await self.generate(
                 message=message,
-                resource_uri=resource_uri,
+                resource_uris=resource_uris,
                 request_params=request_params,
             )
 
@@ -423,7 +432,7 @@ class OpenAIAugmentedLLM(
         self,
         message,
         response_model: Type[ModelT],
-        resource_uri: str | None = None,
+        resource_uris,
         request_params: RequestParams | None = None,
     ) -> ModelT:
         # First we invoke the LLM to generate a string response
@@ -444,7 +453,7 @@ class OpenAIAugmentedLLM(
 
             response = await self.generate_str(
                 message=message,
-                resource_uri=resource_uri,
+                resource_uris=resource_uris,
                 request_params=params,
             )
 
@@ -1142,11 +1151,11 @@ def is_supported_image_type(mime_type: str) -> bool:
     )
 
 
-def mcp_resource_content_to_openai_content(
+def embedded_resource_to_openai_content_part(
     resource: EmbeddedResource,
 ) -> ChatCompletionContentPartParam:
     """
-    Convert MCP resource content to OpenAI content.
+    Convert MCP embedded resource to OpenAI content part.
     """
     resource_content = resource.resource
     uri_str = get_resource_uri(resource)
