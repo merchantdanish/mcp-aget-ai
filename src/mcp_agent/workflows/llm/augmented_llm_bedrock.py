@@ -493,7 +493,7 @@ class BedrockMCPTypeConverter(
     def from_mcp_message_param(cls, param: MCPMessageParam) -> MessageUnionTypeDef:
         return {
             "role": param.role,
-            "content": mcp_content_to_bedrock_content(param.content),
+            "content": mcp_content_to_bedrock_content([param.content]),
         }
 
     @classmethod
@@ -561,13 +561,13 @@ def bedrock_content_to_mcp_content(
 
     for block in content:
         if block.get("text"):
-            mcp_content.append(TextContent(type="text", text=content["text"]))
+            mcp_content.append(TextContent(type="text", text=block["text"]))
         elif block.get("image"):
             mcp_content.append(
                 ImageContent(
                     type="image",
-                    data=content["image"]["source"],
-                    mimeType=content["image"]["format"],
+                    data=block["image"]["source"],
+                    mimeType=block["image"]["format"],
                 )
             )
         elif block.get("toolUse"):
@@ -575,7 +575,7 @@ def bedrock_content_to_mcp_content(
             mcp_content.append(
                 TextContent(
                     type="text",
-                    text=str(content["toolUse"]),
+                    text=str(block["toolUse"]),
                 )
             )
         elif block.get("document"):
@@ -583,8 +583,8 @@ def bedrock_content_to_mcp_content(
                 EmbeddedResource(
                     type="document",
                     resource=BlobResourceContents(
-                        mimeType=content["document"]["format"],
-                        blob=content["document"]["source"],
+                        mimeType=block["document"]["format"],
+                        blob=block["document"]["source"],
                     ),
                 )
             )

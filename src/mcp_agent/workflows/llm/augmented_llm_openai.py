@@ -247,6 +247,9 @@ class OpenAIAugmentedLLM(
                     "stop": params.stopSequences,
                     "tools": available_tools,
                 }
+                user_value = getattr(self.context.config.openai, "user", None)
+                if user_value:
+                    arguments["user"] = user_value
                 if self._reasoning(model):
                     arguments = {
                         **arguments,
@@ -552,9 +555,9 @@ class OpenAIAugmentedLLM(
                 return ChatCompletionToolMessageParam(
                     role="tool",
                     tool_call_id=tool_call_id,
-                    content="\n".join(
-                        str(mcp_content_to_openai_content(c)) for c in result.content
-                    ),
+                    content=[
+                        mcp_content_to_openai_content_part(c) for c in result.content
+                    ],
                 )
 
             return None
@@ -873,6 +876,9 @@ class OpenAICompletionTasks:
             http_client=request.config.http_client
             if hasattr(request.config, "http_client")
             else None,
+            default_headers=request.config.default_headers
+            if hasattr(request.config, "default_headers")
+            else None,
         )
 
         payload = request.payload
@@ -975,7 +981,7 @@ class MCPOpenAITypeConverter(
         return MCPMessageResult(
             role=result.role,
             content=TextContent(type="text", text=result.content),
-            model=None,
+            model="",
             stopReason=None,
             # extras for ChatCompletionMessage fields
             **result.model_dump(exclude={"role", "content"}),
@@ -990,14 +996,14 @@ class MCPOpenAITypeConverter(
             extras = param.model_dump(exclude={"role", "content"})
             return ChatCompletionAssistantMessageParam(
                 role="assistant",
-                content=mcp_content_to_openai_content(param.content),
+                content=[mcp_content_to_openai_content_part(param.content)],
                 **extras,
             )
         elif param.role == "user":
             extras = param.model_dump(exclude={"role", "content"})
             return ChatCompletionUserMessageParam(
                 role="user",
-                content=mcp_content_to_openai_content(param.content),
+                content=[mcp_content_to_openai_content_part(param.content)],
                 **extras,
             )
         else:
@@ -1055,16 +1061,9 @@ class MCPOpenAITypeConverter(
             )
 
 
-def mcp_content_to_openai_content(
+def mcp_content_to_openai_content_part(
     content: TextContent | ImageContent | EmbeddedResource,
-) -> ChatCompletionContentPartTextParam:
-    if isinstance(content, list):
-        # Handle list of content items
-        return ChatCompletionContentPartTextParam(
-            type="text",
-            text="\n".join(mcp_content_to_openai_content(c) for c in content),
-        )
-
+) -> ChatCompletionContentPartParam:
     if isinstance(content, TextContent):
         return ChatCompletionContentPartTextParam(type="text", text=content.text)
     elif isinstance(content, ImageContent):
