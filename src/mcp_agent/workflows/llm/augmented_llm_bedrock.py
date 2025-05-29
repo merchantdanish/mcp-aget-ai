@@ -26,6 +26,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.llm.multipart_converter_bedrock import BedrockConverter
 
 if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime.type_defs import (
@@ -80,7 +81,9 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
             use_history=True,
         )
 
-    async def generate(self, message, request_params: RequestParams | None = None):
+    async def generate(
+        self, message, resource_uris, request_params: RequestParams | None = None
+    ):
         """
         Process a query using an LLM and available tools.
         The default implementation uses AWS Nova's ChatCompletion as the LLM.
@@ -115,6 +118,22 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
             ],
             "toolChoice": {"auto": {}},
         }
+
+        # Read resource if any
+        content_parts: list[ContentBlockUnionTypeDef] = []
+        if resource_uris:
+            for uri in resource_uris:
+                resource = await self.agent.read_resource(uri=uri)
+                contents = [
+                    BedrockConverter._convert_embedded_resource(
+                        EmbeddedResource(type="resource", resource=content)
+                    )
+                    for content in resource.contents
+                ]
+                content_parts.extend(contents)
+            # Combine content parts into a user message
+            if len(content_parts) > 0:
+                messages.append({"role": "user", "content": content_parts})
 
         responses: list[MessageUnionTypeDef] = []
         model = await self.select_model(params)
@@ -251,6 +270,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
     async def generate_str(
         self,
         message,
+        resource_uris,
         request_params: RequestParams | None = None,
     ):
         """
@@ -260,6 +280,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         """
         responses = await self.generate(
             message=message,
+            resource_uris=resource_uris,
             request_params=request_params,
         )
 
@@ -284,10 +305,12 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         self,
         message,
         response_model: Type[ModelT],
+        resource_uris,
         request_params: RequestParams | None = None,
     ) -> ModelT:
         response = await self.generate_str(
             message=message,
+            resource_uris=resource_uris,
             request_params=request_params,
         )
 
