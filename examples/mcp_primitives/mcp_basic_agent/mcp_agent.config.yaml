@@ -12,11 +12,24 @@ logger:
 
 mcp:
   servers:
-    everything:
+    resource-demo:
+      command: "uv"
+      args:
+        [
+          "--directory",
+          "/Users/jerronlim/Desktop/projects/mcp-agent/examples/mcp_primitives/mcp_basic_agent",
+          "run",
+          "resource_demo_server.py",
+        ]
+      description: "Demo MCP server for list_resources and read_resource"
+    everart:
       command: "npx"
       args: ["-y", "@modelcontextprotocol/server-everart"]
       env:
         EVERART_API_KEY: "your_key_here"
+    everything:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-everything"]
 
 openai:
   # Secrets (API keys, etc.) are stored in an mcp_agent.secrets.yaml file which can be gitignored

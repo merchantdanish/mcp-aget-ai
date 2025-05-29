@@ -1,5 +1,4 @@
 import asyncio
-import os
 import time
 
 from mcp_agent.app import MCPApp
@@ -12,9 +11,6 @@ from mcp_agent.config import (
     AnthropicSettings,
 )
 from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows.llm.augmented_llm import RequestParams
-from mcp_agent.workflows.llm.llm_selector import ModelPreferences
-from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 settings = Settings(
@@ -53,43 +49,35 @@ async def example_usage():
 
         logger.info("Current config:", data=context.config.model_dump())
 
-        finder_agent = Agent(
-            name="agent",
-            instruction="""A good assistant""",
-            server_names=["everything"],
+        # --- Example: Using the resource-demo MCP server ---
+        resource_agent = Agent(
+            name="resource_agent",
+            instruction="Demo agent for MCP resource primitives",
+            server_names=["resource-demo"],
         )
 
-        async with finder_agent:
-            logger.info("finder: Connected to server, calling list_tools...")
-            tools = await finder_agent.list_tools()
-            logger.info("Tools available:", data=tools.model_dump())
-
-            logger.info("finder: Connected to server, calling list_resources...")
-            resources = await finder_agent.list_resources()
-            logger.info("Resources available:", data=resources.model_dump())
-
-            resource = await finder_agent.read_resource(
-                "everart://images", "everything"
+        async with resource_agent:
+            logger.info(
+                "resource_agent: Connected to resource-demo, calling list_resources..."
             )
-            logger.info("Resource result:", data=resource.model_dump())
-
-            llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
-
-            # Keep resources
-            result = await llm.generate_str(
-                message="Print the contents of mcp_agent.config.yaml verbatim",
-                resource_uri="everart://images",
+            resources = await resource_agent.list_resources()
+            resource_uris = {
+                resource.name: str(resource.uri) for resource in resources.resources
+            }
+            logger.info(
+                "Resources available from resource-demo:",
+                data=resource_uris,
             )
-            result = await llm.generate()
-            logger.info(f"mcp_agent.config.yaml contents: {result}")
 
-            # # Let's switch the same agent to a different LLM
-            # llm = await finder_agent.attach_llm(AnthropicAugmentedLLM)
-
-            # result = await llm.generate_str(
-            #     message="Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
-            # )
-            # logger.info(f"First 2 paragraphs of Model Context Protocol docs: {result}")
+            llm = await resource_agent.attach_llm(OpenAIAugmentedLLM)
+            res = await llm.generate_str(
+                "Summarise what is in my resources",
+                resource_uris=[
+                    resource_uris["resource-demo_get_readme"],
+                    resource_uris["resource-demo_get_users"],
+                ],
+            )
+            logger.info(f"Resource summary: {res}")
 
 
 if __name__ == "__main__":
