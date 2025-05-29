@@ -27,9 +27,17 @@ anthropic:
   default_model: "claude-3-sonnet-20240229"
 
 rcm:
+  # Quality control settings
   quality_threshold: 0.8
   max_refinement_attempts: 3
   consolidation_interval: 3
-  verbose_metrics: false
-  use_claude_code: false
   evaluator_model_provider: "openai" # or anthropic
+  
+  # Display and UX settings
+  verbosity: "normal"  # minimal, normal, verbose
+  show_internal_messages: true  # Show LLM interactions and workflow steps
+  verbose_metrics: false  # Show detailed quality metrics after each response
+  show_timing: false  # Show execution timing information
+  
+  # Feature flags
+  use_claude_code: false
