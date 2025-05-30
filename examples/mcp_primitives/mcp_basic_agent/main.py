@@ -49,35 +49,46 @@ async def example_usage():
 
         logger.info("Current config:", data=context.config.model_dump())
 
-        # --- Example: Using the resource-demo MCP server ---
-        resource_agent = Agent(
-            name="resource_agent",
-            instruction="Demo agent for MCP resource primitives",
-            server_names=["resource-demo"],
+        # --- Example: Using the demo-server MCP server ---
+        agent = Agent(
+            name="agent",
+            instruction="Demo agent for MCP resource and prompt primitives",
+            server_names=["demo-server"],
         )
 
-        async with resource_agent:
-            logger.info(
-                "resource_agent: Connected to resource-demo, calling list_resources..."
-            )
-            resources = await resource_agent.list_resources()
+        async with agent:
+            # List all resources from demo-server server
+            resources = await agent.list_resources("demo-server")
             resource_uris = {
                 resource.name: str(resource.uri) for resource in resources.resources
             }
             logger.info(
-                "Resources available from resource-demo:",
+                "Resources available from demo-server:",
                 data=resource_uris,
             )
 
-            llm = await resource_agent.attach_llm(OpenAIAugmentedLLM)
-            res = await llm.generate_str(
-                "Summarise what is in my resources",
-                resource_uris=[
-                    resource_uris["resource-demo_get_readme"],
-                    resource_uris["resource-demo_get_users"],
-                ],
+            # List all prompts from demo-server server
+            prompts = await agent.list_prompts("demo-server")
+            logger.info(
+                "Prompts available from demo-server:",
+                data=prompts.model_dump(),
             )
-            logger.info(f"Resource summary: {res}")
+
+            # Attach a resource to the agent
+            await agent.attach_resource(
+                resource_uris["demo-server_get_readme"],
+                "demo-server",
+            )
+
+            # Attach a prompt to the agent
+            await agent.attach_prompt(
+                prompts.prompts[0].name,
+                {"message": "My name is John Doe."},
+            )
+
+            llm = await agent.attach_llm(OpenAIAugmentedLLM)
+            res = await llm.generate_str("Summarise what are my prompts and resources?")
+            logger.info(f"Summary: {res}")
 
 
 if __name__ == "__main__":
