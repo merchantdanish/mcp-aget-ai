@@ -8,32 +8,23 @@ from mcp_agent.config import (
     MCPSettings,
     MCPServerSettings,
     OpenAISettings,
-    AnthropicSettings,
 )
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
 settings = Settings(
     execution_engine="asyncio",
-    logger=LoggerSettings(type="file", level="debug"),
+    logger=LoggerSettings(type="console", level="debug"),
     mcp=MCPSettings(
         servers={
-            "fetch": MCPServerSettings(
-                command="uvx",
-                args=["mcp-server-fetch"],
-            ),
-            "filesystem": MCPServerSettings(
-                command="npx",
-                args=["-y", "@modelcontextprotocol/server-filesystem"],
-            ),
+            "demo-server": MCPServerSettings(
+                command="uvx", args=["run", "demo_server.py"]
+            )
         }
     ),
     openai=OpenAISettings(
         api_key="sk-my-openai-api-key",
         default_model="gpt-4o-mini",
-    ),
-    anthropic=AnthropicSettings(
-        api_key="sk-my-anthropic-api-key",
     ),
 )
 
