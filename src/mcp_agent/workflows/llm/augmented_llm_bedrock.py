@@ -101,6 +101,17 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         else:
             messages.append(message)
 
+        # Attach prompts if any are present
+        attached_prompts = self.agent.get_attached_prompts()
+        if attached_prompts:
+            message_params: list[MessageUnionTypeDef] = []
+            for prompt in attached_prompts:
+                for msg in prompt.messages:
+                    message_params.append(
+                        BedrockConverter.convert_prompt_message_to_bedrock(msg)
+                    )
+            messages.extend(message_params)
+
         response = await self.agent.list_tools()
 
         tool_config: ToolConfigurationTypeDef = {

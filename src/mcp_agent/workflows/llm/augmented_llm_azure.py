@@ -160,6 +160,17 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             else:
                 messages.append(message)
 
+            # Attach prompts if any are present
+            attached_prompts = self.agent.get_attached_prompts()
+            if attached_prompts:
+                message_params: list[ChatResponseMessage] = []
+                for prompt in attached_prompts:
+                    for msg in prompt.messages:
+                        message_params.append(
+                            AzureConverter.convert_prompt_message_to_azure(msg)
+                        )
+                messages.extend(message_params)
+
             response = await self.agent.list_tools()
 
             tools: list[ChatCompletionsToolDefinition] = [

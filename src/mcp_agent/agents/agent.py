@@ -141,6 +141,11 @@ class Agent(BaseModel):
     Stores resources attached to the agent for use in LLM prompts.
     """
 
+    _attached_prompts: list[GetPromptResult] = PrivateAttr(default_factory=list)
+    """
+    Stores prompts attached to the agent for use in LLM prompts.
+    """
+
     _agent_tasks: "AgentTasks" = PrivateAttr(default=None)
     _init_lock: asyncio.Lock = PrivateAttr(default_factory=asyncio.Lock)
 
@@ -181,6 +186,21 @@ class Agent(BaseModel):
         self._attached_resources.append(resource)
         return resource
 
+    async def attach_prompt(self, name: str, arguments: dict | None = None):
+        """
+        Attach a prompt to the agent for use in LLM prompts.
+
+        Args:
+            name: The name of the prompt to attach.
+            arguments: Optional dictionary of arguments to pass to the prompt.
+
+        Returns:
+            The GetPromptResult containing the prompt.
+        """
+        prompt = await self.get_prompt(name=name, arguments=arguments)
+        self._attached_prompts.append(prompt)
+        return prompt
+
     def get_attached_resources(self):
         """
         Get all resources attached to this agent.
@@ -189,6 +209,15 @@ class Agent(BaseModel):
             A list of attached resources.
         """
         return self._attached_resources
+
+    def get_attached_prompts(self):
+        """
+        Get all prompts attached to this agent.
+
+        Returns:
+            A list of attached prompts.
+        """
+        return self._attached_prompts
 
     async def attach_llm(
         self, llm_factory: Callable[..., LLM] | None = None, llm: LLM | None = None

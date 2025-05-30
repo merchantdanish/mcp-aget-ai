@@ -1,4 +1,6 @@
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.prompts import base
+from mcp.types import TextContent
 import datetime
 import json
 
@@ -76,6 +78,15 @@ def get_health_status():
     }
 
     return json.dumps(status, indent=2)
+
+
+@mcp.prompt()
+def echo(message: str) -> str:
+    """Echo the provided message.
+
+    This is a simple prompt that echoes back the input message.
+    """
+    return f"Prompt: {message}"
 
 
 def main():

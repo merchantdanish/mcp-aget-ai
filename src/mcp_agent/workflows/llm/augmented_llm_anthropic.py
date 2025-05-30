@@ -164,6 +164,17 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             else:
                 messages.append(message)
 
+            # Attach prompts if any are present
+            attached_prompts = self.agent.get_attached_prompts()
+            if attached_prompts:
+                message_params: list[MessageParam] = []
+                for prompt in attached_prompts:
+                    for msg in prompt.messages:
+                        message_params.append(
+                            AnthropicConverter.convert_prompt_message_to_anthropic(msg)
+                        )
+                messages.extend(message_params)
+
             response = await self.agent.list_tools()
             available_tools: List[ToolParam] = [
                 {

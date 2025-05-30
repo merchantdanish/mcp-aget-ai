@@ -188,6 +188,17 @@ class OpenAIAugmentedLLM(
             else:
                 messages.append(message)
 
+            # Attach prompts if any are present
+            attached_prompts = self.agent.get_attached_prompts()
+            if attached_prompts:
+                message_params: list[ChatCompletionMessageParam] = []
+                for prompt in attached_prompts:
+                    for msg in prompt.messages:
+                        message_params.append(
+                            OpenAIConverter.convert_prompt_message_to_openai(msg)
+                        )
+                messages.extend(message_params)
+
             # Attach resources if any are present
             attached_resources = self.agent.get_attached_resources()
             content_parts: List[ChatCompletionContentPartParam] = []
