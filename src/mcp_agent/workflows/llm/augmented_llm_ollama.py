@@ -37,7 +37,6 @@ class OllamaAugmentedLLM(OpenAIAugmentedLLM):
         self,
         message,
         response_model: Type[ModelT],
-        resource_uris: list[str] | None = None,
         request_params: RequestParams | None = None,
     ) -> ModelT:
         # First we invoke the LLM to generate a string response
@@ -47,7 +46,6 @@ class OllamaAugmentedLLM(OpenAIAugmentedLLM):
 
         response = await self.generate_str(
             message=message,
-            resource_uris=resource_uris,
             request_params=request_params,
         )
 

@@ -133,7 +133,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
     async def generate(
         self,
         message,
-        resource_uris,
         request_params: RequestParams | None = None,
     ):
         """
@@ -175,21 +174,18 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 for tool in response.tools
             ]
 
-            # Read resource if any
+            # Attach resources if any are present
+            attached_resources = self.agent.get_attached_resources()
             content_blocks: list[ContentBlockParam] = []
-            if resource_uris:
-                for uri in resource_uris:
-                    resource = await self.agent.read_resource(uri=uri)
-                    blocks = [
+            for resource in attached_resources:
+                for content in resource.contents:
+                    content_blocks.append(
                         AnthropicConverter._convert_embedded_resource(
                             EmbeddedResource(type="resource", resource=content)
                         )
-                        for content in resource.contents
-                    ]
-                    content_blocks.extend(blocks)
-                # Combine content parts into a user message
-                if len(content_blocks) > 0:
-                    messages.append(MessageParam(role="user", content=content_blocks))
+                    )
+            if len(content_blocks) > 0:
+                messages.append(MessageParam(role="user", content=content_blocks))
 
             responses: List[Message] = []
             model = await self.select_model(params)
@@ -353,7 +349,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
     async def generate_str(
         self,
         message,
-        resource_uris,
         request_params: RequestParams | None = None,
     ) -> str:
         """
@@ -372,7 +367,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             responses: List[Message] = await self.generate(
                 message=message,
-                resource_uris=resource_uris,
                 request_params=request_params,
             )
 
@@ -395,7 +389,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         self,
         message,
         response_model: Type[ModelT],
-        resource_uris,
         request_params: RequestParams | None = None,
     ) -> ModelT:
         # First we invoke the LLM to generate a string response
@@ -411,7 +404,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             response = await self.generate_str(
                 message=message,
-                resource_uris=resource_uris,
                 request_params=request_params,
             )
 

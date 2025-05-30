@@ -124,9 +124,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             use_history=True,
         )
 
-    async def generate(
-        self, message, resource_uris, request_params: RequestParams | None = None
-    ):
+    async def generate(self, message, request_params: RequestParams | None = None):
         """
         Process a query using an LLM and available tools.
         The default implementation uses Azure OpenAI 4o-mini as the LLM.
@@ -180,21 +178,18 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 [t.function.name for t in tools],
             )
 
-            # Read resource if any
+            # Attach resources if any are present
+            attached_resources = self.agent.get_attached_resources()
             content_parts: list[ContentItem] = []
-            if resource_uris:
-                for uri in resource_uris:
-                    resource = await self.agent.read_resource(uri=uri)
-                    contents = [
+            for resource in attached_resources:
+                for content in resource.contents:
+                    content_parts.append(
                         AzureConverter._convert_embedded_resource(
                             EmbeddedResource(type="resource", resource=content)
                         )
-                        for content in resource.contents
-                    ]
-                    content_parts.extend(contents)
-                # Combine content parts into a user message
-                if len(content_parts) > 0:
-                    messages.append(UserMessage(content=content_parts))
+                    )
+            if len(content_parts) > 0:
+                messages.append(UserMessage(content=content_parts))
 
             model = await self.select_model(params)
             if model:
@@ -308,7 +303,6 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
     async def generate_str(
         self,
         message,
-        resource_uris,
         request_params: RequestParams | None = None,
     ):
         """
@@ -318,7 +312,6 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         """
         responses = await self.generate(
             message=message,
-            resource_uris=resource_uris,
             request_params=request_params,
         )
 
@@ -344,7 +337,6 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         self,
         message,
         response_model: Type[ModelT],
-        resource_uris,
         request_params: RequestParams | None = None,
     ) -> ModelT:
         json_schema = response_model.model_json_schema()
@@ -358,9 +350,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         )
         request_params.metadata = metadata
 
-        response = await self.generate(
-            message=message, resource_uris=resource_uris, request_params=request_params
-        )
+        response = await self.generate(message=message, request_params=request_params)
         json_data = json.loads(response[-1].content)
 
         structured_response = response_model.model_validate(json_data)

@@ -4,7 +4,7 @@ import uuid
 from typing import Callable, Dict, List, Optional, TypeVar, TYPE_CHECKING, Any
 
 from opentelemetry import trace
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field, PrivateAttr
 
 from mcp.server.fastmcp.tools import Tool as FastTool
 from mcp.types import (
@@ -136,6 +136,11 @@ class Agent(BaseModel):
         default_factory=dict
     )
 
+    _attached_resources: list[ReadResourceResult] = PrivateAttr(default_factory=list)
+    """
+    Stores resources attached to the agent for use in LLM prompts.
+    """
+
     _agent_tasks: "AgentTasks" = PrivateAttr(default=None)
     _init_lock: asyncio.Lock = PrivateAttr(default_factory=asyncio.Lock)
 
@@ -160,6 +165,30 @@ class Agent(BaseModel):
                 self.human_input_callback = ctx_handler
 
         self._agent_tasks = AgentTasks(self.context)
+
+    async def attach_resource(self, uri: AnyUrl | str, server_name: str | None = None):
+        """
+        Attach a resource to the agent for use in LLM prompts.
+
+        Args:
+            uri: The URI identifying the specific resource to access.
+            server_name: Optional name of the MCP server providing the resource.
+
+        Returns:
+            The read resource result containing the content.
+        """
+        resource = await self.read_resource(uri=str(uri), server_name=server_name)
+        self._attached_resources.append(resource)
+        return resource
+
+    def get_attached_resources(self):
+        """
+        Get all resources attached to this agent.
+
+        Returns:
+            A list of attached resources.
+        """
+        return self._attached_resources
 
     async def attach_llm(
         self, llm_factory: Callable[..., LLM] | None = None, llm: LLM | None = None

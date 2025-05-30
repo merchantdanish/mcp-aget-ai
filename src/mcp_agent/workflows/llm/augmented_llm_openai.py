@@ -147,7 +147,6 @@ class OpenAIAugmentedLLM(
     async def generate(
         self,
         message,
-        resource_uris,
         request_params: RequestParams | None = None,
     ):
         """
@@ -189,6 +188,21 @@ class OpenAIAugmentedLLM(
             else:
                 messages.append(message)
 
+            # Attach resources if any are present
+            attached_resources = self.agent.get_attached_resources()
+            content_parts: List[ChatCompletionContentPartParam] = []
+            for resource in attached_resources:
+                for content in resource.contents:
+                    content_parts.append(
+                        OpenAIConverter._convert_embedded_resource(
+                            EmbeddedResource(type="resource", resource=content)
+                        )
+                    )
+            if len(content_parts) > 0:
+                messages.append(
+                    ChatCompletionUserMessageParam(role="user", content=content_parts)
+                )
+
             response: ListToolsResult = await self.agent.list_tools()
             available_tools: List[ChatCompletionToolParam] = [
                 ChatCompletionToolParam(
@@ -210,26 +224,6 @@ class OpenAIAugmentedLLM(
                 )
             if not available_tools:
                 available_tools = None
-
-            # Read resource if any
-            content_parts: List[ChatCompletionContentPartParam] = []
-            if resource_uris:
-                for uri in resource_uris:
-                    resource = await self.agent.read_resource(uri=uri)
-                    contents = [
-                        OpenAIConverter._convert_embedded_resource(
-                            EmbeddedResource(type="resource", resource=content)
-                        )
-                        for content in resource.contents
-                    ]
-                    content_parts.extend(contents)
-                # Combine content parts into a user message
-                if len(content_parts) > 0:
-                    messages.append(
-                        ChatCompletionUserMessageParam(
-                            role="user", content=content_parts
-                        )
-                    )
 
             responses: List[ChatCompletionMessage] = []
             model = await self.select_model(params)
@@ -390,7 +384,6 @@ class OpenAIAugmentedLLM(
     async def generate_str(
         self,
         message,
-        resource_uris,
         request_params: RequestParams | None = None,
     ):
         """
@@ -410,7 +403,6 @@ class OpenAIAugmentedLLM(
 
             responses = await self.generate(
                 message=message,
-                resource_uris=resource_uris,
                 request_params=request_params,
             )
 
@@ -433,7 +425,6 @@ class OpenAIAugmentedLLM(
         self,
         message,
         response_model: Type[ModelT],
-        resource_uris,
         request_params: RequestParams | None = None,
     ) -> ModelT:
         # First we invoke the LLM to generate a string response
@@ -454,7 +445,6 @@ class OpenAIAugmentedLLM(
 
             response = await self.generate_str(
                 message=message,
-                resource_uris=resource_uris,
                 request_params=params,
             )
 
