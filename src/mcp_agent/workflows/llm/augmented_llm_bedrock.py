@@ -9,6 +9,7 @@ from mcp.types import (
     EmbeddedResource,
     ImageContent,
     ModelPreferences,
+    PromptMessage,
     TextContent,
     TextResourceContents,
     BlobResourceContents,
@@ -94,23 +95,23 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         if params.use_history:
             messages.extend(self.history.get())
 
+        # Convert message to MessageUnionTypeDef
         if isinstance(message, str):
             messages.append({"role": "user", "content": [{"text": message}]})
+        elif isinstance(message, PromptMessage):
+            messages.append(BedrockConverter.convert_prompt_message_to_bedrock(message))
         elif isinstance(message, list):
-            messages.extend(message)
+            for m in message:
+                if isinstance(m, PromptMessage):
+                    messages.append(
+                        BedrockConverter.convert_prompt_message_to_bedrock(m)
+                    )
+                elif isinstance(m, str):
+                    messages.append({"role": "user", "content": [{"text": m}]})
+                else:
+                    messages.append(m)
         else:
             messages.append(message)
-
-        # Attach prompts if any are present
-        attached_prompts = self.agent.get_attached_prompts()
-        if attached_prompts:
-            message_params: list[MessageUnionTypeDef] = []
-            for prompt in attached_prompts:
-                for msg in prompt.messages:
-                    message_params.append(
-                        BedrockConverter.convert_prompt_message_to_bedrock(msg)
-                    )
-            messages.extend(message_params)
 
         response = await self.agent.list_tools()
 
@@ -127,19 +128,6 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
             ],
             "toolChoice": {"auto": {}},
         }
-
-        # Attach resources if any are present
-        attached_resources = self.agent.get_attached_resources()
-        content_parts: list[ContentBlockUnionTypeDef] = []
-        for resource in attached_resources:
-            for content in resource.contents:
-                content_parts.append(
-                    BedrockConverter._convert_embedded_resource(
-                        EmbeddedResource(type="resource", resource=content)
-                    )
-                )
-        if len(content_parts) > 0:
-            messages.append({"role": "user", "content": content_parts})
 
         responses: list[MessageUnionTypeDef] = []
         model = await self.select_model(params)

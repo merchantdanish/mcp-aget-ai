@@ -17,6 +17,8 @@ from mcp.types import (
     Tool,
     ListResourcesResult,
     ReadResourceResult,
+    PromptMessage,
+    EmbeddedResource,
 )
 
 from mcp_agent.core.context import Context
@@ -136,16 +138,6 @@ class Agent(BaseModel):
         default_factory=dict
     )
 
-    _attached_resources: list[ReadResourceResult] = PrivateAttr(default_factory=list)
-    """
-    Stores resources attached to the agent for use in LLM prompts.
-    """
-
-    _attached_prompts: list[GetPromptResult] = PrivateAttr(default_factory=list)
-    """
-    Stores prompts attached to the agent for use in LLM prompts.
-    """
-
     _agent_tasks: "AgentTasks" = PrivateAttr(default=None)
     _init_lock: asyncio.Lock = PrivateAttr(default_factory=asyncio.Lock)
 
@@ -170,54 +162,6 @@ class Agent(BaseModel):
                 self.human_input_callback = ctx_handler
 
         self._agent_tasks = AgentTasks(self.context)
-
-    async def attach_resource(self, uri: AnyUrl | str, server_name: str | None = None):
-        """
-        Attach a resource to the agent for use in LLM prompts.
-
-        Args:
-            uri: The URI identifying the specific resource to access.
-            server_name: Optional name of the MCP server providing the resource.
-
-        Returns:
-            The read resource result containing the content.
-        """
-        resource = await self.read_resource(uri=str(uri), server_name=server_name)
-        self._attached_resources.append(resource)
-        return resource
-
-    async def attach_prompt(self, name: str, arguments: dict | None = None):
-        """
-        Attach a prompt to the agent for use in LLM prompts.
-
-        Args:
-            name: The name of the prompt to attach.
-            arguments: Optional dictionary of arguments to pass to the prompt.
-
-        Returns:
-            The GetPromptResult containing the prompt.
-        """
-        prompt = await self.get_prompt(name=name, arguments=arguments)
-        self._attached_prompts.append(prompt)
-        return prompt
-
-    def get_attached_resources(self):
-        """
-        Get all resources attached to this agent.
-
-        Returns:
-            A list of attached resources.
-        """
-        return self._attached_resources
-
-    def get_attached_prompts(self):
-        """
-        Get all prompts attached to this agent.
-
-        Returns:
-            A list of attached prompts.
-        """
-        return self._attached_prompts
 
     async def attach_llm(
         self, llm_factory: Callable[..., LLM] | None = None, llm: LLM | None = None
@@ -583,6 +527,18 @@ class Agent(BaseModel):
             )
             return result
 
+    async def get_resource_messages(
+        self, uri: str | AnyUrl, server_name: str | None = None
+    ):
+        """Get a resource from an MCP server as a list of prompt messages."""
+        resource_result = await self.read_resource(str(uri), server_name)
+        return [
+            PromptMessage(
+                role="user", content=EmbeddedResource(type="resource", resource=content)
+            )
+            for content in resource_result.contents
+        ]
+
     async def list_prompts(self, server_name: str | None = None) -> ListPromptsResult:
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
@@ -671,6 +627,17 @@ class Agent(BaseModel):
                         )
 
             return result
+
+    async def get_prompt_messages(
+        self, name: str, arguments: dict[str, str] | None = None
+    ):
+        """
+        Get a prompt from an MCP server as a list of prompt messages.
+        """
+        result = await self.get_prompt(name, arguments)
+        if getattr(result, "isError", False):
+            raise ValueError(f"Error getting prompt '{name}': {result.description}")
+        return result.messages
 
     async def request_human_input(
         self,

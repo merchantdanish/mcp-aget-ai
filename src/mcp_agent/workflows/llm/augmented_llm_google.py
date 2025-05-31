@@ -11,6 +11,7 @@ from mcp.types import (
     EmbeddedResource,
     ImageContent,
     ModelPreferences,
+    PromptMessage,
     TextContent,
     TextResourceContents,
     BlobResourceContents,
@@ -85,25 +86,25 @@ class GoogleAugmentedLLM(
         if params.use_history:
             messages.extend(self.history.get())
 
+        # Convert message to Content
         if isinstance(message, str):
             messages.append(
                 types.Content(role="user", parts=[types.Part.from_text(text=message)])
             )
+        elif isinstance(message, PromptMessage):
+            messages.append(GoogleConverter.convert_prompt_message_to_google(message))
         elif isinstance(message, list):
-            messages.extend(message)
+            for m in message:
+                if isinstance(m, PromptMessage):
+                    messages.append(GoogleConverter.convert_prompt_message_to_google(m))
+                elif isinstance(m, str):
+                    messages.append(
+                        types.Content(role="user", parts=[types.Part.from_text(text=m)])
+                    )
+                else:
+                    messages.append(m)
         else:
             messages.append(message)
-
-        # Attach prompts if any are present
-        attached_prompts = self.agent.get_attached_prompts()
-        if attached_prompts:
-            message_params: list[types.Content] = []
-            for prompt in attached_prompts:
-                for msg in prompt.messages:
-                    message_params.append(
-                        GoogleConverter.convert_prompt_message_to_google(msg)
-                    )
-            messages.extend(message_params)
 
         response = await self.agent.list_tools()
 
@@ -119,19 +120,6 @@ class GoogleAugmentedLLM(
             )
             for tool in response.tools
         ]
-
-        # Attach resources if any are present
-        attached_resources = self.agent.get_attached_resources()
-        content_parts: list[types.Part] = []
-        for resource in attached_resources:
-            for content in resource.contents:
-                content_parts.append(
-                    GoogleConverter._convert_embedded_resource(
-                        EmbeddedResource(type="resource", resource=content)
-                    )
-                )
-        if len(content_parts) > 0:
-            messages.append(types.Content(role="user", parts=content_parts))
 
         responses: list[types.Content] = []
         model = await self.select_model(params)

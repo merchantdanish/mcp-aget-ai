@@ -19,7 +19,6 @@ from anthropic.types import (
     Base64PDFSourceParam,
     ThinkingBlockParam,
     RedactedThinkingBlockParam,
-    ContentBlockParam,
 )
 from opentelemetry import trace
 from mcp.types import (
@@ -31,6 +30,7 @@ from mcp.types import (
     StopReason,
     TextContent,
     TextResourceContents,
+    PromptMessage,
 )
 
 # from mcp_agent import console
@@ -157,23 +157,25 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             if params.use_history:
                 messages.extend(self.history.get())
 
+            # Convert message to MessageParams
             if isinstance(message, str):
-                messages.append({"role": "user", "content": message})
+                messages.append(MessageParam(role="user", content=message))
+            elif isinstance(message, PromptMessage):
+                messages.append(
+                    AnthropicConverter.convert_prompt_message_to_anthropic(message)
+                )
             elif isinstance(message, list):
-                messages.extend(message)
+                for m in message:
+                    if isinstance(m, PromptMessage):
+                        messages.append(
+                            AnthropicConverter.convert_prompt_message_to_anthropic(m)
+                        )
+                    elif isinstance(m, str):
+                        messages.append(MessageParam(role="user", content=m))
+                    else:
+                        messages.append(message)
             else:
                 messages.append(message)
-
-            # Attach prompts if any are present
-            attached_prompts = self.agent.get_attached_prompts()
-            if attached_prompts:
-                message_params: list[MessageParam] = []
-                for prompt in attached_prompts:
-                    for msg in prompt.messages:
-                        message_params.append(
-                            AnthropicConverter.convert_prompt_message_to_anthropic(msg)
-                        )
-                messages.extend(message_params)
 
             response = await self.agent.list_tools()
             available_tools: List[ToolParam] = [
@@ -184,19 +186,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 }
                 for tool in response.tools
             ]
-
-            # Attach resources if any are present
-            attached_resources = self.agent.get_attached_resources()
-            content_blocks: list[ContentBlockParam] = []
-            for resource in attached_resources:
-                for content in resource.contents:
-                    content_blocks.append(
-                        AnthropicConverter._convert_embedded_resource(
-                            EmbeddedResource(type="resource", resource=content)
-                        )
-                    )
-            if len(content_blocks) > 0:
-                messages.append(MessageParam(role="user", content=content_blocks))
 
             responses: List[Message] = []
             model = await self.select_model(params)

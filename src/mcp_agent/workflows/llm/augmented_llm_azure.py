@@ -33,6 +33,7 @@ from mcp.types import (
     EmbeddedResource,
     ImageContent,
     ModelPreferences,
+    PromptMessage,
     TextContent,
     TextResourceContents,
 )
@@ -153,23 +154,23 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 messages.append(SystemMessage(content=system_prompt))
                 span.set_attribute("system_prompt", system_prompt)
 
+            # Convert message to ResponseMessage
             if isinstance(message, str):
                 messages.append(UserMessage(content=message))
+            elif isinstance(message, PromptMessage):
+                messages.append(AzureConverter.convert_prompt_message_to_azure(message))
             elif isinstance(message, list):
-                messages.extend(message)
+                for m in message:
+                    if isinstance(m, PromptMessage):
+                        messages.append(
+                            AzureConverter.convert_prompt_message_to_azure(m)
+                        )
+                    elif isinstance(m, str):
+                        messages.append(UserMessage(content=m))
+                    else:
+                        messages.append(m)
             else:
                 messages.append(message)
-
-            # Attach prompts if any are present
-            attached_prompts = self.agent.get_attached_prompts()
-            if attached_prompts:
-                message_params: list[ChatResponseMessage] = []
-                for prompt in attached_prompts:
-                    for msg in prompt.messages:
-                        message_params.append(
-                            AzureConverter.convert_prompt_message_to_azure(msg)
-                        )
-                messages.extend(message_params)
 
             response = await self.agent.list_tools()
 
@@ -188,19 +189,6 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 "available_tools",
                 [t.function.name for t in tools],
             )
-
-            # Attach resources if any are present
-            attached_resources = self.agent.get_attached_resources()
-            content_parts: list[ContentItem] = []
-            for resource in attached_resources:
-                for content in resource.contents:
-                    content_parts.append(
-                        AzureConverter._convert_embedded_resource(
-                            EmbeddedResource(type="resource", resource=content)
-                        )
-                    )
-            if len(content_parts) > 0:
-                messages.append(UserMessage(content=content_parts))
 
             model = await self.select_model(params)
             if model:

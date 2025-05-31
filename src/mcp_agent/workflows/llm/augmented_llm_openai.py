@@ -30,6 +30,7 @@ from mcp.types import (
     ImageContent,
     ListToolsResult,
     ModelPreferences,
+    PromptMessage,
     TextContent,
     TextResourceContents,
 )
@@ -179,40 +180,29 @@ class OpenAIAugmentedLLM(
                     )
                 )
 
+            # Convert message to ChatCompletionMessageParam
             if isinstance(message, str):
                 messages.append(
                     ChatCompletionUserMessageParam(role="user", content=message)
                 )
+            elif isinstance(message, PromptMessage):
+                messages.append(
+                    OpenAIConverter.convert_prompt_message_to_openai(message)
+                )
             elif isinstance(message, list):
-                messages.extend(message)
+                for m in message:
+                    if isinstance(m, PromptMessage):
+                        messages.append(
+                            OpenAIConverter.convert_prompt_message_to_openai(m)
+                        )
+                    elif isinstance(m, str):
+                        messages.append(
+                            ChatCompletionUserMessageParam(role="user", content=m)
+                        )
+                    else:
+                        messages.append(m)
             else:
                 messages.append(message)
-
-            # Attach prompts if any are present
-            attached_prompts = self.agent.get_attached_prompts()
-            if attached_prompts:
-                message_params: list[ChatCompletionMessageParam] = []
-                for prompt in attached_prompts:
-                    for msg in prompt.messages:
-                        message_params.append(
-                            OpenAIConverter.convert_prompt_message_to_openai(msg)
-                        )
-                messages.extend(message_params)
-
-            # Attach resources if any are present
-            attached_resources = self.agent.get_attached_resources()
-            content_parts: List[ChatCompletionContentPartParam] = []
-            for resource in attached_resources:
-                for content in resource.contents:
-                    content_parts.append(
-                        OpenAIConverter._convert_embedded_resource(
-                            EmbeddedResource(type="resource", resource=content)
-                        )
-                    )
-            if len(content_parts) > 0:
-                messages.append(
-                    ChatCompletionUserMessageParam(role="user", content=content_parts)
-                )
 
             response: ListToolsResult = await self.agent.list_tools()
             available_tools: List[ChatCompletionToolParam] = [
