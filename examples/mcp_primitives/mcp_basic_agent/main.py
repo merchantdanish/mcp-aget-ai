@@ -65,23 +65,26 @@ async def example_usage():
                 data=prompts.model_dump(),
             )
 
+            # Get specific resource
             resource_messages = await agent.get_resource_messages(
                 resource_uris["demo_server_get_readme"],
                 "demo_server",
             )
 
+            # Get specific prompt
             prompt_messages = await agent.get_prompt_messages(
                 "demo_server_echo",
                 {"message": "My name is John Doe."},
             )
 
             llm = await agent.attach_llm(OpenAIAugmentedLLM)
-            message = [
-                "Summarise what are my prompts and resources?",
-                *resource_messages,
-                *prompt_messages,
-            ]
-            res = await llm.generate_str(message)
+            res = await llm.generate_str(
+                [
+                    "Summarise what are my prompts and resources?",
+                    *resource_messages,
+                    *prompt_messages,
+                ]
+            )
             logger.info(f"Summary: {res}")
 
 
