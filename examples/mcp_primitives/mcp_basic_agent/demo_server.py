@@ -15,14 +15,6 @@ STATIC_RESOURCES = {
         "content_type": "text/markdown",
         "content": "# Demo Resource Server\n\nThis is a sample README resource provided by the demo MCP server.",
     },
-    "demo://config/settings": {
-        "name": "Settings",
-        "description": "Sample configuration settings.",
-        "content_type": "application/json",
-        "content": json.dumps(
-            {"setting1": True, "setting2": 42, "mode": "demo"}, indent=2
-        ),
-    },
     "demo://data/users": {
         "name": "User Data",
         "description": "Sample user data in JSON format.",
@@ -46,13 +38,6 @@ def get_readme():
     return meta["content"]
 
 
-@mcp.resource("demo://config/settings")
-def get_settings():
-    """Provide configuration settings."""
-    meta = STATIC_RESOURCES["demo://config/settings"]
-    return meta["content"]
-
-
 @mcp.resource("demo://data/users")
 def get_users():
     """Provide user data."""
@@ -60,22 +45,10 @@ def get_users():
     return meta["content"]
 
 
-@mcp.resource("demo://status/health")
-def get_health_status():
-    """Provide dynamic health/status info (changes on each request)."""
-    now = datetime.datetime.utcnow().isoformat() + "Z"
-    uptime_seconds = int(
-        (datetime.datetime.utcnow() - SERVER_START_TIME).total_seconds()
-    )
-
-    status = {
-        "status": "ok",
-        "timestamp": now,
-        "uptime_seconds": uptime_seconds,
-        "server_start_time": SERVER_START_TIME.isoformat() + "Z",
-    }
-
-    return json.dumps(status, indent=2)
+@mcp.resource("demo://{city}/weather")
+def get_weather(city: str) -> str:
+    """Provide a simple weather report for a given city."""
+    return f"It is sunny in {city} today!"
 
 
 @mcp.prompt()

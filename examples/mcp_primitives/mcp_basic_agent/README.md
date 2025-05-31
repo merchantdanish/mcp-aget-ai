@@ -38,7 +38,7 @@ This example demonstrates **both resources and prompts**.
 
 ```plaintext
 ┌────────────────────┐
-│   demo-server      │
+│   demo_server      │
 │   MCP Server       │
 │ (resources, prompts)│
 └─────────┬──────────┘

@@ -12,7 +12,7 @@ logger:
 
 mcp:
   servers:
-    demo-server:
+    demo_server:
       command: "uv"
       args: ["run", "demo_server.py"]
       description: "Demo MCP server for resources and prompts"
