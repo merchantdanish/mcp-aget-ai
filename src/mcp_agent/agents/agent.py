@@ -527,17 +527,63 @@ class Agent(BaseModel):
             )
             return result
 
-    async def get_resource_messages(
-        self, uri: str | AnyUrl, server_name: str | None = None
-    ):
-        """Get a resource from an MCP server as a list of prompt messages."""
-        resource_result = await self.read_resource(str(uri), server_name)
-        return [
-            PromptMessage(
-                role="user", content=EmbeddedResource(type="resource", resource=content)
-            )
-            for content in resource_result.contents
-        ]
+
+    async def create_prompt(
+        self,
+        *,
+        prompt_name: str | None = None,
+        arguments: dict[str, str] | None = None,
+        resource_uris: list[str | AnyUrl] | str | AnyUrl | None = None,
+        server_name: str | None = None
+    ) -> list[PromptMessage]:
+        """
+        Create prompt messages from a prompt name and/or resource URIs.
+        
+        Args:
+            prompt_name: Name of the prompt to retrieve
+            arguments: Arguments for the prompt (only used with prompt_name)
+            resource_uris: URI(s) of the resource(s) to retrieve. Can be a single URI or list of URIs.
+            server_name: Optional server name to target
+            
+        Returns:
+            List of PromptMessage objects. If both prompt_name and resource_uris are provided,
+            the results are combined with prompt messages first, then resource messages.
+            
+        Raises:
+            ValueError: If neither prompt_name nor resource_uris are provided
+        """
+        if prompt_name is None and resource_uris is None:
+            raise ValueError("Must specify at least one of prompt_name or resource_uris")
+        
+        messages = []
+        
+        # Get prompt messages if prompt_name is provided
+        if prompt_name is not None:
+            result = await self.get_prompt(prompt_name, arguments)
+            if getattr(result, "isError", False):
+                raise ValueError(f"Error getting prompt '{prompt_name}': {result.description}")
+            messages.extend(result.messages)
+        
+        # Get resource messages if resource_uris is provided
+        if resource_uris is not None:
+            # Normalize to list
+            if isinstance(resource_uris, (str, AnyUrl)):
+                uris_list = [resource_uris]
+            else:
+                uris_list = resource_uris
+            
+            # Process each URI
+            for uri in uris_list:
+                resource_result = await self.read_resource(str(uri), server_name)
+                resource_messages = [
+                    PromptMessage(
+                        role="user", content=EmbeddedResource(type="resource", resource=content)
+                    )
+                    for content in resource_result.contents
+                ]
+                messages.extend(resource_messages)
+        
+        return messages
 
     async def list_prompts(self, server_name: str | None = None) -> ListPromptsResult:
         tracer = get_tracer(self.context)
@@ -628,16 +674,6 @@ class Agent(BaseModel):
 
             return result
 
-    async def get_prompt_messages(
-        self, name: str, arguments: dict[str, str] | None = None
-    ):
-        """
-        Get a prompt from an MCP server as a list of prompt messages.
-        """
-        result = await self.get_prompt(name, arguments)
-        if getattr(result, "isError", False):
-            raise ValueError(f"Error getting prompt '{name}': {result.description}")
-        return result.messages
 
     async def request_human_input(
         self,
