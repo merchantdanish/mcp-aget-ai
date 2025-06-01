@@ -39,8 +39,8 @@ class TestAzureConverter:
         result = AzureConverter.convert_to_azure(multipart)
 
         assert result.role == "user"
-        assert isinstance(result.content, str)
-        assert "Hello, world!" in result.content
+        assert isinstance(result.content, list)
+        assert "Hello, world!" in result.content[0].text
 
     def test_convert_to_azure_image_content_supported(self):
         content = [ImageContent(type="image", data="base64data", mimeType="image/png")]
@@ -48,8 +48,8 @@ class TestAzureConverter:
         result = AzureConverter.convert_to_azure(multipart)
 
         assert result.role == "user"
-        assert isinstance(result.content, str)
-        assert "data:image/png;base64,base64data" in result.content
+        assert isinstance(result.content, list)
+        assert "data:image/png;base64,base64data" in result.content[0].image_url.url
 
     def test_convert_to_azure_image_content_unsupported(self):
         content = [ImageContent(type="image", data="base64data", mimeType="image/bmp")]
@@ -57,8 +57,8 @@ class TestAzureConverter:
         result = AzureConverter.convert_to_azure(multipart)
 
         assert result.role == "user"
-        assert isinstance(result.content, str)
-        assert "unsupported format 'image/bmp'" in result.content
+        assert isinstance(result.content, list)
+        assert "unsupported format 'image/bmp'" in result.content[0].text
 
     def test_convert_to_azure_assistant_filters_non_text(self):
         content = [
@@ -78,8 +78,8 @@ class TestAzureConverter:
         result = AzureConverter.convert_prompt_message_to_azure(message)
 
         assert result.role == "user"
-        assert isinstance(result.content, str)
-        assert "Hello" in result.content
+        assert isinstance(result.content, list)
+        assert "Hello" in result.content[0].text
 
     def test_convert_embedded_resource_text(self):
         resource = TextResourceContents(
