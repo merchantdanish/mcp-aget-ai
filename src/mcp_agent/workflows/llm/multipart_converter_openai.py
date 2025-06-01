@@ -276,9 +276,9 @@ class OpenAIConverter:
             text = get_text(resource)
             if text:
                 file_text = (
-                    f'<fastagent:file title="{title}" mimetype="{mime_type}">\n'
+                    f'<mcp-agent:file title="{title}" mimetype="{mime_type}">\n'
                     f"{text}\n"
-                    f"</fastagent:file>"
+                    f"</mcp-agent:file>"
                 )
                 return {"type": "text", "text": file_text}
 
@@ -287,9 +287,9 @@ class OpenAIConverter:
             text = get_text(resource)
             if text:
                 file_text = (
-                    f'<fastagent:file title="{title}" mimetype="{mime_type}">\n'
+                    f'<mcp-agent:file title="{title}" mimetype="{mime_type}">\n'
                     f"{text}\n"
-                    f"</fastagent:file>"
+                    f"</mcp-agent:file>"
                 )
                 return {"type": "text", "text": file_text}
 
