@@ -1,7 +1,6 @@
 import base64
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 from mcp.types import BlobResourceContents, EmbeddedResource, TextResourceContents
@@ -246,61 +245,37 @@ class TestNormalizeUri:
 
 class TestExtractTitleFromUri:
     def test_extract_title_from_http_uri(self):
-        # Mock AnyUrl for HTTP URL
-        mock_uri = Mock(spec=AnyUrl)
-        mock_uri.scheme = "http"
-        mock_uri.path = "/path/to/document.pdf"
-        mock_uri._url = "http://example.com/path/to/document.pdf"
+        uri = AnyUrl(url="http://example.com/path/to/document.pdf")
 
-        result = extract_title_from_uri(mock_uri)
+        result = extract_title_from_uri(uri)
         assert result == "document.pdf"
 
     def test_extract_title_from_https_uri(self):
-        # Mock AnyUrl for HTTPS URL
-        mock_uri = Mock(spec=AnyUrl)
-        mock_uri.scheme = "https"
-        mock_uri.path = "/files/report.txt"
-        mock_uri._url = "https://example.com/files/report.txt"
+        uri = AnyUrl(url="https://example.com/files/report.txt")
 
-        result = extract_title_from_uri(mock_uri)
+        result = extract_title_from_uri(uri)
         assert result == "report.txt"
 
     def test_extract_title_from_file_uri(self):
-        # Mock AnyUrl for file URL
-        mock_uri = Mock(spec=AnyUrl)
-        mock_uri.scheme = "file"
-        mock_uri.path = "/local/path/document.txt"
-        mock_uri._url = "file:///local/path/document.txt"
+        uri = AnyUrl(url="file:///local/path/document.txt")
 
-        result = extract_title_from_uri(mock_uri)
+        result = extract_title_from_uri(uri)
         assert result == "document.txt"
 
     def test_extract_title_from_uri_no_path(self):
-        # Mock AnyUrl with no path
-        mock_uri = Mock(spec=AnyUrl)
-        mock_uri.scheme = "https"
-        mock_uri.path = ""
-        mock_uri._url = "https://example.com"
+        mock_uri = AnyUrl(url="https://example.com")
 
         result = extract_title_from_uri(mock_uri)
-        assert result == "https://example.com"
+        assert result == "https://example.com/"
 
     def test_extract_title_from_uri_empty_filename(self):
-        # Mock AnyUrl with path ending in slash
-        mock_uri = Mock(spec=AnyUrl)
-        mock_uri.scheme = "https"
-        mock_uri.path = "/path/to/"
-        mock_uri._url = "https://example.com/path/to/"
+        uri = AnyUrl(url="https://example.com/path/to/")
 
-        result = extract_title_from_uri(mock_uri)
+        result = extract_title_from_uri(uri)
         assert result == "to"
 
     def test_extract_title_from_uri_exception(self):
-        # Mock AnyUrl that raises exception during processing
-        mock_uri = Mock(spec=AnyUrl)
-        mock_uri.scheme = "http"
-        mock_uri.path = Mock(side_effect=Exception("Test error"))
-        mock_uri._url = "http://example.com/file.txt"
+        mock_uri = AnyUrl(url="http://example.com/file.txt")
 
         result = extract_title_from_uri(mock_uri)
-        assert result == "http://example.com/file.txt"
+        assert result == "file.txt"

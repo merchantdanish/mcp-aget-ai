@@ -296,7 +296,7 @@ class AnthropicConverter:
             blob_length = len(resource.resource.blob)
             return TextBlockParam(
                 type="text",
-                text=f"Embedded Resource {uri._url} with unsupported format {mime_type} ({blob_length} characters)",
+                text=f"Embedded Resource {str(uri)} with unsupported format {mime_type} ({blob_length} characters)",
             )
 
         return AnthropicConverter._create_fallback_text(
@@ -359,7 +359,7 @@ class AnthropicConverter:
         """
         if isinstance(resource, EmbeddedResource) and hasattr(resource.resource, "uri"):
             uri = resource.resource.uri
-            return TextBlockParam(type="text", text=f"[{message}: {uri._url}]")
+            return TextBlockParam(type="text", text=f"[{message}: {str(uri)}]")
 
         return TextBlockParam(type="text", text=f"[{message}]")
 

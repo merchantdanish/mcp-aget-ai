@@ -184,6 +184,11 @@ class OpenAIConverter:
         image_data = get_image_data(content)
 
         # OpenAI requires image URLs or data URIs for images
+        if not image_data:
+            return {
+                "type": "text",
+                "text": f"[Image missing data for {content.mimeType}",
+            }
         image_url = {"url": f"data:{content.mimeType};base64,{image_data}"}
 
         # Check if the image has annotations for detail level

@@ -208,7 +208,7 @@ class GoogleConverter:
         ):
             blob_length = len(resource.resource.blob)
             return types.Part.from_text(
-                text=f"Embedded Resource {uri._url} with unsupported format {mime_type} ({blob_length} characters)"
+                text=f"Embedded Resource {str(uri)} with unsupported format {mime_type} ({blob_length} characters)"
             )
 
         return GoogleConverter._create_fallback_text(
@@ -271,7 +271,7 @@ class GoogleConverter:
         """
         if isinstance(resource, EmbeddedResource) and hasattr(resource.resource, "uri"):
             uri = resource.resource.uri
-            return types.Part.from_text(text=f"[{message}: {uri._url}]")
+            return types.Part.from_text(text=f"[{message}: {str(uri)}]")
 
         return types.Part.from_text(text=f"[{message}]")
 

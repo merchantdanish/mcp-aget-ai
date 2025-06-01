@@ -50,12 +50,9 @@ async def example_usage():
         async with agent:
             # List all resources from demo_server server
             resources = await agent.list_resources("demo_server")
-            resource_uris = {
-                resource.name: str(resource.uri) for resource in resources.resources
-            }
             logger.info(
                 "Resources available from demo_server:",
-                data=resource_uris,
+                data=resources.model_dump,
             )
 
             # List all prompts from demo_server server
@@ -67,9 +64,9 @@ async def example_usage():
 
             # Get both resource and prompt in a single call
             combined_messages = await agent.create_prompt(
-                prompt_name="demo_server_echo",
+                prompt_name="echo",
                 arguments={"message": "My name is John Doe."},
-                resource_uris=resource_uris["demo_server_get_readme"],
+                resource_uris="demo://docs/readme",
                 server_name="demo_server",
             )
 

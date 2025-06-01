@@ -88,7 +88,6 @@ def create_resource_reference(uri: str, mime_type: str) -> "EmbeddedResource":
     Returns:
         An EmbeddedResource object
     """
-    from mcp.types import EmbeddedResource, TextResourceContents
 
     # Create a resource reference
     resource_contents = TextResourceContents(
@@ -200,7 +199,7 @@ def normalize_uri(uri_or_filename: str) -> str:
 def extract_title_from_uri(uri: AnyUrl) -> str:
     """Extract a readable title from a URI."""
     # Simple attempt to get filename from path
-    uri_str = uri._url
+    uri_str = str(uri)
     try:
         # For HTTP(S) URLs
         if uri.scheme in ("http", "https"):
