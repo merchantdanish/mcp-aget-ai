@@ -85,7 +85,7 @@ class GoogleAugmentedLLM(
         if params.use_history:
             messages.extend(self.history.get())
 
-        messages.extend(GoogleConverter.convert_mixed_messages_to_anthropic(message))
+        messages.extend(GoogleConverter.convert_mixed_messages_to_google(message))
 
         response = await self.agent.list_tools()
 

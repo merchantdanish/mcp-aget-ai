@@ -560,7 +560,9 @@ class Agent(BaseModel):
 
         # Get prompt messages if prompt_name is provided
         if prompt_name is not None:
-            result = await self.get_prompt(prompt_name, arguments)
+            result = await self.get_prompt(
+                prompt_name, arguments, server_name=server_name
+            )
             if getattr(result, "isError", False):
                 raise ValueError(
                     f"Error getting prompt '{prompt_name}': {result.description}"
@@ -634,7 +636,10 @@ class Agent(BaseModel):
             return result
 
     async def get_prompt(
-        self, name: str, arguments: dict[str, str] | None = None
+        self,
+        name: str,
+        arguments: dict[str, str] | None = None,
+        server_name: str | None = None,
     ) -> GetPromptResult:
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
@@ -652,7 +657,12 @@ class Agent(BaseModel):
             executor = self.context.executor
             result: GetPromptResult = await executor.execute(
                 self._agent_tasks.get_prompt_task,
-                GetPromptRequest(agent_name=self.name, name=name, arguments=arguments),
+                GetPromptRequest(
+                    agent_name=self.name,
+                    server_name=server_name,
+                    name=name,
+                    arguments=arguments,
+                ),
             )
 
             if getattr(result, "isError", False):

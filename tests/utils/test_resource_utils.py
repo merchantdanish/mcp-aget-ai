@@ -126,11 +126,11 @@ class TestLoadResourceContent:
 class TestCreateResourceUri:
     def test_create_resource_uri(self):
         result = create_resource_uri("test/path/file.txt")
-        assert result == "resource://fast-agent/file.txt"
+        assert result == "resource://mcp-agent/file.txt"
 
     def test_create_resource_uri_simple_filename(self):
         result = create_resource_uri("file.txt")
-        assert result == "resource://fast-agent/file.txt"
+        assert result == "resource://mcp-agent/file.txt"
 
 
 class TestCreateResourceReference:
@@ -157,7 +157,7 @@ class TestCreateEmbeddedResource:
         assert isinstance(result, EmbeddedResource)
         assert result.type == "resource"
         assert isinstance(result.resource, TextResourceContents)
-        assert result.resource.uri == AnyUrl(url="resource://fast-agent/test.txt")
+        assert result.resource.uri == AnyUrl(url="resource://mcp-agent/test.txt")
         assert result.resource.mimeType == "text/plain"
         assert result.resource.text == "Hello, world!"
 
@@ -170,7 +170,7 @@ class TestCreateEmbeddedResource:
         assert isinstance(result, EmbeddedResource)
         assert result.type == "resource"
         assert isinstance(result.resource, BlobResourceContents)
-        assert result.resource.uri == AnyUrl(url="resource://fast-agent/image.png")
+        assert result.resource.uri == AnyUrl(url="resource://mcp-agent/image.png")
         assert result.resource.mimeType == "image/png"
         assert result.resource.blob == binary_content
 

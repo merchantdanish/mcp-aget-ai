@@ -126,7 +126,8 @@ class AzureConverter:
         for content_item in content_items:
             if is_text_content(content_item):
                 text = get_text(content_item)
-                azure_blocks.append(TextContentItem(text=text))
+                if text:
+                    azure_blocks.append(TextContentItem(text=text))
 
             elif is_image_content(content_item):
                 image_content = content_item  # type: ImageContent
@@ -331,13 +332,13 @@ class AzureConverter:
         ]
     ]:
         """
-        Convert a list of mixed messages to a list of Anthropic-compatible messages.
+        Convert a list of mixed messages to a list of Azure-compatible messages.
 
         Args:
             messages: List of mixed message objects
 
         Returns:
-            A list of Anthropic-compatible MessageParam objects
+            A list of Azure-compatible MessageParam objects
         """
         messages = []
 

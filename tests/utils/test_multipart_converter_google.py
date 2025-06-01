@@ -392,16 +392,28 @@ class TestGoogleConverter:
         content = [TextContent(type="text", text="Tool result")]
         tool_result = CallToolResult(content=content, isError=False)
 
-        with patch(
-            "mcp_agent.workflows.llm.multipart_converter_google.types"
-        ) as mock_types:
-            mock_part = Mock()
-            mock_types.Part.from_function_response.return_value = mock_part
+        with (
+            patch(
+                "mcp_agent.workflows.llm.multipart_converter_google.types"
+            ) as mock_types,
+            patch.object(GoogleConverter, "_convert_content_items") as mock_convert,
+        ):
+            # Stub a fake Part whose to_json_dict() returns "result"
+            fake_part = Mock()
+            fake_part.to_json_dict.return_value = "result"
+            mock_convert.return_value = [fake_part]
 
-            GoogleConverter.convert_tool_result_to_google(tool_result, "tool_use_123")
+            # Make from_function_response return a sentinel value
+            mock_part = mock_types.Part.from_function_response.return_value
+
+            part = GoogleConverter.convert_tool_result_to_google(
+                tool_result, "tool_use_123"
+            )
+            assert part == mock_part
 
             mock_types.Part.from_function_response.assert_called_once_with(
-                name="tool_use_123", response={"error": "result"}
+                name="tool_use_123",
+                response={"content": ["result"]},
             )
 
     def test_convert_tool_result_to_google_error(self):

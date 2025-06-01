@@ -199,7 +199,7 @@ class BedrockConverter:
         if getattr(resource, "mimeType", None):
             return resource.mimeType
         if getattr(resource, "uri", None):
-            return guess_mime_type(resource.uri.serialize_url)
+            return guess_mime_type(str(resource.uri))
         if hasattr(resource, "blob"):
             return "application/octet-stream"
         return "text/plain"
@@ -272,13 +272,13 @@ class BedrockConverter:
         message: MessageTypes,
     ) -> List[MessageUnionTypeDef]:
         """
-        Convert a list of mixed messages to a list of Anthropic-compatible messages.
+        Convert a list of mixed messages to a list of Bedrock-compatible messages.
 
         Args:
             messages: List of mixed message objects
 
         Returns:
-            A list of Anthropic-compatible MessageParam objects
+            A list of Bedrock-compatible MessageParam objects
         """
         messages: list[MessageUnionTypeDef] = []
 

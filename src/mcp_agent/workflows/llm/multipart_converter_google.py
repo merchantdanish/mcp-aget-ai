@@ -302,9 +302,13 @@ class GoogleConverter:
         if not google_content:
             google_content = [types.Part.from_text(text="[No content in tool result]")]
 
-        function_response = {
-            "error": str(tool_result.content) if tool_result.isError else "result"
-        }
+        # Serialize content parts to dicts for embedding in function response
+        serialized_parts = [part.to_json_dict() for part in google_content]
+
+        # Build the function response payload
+        function_response = {"content": serialized_parts}
+        if tool_result.isError:
+            function_response["error"] = str(tool_result.content)
 
         return types.Part.from_function_response(
             name=tool_use_id,
@@ -333,11 +337,11 @@ class GoogleConverter:
         return types.Content(role="user", parts=parts)
 
     @staticmethod
-    def convert_mixed_messages_to_anthropic(
+    def convert_mixed_messages_to_google(
         message: MessageTypes,
     ) -> List[types.Content]:
         """
-        Convert a list of mixed messages to a list of Anthropic-compatible messages.
+        Convert a list of mixed messages to a list of Google-compatible messages.
 
         Args:
             messages: List of mixed message objects

@@ -137,7 +137,8 @@ class AnthropicConverter:
             if is_text_content(content_item):
                 # Handle text content
                 text = get_text(content_item)
-                anthropic_blocks.append(TextBlockParam(type="text", text=text))
+                if text:
+                    anthropic_blocks.append(TextBlockParam(type="text", text=text))
 
             elif is_image_content(content_item):
                 # Handle image content
@@ -155,16 +156,25 @@ class AnthropicConverter:
                     )
                 else:
                     image_data = get_image_data(image_content)
-                    anthropic_blocks.append(
-                        ImageBlockParam(
-                            type="image",
-                            source=Base64ImageSourceParam(
-                                type="base64",
-                                media_type=image_content.mimeType,
-                                data=image_data,
-                            ),
+                    if image_data:
+                        anthropic_blocks.append(
+                            ImageBlockParam(
+                                type="image",
+                                source=Base64ImageSourceParam(
+                                    type="base64",
+                                    media_type=image_content.mimeType,
+                                    data=image_data,
+                                ),
+                            )
                         )
-                    )
+                    else:
+                        # Fallback when the image blob is missing
+                        anthropic_blocks.append(
+                            TextBlockParam(
+                                type="text",
+                                text=f"[Image missing data for {image_content.mimeType}]",
+                            )
+                        )
 
             elif is_resource_content(content_item):
                 # Handle embedded resource
@@ -310,7 +320,7 @@ class AnthropicConverter:
             return resource.mimeType
 
         if getattr(resource, "uri", None):
-            return guess_mime_type(resource.uri.serialize_url)
+            return guess_mime_type(str(resource.uri))
 
         if hasattr(resource, "blob"):
             return "application/octet-stream"

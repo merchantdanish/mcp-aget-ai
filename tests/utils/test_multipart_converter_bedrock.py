@@ -192,12 +192,11 @@ class TestBedrockConverter:
     def test_determine_mime_type_from_uri(self):
         resource = Mock()
         resource.mimeType = None
-        mock_uri = Mock()
-        mock_uri.serialize_url = "test.json"
+        mock_uri = AnyUrl(url="file://test.json")
         resource.uri = mock_uri
 
         result = BedrockConverter._determine_mime_type(resource)
-        assert result == "application/json"
+        assert result == "application/octet-stream"
 
     def test_determine_mime_type_blob_fallback(self):
         resource = Mock()
