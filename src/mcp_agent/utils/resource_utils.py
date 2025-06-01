@@ -109,7 +109,7 @@ def create_embedded_resource(
 
     # Create common resource args dict to reduce duplication
     resource_args = {
-        "uri": resource_uri_str,  # type: ignore
+        "uri": AnyUrl(url=resource_uri_str),
         "mimeType": mime_type,
     }
 
@@ -147,7 +147,7 @@ def create_blob_resource(
     return EmbeddedResource(
         type="resource",
         resource=BlobResourceContents(
-            uri=resource_path,
+            uri=AnyUrl(url=resource_path),
             mimeType=mime_type,
             blob=content,  # Content should already be base64 encoded
         ),
@@ -161,7 +161,7 @@ def create_text_resource(
     return EmbeddedResource(
         type="resource",
         resource=TextResourceContents(
-            uri=resource_path,
+            uri=AnyUrl(url=resource_path),
             mimeType=mime_type,
             text=content,
         ),
