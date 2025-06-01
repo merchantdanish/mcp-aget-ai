@@ -99,7 +99,9 @@ class TestAnthropicConverter:
         )
 
         assert result["type"] == "document"
-        assert result["title"] == ""  # URI gets a trailing slash, resulting in empty title
+        assert (
+            result["title"] == ""
+        )  # URI gets a trailing slash, resulting in empty title
         assert result["source"]["type"] == "text"
         assert result["source"]["data"] == "Hello, world!"
 
@@ -125,7 +127,9 @@ class TestAnthropicConverter:
         result = AnthropicConverter._convert_embedded_resource(embedded)
 
         assert result["type"] == "document"
-        assert result["title"] == ""  # URI gets trailing slash, resulting in empty title
+        assert (
+            result["title"] == ""
+        )  # URI gets trailing slash, resulting in empty title
         assert result["source"]["type"] == "base64"
         assert result["source"]["data"] == "pdfdata"
 

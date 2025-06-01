@@ -633,10 +633,14 @@ async def test_mcp_aggregator_load_server_and_load_servers(monkeypatch):
 
     tool1 = Tool(name="toolA", description="desc", inputSchema={})
     prompt1 = Prompt(name="promptA", description="desc")
-    resource1 = Resource(uri="file://srv1/resourceA", name="resourceA", description="desc")
+    resource1 = Resource(
+        uri="file://srv1/resourceA", name="resourceA", description="desc"
+    )
     tool2 = Tool(name="toolB", description="desc", inputSchema={})
     prompt2 = Prompt(name="promptB", description="desc")
-    resource2 = Resource(uri="file://srv2/resourceB", name="resourceB", description="desc")
+    resource2 = Resource(
+        uri="file://srv2/resourceB", name="resourceB", description="desc"
+    )
 
     async def fake_fetch_capabilities(server_name):
         if server_name == "srv1":
