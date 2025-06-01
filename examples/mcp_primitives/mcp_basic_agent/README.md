@@ -29,8 +29,8 @@ This example demonstrates **both resources and prompts**.
 - **main.py** shows how to:
   1. Connect an agent to the demo MCP server
   2. List all available resources and prompts
-  3. Attach a resource and a prompt to the agent
-  4. Use an LLM (OpenAI) to summarize the content of the attached resources and prompts by passing them as context
+  3. Retrieve both a resource and a prompt in a single call using `create_prompt()`
+  4. Use an LLM (OpenAI) to summarize the content of the retrieved resources and prompts by passing them as context
 
 ---
 
@@ -77,16 +77,15 @@ uv run main.py
 You should see logs showing:
 - The agent connecting to the demo server
 - Listing available resources and prompts
-- Attaching a resource and a prompt to the agent
-- Using the LLM to summarize the content of the attached resources and prompts
+- Retrieving both a resource and a prompt in a single call
+- Using the LLM to summarize the content of the retrieved resources and prompts
 
 ---
 
 ## How it Works
 
 - The agent connects to the demo MCP server and calls `list_resources()` and `list_prompts()` to discover available resources and prompts.
-- It selects specific resource URIs (e.g., README) and prompt names (e.g., `echo`), and attaches them to itself.
-- The agent can invoke a prompt with parameters (e.g., `echo` with a message).
+- It uses the unified `create_prompt()` method to retrieve both a specific resource URI (e.g., README) and a prompt (e.g., `echo` with parameters) in a single call.
 - The LLM receives the actual content of those resources and prompts and generates a summary.
 
 ---
