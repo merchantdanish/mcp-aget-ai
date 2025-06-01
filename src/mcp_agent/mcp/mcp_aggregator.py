@@ -406,7 +406,7 @@ class MCPAggregator(ContextDependent):
                         resource.description or "No description",
                     )
 
-            return tools, prompts
+            return tools, prompts, resources
 
     async def load_servers(self, force: bool = False):
         """
@@ -446,7 +446,7 @@ class MCPAggregator(ContextDependent):
             #         return_exceptions=True,
             #     )
 
-            # Load tools and prompts from all servers concurrently
+            # Load tools, prompts and resources from all servers concurrently
             results = await asyncio.gather(
                 *(self.load_server(server_name) for server_name in self.server_names),
                 return_exceptions=True,
