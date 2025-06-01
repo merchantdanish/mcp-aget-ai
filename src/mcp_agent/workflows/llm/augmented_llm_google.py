@@ -11,7 +11,6 @@ from mcp.types import (
     EmbeddedResource,
     ImageContent,
     ModelPreferences,
-    PromptMessage,
     TextContent,
     TextResourceContents,
     BlobResourceContents,
@@ -86,25 +85,7 @@ class GoogleAugmentedLLM(
         if params.use_history:
             messages.extend(self.history.get())
 
-        # Convert message to Content
-        if isinstance(message, str):
-            messages.append(
-                types.Content(role="user", parts=[types.Part.from_text(text=message)])
-            )
-        elif isinstance(message, PromptMessage):
-            messages.append(GoogleConverter.convert_prompt_message_to_google(message))
-        elif isinstance(message, list):
-            for m in message:
-                if isinstance(m, PromptMessage):
-                    messages.append(GoogleConverter.convert_prompt_message_to_google(m))
-                elif isinstance(m, str):
-                    messages.append(
-                        types.Content(role="user", parts=[types.Part.from_text(text=m)])
-                    )
-                else:
-                    messages.append(m)
-        else:
-            messages.append(message)
+        messages.extend(GoogleConverter.convert_mixed_messages_to_anthropic(message))
 
         response = await self.agent.list_tools()
 

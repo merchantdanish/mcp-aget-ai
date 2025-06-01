@@ -30,7 +30,6 @@ from mcp.types import (
     ImageContent,
     ListToolsResult,
     ModelPreferences,
-    PromptMessage,
     TextContent,
     TextResourceContents,
 )
@@ -52,6 +51,7 @@ from mcp_agent.utils.common import ensure_serializable, typed_dict_extras
 from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
+    MessageTypes,
     ModelT,
     MCPMessageParam,
     MCPMessageResult,
@@ -179,30 +179,7 @@ class OpenAIAugmentedLLM(
                         role="system", content=system_prompt
                     )
                 )
-
-            # Convert message to ChatCompletionMessageParam
-            if isinstance(message, str):
-                messages.append(
-                    ChatCompletionUserMessageParam(role="user", content=message)
-                )
-            elif isinstance(message, PromptMessage):
-                messages.append(
-                    OpenAIConverter.convert_prompt_message_to_openai(message)
-                )
-            elif isinstance(message, list):
-                for m in message:
-                    if isinstance(m, PromptMessage):
-                        messages.append(
-                            OpenAIConverter.convert_prompt_message_to_openai(m)
-                        )
-                    elif isinstance(m, str):
-                        messages.append(
-                            ChatCompletionUserMessageParam(role="user", content=m)
-                        )
-                    else:
-                        messages.append(m)
-            else:
-                messages.append(message)
+            messages.extend((OpenAIConverter.convert_mixed_messages_to_openai(message)))
 
             response: ListToolsResult = await self.agent.list_tools()
             available_tools: List[ChatCompletionToolParam] = [
@@ -583,7 +560,7 @@ class OpenAIAugmentedLLM(
     def _annotate_span_for_generation_message(
         self,
         span: trace.Span,
-        message: ChatCompletionMessageParam | str | List[ChatCompletionMessageParam],
+        message: MessageTypes,
     ) -> None:
         """Annotate the span with the message content."""
         if not self.context.tracing_enabled:

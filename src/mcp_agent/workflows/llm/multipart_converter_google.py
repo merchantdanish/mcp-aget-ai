@@ -28,6 +28,7 @@ from mcp_agent.utils.mime_utils import (
 )
 from mcp_agent.utils.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.utils.resource_utils import extract_title_from_uri
+from mcp_agent.workflows.llm.augmented_llm import MessageTypes
 
 _logger = get_logger("multipart_converter_google")
 
@@ -330,3 +331,40 @@ class GoogleConverter:
             parts.append(part)
 
         return types.Content(role="user", parts=parts)
+
+    @staticmethod
+    def convert_mixed_messages_to_anthropic(
+        message: MessageTypes,
+    ) -> List[types.Content]:
+        """
+        Convert a list of mixed messages to a list of Anthropic-compatible messages.
+
+        Args:
+            messages: List of mixed message objects
+
+        Returns:
+            A list of Google-compatible message objects
+        """
+        messages: list[types.Content] = []
+
+        # Convert message to Content
+        if isinstance(message, str):
+            messages.append(
+                types.Content(role="user", parts=[types.Part.from_text(text=message)])
+            )
+        elif isinstance(message, PromptMessage):
+            messages.append(GoogleConverter.convert_prompt_message_to_google(message))
+        elif isinstance(message, list):
+            for m in message:
+                if isinstance(m, PromptMessage):
+                    messages.append(GoogleConverter.convert_prompt_message_to_google(m))
+                elif isinstance(m, str):
+                    messages.append(
+                        types.Content(role="user", parts=[types.Part.from_text(text=m)])
+                    )
+                else:
+                    messages.append(m)
+        else:
+            messages.append(message)
+
+        return messages

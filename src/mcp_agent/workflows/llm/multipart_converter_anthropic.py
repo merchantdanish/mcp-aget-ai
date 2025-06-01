@@ -39,6 +39,7 @@ from mcp_agent.utils.mime_utils import (
 )
 from mcp_agent.utils.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.utils.resource_utils import extract_title_from_uri
+from mcp_agent.workflows.llm.augmented_llm import MessageTypes
 
 _logger = get_logger("multipart_converter_anthropic")
 
@@ -469,3 +470,39 @@ class AnthropicConverter:
             content_blocks.extend(separate_blocks)
 
         return MessageParam(role="user", content=content_blocks)
+
+    @staticmethod
+    def convert_mixed_messages_to_anthropic(
+        message: MessageTypes,
+    ) -> List[MessageParam]:
+        """
+        Convert a list of mixed messages to a list of Anthropic-compatible messages.
+
+        Args:
+            messages: List of mixed message objects
+
+        Returns:
+            A list of Anthropic-compatible MessageParam objects
+        """
+        messages: list[MessageParam] = []
+
+        if isinstance(message, str):
+            messages.append(MessageParam(role="user", content=message))
+        elif isinstance(message, PromptMessage):
+            messages.append(
+                AnthropicConverter.convert_prompt_message_to_anthropic(message)
+            )
+        elif isinstance(message, list):
+            for m in message:
+                if isinstance(m, PromptMessage):
+                    messages.append(
+                        AnthropicConverter.convert_prompt_message_to_anthropic(m)
+                    )
+                elif isinstance(m, str):
+                    messages.append(MessageParam(role="user", content=m))
+                else:
+                    messages.append(m)
+        else:
+            messages.append(message)
+
+        return messages

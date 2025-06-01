@@ -9,7 +9,6 @@ from mcp.types import (
     EmbeddedResource,
     ImageContent,
     ModelPreferences,
-    PromptMessage,
     TextContent,
     TextResourceContents,
     BlobResourceContents,
@@ -95,23 +94,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         if params.use_history:
             messages.extend(self.history.get())
 
-        # Convert message to MessageUnionTypeDef
-        if isinstance(message, str):
-            messages.append({"role": "user", "content": [{"text": message}]})
-        elif isinstance(message, PromptMessage):
-            messages.append(BedrockConverter.convert_prompt_message_to_bedrock(message))
-        elif isinstance(message, list):
-            for m in message:
-                if isinstance(m, PromptMessage):
-                    messages.append(
-                        BedrockConverter.convert_prompt_message_to_bedrock(m)
-                    )
-                elif isinstance(m, str):
-                    messages.append({"role": "user", "content": [{"text": m}]})
-                else:
-                    messages.append(m)
-        else:
-            messages.append(message)
+        messages.extend(BedrockConverter.convert_mixed_messages_to_bedrock(message))
 
         response = await self.agent.list_tools()
 

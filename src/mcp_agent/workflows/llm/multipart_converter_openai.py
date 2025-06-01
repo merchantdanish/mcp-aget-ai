@@ -7,7 +7,7 @@ from mcp.types import (
     PromptMessage,
     TextContent,
 )
-from openai.types.chat import ChatCompletionMessageParam
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionUserMessageParam
 
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.utils.content_utils import (
@@ -25,6 +25,7 @@ from mcp_agent.utils.mime_utils import (
 )
 from mcp_agent.utils.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.utils.resource_utils import extract_title_from_uri
+from mcp_agent.workflows.llm.augmented_llm import MessageTypes
 
 _logger = get_logger("multipart_converter_openai")
 
@@ -454,5 +455,41 @@ class OpenAIConverter:
             else:
                 # Single message case (text-only)
                 messages.append(converted)
+
+        return messages
+
+    @staticmethod
+    def convert_mixed_messages_to_openai(
+        message: MessageTypes,
+    ) -> List[ChatCompletionMessageParam]:
+        """
+        Convert a list of mixed messages to a list of OpenAI-compatible messages.
+
+        Args:
+            messages: List of mixed message objects
+
+        Returns:
+            A list of OpenAI-compatible MessageParam objects
+        """
+        messages: list[ChatCompletionMessageParam] = []
+
+        if isinstance(message, str):
+            messages.append(
+                ChatCompletionUserMessageParam(role="user", content=message)
+            )
+        elif isinstance(message, PromptMessage):
+            messages.append(OpenAIConverter.convert_prompt_message_to_openai(message))
+        elif isinstance(message, list):
+            for m in message:
+                if isinstance(m, PromptMessage):
+                    messages.append(OpenAIConverter.convert_prompt_message_to_openai(m))
+                elif isinstance(m, str):
+                    messages.append(
+                        ChatCompletionUserMessageParam(role="user", content=m)
+                    )
+                else:
+                    messages.append(m)
+        else:
+            messages.append(message)
 
         return messages

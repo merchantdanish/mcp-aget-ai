@@ -30,7 +30,6 @@ from mcp.types import (
     StopReason,
     TextContent,
     TextResourceContents,
-    PromptMessage,
 )
 
 # from mcp_agent import console
@@ -156,26 +155,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             if params.use_history:
                 messages.extend(self.history.get())
-
-            # Convert message to MessageParams
-            if isinstance(message, str):
-                messages.append(MessageParam(role="user", content=message))
-            elif isinstance(message, PromptMessage):
-                messages.append(
-                    AnthropicConverter.convert_prompt_message_to_anthropic(message)
-                )
-            elif isinstance(message, list):
-                for m in message:
-                    if isinstance(m, PromptMessage):
-                        messages.append(
-                            AnthropicConverter.convert_prompt_message_to_anthropic(m)
-                        )
-                    elif isinstance(m, str):
-                        messages.append(MessageParam(role="user", content=m))
-                    else:
-                        messages.append(message)
-            else:
-                messages.append(message)
+            messages.extend(
+                AnthropicConverter.convert_mixed_messages_to_anthropic(message)
+            )
 
             response = await self.agent.list_tools()
             available_tools: List[ToolParam] = [

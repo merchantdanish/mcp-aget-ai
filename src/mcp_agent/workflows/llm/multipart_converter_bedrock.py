@@ -26,6 +26,7 @@ from mcp_agent.utils.mime_utils import (
 )
 from mcp_agent.utils.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.utils.resource_utils import extract_title_from_uri
+from mcp_agent.workflows.llm.augmented_llm import MessageTypes
 
 if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime.type_defs import (
@@ -265,3 +266,38 @@ class BedrockConverter:
                 }
             )
         return {"role": "user", "content": content_blocks}
+
+    @staticmethod
+    def convert_mixed_messages_to_bedrock(
+        message: MessageTypes,
+    ) -> List[MessageUnionTypeDef]:
+        """
+        Convert a list of mixed messages to a list of Anthropic-compatible messages.
+
+        Args:
+            messages: List of mixed message objects
+
+        Returns:
+            A list of Anthropic-compatible MessageParam objects
+        """
+        messages: list[MessageUnionTypeDef] = []
+
+        # Convert message to MessageUnionTypeDef
+        if isinstance(message, str):
+            messages.append({"role": "user", "content": [{"text": message}]})
+        elif isinstance(message, PromptMessage):
+            messages.append(BedrockConverter.convert_prompt_message_to_bedrock(message))
+        elif isinstance(message, list):
+            for m in message:
+                if isinstance(m, PromptMessage):
+                    messages.append(
+                        BedrockConverter.convert_prompt_message_to_bedrock(m)
+                    )
+                elif isinstance(m, str):
+                    messages.append({"role": "user", "content": [{"text": m}]})
+                else:
+                    messages.append(m)
+        else:
+            messages.append(message)
+
+        return messages

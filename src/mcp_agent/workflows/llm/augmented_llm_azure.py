@@ -33,7 +33,6 @@ from mcp.types import (
     EmbeddedResource,
     ImageContent,
     ModelPreferences,
-    PromptMessage,
     TextContent,
     TextResourceContents,
 )
@@ -154,23 +153,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 messages.append(SystemMessage(content=system_prompt))
                 span.set_attribute("system_prompt", system_prompt)
 
-            # Convert message to ResponseMessage
-            if isinstance(message, str):
-                messages.append(UserMessage(content=message))
-            elif isinstance(message, PromptMessage):
-                messages.append(AzureConverter.convert_prompt_message_to_azure(message))
-            elif isinstance(message, list):
-                for m in message:
-                    if isinstance(m, PromptMessage):
-                        messages.append(
-                            AzureConverter.convert_prompt_message_to_azure(m)
-                        )
-                    elif isinstance(m, str):
-                        messages.append(UserMessage(content=m))
-                    else:
-                        messages.append(m)
-            else:
-                messages.append(message)
+            messages.extend(AzureConverter.convert_mixed_messages_to_azure(message))
 
             response = await self.agent.list_tools()
 

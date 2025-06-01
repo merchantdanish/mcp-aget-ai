@@ -7,6 +7,11 @@ from azure.ai.inference.models import (
     ImageContentItem,
     ImageUrl,
     ChatRole,
+    UserMessage,
+    SystemMessage,
+    AssistantMessage,
+    ToolMessage,
+    DeveloperMessage,
 )
 from mcp.types import (
     BlobResourceContents,
@@ -33,6 +38,7 @@ from mcp_agent.utils.mime_utils import (
 )
 from mcp_agent.utils.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.utils.resource_utils import extract_title_from_uri
+from mcp_agent.workflows.llm.augmented_llm import MessageTypes
 
 _logger = get_logger("multipart_converter_azure")
 
@@ -47,7 +53,9 @@ class AzureConverter:
         return mime_type in SUPPORTED_IMAGE_MIME_TYPES
 
     @staticmethod
-    def convert_to_azure(multipart_msg: PromptMessageMultipart) -> ChatResponseMessage:
+    def convert_to_azure(
+        multipart_msg: PromptMessageMultipart,
+    ) -> UserMessage | AssistantMessage:
         """
         Convert a PromptMessageMultipart message to Azure API format.
 
@@ -55,12 +63,15 @@ class AzureConverter:
             multipart_msg: The PromptMessageMultipart message to convert
 
         Returns:
-            An Azure API ChatResponseMessage object
+            An Azure UserMessage or AssistantMessage object
         """
         role = multipart_msg.role
 
         if not multipart_msg.content:
-            return ChatResponseMessage(role=role, content="")
+            if role == "assistant":
+                return AssistantMessage(content="")
+            else:
+                return UserMessage(content="")
 
         azure_blocks = AzureConverter._convert_content_items(multipart_msg.content)
 
@@ -75,14 +86,16 @@ class AzureConverter:
                         f"Removing non-text block from assistant message: {type(block)}"
                     )
             content = "\n".join(text_blocks)
+            return AssistantMessage(content=content)
         else:
-            # For user/tool/developer/system, can be list[ContentItem]
+            # For user, can be list[ContentItem]
             content = azure_blocks
-
-        return ChatResponseMessage(role=role, content=content)
+            return UserMessage(content=content)
 
     @staticmethod
-    def convert_prompt_message_to_azure(message: PromptMessage) -> ChatResponseMessage:
+    def convert_prompt_message_to_azure(
+        message: PromptMessage,
+    ) -> UserMessage | AssistantMessage:
         """
         Convert a standard PromptMessage to Azure API format.
 
@@ -90,7 +103,7 @@ class AzureConverter:
             message: The PromptMessage to convert
 
         Returns:
-            An Azure API ChatResponseMessage object
+            An Azure UserMessage or AssistantMessage object
         """
         multipart = PromptMessageMultipart(role=message.role, content=[message.content])
         return AzureConverter.convert_to_azure(multipart)
@@ -308,3 +321,40 @@ class AzureConverter:
             content_blocks.extend(separate_blocks)
 
         return ChatResponseMessage(role=ChatRole.USER, content=content_blocks)
+
+    @staticmethod
+    def convert_mixed_messages_to_azure(
+        message: MessageTypes,
+    ) -> List[
+        Union[
+            SystemMessage, UserMessage, AssistantMessage, ToolMessage, DeveloperMessage
+        ]
+    ]:
+        """
+        Convert a list of mixed messages to a list of Anthropic-compatible messages.
+
+        Args:
+            messages: List of mixed message objects
+
+        Returns:
+            A list of Anthropic-compatible MessageParam objects
+        """
+        messages = []
+
+        # Convert message to ResponseMessage
+        if isinstance(message, str):
+            messages.append(UserMessage(content=message))
+        elif isinstance(message, PromptMessage):
+            messages.append(AzureConverter.convert_prompt_message_to_azure(message))
+        elif isinstance(message, list):
+            for m in message:
+                if isinstance(m, PromptMessage):
+                    messages.append(AzureConverter.convert_prompt_message_to_azure(m))
+                elif isinstance(m, str):
+                    messages.append(UserMessage(content=m))
+                else:
+                    messages.append(m)
+        else:
+            messages.append(message)
+
+        return messages
