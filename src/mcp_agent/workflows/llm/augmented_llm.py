@@ -589,15 +589,12 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
             span.set_attribute("message.content", message)
         elif isinstance(message, list):
             for i, msg in enumerate(message):
-                attributes = self._extract_message_param_attributes_for_tracing(
-                    msg, prefix=f"message.{i}"
-                )
-                span.set_attributes(attributes)
+                if isinstance(msg, str):
+                    span.set_attribute(f"message.{i}", msg)
+                else:
+                    span.set_attribute(f"message.{i}.content", str(msg))
         else:
-            attributes = self._extract_message_param_attributes_for_tracing(
-                message, prefix="message"
-            )
-            span.set_attributes(attributes)
+            span.set_attribute("message", str(message))
 
     def _extract_message_param_attributes_for_tracing(
         self, message_param: MessageParamT, prefix: str = "message"
