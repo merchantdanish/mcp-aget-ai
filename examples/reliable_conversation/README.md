@@ -1,6 +1,6 @@
 # Reliable Conversation Manager (RCM)
 
-Implementation of research findings from "LLMs Get Lost in Multi-Turn Conversation" using mcp-agent framework.
+Implementation of research findings from "LLMs Get Lost in Multi-Turn Conversation" (https://arxiv.org/abs/2505.06120) using mcp-agent framework.
 
 ## Implementation Status ✅
 
