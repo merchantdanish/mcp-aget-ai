@@ -31,10 +31,11 @@ examples/reliable_conversation/
 │   │   ├── llm_evaluators.py          # LLM-based evaluation with fallbacks
 │   │   └── quality_control.py         # Quality pipeline coordination
 │   └── utils/
-│       ├── logging.py                  # mcp-agent compatible logging
-│       ├── config.py                   # Configuration helpers
-│       ├── test_runner.py              # Comprehensive test framework
-│       └── progress_reporter.py        # Rich console progress display
+│       ├── logging.py                  # Enhanced logging with conversation context
+│       ├── config.py                   # Configuration management
+│       ├── test_runner.py              # Test framework with rich output
+│       ├── progress_reporter.py        # Real-time progress display
+│       └── readable_output.py          # Rich console formatting
 ├── main.py                             # Production REPL interface
 ├── test_basic.py                       # Automated test suite
 ├── mcp_agent.config.yaml              # mcp-agent configuration
@@ -67,8 +68,10 @@ python main.py
 
 ### REPL Commands
 
+- `/help` - Show comprehensive help with feature overview
 - `/stats` - Show detailed conversation statistics and research metrics
 - `/requirements` - Show tracked requirements with status and confidence
+- `/config` - Display current configuration settings
 - `/exit` - Exit the conversation with summary
 
 ### Configuration
