@@ -52,7 +52,7 @@ async def example_usage():
             resources = await agent.list_resources("demo_server")
             logger.info(
                 "Resources available from demo_server:",
-                data=resources.model_dump,
+                data=resources.model_dump(),
             )
 
             # List all prompts from demo_server server

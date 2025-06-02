@@ -1,12 +1,11 @@
 from typing import List, Sequence, Union, Optional
 
 from azure.ai.inference.models import (
-    ChatResponseMessage,
     ContentItem,
     TextContentItem,
     ImageContentItem,
+    AudioContentItem,
     ImageUrl,
-    ChatRole,
     UserMessage,
     SystemMessage,
     AssistantMessage,
@@ -227,7 +226,7 @@ class AzureConverter:
         if getattr(resource, "mimeType", None):
             return resource.mimeType
         if getattr(resource, "uri", None):
-            return guess_mime_type(resource.uri.serialize_url)
+            return guess_mime_type(str(resource.uri))
         if hasattr(resource, "blob"):
             return "application/octet-stream"
         return "text/plain"
@@ -251,16 +250,16 @@ class AzureConverter:
     @staticmethod
     def convert_tool_result_to_azure(
         tool_result: CallToolResult, tool_use_id: str
-    ) -> ChatResponseMessage:
+    ) -> ToolMessage:
         """
-        Convert an MCP CallToolResult to an Azure ChatResponseMessage.
+        Convert an MCP CallToolResult to an Azure ToolMessage.
 
         Args:
             tool_result: The tool result from a tool call
             tool_use_id: The ID of the associated tool use
 
         Returns:
-            An Azure ChatResponseMessage ready to be included in a user message
+            An Azure ToolMessage containing the tool result content as text.
         """
         azure_content = []
 
@@ -276,52 +275,58 @@ class AzureConverter:
         if not azure_content:
             azure_content = [TextContentItem(text="[No content in tool result]")]
 
-        return ChatResponseMessage(role=ChatRole.USER, content=azure_content)
+        content_text = AzureConverter._extract_text_from_azure_content_blocks(
+            azure_content
+        )
+
+        return ToolMessage(
+            tool_call_id=tool_use_id,
+            content=content_text,
+        )
+
+    @staticmethod
+    def _extract_text_from_azure_content_blocks(
+        blocks: list[TextContentItem | ImageContentItem | AudioContentItem],
+    ) -> str:
+        """
+        Extract and concatenate text from Azure content blocks for ToolMessage.
+        """
+        texts = []
+        for block in blocks:
+            # TextContentItem
+            if hasattr(block, "text") and isinstance(block.text, str):
+                texts.append(block.text)
+            # ImageContentItem
+            elif hasattr(block, "image_url"):
+                url = getattr(block.image_url, "url", None)
+                if url:
+                    texts.append(f"[Image: {url}]")
+                else:
+                    texts.append("[Image]")
+            else:
+                texts.append(str(block))
+        return "\n".join(texts)
 
     @staticmethod
     def create_tool_results_message(
         tool_results: List[tuple[str, CallToolResult]],
-    ) -> ChatResponseMessage:
+    ) -> List[ToolMessage]:
         """
-        Create a user message containing tool results.
+        Create a list of ToolMessage objects for tool results.
 
         Args:
             tool_results: List of (tool_use_id, tool_result) tuples
 
         Returns:
-            A ChatResponseMessage with role='user' containing all tool results
+            A list of ToolMessage objects, one for each tool result.
         """
-        content_blocks = []
-
+        tool_messages = []
         for tool_use_id, result in tool_results:
-            tool_result_blocks = []
-            separate_blocks = []
-
-            for item in result.content:
-                if isinstance(item, (TextContent, ImageContent)):
-                    blocks = AzureConverter._convert_content_items([item])
-                    tool_result_blocks.extend(blocks)
-                elif isinstance(item, EmbeddedResource):
-                    resource_content = item.resource
-                    if isinstance(resource_content, TextResourceContents):
-                        block = AzureConverter._convert_embedded_resource(item)
-                        if block is not None:
-                            tool_result_blocks.append(block)
-                    else:
-                        block = AzureConverter._convert_embedded_resource(item)
-                        if block is not None:
-                            separate_blocks.append(block)
-
-            if tool_result_blocks:
-                content_blocks.extend(tool_result_blocks)
-            else:
-                content_blocks.append(
-                    TextContentItem(text="[No content in tool result]")
-                )
-
-            content_blocks.extend(separate_blocks)
-
-        return ChatResponseMessage(role=ChatRole.USER, content=content_blocks)
+            tool_message = AzureConverter.convert_tool_result_to_azure(
+                result, tool_use_id
+            )
+            tool_messages.append(tool_message)
+        return tool_messages
 
     @staticmethod
     def convert_mixed_messages_to_azure(

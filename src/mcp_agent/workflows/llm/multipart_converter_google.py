@@ -232,7 +232,7 @@ class GoogleConverter:
             return resource.mimeType
 
         if getattr(resource, "uri", None):
-            return guess_mime_type(resource.uri.serialize_url)
+            return guess_mime_type(str(resource.uri))
 
         if hasattr(resource, "blob"):
             return "application/octet-stream"

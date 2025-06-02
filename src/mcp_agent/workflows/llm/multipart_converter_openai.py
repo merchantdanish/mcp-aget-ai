@@ -187,7 +187,7 @@ class OpenAIConverter:
         if not image_data:
             return {
                 "type": "text",
-                "text": f"[Image missing data for {content.mimeType}",
+                "text": f"[Image missing data for {content.mimeType}]",
             }
         image_url = {"url": f"data:{content.mimeType};base64,{image_data}"}
 

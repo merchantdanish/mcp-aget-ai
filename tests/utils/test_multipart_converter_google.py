@@ -8,6 +8,7 @@ from mcp.types import (
     TextContent,
     TextResourceContents,
 )
+from pydantic import AnyUrl
 
 from mcp_agent.utils.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.workflows.llm.multipart_converter_google import GoogleConverter
@@ -298,9 +299,7 @@ class TestGoogleConverter:
     def test_determine_mime_type_from_uri(self):
         resource = Mock()
         resource.mimeType = None
-        mock_uri = Mock()
-        mock_uri.serialize_url = "test.json"
-        resource.uri = mock_uri
+        resource.uri = AnyUrl(url="resource://test.json")
 
         result = GoogleConverter._determine_mime_type(resource)
         assert result == "application/json"

@@ -169,9 +169,7 @@ class TestAzureConverter:
     def test_determine_mime_type_from_uri(self):
         resource = Mock()
         resource.mimeType = None
-        mock_uri = Mock()
-        mock_uri.serialize_url = "test.json"
-        resource.uri = mock_uri
+        resource.uri = AnyUrl(url="resource://test.json")
 
         result = AzureConverter._determine_mime_type(resource)
         assert result == "application/json"
@@ -241,7 +239,7 @@ class TestAzureConverter:
             tool_result, "tool_use_123"
         )
 
-        assert result.role == "user"
+        assert result.role == "tool"
         assert isinstance(result.content, str)
         assert "Tool result" in result.content
 
@@ -252,7 +250,7 @@ class TestAzureConverter:
             tool_result, "tool_use_123"
         )
 
-        assert result.role == "user"
+        assert result.role == "tool"
         assert isinstance(result.content, str)
         assert "[No content in tool result]" in result.content
 
@@ -265,12 +263,16 @@ class TestAzureConverter:
 
         tool_results = [("tool_1", result1), ("tool_2", result2)]
 
-        message = AzureConverter.create_tool_results_message(tool_results)
+        messages = AzureConverter.create_tool_results_message(tool_results)
 
-        assert message.role == "user"
-        assert isinstance(message.content, str)
-        assert "Result 1" in message.content
-        assert "Result 2" in message.content
+        assert isinstance(messages, list)
+        assert len(messages) == 2
+
+        assert messages[0].tool_call_id == "tool_1"
+        assert "Result 1" in messages[0].content
+
+        assert messages[1].tool_call_id == "tool_2"
+        assert "Result 2" in messages[1].content
 
     def test_convert_tool_result_with_embedded_resource(self):
         resource = TextResourceContents(
@@ -284,7 +286,7 @@ class TestAzureConverter:
             tool_result, "tool_use_123"
         )
 
-        assert result.role == "user"
+        assert result.role == "tool"
         assert isinstance(result.content, str)
         assert "Resource content" in result.content
 
@@ -299,7 +301,7 @@ class TestAzureConverter:
             tool_result, "tool_use_123"
         )
 
-        assert result.role == "user"
+        assert result.role == "tool"
         assert isinstance(result.content, str)
         assert "Text content" in result.content
         assert "data:image/png;base64,imagedata" in result.content
