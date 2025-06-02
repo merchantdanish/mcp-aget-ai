@@ -368,8 +368,6 @@ class TestGoogleConverter:
             assert kwargs["text"] == "[Test message]"
 
     def test_create_fallback_text_with_uri(self):
-        from pydantic import AnyUrl
-
         uri = "http://example.com/test"
         resource_content = TextResourceContents(
             uri=AnyUrl(uri), mimeType="text/plain", text="test"
