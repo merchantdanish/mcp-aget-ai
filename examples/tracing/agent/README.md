@@ -1,7 +1,7 @@
 # MCP Agent example
 
 ```bash
-uv run scripts/example.py run tracing/agent
+uv run tracing/agent
 ```
 
 This example shows tracing integration in a basic "finder" Agent which has access to the 'fetch' and 'filesystem' MCP servers.

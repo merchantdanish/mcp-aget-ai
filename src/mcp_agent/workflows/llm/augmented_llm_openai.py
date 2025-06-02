@@ -616,40 +616,40 @@ class OpenAIAugmentedLLM(
                                 event_data[f"messages.{i}.content"] = message_content
                             elif message_content is not None:
                                 for j, part in enumerate(message_content):
-                                    event_data[f"messages.{i}.content.{j}.type"] = (
-                                        part.type
-                                    )
-                                    if part.type == "text":
+                                    event_data[f"messages.{i}.content.{j}.type"] = part[
+                                        "type"
+                                    ]
+                                    if part["type"] == "text":
                                         event_data[f"messages.{i}.content.{j}.text"] = (
-                                            part.text
+                                            part["text"]
                                         )
-                                    elif part.type == "image_url":
+                                    elif part["type"] == "image_url":
                                         event_data[
                                             f"messages.{i}.content.{j}.image_url.url"
-                                        ] = part.image_url.url
+                                        ] = part["image_url"]["url"]
                                         event_data[
                                             f"messages.{i}.content.{j}.image_url.detail"
-                                        ] = part.image_url.detail
-                                    elif part.type == "input_audio":
+                                        ] = part["image_url"]["detail"]
+                                    elif part["type"] == "input_audio":
                                         event_data[
                                             f"messages.{i}.content.{j}.input_audio.format"
-                                        ] = part.input_audio.format
+                                        ] = part["input_audio"]["format"]
                         case "assistant":
                             if isinstance(message_content, str):
                                 event_data[f"messages.{i}.content"] = message_content
                             elif message_content is not None:
                                 for j, part in enumerate(message_content):
-                                    event_data[f"messages.{i}.content.{j}.type"] = (
-                                        part.type
-                                    )
-                                    if part.type == "text":
+                                    event_data[f"messages.{i}.content.{j}.type"] = part[
+                                        "type"
+                                    ]
+                                    if part["type"] == "text":
                                         event_data[f"messages.{i}.content.{j}.text"] = (
-                                            part.text
+                                            part["text"]
                                         )
-                                    elif part.type == "refusal":
+                                    elif part["type"] == "refusal":
                                         event_data[
                                             f"messages.{i}.content.{j}.refusal"
-                                        ] = part.refusal
+                                        ] = part["refusal"]
                             if message.get("audio") is not None:
                                 event_data[f"messages.{i}.audio.id"] = message.get(
                                     "audio"
@@ -689,12 +689,12 @@ class OpenAIAugmentedLLM(
                                 event_data[f"messages.{i}.content"] = message_content
                             elif message_content is not None:
                                 for j, part in enumerate(message_content):
-                                    event_data[f"messages.{i}.content.{j}.type"] = (
-                                        part.type
-                                    )
-                                    if part.type == "text":
+                                    event_data[f"messages.{i}.content.{j}.type"] = part[
+                                        "type"
+                                    ]
+                                    if part["type"] == "text":
                                         event_data[f"messages.{i}.content.{j}.text"] = (
-                                            part.text
+                                            part["text"]
                                         )
                         case "function":
                             event_data[f"messages.{i}.name"] = message.get("name")

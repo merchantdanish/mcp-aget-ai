@@ -1,7 +1,7 @@
 # MCP Agent example
 
 ```bash
-uv run scripts/example.py run tracing/llm
+uv run tracing/llm
 ```
 
 This example shows tracing integration for AugmentedLLMs.
