@@ -6,12 +6,12 @@ Based on the research findings from "LLMs Get Lost in Multi-Turn Conversation".
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional, Literal, Dict, Any
-import json
 
 
 @dataclass
 class ConversationMessage:
     """Single message in conversation - matches paper's Message model"""
+
     role: Literal["user", "assistant", "system"]
     content: str
     timestamp: datetime = field(default_factory=datetime.utcnow)
@@ -23,7 +23,7 @@ class ConversationMessage:
             "role": self.role,
             "content": self.content,
             "timestamp": self.timestamp.isoformat(),
-            "turn_number": self.turn_number
+            "turn_number": self.turn_number,
         }
 
     @classmethod
@@ -33,13 +33,14 @@ class ConversationMessage:
             role=data["role"],
             content=data["content"],
             timestamp=datetime.fromisoformat(data["timestamp"]),
-            turn_number=data["turn_number"]
+            turn_number=data["turn_number"],
         )
 
 
 @dataclass
 class Requirement:
     """Tracked requirement from paper Section 5.1"""
+
     id: str
     description: str
     source_turn: int
@@ -53,7 +54,7 @@ class Requirement:
             "description": self.description,
             "source_turn": self.source_turn,
             "status": self.status,
-            "confidence": self.confidence
+            "confidence": self.confidence,
         }
 
     @classmethod
@@ -64,17 +65,18 @@ class Requirement:
             description=data["description"],
             source_turn=data["source_turn"],
             status=data["status"],
-            confidence=data["confidence"]
+            confidence=data["confidence"],
         )
 
 
 @dataclass
 class QualityMetrics:
     """From paper Table 1 - all metrics 0-1 scale"""
+
     clarity: float
     completeness: float
     assumptions: float  # Lower is better
-    verbosity: float    # Lower is better
+    verbosity: float  # Lower is better
     premature_attempt: bool = False
     middle_turn_reference: float = 0.0
     requirement_tracking: float = 0.0
@@ -82,8 +84,14 @@ class QualityMetrics:
     @property
     def overall_score(self) -> float:
         """Paper's composite scoring formula"""
-        base = (self.clarity + self.completeness + self.middle_turn_reference +
-                self.requirement_tracking + (1 - self.assumptions) + (1 - self.verbosity)) / 6
+        base = (
+            self.clarity
+            + self.completeness
+            + self.middle_turn_reference
+            + self.requirement_tracking
+            + (1 - self.assumptions)
+            + (1 - self.verbosity)
+        ) / 6
         if self.premature_attempt:
             base *= 0.5  # Heavy penalty from paper
         return base
@@ -98,7 +106,7 @@ class QualityMetrics:
             "premature_attempt": self.premature_attempt,
             "middle_turn_reference": self.middle_turn_reference,
             "requirement_tracking": self.requirement_tracking,
-            "overall_score": self.overall_score
+            "overall_score": self.overall_score,
         }
 
     @classmethod
@@ -111,13 +119,14 @@ class QualityMetrics:
             verbosity=data["verbosity"],
             premature_attempt=data["premature_attempt"],
             middle_turn_reference=data["middle_turn_reference"],
-            requirement_tracking=data["requirement_tracking"]
+            requirement_tracking=data["requirement_tracking"],
         )
 
 
 @dataclass
 class ConversationState:
     """Complete conversation state - maintained in workflow"""
+
     conversation_id: str
     messages: List[ConversationMessage] = field(default_factory=list)
     requirements: List[Requirement] = field(default_factory=list)
@@ -147,7 +156,7 @@ class ConversationState:
             "answer_lengths": self.answer_lengths,
             "consolidation_turns": self.consolidation_turns,
             "is_temporal_mode": self.is_temporal_mode,
-            "is_active": self.is_active
+            "is_active": self.is_active,
         }
 
     @classmethod
@@ -158,19 +167,22 @@ class ConversationState:
             messages=[ConversationMessage.from_dict(msg) for msg in data["messages"]],
             requirements=[Requirement.from_dict(req) for req in data["requirements"]],
             consolidated_context=data["consolidated_context"],
-            quality_history=[QualityMetrics.from_dict(qm) for qm in data["quality_history"]],
+            quality_history=[
+                QualityMetrics.from_dict(qm) for qm in data["quality_history"]
+            ],
             current_turn=data["current_turn"],
             first_answer_attempt_turn=data.get("first_answer_attempt_turn"),
             answer_lengths=data["answer_lengths"],
             consolidation_turns=data["consolidation_turns"],
             is_temporal_mode=data["is_temporal_mode"],
-            is_active=data["is_active"]
+            is_active=data["is_active"],
         )
 
 
 @dataclass
 class ConversationConfig:
     """Configuration for RCM operations"""
+
     quality_threshold: float = 0.8
     max_refinement_attempts: int = 3
     consolidation_interval: int = 3
@@ -192,7 +204,7 @@ class ConversationConfig:
             "verbose_metrics": self.verbose_metrics,
             "max_turns": self.max_turns,
             "max_context_tokens": self.max_context_tokens,
-            "mcp_servers": self.mcp_servers
+            "mcp_servers": self.mcp_servers,
         }
 
     @classmethod
@@ -207,5 +219,5 @@ class ConversationConfig:
             verbose_metrics=data.get("verbose_metrics", False),
             max_turns=data.get("max_turns", 50),
             max_context_tokens=data.get("max_context_tokens", 8000),
-            mcp_servers=data.get("mcp_servers", ["fetch", "filesystem"])
+            mcp_servers=data.get("mcp_servers", ["fetch", "filesystem"]),
         )

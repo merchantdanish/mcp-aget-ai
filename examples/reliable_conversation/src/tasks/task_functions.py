@@ -11,15 +11,19 @@ from mcp_agent.agents.agent import Agent
 # Import our utilities
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.config import get_llm_class
 from utils.logging import get_rcm_logger
-from models.conversation_models import ConversationState, QualityMetrics, Requirement
+from models.conversation_models import ConversationState
 from utils.progress_reporter import (
-    report_step, report_thinking, report_quality_check, 
-    report_requirement_extraction, report_context_consolidation,
-    show_llm_interaction
+    report_step,
+    report_thinking,
+    report_quality_check,
+    report_requirement_extraction,
+    report_context_consolidation,
+    show_llm_interaction,
 )
 
 # Quality evaluation prompt from paper Appendix
@@ -95,7 +99,7 @@ async def evaluate_quality_with_llm(params: Dict[str, Any]) -> Dict[str, Any]:
     With robust fallbacks for when LLM providers are not available.
     """
     logger = get_rcm_logger("quality_evaluator")
-    
+
     response = params["response"]
     consolidated_context = params.get("consolidated_context", "")
     requirements = params.get("requirements", [])
@@ -112,7 +116,7 @@ async def evaluate_quality_with_llm(params: Dict[str, Any]) -> Dict[str, Any]:
         evaluator_agent = Agent(
             name="quality_evaluator",
             instruction=QUALITY_EVALUATOR_PROMPT,
-            server_names=[]
+            server_names=[],
         )
 
         async with evaluator_agent:
@@ -140,9 +144,11 @@ ADDITIONAL CONTEXT:
 Evaluate each dimension carefully and return JSON with exact format specified in your instructions."""
 
             result = await llm.generate_str(evaluation_prompt)
-            
+
             # Show the LLM interaction for transparency
-            show_llm_interaction("Quality Evaluator", evaluation_prompt, result, truncate_at=800)
+            show_llm_interaction(
+                "Quality Evaluator", evaluation_prompt, result, truncate_at=800
+            )
 
             # Parse JSON response with validation
             try:
@@ -150,7 +156,8 @@ Evaluate each dimension carefully and return JSON with exact format specified in
             except json.JSONDecodeError:
                 # Try to extract JSON from the response
                 import re
-                json_match = re.search(r'\{.*\}', result, re.DOTALL)
+
+                json_match = re.search(r"\{.*\}", result, re.DOTALL)
                 if json_match:
                     data = json.loads(json_match.group())
                 else:
@@ -161,45 +168,66 @@ Evaluate each dimension carefully and return JSON with exact format specified in
                 data["premature_attempt"] = True
                 if "issues" not in data:
                     data["issues"] = []
-                data["issues"].append("Complete solution attempt with multiple pending requirements")
+                data["issues"].append(
+                    "Complete solution attempt with multiple pending requirements"
+                )
 
             # Apply verbosity penalty for answer bloat
             response_length = len(response)
             if turn_number > 1 and response_length > 500:
                 verbosity_penalty = min(0.3, (response_length - 500) / 1000)
-                data["verbosity"] = min(1.0, data.get("verbosity", 0.5) + verbosity_penalty)
+                data["verbosity"] = min(
+                    1.0, data.get("verbosity", 0.5) + verbosity_penalty
+                )
                 if "issues" not in data:
                     data["issues"] = []
-                data["issues"].append(f"Response length ({response_length} chars) shows potential answer bloat")
+                data["issues"].append(
+                    f"Response length ({response_length} chars) shows potential answer bloat"
+                )
 
-            logger.info("Quality evaluation completed", data={
-                "turn": turn_number,
-                "overall_score": _calculate_overall_score(data),
-                "premature_attempt": data.get("premature_attempt", False)
-            })
+            logger.info(
+                "Quality evaluation completed",
+                data={
+                    "turn": turn_number,
+                    "overall_score": _calculate_overall_score(data),
+                    "premature_attempt": data.get("premature_attempt", False),
+                },
+            )
 
             return {
                 "metrics": data,
                 "issues": data.get("issues", []),
-                "evaluator_raw_response": result
+                "evaluator_raw_response": result,
             }
 
     except Exception as e:
-        logger.warning(f"LLM quality evaluation failed, using heuristic fallback: {str(e)}")
-        
+        logger.warning(
+            f"LLM quality evaluation failed, using heuristic fallback: {str(e)}"
+        )
+
         # Robust heuristic fallback based on paper findings
         response_length = len(response)
         word_count = len(response.split())
-        
+
         # Heuristic scoring based on response characteristics
-        clarity = 0.8 if response_length > 50 and '.' in response else 0.5
-        completeness = min(1.0, word_count / 100)  # Longer responses tend to be more complete
-        assumptions = 0.3 if any(word in response.lower() for word in ['assume', 'probably', 'might be']) else 0.2
-        verbosity = min(1.0, max(0.1, (response_length - 200) / 1000))  # Penalty for very long responses
+        clarity = 0.8 if response_length > 50 and "." in response else 0.5
+        completeness = min(
+            1.0, word_count / 100
+        )  # Longer responses tend to be more complete
+        assumptions = (
+            0.3
+            if any(
+                word in response.lower() for word in ["assume", "probably", "might be"]
+            )
+            else 0.2
+        )
+        verbosity = min(
+            1.0, max(0.1, (response_length - 200) / 1000)
+        )  # Penalty for very long responses
         premature_attempt = has_complete_solution_markers and len(pending_reqs) > 1
         middle_turn_reference = 0.3 if turn_number > 3 else 0.5  # Default assumption
         requirement_tracking = 0.4 if len(pending_reqs) > 0 else 0.6
-        
+
         fallback_metrics = {
             "clarity": clarity,
             "completeness": completeness,
@@ -210,13 +238,15 @@ Evaluate each dimension carefully and return JSON with exact format specified in
             "requirement_tracking": requirement_tracking,
             "issues": [f"Heuristic evaluation due to LLM unavailability: {str(e)}"],
             "strengths": ["Response generated successfully"],
-            "improvement_suggestions": ["Consider using LLM evaluation for better quality assessment"]
+            "improvement_suggestions": [
+                "Consider using LLM evaluation for better quality assessment"
+            ],
         }
-        
+
         return {
             "metrics": fallback_metrics,
             "issues": fallback_metrics["issues"],
-            "evaluator_raw_response": f"Heuristic evaluation: {str(e)}"
+            "evaluator_raw_response": f"Heuristic evaluation: {str(e)}",
         }
 
 
@@ -226,7 +256,7 @@ async def extract_requirements_with_llm(params: Dict[str, Any]) -> List[Dict[str
     With robust fallbacks for when LLM providers are not available.
     """
     logger = get_rcm_logger("requirement_extractor")
-    
+
     messages = params["messages"]
     existing_requirements = params.get("existing_requirements", [])
     config = params.get("config", {})
@@ -236,7 +266,7 @@ async def extract_requirements_with_llm(params: Dict[str, Any]) -> List[Dict[str
         extractor_agent = Agent(
             name="requirement_extractor",
             instruction=REQUIREMENT_EXTRACTOR_PROMPT,
-            server_names=[]
+            server_names=[],
         )
 
         async with extractor_agent:
@@ -244,15 +274,20 @@ async def extract_requirements_with_llm(params: Dict[str, Any]) -> List[Dict[str
             llm = await extractor_agent.attach_llm(llm_class)
 
             # Build conversation context
-            conversation_text = "\n".join([
-                f"Turn {msg.get('turn_number', 0)} ({msg.get('role', 'unknown')}): {msg.get('content', '')}"
-                for msg in messages if msg.get('role') != 'system'
-            ])
+            conversation_text = "\n".join(
+                [
+                    f"Turn {msg.get('turn_number', 0)} ({msg.get('role', 'unknown')}): {msg.get('content', '')}"
+                    for msg in messages
+                    if msg.get("role") != "system"
+                ]
+            )
 
-            existing_req_text = "\n".join([
-                f"- {req.get('id', 'unknown')}: {req.get('description', '')} (Status: {req.get('status', 'unknown')})"
-                for req in existing_requirements
-            ])
+            existing_req_text = "\n".join(
+                [
+                    f"- {req.get('id', 'unknown')}: {req.get('description', '')} (Status: {req.get('status', 'unknown')})"
+                    for req in existing_requirements
+                ]
+            )
 
             extraction_prompt = f"""Analyze this conversation to extract and update user requirements.
 
@@ -265,20 +300,25 @@ EXISTING REQUIREMENTS:
 Extract requirements and return JSON array with the exact format specified in your instructions."""
 
             result = await llm.generate_str(extraction_prompt)
-            
+
             # Show the LLM interaction for transparency
-            show_llm_interaction("Requirement Extractor", extraction_prompt, result, truncate_at=800)
-            
+            show_llm_interaction(
+                "Requirement Extractor", extraction_prompt, result, truncate_at=800
+            )
+
             try:
                 requirements_data = json.loads(result)
             except json.JSONDecodeError:
                 # Try to extract JSON array from the response
                 import re
-                json_match = re.search(r'\[.*\]', result, re.DOTALL)
+
+                json_match = re.search(r"\[.*\]", result, re.DOTALL)
                 if json_match:
                     requirements_data = json.loads(json_match.group())
                 else:
-                    logger.warning("Could not parse requirements JSON, using heuristic fallback")
+                    logger.warning(
+                        "Could not parse requirements JSON, using heuristic fallback"
+                    )
                     raise ValueError("JSON parsing failed")
 
             # Validate and add IDs if missing
@@ -290,50 +330,68 @@ Extract requirements and return JSON array with the exact format specified in yo
                 if "status" not in req:
                     req["status"] = "pending"
 
-            logger.info("Requirements extracted", data={
-                "new_requirements": len(requirements_data),
-                "existing_requirements": len(existing_requirements)
-            })
+            logger.info(
+                "Requirements extracted",
+                data={
+                    "new_requirements": len(requirements_data),
+                    "existing_requirements": len(existing_requirements),
+                },
+            )
 
             return requirements_data
 
     except Exception as e:
-        logger.warning(f"LLM requirement extraction failed, using heuristic fallback: {str(e)}")
-        
+        logger.warning(
+            f"LLM requirement extraction failed, using heuristic fallback: {str(e)}"
+        )
+
         # Heuristic fallback - extract basic requirements from user messages
         heuristic_requirements = []
-        
+
         for msg in messages:
-            if msg.get('role') == 'user':
-                content = msg.get('content', '').lower()
-                turn_number = msg.get('turn_number', 0)
-                
+            if msg.get("role") == "user":
+                content = msg.get("content", "").lower()
+                turn_number = msg.get("turn_number", 0)
+
                 # Simple keyword-based requirement detection
                 requirement_indicators = [
-                    'help me with', 'i need', 'can you', 'please', 'show me',
-                    'explain', 'how to', 'what is', 'implement', 'create'
+                    "help me with",
+                    "i need",
+                    "can you",
+                    "please",
+                    "show me",
+                    "explain",
+                    "how to",
+                    "what is",
+                    "implement",
+                    "create",
                 ]
-                
+
                 if any(indicator in content for indicator in requirement_indicators):
                     req_id = str(uuid.uuid4())[:8]
                     description = f"User request from turn {turn_number}: {msg.get('content', '')[:100]}..."
-                    
-                    heuristic_requirements.append({
-                        "id": req_id,
-                        "description": description,
-                        "source_turn": turn_number,
-                        "status": "pending",
-                        "confidence": 0.6  # Lower confidence for heuristic extraction
-                    })
-        
+
+                    heuristic_requirements.append(
+                        {
+                            "id": req_id,
+                            "description": description,
+                            "source_turn": turn_number,
+                            "status": "pending",
+                            "confidence": 0.6,  # Lower confidence for heuristic extraction
+                        }
+                    )
+
         # Include existing requirements if new extraction failed
         all_requirements = existing_requirements + heuristic_requirements
-        
-        logger.info("Heuristic requirements extracted", data={
-            "heuristic_requirements": len(heuristic_requirements),
-            "total_requirements": len(all_requirements)
-        })
-        
+
+        logger.info(
+            "Heuristic requirements extracted",
+            data={
+                "heuristic_requirements": len(heuristic_requirements),
+                "total_requirements": len(all_requirements),
+            },
+        )
+
         return all_requirements
 
 
@@ -343,7 +401,7 @@ async def consolidate_context_with_llm(params: Dict[str, Any]) -> str:
     With robust fallbacks for when LLM providers are not available.
     """
     logger = get_rcm_logger("context_consolidator")
-    
+
     messages = params["messages"]
     requirements = params.get("requirements", [])
     previous_context = params.get("previous_context", "")
@@ -354,7 +412,7 @@ async def consolidate_context_with_llm(params: Dict[str, Any]) -> str:
         consolidator_agent = Agent(
             name="context_consolidator",
             instruction=CONTEXT_CONSOLIDATOR_PROMPT,
-            server_names=[]
+            server_names=[],
         )
 
         async with consolidator_agent:
@@ -362,16 +420,21 @@ async def consolidate_context_with_llm(params: Dict[str, Any]) -> str:
             llm = await consolidator_agent.attach_llm(llm_class)
 
             # Build full conversation text
-            conversation_text = "\n".join([
-                f"Turn {msg.get('turn_number', 0)} ({msg.get('role', 'unknown')}): {msg.get('content', '')}"
-                for msg in messages if msg.get('role') != 'system'
-            ])
+            conversation_text = "\n".join(
+                [
+                    f"Turn {msg.get('turn_number', 0)} ({msg.get('role', 'unknown')}): {msg.get('content', '')}"
+                    for msg in messages
+                    if msg.get("role") != "system"
+                ]
+            )
 
             # Build requirements text
-            requirements_text = "\n".join([
-                f"- {req.get('id', 'unknown')}: {req.get('description', '')} (Status: {req.get('status', 'pending')})"
-                for req in requirements
-            ])
+            requirements_text = "\n".join(
+                [
+                    f"- {req.get('id', 'unknown')}: {req.get('description', '')} (Status: {req.get('status', 'pending')})"
+                    for req in requirements
+                ]
+            )
 
             consolidation_prompt = f"""Consolidate this conversation context to prevent information loss.
 
@@ -387,52 +450,66 @@ PREVIOUS CONSOLIDATED CONTEXT:
 Create a consolidated context following your instructions. Focus on preserving middle turn information and all requirements."""
 
             result = await llm.generate_str(consolidation_prompt)
-            
-            # Show the LLM interaction for transparency
-            show_llm_interaction("Context Consolidator", consolidation_prompt, result, truncate_at=800)
 
-            logger.info("Context consolidated", data={
-                "original_length": len(conversation_text),
-                "consolidated_length": len(result),
-                "compression_ratio": len(result) / len(conversation_text) if conversation_text else 0
-            })
+            # Show the LLM interaction for transparency
+            show_llm_interaction(
+                "Context Consolidator", consolidation_prompt, result, truncate_at=800
+            )
+
+            logger.info(
+                "Context consolidated",
+                data={
+                    "original_length": len(conversation_text),
+                    "consolidated_length": len(result),
+                    "compression_ratio": len(result) / len(conversation_text)
+                    if conversation_text
+                    else 0,
+                },
+            )
 
             return result
 
     except Exception as e:
-        logger.warning(f"LLM context consolidation failed, using heuristic fallback: {str(e)}")
-        
+        logger.warning(
+            f"LLM context consolidation failed, using heuristic fallback: {str(e)}"
+        )
+
         # Heuristic fallback - simple context summarization
-        recent_messages = messages[-10:] if len(messages) > 10 else messages  # Keep last 10 messages
-        
+        recent_messages = (
+            messages[-10:] if len(messages) > 10 else messages
+        )  # Keep last 10 messages
+
         # Build fallback context
         context_parts = []
-        
+
         # Add requirements summary
         if requirements:
             context_parts.append("REQUIREMENTS:")
             for req in requirements:
-                status = req.get('status', 'pending')
-                desc = req.get('description', '')[:100]  # Truncate long descriptions
+                status = req.get("status", "pending")
+                desc = req.get("description", "")[:100]  # Truncate long descriptions
                 context_parts.append(f"- {desc} (Status: {status})")
             context_parts.append("")
-        
+
         # Add recent conversation
         context_parts.append("RECENT CONVERSATION:")
         for msg in recent_messages:
-            if msg.get('role') != 'system':
-                role = msg.get('role', 'unknown').title()
-                content = msg.get('content', '')[:200]  # Truncate long messages
+            if msg.get("role") != "system":
+                role = msg.get("role", "unknown").title()
+                content = msg.get("content", "")[:200]  # Truncate long messages
                 context_parts.append(f"{role}: {content}")
-        
+
         fallback_context = "\n".join(context_parts)
-        
-        logger.info("Heuristic context consolidation completed", data={
-            "messages_included": len(recent_messages),
-            "requirements_included": len(requirements),
-            "fallback_length": len(fallback_context)
-        })
-        
+
+        logger.info(
+            "Heuristic context consolidation completed",
+            data={
+                "messages_included": len(recent_messages),
+                "requirements_included": len(requirements),
+                "fallback_length": len(fallback_context),
+            },
+        )
+
         return fallback_context
 
 
@@ -442,7 +519,7 @@ async def generate_response_with_constraints(params: Dict[str, Any]) -> str:
     With robust fallbacks for when LLM providers are not available.
     """
     logger = get_rcm_logger("response_generator")
-    
+
     messages = params["messages"]
     consolidated_context = params.get("consolidated_context", "")
     requirements = params.get("requirements", [])
@@ -470,8 +547,8 @@ AVOID:
 - Ignoring information from middle conversation turns
 - Making assumptions about unstated details
 
-This is attempt {attempt + 1}. {'Previous issues to address: ' + str(previous_issues) if previous_issues else 'First attempt - focus on quality.'}""",
-            server_names=config.get("mcp_servers", [])
+This is attempt {attempt + 1}. {"Previous issues to address: " + str(previous_issues) if previous_issues else "First attempt - focus on quality."}""",
+            server_names=config.get("mcp_servers", []),
         )
 
         async with generator_agent:
@@ -479,16 +556,20 @@ This is attempt {attempt + 1}. {'Previous issues to address: ' + str(previous_is
             llm = await generator_agent.attach_llm(llm_class)
 
             # Build context-aware prompt
-            conversation_text = "\n".join([
-                f"{msg['role'].title()}: {msg['content']}"
-                for msg in messages[-5:] if msg['role'] != 'system'  # Last 5 messages
-            ])
+            conversation_text = "\n".join(
+                [
+                    f"{msg['role'].title()}: {msg['content']}"
+                    for msg in messages[-5:]
+                    if msg["role"] != "system"  # Last 5 messages
+                ]
+            )
 
             pending_reqs = [r for r in requirements if r.get("status") == "pending"]
-            requirements_text = "\n".join([
-                f"- {req['description']}"
-                for req in pending_reqs
-            ]) if pending_reqs else "No pending requirements"
+            requirements_text = (
+                "\n".join([f"- {req['description']}" for req in pending_reqs])
+                if pending_reqs
+                else "No pending requirements"
+            )
 
             generation_prompt = f"""Based on the conversation context and requirements, provide a helpful response.
 
@@ -501,48 +582,60 @@ CONSOLIDATED CONTEXT:
 PENDING REQUIREMENTS:
 {requirements_text}
 
-Respond naturally while being mindful of quality guidelines. {'Address these previous issues: ' + str(previous_issues) if previous_issues else ''}"""
+Respond naturally while being mindful of quality guidelines. {"Address these previous issues: " + str(previous_issues) if previous_issues else ""}"""
 
             response = await llm.generate_str(generation_prompt)
-            
-            # Show the LLM interaction for transparency
-            show_llm_interaction("Response Generator", generation_prompt, response, truncate_at=800)
 
-            logger.info("Response generated", data={
-                "attempt": attempt + 1,
-                "response_length": len(response),
-                "pending_requirements": len(pending_reqs)
-            })
+            # Show the LLM interaction for transparency
+            show_llm_interaction(
+                "Response Generator", generation_prompt, response, truncate_at=800
+            )
+
+            logger.info(
+                "Response generated",
+                data={
+                    "attempt": attempt + 1,
+                    "response_length": len(response),
+                    "pending_requirements": len(pending_reqs),
+                },
+            )
 
             return response
 
     except Exception as e:
-        logger.warning(f"LLM response generation failed, using template fallback: {str(e)}")
-        
+        logger.warning(
+            f"LLM response generation failed, using template fallback: {str(e)}"
+        )
+
         # Template-based fallback response
         last_user_message = ""
         for msg in reversed(messages):
-            if msg.get('role') == 'user':
-                last_user_message = msg.get('content', '')
+            if msg.get("role") == "user":
+                last_user_message = msg.get("content", "")
                 break
-        
+
         pending_reqs = [r for r in requirements if r.get("status") == "pending"]
-        
+
         # Generate a reasonable fallback response
         if pending_reqs:
             fallback_response = f"Thank you for your message about '{last_user_message[:50]}...'. I understand you have {len(pending_reqs)} pending requirement(s). I'm working on addressing: {', '.join([req.get('description', '')[:50] for req in pending_reqs[:2]])}. Let me provide what I can based on our conversation so far."
         else:
             fallback_response = f"Thank you for your message: '{last_user_message[:100]}...'. I'm here to help and will do my best to provide a useful response based on our conversation context."
-        
+
         if previous_issues:
-            fallback_response += f" (Attempt {attempt + 1} - addressing previous feedback)"
-        
-        logger.info("Template fallback response generated", data={
-            "attempt": attempt + 1,
-            "response_length": len(fallback_response),
-            "pending_requirements": len(pending_reqs)
-        })
-        
+            fallback_response += (
+                f" (Attempt {attempt + 1} - addressing previous feedback)"
+            )
+
+        logger.info(
+            "Template fallback response generated",
+            data={
+                "attempt": attempt + 1,
+                "response_length": len(fallback_response),
+                "pending_requirements": len(pending_reqs),
+            },
+        )
+
         return fallback_response
 
 
@@ -552,28 +645,30 @@ async def process_turn_with_quality(params: Dict[str, Any]) -> Dict[str, Any]:
     With robust fallbacks at every step.
     """
     logger = get_rcm_logger("quality_control")
-    
+
     state_dict = params["state"]
     config = params["config"]
-    
+
     # Recreate state object
     state = ConversationState.from_dict(state_dict)
-    
-    logger.info("Starting quality-controlled turn processing", data={
-        "conversation_id": state.conversation_id,
-        "turn": state.current_turn
-    })
-    
+
+    logger.info(
+        "Starting quality-controlled turn processing",
+        data={"conversation_id": state.conversation_id, "turn": state.current_turn},
+    )
+
     report_thinking("Starting quality-controlled turn processing")
 
     try:
         # Step 1: Extract requirements (with fallback)
         report_step("Extracting requirements from conversation")
-        requirements = await extract_requirements_with_llm({
-            "messages": [m.to_dict() for m in state.messages],
-            "existing_requirements": [r.to_dict() for r in state.requirements],
-            "config": config
-        })
+        requirements = await extract_requirements_with_llm(
+            {
+                "messages": [m.to_dict() for m in state.messages],
+                "existing_requirements": [r.to_dict() for r in state.requirements],
+                "config": config,
+            }
+        )
         report_requirement_extraction(len(requirements))
 
         # Step 2: Consolidate context if needed (with fallback)
@@ -582,18 +677,20 @@ async def process_turn_with_quality(params: Dict[str, Any]) -> Dict[str, Any]:
 
         if _should_consolidate_context(state, config):
             report_step("Context consolidation needed", f"turn {state.current_turn}")
-            logger.info("Consolidating context", data={
-                "turn": state.current_turn,
-                "trigger": "consolidation_interval"
-            })
-            
+            logger.info(
+                "Consolidating context",
+                data={"turn": state.current_turn, "trigger": "consolidation_interval"},
+            )
+
             old_length = len(state.consolidated_context)
-            consolidated_context = await consolidate_context_with_llm({
-                "messages": [m.to_dict() for m in state.messages],
-                "requirements": requirements,
-                "previous_context": state.consolidated_context,
-                "config": config
-            })
+            consolidated_context = await consolidate_context_with_llm(
+                {
+                    "messages": [m.to_dict() for m in state.messages],
+                    "requirements": requirements,
+                    "previous_context": state.consolidated_context,
+                    "config": config,
+                }
+            )
             context_consolidated = True
             report_context_consolidation(old_length, len(consolidated_context))
         else:
@@ -603,47 +700,55 @@ async def process_turn_with_quality(params: Dict[str, Any]) -> Dict[str, Any]:
         best_response = ""
         best_metrics = None
         max_attempts = config.get("max_refinement_attempts", 3)
-        
+
         report_step("Starting response generation", f"max {max_attempts} attempts")
 
         for attempt in range(max_attempts):
             report_step(f"Generating response attempt {attempt + 1}/{max_attempts}")
-            logger.info("Generating response attempt", data={
-                "attempt": attempt + 1,
-                "max_attempts": max_attempts
-            })
+            logger.info(
+                "Generating response attempt",
+                data={"attempt": attempt + 1, "max_attempts": max_attempts},
+            )
 
             # Generate response (with fallback)
-            response = await generate_response_with_constraints({
-                "messages": [m.to_dict() for m in state.messages],
-                "consolidated_context": consolidated_context,
-                "requirements": requirements,
-                "attempt": attempt,
-                "previous_issues": [] if attempt == 0 else best_metrics.get("issues", []),
-                "config": config
-            })
+            response = await generate_response_with_constraints(
+                {
+                    "messages": [m.to_dict() for m in state.messages],
+                    "consolidated_context": consolidated_context,
+                    "requirements": requirements,
+                    "attempt": attempt,
+                    "previous_issues": []
+                    if attempt == 0
+                    else best_metrics.get("issues", []),
+                    "config": config,
+                }
+            )
 
             # Evaluate quality (with fallback)
             report_step("Evaluating response quality")
-            evaluation = await evaluate_quality_with_llm({
-                "response": response,
-                "consolidated_context": consolidated_context,
-                "requirements": requirements,
-                "turn_number": state.current_turn,
-                "conversation_history": [m.to_dict() for m in state.messages],
-                "config": config
-            })
+            evaluation = await evaluate_quality_with_llm(
+                {
+                    "response": response,
+                    "consolidated_context": consolidated_context,
+                    "requirements": requirements,
+                    "turn_number": state.current_turn,
+                    "conversation_history": [m.to_dict() for m in state.messages],
+                    "config": config,
+                }
+            )
 
             metrics = evaluation["metrics"]
             overall_score = _calculate_overall_score(metrics)
 
             # Track best response
-            if best_metrics is None or overall_score > best_metrics.get("overall_score", 0):
+            if best_metrics is None or overall_score > best_metrics.get(
+                "overall_score", 0
+            ):
                 best_response = response
                 best_metrics = {
                     "metrics": metrics,
                     "issues": evaluation.get("issues", []),
-                    "overall_score": overall_score
+                    "overall_score": overall_score,
                 }
 
             # Report quality evaluation
@@ -652,27 +757,42 @@ async def process_turn_with_quality(params: Dict[str, Any]) -> Dict[str, Any]:
             # Check quality threshold
             quality_threshold = config.get("quality_threshold", 0.8)
             if overall_score >= quality_threshold:
-                report_step("Quality threshold met", f"score {overall_score:.0%} >= {quality_threshold:.0%}")
-                logger.info("Quality threshold met", data={
-                    "attempt": attempt + 1,
-                    "score": overall_score,
-                    "threshold": quality_threshold
-                })
+                report_step(
+                    "Quality threshold met",
+                    f"score {overall_score:.0%} >= {quality_threshold:.0%}",
+                )
+                logger.info(
+                    "Quality threshold met",
+                    data={
+                        "attempt": attempt + 1,
+                        "score": overall_score,
+                        "threshold": quality_threshold,
+                    },
+                )
                 break
             else:
-                report_step("Quality below threshold", f"score {overall_score:.0%} < {quality_threshold:.0%}, continuing")
-                logger.info("Quality below threshold, continuing refinement", data={
-                    "attempt": attempt + 1,
-                    "score": overall_score,
-                    "threshold": quality_threshold,
-                    "issues": evaluation.get("issues", [])
-                })
+                report_step(
+                    "Quality below threshold",
+                    f"score {overall_score:.0%} < {quality_threshold:.0%}, continuing",
+                )
+                logger.info(
+                    "Quality below threshold, continuing refinement",
+                    data={
+                        "attempt": attempt + 1,
+                        "score": overall_score,
+                        "threshold": quality_threshold,
+                        "issues": evaluation.get("issues", []),
+                    },
+                )
 
-        logger.info("Quality-controlled turn processing completed", data={
-            "final_score": best_metrics["overall_score"],
-            "refinement_attempts": attempt + 1,
-            "context_consolidated": context_consolidated
-        })
+        logger.info(
+            "Quality-controlled turn processing completed",
+            data={
+                "final_score": best_metrics["overall_score"],
+                "refinement_attempts": attempt + 1,
+                "context_consolidated": context_consolidated,
+            },
+        )
 
         return {
             "response": best_response,
@@ -680,21 +800,23 @@ async def process_turn_with_quality(params: Dict[str, Any]) -> Dict[str, Any]:
             "consolidated_context": consolidated_context,
             "context_consolidated": context_consolidated,
             "metrics": best_metrics["metrics"],
-            "refinement_attempts": attempt + 1
+            "refinement_attempts": attempt + 1,
         }
 
     except Exception as e:
-        logger.error(f"Quality-controlled processing failed completely, using basic fallback: {str(e)}")
-        
+        logger.error(
+            f"Quality-controlled processing failed completely, using basic fallback: {str(e)}"
+        )
+
         # Ultimate fallback - return basic response structure
         last_user_message = ""
         for msg in reversed(state.messages):
-            if msg.to_dict().get('role') == 'user':
-                last_user_message = msg.to_dict().get('content', '')
+            if msg.to_dict().get("role") == "user":
+                last_user_message = msg.to_dict().get("content", "")
                 break
-        
+
         fallback_response = f"Thank you for your message. I encountered some technical difficulties but will do my best to help you with: '{last_user_message[:100]}...'"
-        
+
         fallback_metrics = {
             "clarity": 0.5,
             "completeness": 0.4,
@@ -705,27 +827,31 @@ async def process_turn_with_quality(params: Dict[str, Any]) -> Dict[str, Any]:
             "requirement_tracking": 0.3,
             "issues": [f"Complete system fallback due to: {str(e)}"],
             "strengths": ["System remained operational"],
-            "improvement_suggestions": ["Check system configuration and connectivity"]
+            "improvement_suggestions": ["Check system configuration and connectivity"],
         }
-        
+
         return {
             "response": fallback_response,
-            "requirements": [req.to_dict() for req in state.requirements],  # Preserve existing
+            "requirements": [
+                req.to_dict() for req in state.requirements
+            ],  # Preserve existing
             "consolidated_context": state.consolidated_context,  # Preserve existing
             "context_consolidated": False,
             "metrics": fallback_metrics,
-            "refinement_attempts": 1
+            "refinement_attempts": 1,
         }
 
 
-def _should_consolidate_context(state: ConversationState, config: Dict[str, Any]) -> bool:
+def _should_consolidate_context(
+    state: ConversationState, config: Dict[str, Any]
+) -> bool:
     """Determine if context consolidation is needed based on paper findings"""
     consolidation_interval = config.get("consolidation_interval", 3)
 
     return (
-        state.current_turn % consolidation_interval == 0 or  # Every N turns
-        len(state.consolidated_context) > 2000 or           # Long context threshold
-        state.current_turn == 1                             # Always consolidate first turn
+        state.current_turn % consolidation_interval == 0  # Every N turns
+        or len(state.consolidated_context) > 2000  # Long context threshold
+        or state.current_turn == 1  # Always consolidate first turn
     )
 
 
@@ -739,12 +865,18 @@ def _calculate_overall_score(metrics: Dict[str, Any]) -> float:
     requirement_tracking = metrics.get("requirement_tracking", 0.5)
     premature_attempt = metrics.get("premature_attempt", False)
 
-    base = (clarity + completeness + middle_turn_reference +
-            requirement_tracking + (1 - assumptions) + (1 - verbosity)) / 6
-    
+    base = (
+        clarity
+        + completeness
+        + middle_turn_reference
+        + requirement_tracking
+        + (1 - assumptions)
+        + (1 - verbosity)
+    ) / 6
+
     if premature_attempt:
         base *= 0.5  # Heavy penalty from paper
-    
+
     return base
 
 
@@ -758,7 +890,7 @@ def _detect_complete_solution_attempt(response: str) -> bool:
         "this should handle everything",
         "final answer",
         "complete response",
-        "here's everything you need"
+        "here's everything you need",
     ]
 
     response_lower = response.lower()

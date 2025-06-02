@@ -18,11 +18,11 @@ def get_llm_class(provider: str = "openai") -> Type:
 def extract_rcm_config(app_config: Any) -> dict:
     """Extract RCM-specific configuration from app config"""
     rcm_config = {}
-    
+
     # Extract from rcm section if it exists
-    if hasattr(app_config, 'rcm'):
+    if hasattr(app_config, "rcm"):
         rcm_config.update(app_config.rcm)
-    
+
     # Set defaults
     rcm_config.setdefault("quality_threshold", 0.8)
     rcm_config.setdefault("max_refinement_attempts", 3)
@@ -31,5 +31,5 @@ def extract_rcm_config(app_config: Any) -> dict:
     rcm_config.setdefault("evaluator_model_provider", "openai")
     rcm_config.setdefault("verbose_metrics", False)
     rcm_config.setdefault("mcp_servers", [])  # Default to empty list
-    
+
     return rcm_config

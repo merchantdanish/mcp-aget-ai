@@ -9,81 +9,97 @@ import time
 
 class ProgressReporter:
     """Reports workflow progress to console during testing"""
-    
+
     def __init__(self, console: Optional[Console] = None, enabled: bool = True):
         self.console = console or Console()
         self.enabled = enabled
         self.start_time = time.time()
-    
+
     def step(self, message: str, details: str = ""):
         """Report a workflow step"""
         if not self.enabled:
             return
-            
+
         elapsed = time.time() - self.start_time
-        
+
         if details:
             self.console.print(f"[dim]🔄 {message}: {details} ({elapsed:.1f}s)[/dim]")
         else:
             self.console.print(f"[dim]🔄 {message} ({elapsed:.1f}s)[/dim]")
-    
+
     def thinking(self, message: str = "Processing"):
         """Report thinking/processing"""
         if not self.enabled:
             return
-            
+
         elapsed = time.time() - self.start_time
         self.console.print(f"[dim]🤔 {message}... ({elapsed:.1f}s)[/dim]")
-    
+
     def quality_check(self, score: float, issues: int = 0):
         """Report quality evaluation results"""
         if not self.enabled:
             return
-            
+
         elapsed = time.time() - self.start_time
         if issues > 0:
-            self.console.print(f"[dim]✨ Quality evaluated: {score:.0%} ({issues} issues found) ({elapsed:.1f}s)[/dim]")
+            self.console.print(
+                f"[dim]✨ Quality evaluated: {score:.0%} ({issues} issues found) ({elapsed:.1f}s)[/dim]"
+            )
         else:
-            self.console.print(f"[dim]✨ Quality evaluated: {score:.0%} (no issues) ({elapsed:.1f}s)[/dim]")
-    
+            self.console.print(
+                f"[dim]✨ Quality evaluated: {score:.0%} (no issues) ({elapsed:.1f}s)[/dim]"
+            )
+
     def requirement_extraction(self, count: int):
         """Report requirement extraction"""
         if not self.enabled:
             return
-            
+
         elapsed = time.time() - self.start_time
-        self.console.print(f"[dim]📋 Requirements extracted: {count} found ({elapsed:.1f}s)[/dim]")
-    
+        self.console.print(
+            f"[dim]📋 Requirements extracted: {count} found ({elapsed:.1f}s)[/dim]"
+        )
+
     def context_consolidation(self, from_chars: int, to_chars: int):
         """Report context consolidation"""
         if not self.enabled:
             return
-            
+
         elapsed = time.time() - self.start_time
-        self.console.print(f"[dim]📚 Context consolidated: {from_chars} → {to_chars} chars ({elapsed:.1f}s)[/dim]")
-    
-    def show_llm_interaction(self, role: str, prompt: str, response: str, truncate_at: int = 500):
+        self.console.print(
+            f"[dim]📚 Context consolidated: {from_chars} → {to_chars} chars ({elapsed:.1f}s)[/dim]"
+        )
+
+    def show_llm_interaction(
+        self, role: str, prompt: str, response: str, truncate_at: int = 500
+    ):
         """Show LLM interaction details"""
         if not self.enabled:
             return
-        
+
         elapsed = time.time() - self.start_time
-        
-        # Truncate long prompts/responses for readability  
+
+        # Truncate long prompts/responses for readability
         if len(prompt) > truncate_at:
-            truncated_prompt = prompt[:truncate_at] + f"\n[dim]... (truncated, {len(prompt)} total chars)[/dim]"
+            truncated_prompt = (
+                prompt[:truncate_at]
+                + f"\n[dim]... (truncated, {len(prompt)} total chars)[/dim]"
+            )
         else:
             truncated_prompt = prompt
-            
+
         if len(response) > truncate_at:
-            truncated_response = response[:truncate_at] + f"\n[dim]... (truncated, {len(response)} total chars)[/dim]"
+            truncated_response = (
+                response[:truncate_at]
+                + f"\n[dim]... (truncated, {len(response)} total chars)[/dim]"
+            )
         else:
             truncated_response = response
-        
+
         self.console.print(f"\n[dim]🤖 {role} LLM Interaction ({elapsed:.1f}s):[/dim]")
-        self.console.print(f"[dim]┌─ Prompt:[/dim]")
+        self.console.print("[dim]┌─ Prompt:[/dim]")
         self.console.print(f"[dim]{truncated_prompt}[/dim]")
-        self.console.print(f"[dim]└─ Response:[/dim]") 
+        self.console.print("[dim]└─ Response:[/dim]")
         self.console.print(f"[dim]{truncated_response}[/dim]")
         self.console.print()  # Add spacing
 

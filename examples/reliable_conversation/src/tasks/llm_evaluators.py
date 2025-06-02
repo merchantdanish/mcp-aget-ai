@@ -6,12 +6,12 @@ Each task uses mcp-agent patterns for consistency.
 import json
 import uuid
 from typing import Dict, Any, List
-from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 
 # Import our utilities
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.config import get_llm_class
@@ -102,7 +102,7 @@ async def evaluate_quality_with_llm(params: Dict[str, Any]) -> Dict[str, Any]:
     From paper Section 5.4.2.
     """
     logger = get_rcm_logger("quality_evaluator")
-    
+
     response = params["response"]
     consolidated_context = params.get("consolidated_context", "")
     requirements = params.get("requirements", [])
@@ -119,7 +119,7 @@ async def evaluate_quality_with_llm(params: Dict[str, Any]) -> Dict[str, Any]:
         evaluator_agent = Agent(
             name="quality_evaluator",
             instruction=QUALITY_EVALUATOR_PROMPT,
-            server_names=[]  # No MCP servers needed for evaluation
+            server_names=[],  # No MCP servers needed for evaluation
         )
 
         async with evaluator_agent:
@@ -155,7 +155,8 @@ Evaluate each dimension carefully and return JSON with exact format specified in
             except json.JSONDecodeError:
                 # Try to extract JSON from the response
                 import re
-                json_match = re.search(r'\{.*\}', result, re.DOTALL)
+
+                json_match = re.search(r"\{.*\}", result, re.DOTALL)
                 if json_match:
                     data = json.loads(json_match.group())
                 else:
@@ -166,27 +167,36 @@ Evaluate each dimension carefully and return JSON with exact format specified in
                 data["premature_attempt"] = True
                 if "issues" not in data:
                     data["issues"] = []
-                data["issues"].append("Complete solution attempt with multiple pending requirements")
+                data["issues"].append(
+                    "Complete solution attempt with multiple pending requirements"
+                )
 
             # Apply verbosity penalty for answer bloat
             response_length = len(response)
             if turn_number > 1 and response_length > 500:
                 verbosity_penalty = min(0.3, (response_length - 500) / 1000)
-                data["verbosity"] = min(1.0, data.get("verbosity", 0.5) + verbosity_penalty)
+                data["verbosity"] = min(
+                    1.0, data.get("verbosity", 0.5) + verbosity_penalty
+                )
                 if "issues" not in data:
                     data["issues"] = []
-                data["issues"].append(f"Response length ({response_length} chars) shows potential answer bloat")
+                data["issues"].append(
+                    f"Response length ({response_length} chars) shows potential answer bloat"
+                )
 
-            logger.info("Quality evaluation completed", data={
-                "turn": turn_number,
-                "overall_score": _calculate_overall_score(data),
-                "premature_attempt": data.get("premature_attempt", False)
-            })
+            logger.info(
+                "Quality evaluation completed",
+                data={
+                    "turn": turn_number,
+                    "overall_score": _calculate_overall_score(data),
+                    "premature_attempt": data.get("premature_attempt", False),
+                },
+            )
 
             return {
                 "metrics": data,
                 "issues": data.get("issues", []),
-                "evaluator_raw_response": result
+                "evaluator_raw_response": result,
             }
 
     except Exception as e:
@@ -198,12 +208,13 @@ Evaluate each dimension carefully and return JSON with exact format specified in
                 "completeness": 0.5,
                 "assumptions": 0.7,
                 "verbosity": 0.6,
-                "premature_attempt": has_complete_solution_markers and len(pending_reqs) > 1,
+                "premature_attempt": has_complete_solution_markers
+                and len(pending_reqs) > 1,
                 "middle_turn_reference": 0.3,
                 "requirement_tracking": 0.4,
             },
             "issues": [f"Quality evaluation error: {str(e)}"],
-            "evaluator_raw_response": str(e)
+            "evaluator_raw_response": str(e),
         }
 
 
@@ -214,7 +225,7 @@ async def extract_requirements_with_llm(params: Dict[str, Any]) -> List[Dict[str
     From paper Section 5.4.3.
     """
     logger = get_rcm_logger("requirement_extractor")
-    
+
     messages = params["messages"]
     existing_requirements = params.get("existing_requirements", [])
     config = params.get("config", {})
@@ -224,7 +235,7 @@ async def extract_requirements_with_llm(params: Dict[str, Any]) -> List[Dict[str
         extractor_agent = Agent(
             name="requirement_extractor",
             instruction=REQUIREMENT_EXTRACTOR_PROMPT,
-            server_names=[]
+            server_names=[],
         )
 
         async with extractor_agent:
@@ -232,15 +243,20 @@ async def extract_requirements_with_llm(params: Dict[str, Any]) -> List[Dict[str
             llm = await extractor_agent.attach_llm(llm_class)
 
             # Build conversation context
-            conversation_text = "\n".join([
-                f"Turn {msg.get('turn_number', 0)} ({msg.get('role', 'unknown')}): {msg.get('content', '')}"
-                for msg in messages if msg.get('role') != 'system'
-            ])
+            conversation_text = "\n".join(
+                [
+                    f"Turn {msg.get('turn_number', 0)} ({msg.get('role', 'unknown')}): {msg.get('content', '')}"
+                    for msg in messages
+                    if msg.get("role") != "system"
+                ]
+            )
 
-            existing_req_text = "\n".join([
-                f"- {req.get('id', 'unknown')}: {req.get('description', '')} (Status: {req.get('status', 'unknown')})"
-                for req in existing_requirements
-            ])
+            existing_req_text = "\n".join(
+                [
+                    f"- {req.get('id', 'unknown')}: {req.get('description', '')} (Status: {req.get('status', 'unknown')})"
+                    for req in existing_requirements
+                ]
+            )
 
             extraction_prompt = f"""Analyze this conversation to extract and update user requirements.
 
@@ -253,13 +269,14 @@ EXISTING REQUIREMENTS:
 Extract requirements and return JSON array with the exact format specified in your instructions."""
 
             result = await llm.generate_str(extraction_prompt)
-            
+
             try:
                 requirements_data = json.loads(result)
             except json.JSONDecodeError:
                 # Try to extract JSON array from the response
                 import re
-                json_match = re.search(r'\[.*\]', result, re.DOTALL)
+
+                json_match = re.search(r"\[.*\]", result, re.DOTALL)
                 if json_match:
                     requirements_data = json.loads(json_match.group())
                 else:
@@ -275,10 +292,13 @@ Extract requirements and return JSON array with the exact format specified in yo
                 if "status" not in req:
                     req["status"] = "pending"
 
-            logger.info("Requirements extracted", data={
-                "new_requirements": len(requirements_data),
-                "existing_requirements": len(existing_requirements)
-            })
+            logger.info(
+                "Requirements extracted",
+                data={
+                    "new_requirements": len(requirements_data),
+                    "existing_requirements": len(existing_requirements),
+                },
+            )
 
             return requirements_data
 
@@ -295,7 +315,7 @@ async def consolidate_context_with_llm(params: Dict[str, Any]) -> str:
     From paper Section 5.4.4.
     """
     logger = get_rcm_logger("context_consolidator")
-    
+
     messages = params["messages"]
     requirements = params.get("requirements", [])
     previous_context = params.get("previous_context", "")
@@ -306,7 +326,7 @@ async def consolidate_context_with_llm(params: Dict[str, Any]) -> str:
         consolidator_agent = Agent(
             name="context_consolidator",
             instruction=CONTEXT_CONSOLIDATOR_PROMPT,
-            server_names=[]
+            server_names=[],
         )
 
         async with consolidator_agent:
@@ -314,16 +334,21 @@ async def consolidate_context_with_llm(params: Dict[str, Any]) -> str:
             llm = await consolidator_agent.attach_llm(llm_class)
 
             # Build full conversation text
-            conversation_text = "\n".join([
-                f"Turn {msg.get('turn_number', 0)} ({msg.get('role', 'unknown')}): {msg.get('content', '')}"
-                for msg in messages if msg.get('role') != 'system'
-            ])
+            conversation_text = "\n".join(
+                [
+                    f"Turn {msg.get('turn_number', 0)} ({msg.get('role', 'unknown')}): {msg.get('content', '')}"
+                    for msg in messages
+                    if msg.get("role") != "system"
+                ]
+            )
 
             # Build requirements text
-            requirements_text = "\n".join([
-                f"- {req.get('id', 'unknown')}: {req.get('description', '')} (Status: {req.get('status', 'pending')})"
-                for req in requirements
-            ])
+            requirements_text = "\n".join(
+                [
+                    f"- {req.get('id', 'unknown')}: {req.get('description', '')} (Status: {req.get('status', 'pending')})"
+                    for req in requirements
+                ]
+            )
 
             consolidation_prompt = f"""Consolidate this conversation context to prevent information loss.
 
@@ -340,21 +365,29 @@ Create a consolidated context following your instructions. Focus on preserving m
 
             result = await llm.generate_str(consolidation_prompt)
 
-            logger.info("Context consolidated", data={
-                "original_length": len(conversation_text),
-                "consolidated_length": len(result),
-                "compression_ratio": len(result) / len(conversation_text) if conversation_text else 0
-            })
+            logger.info(
+                "Context consolidated",
+                data={
+                    "original_length": len(conversation_text),
+                    "consolidated_length": len(result),
+                    "compression_ratio": len(result) / len(conversation_text)
+                    if conversation_text
+                    else 0,
+                },
+            )
 
             return result
 
     except Exception as e:
         logger.error(f"Context consolidation failed: {str(e)}")
         # Fallback to simple concatenation
-        fallback_context = "\n".join([
-            f"Turn {msg.get('turn_number', 0)}: {msg.get('content', '')}"
-            for msg in messages[-5:] if msg.get('role') != 'system'  # Last 5 messages
-        ])
+        fallback_context = "\n".join(
+            [
+                f"Turn {msg.get('turn_number', 0)}: {msg.get('content', '')}"
+                for msg in messages[-5:]
+                if msg.get("role") != "system"  # Last 5 messages
+            ]
+        )
         return fallback_context
 
 
@@ -368,7 +401,7 @@ def _detect_complete_solution_attempt(response: str) -> bool:
         "this should handle everything",
         "final answer",
         "complete response",
-        "here's everything you need"
+        "here's everything you need",
     ]
 
     response_lower = response.lower()
@@ -385,10 +418,16 @@ def _calculate_overall_score(metrics: Dict[str, Any]) -> float:
     requirement_tracking = metrics.get("requirement_tracking", 0.5)
     premature_attempt = metrics.get("premature_attempt", False)
 
-    base = (clarity + completeness + middle_turn_reference +
-            requirement_tracking + (1 - assumptions) + (1 - verbosity)) / 6
-    
+    base = (
+        clarity
+        + completeness
+        + middle_turn_reference
+        + requirement_tracking
+        + (1 - assumptions)
+        + (1 - verbosity)
+    ) / 6
+
     if premature_attempt:
         base *= 0.5  # Heavy penalty from paper
-    
+
     return base
