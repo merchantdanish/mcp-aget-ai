@@ -32,8 +32,7 @@ First, clone the repository and navigate to the project:
 
 ```bash
 git clone https://github.com/lastmile-ai/mcp-agent.git
-=======
-git clone https://github.com/lastmile-ai/mcp-agent/examples/usecases/mcp_supabase_migration_agent
+
 cd mcp-agent/examples/usecases/mcp_supabase_migration_agent
 ```
 

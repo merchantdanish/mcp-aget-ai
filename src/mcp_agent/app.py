@@ -21,6 +21,7 @@ from mcp_agent.executor.task_registry import ActivityRegistry
 from mcp_agent.executor.workflow_signal import SignalWaitCallback
 from mcp_agent.executor.workflow_task import GlobalWorkflowTaskRegistry
 from mcp_agent.human_input.types import HumanInputCallback
+from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.utils.common import unwrap
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 
@@ -236,10 +237,13 @@ class MCPApp:
                 pass
         """
         await self.initialize()
-        try:
-            yield self
-        finally:
-            await self.cleanup()
+
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(self.name):
+            try:
+                yield self
+            finally:
+                await self.cleanup()
 
     def workflow(
         self, cls: Type, *args, workflow_id: str | None = None, **kwargs

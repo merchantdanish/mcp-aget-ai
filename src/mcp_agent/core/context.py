@@ -11,16 +11,10 @@ from pydantic import BaseModel, ConfigDict
 from mcp import ServerSession
 
 from opentelemetry import trace
-from opentelemetry.propagate import set_global_textmap
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 from mcp_agent.config import get_settings
 from mcp_agent.config import Settings
-from mcp_agent.executor.executor import Executor
+from mcp_agent.executor.executor import AsyncioExecutor, Executor
 from mcp_agent.executor.decorator_registry import (
     DecoratorRegistry,
     register_asyncio_decorators,
@@ -28,12 +22,12 @@ from mcp_agent.executor.decorator_registry import (
 )
 from mcp_agent.executor.signal_registry import SignalRegistry
 from mcp_agent.executor.task_registry import ActivityRegistry
-from mcp_agent.executor.executor import AsyncioExecutor
 
 from mcp_agent.logging.events import EventFilter
 from mcp_agent.logging.logger import LoggingConfig
 from mcp_agent.logging.transport import create_transport
 from mcp_agent.mcp.mcp_server_registry import ServerRegistry
+from mcp_agent.tracing.tracer import TracingConfig
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 from mcp_agent.logging.logger import get_logger
 
@@ -76,6 +70,8 @@ class Context(BaseModel):
     workflow_registry: Optional["WorkflowRegistry"] = None
 
     tracer: Optional[trace.Tracer] = None
+    # Use this flag to conditionally serialize expensive data for tracing
+    tracing_enabled: bool = False
 
     model_config = ConfigDict(
         extra="allow",
@@ -83,56 +79,14 @@ class Context(BaseModel):
     )
 
 
-async def configure_otel(config: "Settings"):
+async def configure_otel(config: "Settings", session_id: str | None = None):
     """
     Configure OpenTelemetry based on the application config.
     """
     if not config.otel.enabled:
         return
 
-    # Check if a provider is already set to avoid re-initialization
-    if trace.get_tracer_provider().__class__.__name__ != "NoOpTracerProvider":
-        return
-
-    # Set up global textmap propagator first
-    set_global_textmap(TraceContextTextMapPropagator())
-
-    service_name = config.otel.service_name
-    service_instance_id = config.otel.service_instance_id
-    service_version = config.otel.service_version
-
-    # Create resource identifying this service
-    resource = Resource.create(
-        attributes={
-            key: value
-            for key, value in {
-                "service.name": service_name,
-                "service.instance.id": service_instance_id,
-                "service.version": service_version,
-            }.items()
-            if value is not None
-        }
-    )
-
-    # Create provider with resource
-    tracer_provider = TracerProvider(resource=resource)
-
-    # Add exporters based on config
-    otlp_endpoint = config.otel.otlp_endpoint
-    if otlp_endpoint:
-        exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
-        tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
-
-        if config.otel.console_debug:
-            tracer_provider.add_span_processor(
-                BatchSpanProcessor(ConsoleSpanExporter())
-            )
-    else:
-        # Default to console exporter in development
-        tracer_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
-
-    # Set as global tracer provider
-    trace.set_tracer_provider(tracer_provider)
+    await TracingConfig.configure(settings=config.otel, session_id=session_id)
 
 
 async def configure_logger(config: "Settings", session_id: str | None = None):
@@ -213,11 +167,6 @@ async def initialize_context(
     context.config = config
     context.server_registry = ServerRegistry(config=config)
 
-    # Configure logging and telemetry
-    await configure_otel(config)
-    await configure_logger(config, context.session_id)
-    await configure_usage_telemetry(config)
-
     # Configure the executor
     context.executor = await configure_executor(config)
     context.workflow_registry = await configure_workflow_registry(
@@ -225,6 +174,11 @@ async def initialize_context(
     )
 
     context.session_id = str(context.executor.uuid())
+
+    # Configure logging and telemetry
+    await configure_otel(config, context.session_id)
+    await configure_logger(config, context.session_id)
+    await configure_usage_telemetry(config)
 
     context.task_registry = task_registry or ActivityRegistry()
 
@@ -238,7 +192,9 @@ async def initialize_context(
         context.decorator_registry = decorator_registry
 
     # Store the tracer in context if needed
-    context.tracer = trace.get_tracer(config.otel.service_name)
+    if config.otel.enabled:
+        context.tracing_enabled = True
+        context.tracer = trace.get_tracer(config.otel.service_name)
 
     if store_globally:
         global _global_context
