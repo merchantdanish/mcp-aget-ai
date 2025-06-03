@@ -7,10 +7,9 @@ Uses canonical mcp-agent configuration patterns with readable output.
 import asyncio
 import sys
 import os
-import json
 import pytest
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
