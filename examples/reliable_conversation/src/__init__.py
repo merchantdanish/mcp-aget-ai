@@ -1,1 +1,0 @@
-# Reliable Conversation Manager implementation
