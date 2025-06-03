@@ -320,7 +320,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         context: RequestContext["ClientSession", Any],
         params: CreateMessageRequestParams,
     ) -> CreateMessageResult | ErrorData:
-        logger.info("Handling sampling request: %s", params)
+        logger.info(f"Handling sampling request: {params}")
         config = self.context.config
         server_session = self.context.upstream_session
         if server_session is None:

@@ -1,4 +1,4 @@
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 import datetime
 import json
 
@@ -58,6 +58,13 @@ def echo(message: str) -> str:
     This is a simple prompt that echoes back the input message.
     """
     return f"Prompt: {message}"
+
+
+@mcp.tool()
+async def get_poem(topic: str, ctx: Context) -> str:
+    """Get a poem about a given topic."""
+    poem = await ctx.sample(f"Summarise the topic '{topic}' in a poem format.")
+    return poem.text
 
 
 def main():
