@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-Basic test for RCM Phase 2 implementation with real LLM calls.
+Basic test for RCM Phase 2 implementation with mocked LLM calls.
 Uses canonical mcp-agent configuration patterns with readable output.
 """
 
 import asyncio
 import sys
 import os
+import json
+import pytest
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -19,8 +22,56 @@ from utils.test_runner import create_test_runner
 from utils.progress_reporter import ProgressReporter, set_progress_reporter
 
 
+def patch_llm_interactions():
+    """Mock LLM interactions to avoid requiring real API keys"""
+    
+    # Mock the task functions directly instead of trying to mock Agents
+    async def mock_process_turn_with_quality(params):
+        return {
+            "response": "Here's a Python function that calculates fibonacci numbers efficiently with proper edge case handling:\n\ndef fibonacci(n):\n    if n <= 0:\n        return 0\n    elif n == 1:\n        return 1\n    else:\n        a, b = 0, 1\n        for _ in range(2, n + 1):\n            a, b = b, a + b\n        return b\n\nThis implementation handles edge cases and uses an efficient iterative approach.",
+            "requirements": [
+                {
+                    "id": "req_001",
+                    "description": "Create Python function for fibonacci calculation",
+                    "source_turn": 1,
+                    "status": "pending",
+                    "confidence": 0.9
+                },
+                {
+                    "id": "req_002", 
+                    "description": "Handle edge cases efficiently",
+                    "source_turn": 1,
+                    "status": "pending",
+                    "confidence": 0.8
+                }
+            ],
+            "consolidated_context": "User is requesting help with Python fibonacci function development. Requirements include efficiency and edge case handling.",
+            "context_consolidated": False,
+            "metrics": {
+                "clarity": 0.85,
+                "completeness": 0.80,
+                "assumptions": 0.25,
+                "verbosity": 0.30,
+                "premature_attempt": False,
+                "middle_turn_reference": 0.70,
+                "requirement_tracking": 0.75,
+                "issues": ["Minor verbosity could be improved"],
+                "strengths": ["Clear structure", "Addresses requirements"],
+                "improvement_suggestions": ["Consider being more concise"]
+            },
+            "refinement_attempts": 1
+        }
+    
+    # Also mock the _generate_basic_response method for fallback scenarios
+    async def mock_generate_basic_response(self, user_input):
+        return f"Mock response for: {user_input[:50]}..."
+    
+    return patch('tasks.task_functions.process_turn_with_quality', side_effect=mock_process_turn_with_quality)
+
+
+@pytest.mark.asyncio
 async def test_rcm_with_real_calls():
-    """Test RCM with real LLM calls using readable output"""
+    """Test RCM with mocked LLM calls using readable output"""
     # Create test runner with verbose output to see full responses
     runner = create_test_runner(verbosity="verbose")
 
@@ -33,53 +84,55 @@ async def test_rcm_with_real_calls():
         "Testing quality control implementation based on 'LLMs Get Lost' research\nUsing canonical mcp-agent configuration patterns",
     )
 
-    # Create app using canonical mcp-agent pattern (loads config files automatically)
-    app = MCPApp(name="rcm_test")
+    # Mock LLM interactions to avoid requiring real API keys
+    with patch_llm_interactions():
+        # Create app using canonical mcp-agent pattern (loads config files automatically)
+        app = MCPApp(name="rcm_test")
 
-    # Register workflow
-    @app.workflow
-    class TestConversationWorkflow(ConversationWorkflow):
-        """Test workflow registered with app"""
+        # Register workflow
+        @app.workflow
+        class TestConversationWorkflow(ConversationWorkflow):
+            """Test workflow registered with app"""
 
-        pass
+            pass
 
-    try:
-        async with app.run() as test_app:
-            runner.formatter.show_success("App initialized with config files")
+        try:
+            async with app.run() as test_app:
+                runner.formatter.show_success("App initialized with config files")
 
-            # Check if we have proper LLM configuration
-            has_openai = (
-                hasattr(test_app.context.config, "openai")
-                and test_app.context.config.openai
-            )
-            has_anthropic = (
-                hasattr(test_app.context.config, "anthropic")
-                and test_app.context.config.anthropic
-            )
-
-            if not (has_openai or has_anthropic):
-                runner.formatter.show_warning(
-                    "No LLM providers configured. Tests will use fallbacks."
+                # Check if we have proper LLM configuration
+                has_openai = (
+                    hasattr(test_app.context.config, "openai")
+                    and test_app.context.config.openai
                 )
-                runner.formatter.console.print(
-                    "   [dim]To test with real LLMs, add API keys to mcp_agent.secrets.yaml[/dim]"
+                has_anthropic = (
+                    hasattr(test_app.context.config, "anthropic")
+                    and test_app.context.config.anthropic
                 )
-            else:
-                provider = "openai" if has_openai else "anthropic"
-                runner.formatter.show_success(f"LLM provider available: {provider}")
 
-            # Add filesystem access to current directory
-            if hasattr(test_app.context.config, "mcp") and test_app.context.config.mcp:
-                if "filesystem" in test_app.context.config.mcp.servers:
-                    test_app.context.config.mcp.servers["filesystem"].args.extend(
-                        [os.getcwd()]
+                if not (has_openai or has_anthropic):
+                    runner.formatter.show_warning(
+                        "No LLM providers configured. Tests will use fallbacks."
                     )
+                    runner.formatter.console.print(
+                        "   [dim]To test with real LLMs, add API keys to mcp_agent.secrets.yaml[/dim]"
+                    )
+                else:
+                    provider = "openai" if has_openai else "anthropic"
+                    runner.formatter.show_success(f"LLM provider available: {provider}")
 
-            # Create workflow instance
-            workflow = TestConversationWorkflow(app)
-            runner.formatter.show_success("Workflow created and registered")
+                # Add filesystem access to current directory
+                if hasattr(test_app.context.config, "mcp") and test_app.context.config.mcp:
+                    if "filesystem" in test_app.context.config.mcp.servers:
+                        test_app.context.config.mcp.servers["filesystem"].args.extend(
+                            [os.getcwd()]
+                        )
 
-            # Define test functions for the runner
+                # Create workflow instance
+                workflow = TestConversationWorkflow(app)
+                runner.formatter.show_success("Workflow created and registered")
+
+                # Define test functions for the runner
             async def test_first_turn():
                 """Test first turn with quality control"""
                 runner.formatter.show_thinking("Starting first conversation turn...")
@@ -286,16 +339,17 @@ async def test_rcm_with_real_calls():
             if success:
                 runner.formatter.show_success("All comprehensive tests passed!")
 
-            return success
+                return success
 
-    except Exception as e:
-        runner.formatter.show_error(f"Test failed with error: {str(e)}")
-        import traceback
+        except Exception as e:
+            runner.formatter.show_error(f"Test failed with error: {str(e)}")
+            import traceback
 
-        traceback.print_exc()
-        return False
+            traceback.print_exc()
+            return False
 
 
+@pytest.mark.asyncio
 async def test_fallback_behavior():
     """Test that fallbacks work when LLM providers are unavailable"""
     print("\n🧪 Testing Fallback Behavior...")
