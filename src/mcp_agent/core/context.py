@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from mcp_agent.human_input.types import HumanInputCallback
     from mcp_agent.executor.workflow_signal import SignalWaitCallback
     from mcp_agent.executor.workflow_registry import WorkflowRegistry
+    from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
     from mcp_agent.app import MCPApp
 else:
     # Runtime placeholders for the types
@@ -72,6 +73,9 @@ class Context(BaseModel):
     tracer: Optional[trace.Tracer] = None
     # Use this flag to conditionally serialize expensive data for tracing
     tracing_enabled: bool = False
+
+    # Store the currently active LLM instance for MCP sampling callbacks
+    active_llm: Optional["AugmentedLLM"] = None  # AugmentedLLM instance
 
     model_config = ConfigDict(
         extra="allow",
