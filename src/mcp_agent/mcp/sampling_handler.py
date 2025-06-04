@@ -5,7 +5,6 @@ Handles sampling requests from MCP servers with human-in-the-loop approval workf
 and direct LLM provider integration.
 """
 
-import json
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -43,13 +42,13 @@ class SamplingHandler(ContextDependent):
         """Handle sampling with human-in-the-loop approval workflow"""
         try:
             # Stage 1: Human approval/modification of the request
-            approved_params = await self._request_human_approval_for_sampling_request(
+            approved_params, rejection_reason = await self._request_human_approval_for_sampling_request(
                 params
             )
             if approved_params is None:
-                logger.info("Sampling request rejected by user")
+                logger.info(f"Sampling request rejected by user: {rejection_reason}")
                 return ErrorData(
-                    code=-32603, message="Sampling request rejected by user"
+                    code=-32603, message=f"Sampling request rejected by user: {rejection_reason}"
                 )
 
             # Stage 2: Generate response using available LLM providers
@@ -58,12 +57,12 @@ class SamplingHandler(ContextDependent):
                 return ErrorData(code=-32603, message="Failed to generate a response")
 
             # Stage 3: Human approval/modification of the response
-            final_result = await self._request_human_approval_for_sampling_response(
+            final_result, rejection_reason = await self._request_human_approval_for_sampling_response(
                 llm_result
             )
             if final_result is None:
-                logger.info("Sampling response rejected by user")
-                return ErrorData(code=-32603, message="Response rejected by user")
+                logger.info(f"Sampling response rejected by user: {rejection_reason}")
+                return ErrorData(code=-32603, message=f"Response rejected by user: {rejection_reason}")
 
             return final_result
 
@@ -73,14 +72,14 @@ class SamplingHandler(ContextDependent):
 
     async def _request_human_approval_for_sampling_request(
         self, params: CreateMessageRequestParams
-    ) -> CreateMessageRequestParams | None:
+    ) -> tuple[CreateMessageRequestParams | None, str]:
         """Present sampling request to user for approval/modification"""
         try:
             if not self.context.human_input_handler:
                 logger.warning(
                     "No human input handler available, auto-approving request"
                 )
-                return params
+                return params, ""
 
             request_summary = self._format_sampling_request_for_human(params)
 
@@ -89,14 +88,13 @@ class SamplingHandler(ContextDependent):
             request_id = f"sampling_request_{uuid4()}"
 
             request = HumanInputRequest(
-                prompt=f"""MCP server is requesting LLM completion. Please review and approve/modify:
+                prompt=f"""MCP server is requesting LLM completion. Please review and approve/reject:
 
 {request_summary}
 
 Respond with:
 - 'approve' to proceed with the request as-is
-- 'reject' to deny the request
-- Modified JSON to change the request parameters""",
+- Anything else to reject (your input will be used as the rejection reason)""",
                 description="MCP Sampling Request Approval",
                 request_id=request_id,
                 metadata={
@@ -110,18 +108,18 @@ Respond with:
 
         except Exception as e:
             logger.error(f"Error requesting human approval for sampling request: {e}")
-            return params  # Fallback to original params
+            return params, ""  # Fallback to original params
 
     async def _request_human_approval_for_sampling_response(
         self, result: CreateMessageResult
-    ) -> CreateMessageResult | None:
+    ) -> tuple[CreateMessageResult | None, str]:
         """Present LLM response to user for approval/modification"""
         try:
             if not self.context.human_input_handler:
                 logger.warning(
                     "No human input handler available, auto-approving response"
                 )
-                return result
+                return result, ""
 
             response_summary = self._format_sampling_response_for_human(result)
 
@@ -130,14 +128,13 @@ Respond with:
             request_id = f"sampling_response_{uuid4()}"
 
             request = HumanInputRequest(
-                prompt=f"""LLM has generated a response. Please review and approve/modify:
+                prompt=f"""LLM has generated a response. Please review and approve/reject:
 
 {response_summary}
 
 Respond with:
 - 'approve' to send the response as-is
-- 'reject' to deny sending the response
-- Modified text to change the response content""",
+- Anything else to reject (your input will be used as the rejection reason)""",
                 description="MCP Sampling Response Approval",
                 request_id=request_id,
                 metadata={
@@ -151,7 +148,7 @@ Respond with:
 
         except Exception as e:
             logger.error(f"Error requesting human approval for sampling response: {e}")
-            return result  # Fallback to original result
+            return result, ""  # Fallback to original result
 
     async def _generate_with_active_llm_provider(
         self, params: CreateMessageRequestParams
@@ -330,40 +327,26 @@ CONTENT:
 
     def _parse_human_modified_params(
         self, response: str, original_params: CreateMessageRequestParams
-    ) -> CreateMessageRequestParams | None:
+    ) -> tuple[CreateMessageRequestParams | None, str]:
         """Parse human response and return modified params or None if rejected"""
-        response = response.strip().lower()
+        response_stripped = response.strip().lower()
 
-        if response == "approve":
-            return original_params
-        elif response == "reject":
-            return None
+        if response_stripped == "approve":
+            return original_params, ""
         else:
-            # Try to parse as modified JSON
-            try:
-                modified_data = json.loads(response)
-                # Create new params with modifications
-                params_dict = original_params.model_dump()
-                params_dict.update(modified_data)
-                return CreateMessageRequestParams.model_validate(params_dict)
-            except Exception as e:
-                logger.warning(f"Failed to parse modified params, using original: {e}")
-                return original_params
+            # Anything else is treated as rejection with reasoning
+            rejection_reason = response.strip()
+            return None, rejection_reason
 
     def _parse_human_modified_result(
         self, response: str, original_result: CreateMessageResult
-    ) -> CreateMessageResult | None:
+    ) -> tuple[CreateMessageResult | None, str]:
         """Parse human response and return modified result or None if rejected"""
-        response = response.strip()
+        response_stripped = response.strip().lower()
 
-        if response.lower() == "approve":
-            return original_result
-        elif response.lower() == "reject":
-            return None
+        if response_stripped == "approve":
+            return original_result, ""
         else:
-            # Treat as modified content
-            return CreateMessageResult(
-                model=original_result.model,
-                role=original_result.role,
-                content=TextContent(type="text", text=response),
-            )
+            # Anything else is treated as rejection with reasoning
+            rejection_reason = response.strip()
+            return None, rejection_reason
