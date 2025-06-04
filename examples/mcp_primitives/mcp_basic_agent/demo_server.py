@@ -1,4 +1,5 @@
 from fastmcp import FastMCP, Context
+from mcp.types import ModelPreferences, ModelHint
 import datetime
 import json
 
@@ -61,10 +62,21 @@ def echo(message: str) -> str:
 
 
 @mcp.tool()
-async def get_poem(topic: str, ctx: Context) -> str:
-    """Get a poem about a given topic."""
-    poem = await ctx.sample(f"Summarise the topic '{topic}' in a poem format.")
-    return poem.text
+async def get_haiku(topic: str, ctx: Context) -> str:
+    """Get a haiku about a given topic."""
+    haiku = await ctx.sample(
+        messages=f"Generate a haiku about {topic}.",
+        system_prompt="You are a poet.",
+        max_tokens=100,
+        model_preferences=ModelPreferences(
+            hints=[ModelHint(name="gpt-4o-mini")],
+            costPriority=0.1,
+            speedPriority=0.8,
+            intelligencePriority=0.1,
+        ),
+        temperature=0.7,
+    )
+    return haiku.text
 
 
 def main():
