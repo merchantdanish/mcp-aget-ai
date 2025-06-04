@@ -36,7 +36,6 @@ if TYPE_CHECKING:
     from mcp_agent.human_input.types import HumanInputCallback
     from mcp_agent.executor.workflow_signal import SignalWaitCallback
     from mcp_agent.executor.workflow_registry import WorkflowRegistry
-    from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
     from mcp_agent.app import MCPApp
 else:
     # Runtime placeholders for the types
@@ -75,7 +74,7 @@ class Context(BaseModel):
     tracing_enabled: bool = False
 
     # Store the currently active LLM instance for MCP sampling callbacks
-    active_llm: Optional["AugmentedLLM"] = None  # AugmentedLLM instance
+    active_llm: Optional[Any] = None  # AugmentedLLM instance
 
     model_config = ConfigDict(
         extra="allow",
