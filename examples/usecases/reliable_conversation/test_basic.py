@@ -23,7 +23,7 @@ from utils.progress_reporter import ProgressReporter, set_progress_reporter
 
 def patch_llm_interactions():
     """Mock LLM interactions to avoid requiring real API keys"""
-    
+
     # Mock the task functions directly instead of trying to mock Agents
     async def mock_process_turn_with_quality(params):
         return {
@@ -34,15 +34,15 @@ def patch_llm_interactions():
                     "description": "Create Python function for fibonacci calculation",
                     "source_turn": 1,
                     "status": "pending",
-                    "confidence": 0.9
+                    "confidence": 0.9,
                 },
                 {
-                    "id": "req_002", 
+                    "id": "req_002",
                     "description": "Handle edge cases efficiently",
                     "source_turn": 1,
                     "status": "pending",
-                    "confidence": 0.8
-                }
+                    "confidence": 0.8,
+                },
             ],
             "consolidated_context": "User is requesting help with Python fibonacci function development. Requirements include efficiency and edge case handling.",
             "context_consolidated": False,
@@ -56,16 +56,19 @@ def patch_llm_interactions():
                 "requirement_tracking": 0.75,
                 "issues": ["Minor verbosity could be improved"],
                 "strengths": ["Clear structure", "Addresses requirements"],
-                "improvement_suggestions": ["Consider being more concise"]
+                "improvement_suggestions": ["Consider being more concise"],
             },
-            "refinement_attempts": 1
+            "refinement_attempts": 1,
         }
-    
+
     # Also mock the _generate_basic_response method for fallback scenarios
     async def mock_generate_basic_response(self, user_input):
         return f"Mock response for: {user_input[:50]}..."
-    
-    return patch('tasks.task_functions.process_turn_with_quality', side_effect=mock_process_turn_with_quality)
+
+    return patch(
+        "tasks.task_functions.process_turn_with_quality",
+        side_effect=mock_process_turn_with_quality,
+    )
 
 
 @pytest.mark.asyncio
@@ -121,7 +124,10 @@ async def test_rcm_with_real_calls():
                     runner.formatter.show_success(f"LLM provider available: {provider}")
 
                 # Add filesystem access to current directory
-                if hasattr(test_app.context.config, "mcp") and test_app.context.config.mcp:
+                if (
+                    hasattr(test_app.context.config, "mcp")
+                    and test_app.context.config.mcp
+                ):
                     if "filesystem" in test_app.context.config.mcp.servers:
                         test_app.context.config.mcp.servers["filesystem"].args.extend(
                             [os.getcwd()]
@@ -132,6 +138,7 @@ async def test_rcm_with_real_calls():
                 runner.formatter.show_success("Workflow created and registered")
 
                 # Define test functions for the runner
+
             async def test_first_turn():
                 """Test first turn with quality control"""
                 runner.formatter.show_thinking("Starting first conversation turn...")
@@ -396,9 +403,7 @@ async def test_fallback_behavior():
                 word in response
                 for word in ["mock", "test", "fallback", "technical difficulties"]
             )
-            assert is_fallback, (
-                f"Should indicate fallback behavior. Got: {result.value['response'][:200]}"
-            )
+            assert is_fallback, f"Should indicate fallback behavior. Got: {result.value['response'][:200]}"
 
             print("✓ Fallback behavior verified")
             return True

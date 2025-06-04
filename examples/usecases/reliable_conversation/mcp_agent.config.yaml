@@ -1,11 +1,11 @@
-$schema: ../../schema/mcp-agent.config.schema.json
+$schema: ../../../schema/mcp-agent.config.schema.json
 
 execution_engine: asyncio # Change to temporal later
 
 logger:
-  transports: [file]  # Only file logging - we have custom console output
+  transports: [file] # Only file logging - we have custom console output
   level: debug
-  progress_display: false  # Disable progress display for clean output
+  progress_display: false # Disable progress display for clean output
   path_settings:
     path_pattern: "logs/rcm-{unique_id}.jsonl"
     unique_id: "timestamp"
@@ -32,12 +32,12 @@ rcm:
   max_refinement_attempts: 3
   consolidation_interval: 3
   evaluator_model_provider: "openai" # or anthropic
-  
+
   # Display and UX settings
-  verbosity: "normal"  # minimal, normal, verbose
-  show_internal_messages: true  # Show LLM interactions and workflow steps
-  verbose_metrics: false  # Show detailed quality metrics after each response
-  show_timing: false  # Show execution timing information
-  
+  verbosity: "normal" # minimal, normal, verbose
+  show_internal_messages: true # Show LLM interactions and workflow steps
+  verbose_metrics: false # Show detailed quality metrics after each response
+  show_timing: false # Show execution timing information
+
   # Feature flags
   use_claude_code: false
