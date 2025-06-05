@@ -15,7 +15,7 @@ from rich.panel import Panel
 from rich.layout import Layout
 from rich.text import Text
 
-from mcp_agent.event_progress import convert_log_event, ProgressEvent
+from mcp_agent.logging.event_progress import convert_log_event, ProgressEvent
 from mcp_agent.logging.events import Event
 
 
