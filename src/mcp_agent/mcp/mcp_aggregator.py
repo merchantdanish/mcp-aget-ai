@@ -225,16 +225,6 @@ class MCPAggregator(ContextDependent):
                                         "Timeout during disconnect_all(), forcing shutdown"
                                     )
 
-                                # Ensure the exit method is called regardless
-                                try:
-                                    await self._persistent_connection_manager.__aexit__(
-                                        None, None, None
-                                    )
-                                except Exception as e:
-                                    logger.error(
-                                        f"Error during connection manager __aexit__: {e}"
-                                    )
-
                                 # Clean up the connection manager from the context
                                 delattr(self.context, "_mcp_connection_manager")
                                 logger.info(
