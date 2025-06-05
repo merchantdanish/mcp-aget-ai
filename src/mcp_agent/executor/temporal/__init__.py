@@ -259,6 +259,7 @@ class TemporalExecutor(Executor):
                 target_host=self.config.host,
                 namespace=self.config.namespace,
                 api_key=self.config.api_key,
+                tls=self.config.tls,
                 data_converter=pydantic_data_converter,
             )
 
