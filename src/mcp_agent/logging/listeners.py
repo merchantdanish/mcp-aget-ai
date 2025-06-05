@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, List
 
 from mcp_agent.logging.events import Event, EventFilter, EventType
-from mcp_agent.event_progress import convert_log_event
+from mcp_agent.logging.event_progress import convert_log_event
 
 
 class EventListener(ABC):
@@ -118,7 +118,7 @@ class ProgressListener(LifecycleAwareListener):
         Args:
             display: Optional display handler. If None, the shared progress_display will be used.
         """
-        from mcp_agent.progress_display import progress_display
+        from mcp_agent.logging.progress_display import progress_display
 
         self.display = display or progress_display
 

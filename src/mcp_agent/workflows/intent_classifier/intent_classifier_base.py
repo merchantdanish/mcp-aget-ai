@@ -2,10 +2,10 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
-from mcp_agent.context_dependent import ContextDependent
+from mcp_agent.core.context_dependent import ContextDependent
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 
 class Intent(BaseModel):

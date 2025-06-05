@@ -4,9 +4,9 @@ import os
 from mcp_agent.app import MCPApp
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-from mcp_agent.workflows.router.router_llm import LLMRouter
 from mcp_agent.workflows.router.router_llm_anthropic import AnthropicLLMRouter
+from mcp_agent.workflows.router.router_llm_openai import OpenAILLMRouter
+
 from rich import print
 
 app = MCPApp(name="router")
@@ -62,9 +62,7 @@ async def example_usage():
         )
 
         # You can use any LLM with an LLMRouter
-        llm = OpenAIAugmentedLLM()
-        router = LLMRouter(
-            llm=llm,
+        router = OpenAILLMRouter(
             agents=[finder_agent, writer_agent, reasoning_agent],
             functions=[print_to_console, print_hello_world],
         )

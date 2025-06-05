@@ -22,12 +22,21 @@ git clone https://github.com/lastmile-ai/mcp-agent.git
 cd mcp-agent/examples/usecase/streamlit_mcp_rag_agent
 ```
 
-Install the UV tool (if you don’t have it) to manage dependencies:
+Install `uv` (if you don’t have it):
 
 ```bash
 pip install uv
+```
 
-# inside the example:
+Sync `mcp-agent` project dependencies:
+
+```bash
+uv sync
+```
+
+Install requirements specific to this example:
+
+```bash
 uv pip install -r requirements.txt
 ```
 

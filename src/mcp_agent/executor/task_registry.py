@@ -32,3 +32,7 @@ class ActivityRegistry:
 
     def list_activities(self) -> List[str]:
         return list(self._activities.keys())
+
+    def is_registered(self, name: str) -> bool:
+        """Check if an activity is already registered with the given name."""
+        return name in self._activities

@@ -21,7 +21,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
 from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 
@@ -91,6 +91,11 @@ class SwarmAgent(Agent):
         context: Optional["Context"] = None,
         **kwargs,
     ):
+        if server_names is None:
+            server_names = []
+        if functions is None:
+            functions = []
+
         super().__init__(
             name=name,
             instruction=instruction,
@@ -212,7 +217,7 @@ class Swarm(AugmentedLLM[MessageParamT, MessageT], Generic[MessageParamT, Messag
 
     async def get_tool(self, tool_name: str) -> Tool | None:
         """Get the schema for a tool by name."""
-        result = await self.aggregator.list_tools()
+        result = await self.agent.list_tools()
         for tool in result.tools:
             if tool.name == tool_name:
                 return tool
@@ -222,14 +227,14 @@ class Swarm(AugmentedLLM[MessageParamT, MessageT], Generic[MessageParamT, Messag
     async def pre_tool_call(
         self, tool_call_id: str | None, request: CallToolRequest
     ) -> CallToolRequest | bool:
-        if not self.aggregator:
+        if not self.agent:
             # If there are no agents, we can't do anything, so we should bail
             return False
 
         tool = await self.get_tool(request.params.name)
         if not tool:
             logger.warning(
-                f"Warning: Tool '{request.params.name}' not found in agent '{self.aggregator.name}' tools. Proceeding with original request params."
+                f"Warning: Tool '{request.params.name}' not found in agent '{self.agent.name}' tools. Proceeding with original request params."
             )
             return request
 
@@ -252,15 +257,17 @@ class Swarm(AugmentedLLM[MessageParamT, MessageT], Generic[MessageParamT, Messag
                 # Set the new agent as the current agent
                 await self.set_agent(content.agent)
                 contents.append(TextContent(type="text", text=content.resource.text))
-            elif isinstance(content, AgentFunctionResult):
+            elif isinstance(
+                content, AgentFunctionResultResource
+            ):  # TODO: jerron - should this be AgentFunctionResult or AgentFunctionResultResource?
                 logger.info(
                     "Updating context variables with new context variables from agent function result",
-                    data=content.context_variables,
+                    data=content.result.context_variables,
                 )
-                self.context_variables.update(content.context_variables)
-                if content.agent:
+                self.context_variables.update(content.result.context_variables)
+                if content.result.agent:
                     # Set the new agent as the current agent
-                    await self.set_agent(content.agent)
+                    await self.set_agent(content.result.agent)
 
                 contents.append(TextContent(type="text", text=content.resource.text))
             else:
@@ -274,20 +281,20 @@ class Swarm(AugmentedLLM[MessageParamT, MessageT], Generic[MessageParamT, Messag
         agent: SwarmAgent,
     ):
         logger.info(
-            f"Switching from agent '{self.aggregator.name}' -> agent '{agent.name if agent else 'NULL'}'"
+            f"Switching from agent '{self.agent.name}' -> agent '{agent.name if agent else 'NULL'}'"
         )
-        if self.aggregator:
+        if self.agent:
             # Close the current agent
-            await self.aggregator.shutdown()
+            await self.agent.shutdown()
 
         # Initialize the new agent (if it's not None)
-        self.aggregator = agent
+        self.agent = agent
 
-        if not self.aggregator or isinstance(self.aggregator, DoneAgent):
+        if not self.agent or isinstance(self.agent, DoneAgent):
             self.instruction = None
             return
 
-        await self.aggregator.initialize()
+        await self.agent.initialize()
         self.instruction = (
             agent.instruction(self.context_variables)
             if callable(agent.instruction)
@@ -298,7 +305,7 @@ class Swarm(AugmentedLLM[MessageParamT, MessageT], Generic[MessageParamT, Messag
         """
         Returns True if the workflow should continue, False otherwise.
         """
-        if not self.aggregator or isinstance(self.aggregator, DoneAgent):
+        if not self.agent or isinstance(self.agent, DoneAgent):
             return False
 
         return True
