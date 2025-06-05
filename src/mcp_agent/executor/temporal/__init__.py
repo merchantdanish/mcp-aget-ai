@@ -260,6 +260,7 @@ class TemporalExecutor(Executor):
                 namespace=self.config.namespace,
                 api_key=self.config.api_key,
                 data_converter=pydantic_data_converter,
+                tls=self.config.tls,
             )
 
         return self.client
