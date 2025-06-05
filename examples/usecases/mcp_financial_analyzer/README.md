@@ -15,28 +15,23 @@ https://github.com/user-attachments/assets/d6049e1b-1afc-4f5d-bebf-ed9aece9acfc
 This approach ensures high-quality reports by focusing on data verification before proceeding with analysis. The Research Agent and Research Evaluator iterate until the EvaluatorOptimizer determines the data meets quality requirements.
 
 ```plaintext
-┌─────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│             │      │                 │      │                 │
-│ Orchestrator│─────▶ Research Quality │──────▶  Research Agent ◀── ┐
-│             │      │   Controller    │      │                 │   │
-└─────────────┘      └─────────────────┘      └─────────────────┘   │
-       │                                                │           │
-       │                                                │           │
-       │                                                ▼           │
-       │                                       ┌──────────────────┐ │
-       │                                       │                  │ │
-       │                                       │Research Evaluator ─┘
-       │                                       │     Agent        │
-       │                                       └──────────────────┘
+┌──────────────┐      ┌──────────────────┐      ┌────────────────────┐
+│ Orchestrator │─────▶│ Research Quality │─────▶│      Research      │◀─┐
+│   Workflow   │      │    Controller    │      │        Agent       │  │
+└──────────────┘      └──────────────────┘      └────────────────────┘  │
+       │                                                   │            │
+       │                                                   │            │
+       │                                                   ▼            │
+       │                                        ┌────────────────────┐  │
+       │                                        │ Research Evaluator ├──┘
+       │                                        │        Agent       │
+       │                                        └────────────────────┘
        │             ┌─────────────────┐
-       │             │                 │
        └────────────▶│  Analyst Agent  │
-       │             │                 │
        │             └─────────────────┘
        │             ┌─────────────────┐
-       │             │                 │
-       └────────────▶│ Report Writer   │
-                     │     Agent       │
+       └────────────▶│  Report Writer  │
+                     │      Agent      │
                      └─────────────────┘
 ```
 
