@@ -208,6 +208,7 @@ class TemporalSettings(BaseModel):
     max_concurrent_activities: int | None = None
     api_key: str | None = None
     timeout_seconds: int | None = 60
+    tls: bool = False
 
 
 class UsageTelemetrySettings(BaseModel):
