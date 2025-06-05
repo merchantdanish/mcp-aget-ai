@@ -204,9 +204,10 @@ class TemporalSettings(BaseModel):
 
     host: str
     namespace: str = "default"
+    api_key: str | None = None
+    tls: bool = False
     task_queue: str
     max_concurrent_activities: int | None = None
-    api_key: str | None = None
     timeout_seconds: int | None = 60
 
 
