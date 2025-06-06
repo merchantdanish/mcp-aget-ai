@@ -420,7 +420,7 @@ class BedrockCompletionTasks:
                 aws_access_key_id=request.config.aws_access_key_id,
                 aws_secret_access_key=request.config.aws_secret_access_key,
                 aws_session_token=request.config.aws_session_token,
-                region_name=request.config.bedrock.aws_region,
+                region_name=request.config.aws_region,
             )
         else:
             session = Session()
@@ -431,7 +431,7 @@ class BedrockCompletionTasks:
         # Extract structured data from natural language
         structured_response = client.chat.completions.create(
             modelId=request.model,
-            messages=[{"role": "user", "content": [{"text": request.response_str}]}],
+            messages=[{"role": "user", "content": request.response_str}],
             response_model=response_model,
         )
 
