@@ -231,8 +231,8 @@ class MCPAggregator(ContextDependent):
                                         None, None, None
                                     )
                                 except Exception as e:
-                                    logger.error(
-                                        f"Error during connection manager __aexit__: {e}"
+                                    logger.warning(
+                                        f"Error during connection manager cleanup: {e}"
                                     )
 
                                 # Clean up the connection manager from the context
@@ -240,16 +240,20 @@ class MCPAggregator(ContextDependent):
                                 logger.info(
                                     "Connection manager successfully closed and removed from context"
                                 )
-
-                self.initialized = False
+                        else:
+                            logger.debug(
+                                f"Aggregator closing with ref count {current_count}, "
+                                "connection manager will remain active"
+                            )
             except Exception as e:
                 logger.error(
                     f"Error during connection manager cleanup: {e}", exc_info=True
                 )
-                # TODO: saqadri (FA1) - Even if there's an error, we should mark ourselves as uninitialized
-                self.initialized = False
                 span.set_status(trace.Status(trace.StatusCode.ERROR))
                 span.record_exception(e)
+            finally:
+                # Always mark as uninitialized regardless of errors
+                self.initialized = False
 
     @classmethod
     async def create(
@@ -289,7 +293,12 @@ class MCPAggregator(ContextDependent):
                 logger.error(f"Error creating MCPAggregator: {e}")
                 span.set_status(trace.Status(trace.StatusCode.ERROR))
                 span.record_exception(e)
-                await instance.__aexit__(None, None, None)
+                try:
+                    await instance.__aexit__(None, None, None)
+                except Exception as cleanup_error:
+                    logger.warning(
+                        f"Error during MCPAggregator cleanup: {cleanup_error}"
+                    )
 
     async def load_server(self, server_name: str):
         """
