@@ -69,6 +69,13 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         if self.context.config.bedrock:
             if hasattr(self.context.config.bedrock, "default_model"):
                 default_model = self.context.config.bedrock.default_model
+        else:
+            self.logger.error(
+                "Bedrock configuration not found. Please provide Bedrock configuration."
+            )
+            raise ValueError(
+                "Bedrock configuration not found. Please provide Bedrock configuration."
+            )
 
         self.default_request_params = self.default_request_params or RequestParams(
             model=default_model,
@@ -377,7 +384,7 @@ class BedrockCompletionTasks:
                 aws_access_key_id=request.config.aws_access_key_id,
                 aws_secret_access_key=request.config.aws_secret_access_key,
                 aws_session_token=request.config.aws_session_token,
-                region_name=request.config.bedrock.aws_region,
+                region_name=request.config.aws_region,
             )
         else:
             session = Session()
@@ -413,7 +420,7 @@ class BedrockCompletionTasks:
                 aws_access_key_id=request.config.aws_access_key_id,
                 aws_secret_access_key=request.config.aws_secret_access_key,
                 aws_session_token=request.config.aws_session_token,
-                region_name=request.config.bedrock.aws_region,
+                region_name=request.config.aws_region,
             )
         else:
             session = Session()
@@ -424,7 +431,7 @@ class BedrockCompletionTasks:
         # Extract structured data from natural language
         structured_response = client.chat.completions.create(
             modelId=request.model,
-            messages=[{"role": "user", "content": [{"text": request.response_str}]}],
+            messages=[{"role": "user", "content": request.response_str}],
             response_model=response_model,
         )
 
