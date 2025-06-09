@@ -471,9 +471,6 @@ class TestMCPApp:
         self, basic_app, test_workflow, mock_context
     ):
         """Test workflow decorator default behavior."""
-        # Set engine to asyncio to test the default decorator path
-        basic_app.config.execution_engine = "asyncio"
-        
         # Set the context directly instead of patching the property
         basic_app._context = mock_context
         basic_app._initialized = True
@@ -502,9 +499,6 @@ class TestMCPApp:
         self, basic_app, test_workflow, mock_context
     ):
         """Test workflow decorator with custom ID."""
-        # Set engine to asyncio to test the default decorator path
-        basic_app.config.execution_engine = "asyncio"
-        
         # Set the context directly instead of patching the property
         basic_app._context = mock_context
         basic_app._initialized = True

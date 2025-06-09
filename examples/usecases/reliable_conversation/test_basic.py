@@ -105,9 +105,6 @@ async def test_rcm_with_real_calls():
         # Create app using canonical mcp-agent pattern (loads config files automatically)
         app = MCPApp(name="rcm_test")
 
-        # Set execution engine to asyncio to avoid Temporal decoration requirements
-        app.config.execution_engine = "asyncio"
-        
         # Register the workflow using the simple decorator approach for AsyncIO
         TestConversationWorkflow = app.workflow(TestConversationWorkflowTemplate)
 
