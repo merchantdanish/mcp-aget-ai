@@ -1,25 +1,8 @@
 import inspect
-from typing import Callable, Any, Optional, Type
+from typing import Callable, Any, Optional
 from crewai.tools import BaseTool as CrewaiBaseTool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from pydantic_core import PydanticUndefined
-
-
-class MyToolInput(BaseModel):
-    """Input schema for MyCustomTool."""
-
-    first_number: float = Field(..., description="First number")
-    second_number: float = Field(..., description="Second number")
-
-
-class Multiply(CrewaiBaseTool):
-    name: str = "multiply"
-    description: str = "Multiply two numbers"
-    args_schema: Type[BaseModel] = MyToolInput
-
-    def _run(self, first_number: float, second_number: float) -> float:
-        # Your tool's logic here
-        return first_number * second_number
 
 
 def convert_crewai_tool_to_function(
@@ -39,7 +22,6 @@ def convert_crewai_tool_to_function(
     Returns:
         Callable[..., Any]: Function with correct signature and metadata.
     """
-    # Set name (with CrewAI-specific sanitization)
     if name:
         func_name = name
     elif hasattr(crewai_tool, "name") and crewai_tool.name:
@@ -58,14 +40,14 @@ def convert_crewai_tool_to_function(
 
     # Handle different types of CrewAI tools
     if hasattr(crewai_tool, "func"):
-        # @tool decorated functions - use func directly (preserves signature)
+        # @tool decorated functions
         func = crewai_tool.func
         func.__name__ = func_name
         func.__doc__ = func_doc
         return func
 
     elif hasattr(crewai_tool, "args_schema") and hasattr(crewai_tool, "_run"):
-        # Class-based tools with schema - create function from schema
+        # Class-based tools with schema
         return _create_function_from_schema(
             crewai_tool._run, crewai_tool.args_schema, func_name, func_doc
         )
