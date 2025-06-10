@@ -62,10 +62,20 @@ def convert_crewai_tool_to_function(
         return wrapper
 
     elif callable(crewai_tool):
-        # Tool is directly callable
-        crewai_tool.__name__ = func_name
-        crewai_tool.__doc__ = func_doc
-        return crewai_tool
+        # Tool is directly callable - create wrapper to avoid modifying original
+        def wrapper(*args, **kwargs):
+            return crewai_tool(*args, **kwargs)
+
+        wrapper.__name__ = func_name
+        wrapper.__doc__ = func_doc
+
+        # Try to copy signature if available
+        try:
+            wrapper.__signature__ = inspect.signature(crewai_tool)
+        except (ValueError, TypeError):
+            pass
+
+        return wrapper
 
     else:
         raise ValueError(
