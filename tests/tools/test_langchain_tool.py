@@ -49,16 +49,20 @@ async def divide_async_func(numerator: float, denominator: float) -> float:
 
 class CustomBaseTool(BaseTool):
     """Custom BaseTool implementation for testing."""
+
     name: str = "custom_base_tool"
     description: str = "A custom tool that generates random numbers"
-    
-    def _run(self, count: int, min_val: float = 0.0, max_val: float = 1.0) -> List[float]:
+
+    def _run(
+        self, count: int, min_val: float = 0.0, max_val: float = 1.0
+    ) -> List[float]:
         """Generate random numbers."""
         return [random.uniform(min_val, max_val) for _ in range(count)]
 
 
 class GenerateRandomFloats(BaseTool):
     """Example from the user's prompt."""
+
     name: str = "generate_random_floats"
     description: str = "Generate size random floats in the range [min, max]."
     response_format: str = "content_and_artifact"
@@ -133,8 +137,7 @@ class TestConvertLangchainToolToFunction:
     def test_structured_tool_with_async_conversion(self):
         """Test conversion of StructuredTool with async coroutine."""
         structured_tool = StructuredTool.from_function(
-            func=divide_func, 
-            coroutine=divide_async_func
+            func=divide_func, coroutine=divide_async_func
         )
         fn = convert_langchain_tool_to_function(structured_tool)
 
@@ -212,7 +215,7 @@ class TestConvertLangchainToolToFunction:
         tool.name = "mock_tool"
         tool.description = "A mock tool"
         tool.run = Mock(return_value="mock result")
-        
+
         # Ensure it doesn't have func or _run
         del tool.func
         del tool._run
@@ -229,6 +232,7 @@ class TestConvertLangchainToolToFunction:
 
     def test_callable_tool_conversion(self):
         """Test conversion of plain callable tools."""
+
         def simple_callable(x: str, y: int = 42) -> str:
             """Simple callable function."""
             return f"{x}_{y}"
@@ -249,7 +253,7 @@ class TestConvertLangchainToolToFunction:
         # Test function execution
         result = fn("test")
         assert result == "test_42"
-        
+
         result = fn("hello", 100)
         assert result == "hello_100"
 
@@ -258,7 +262,7 @@ class TestConvertLangchainToolToFunction:
         fn = convert_langchain_tool_to_function(
             multiply_decorator_tool,
             name="custom_multiply",
-            description="Custom multiply description"
+            description="Custom multiply description",
         )
 
         assert fn.__name__ == "custom_multiply"
@@ -278,6 +282,7 @@ class TestConvertLangchainToolToFunction:
         # Function with __name__
         def named_func():
             pass
+
         fn2 = convert_langchain_tool_to_function(named_func)
         assert fn2.__name__ == "named_func"
 
@@ -289,12 +294,13 @@ class TestConvertLangchainToolToFunction:
         del mock_tool.func
         del mock_tool._run
         del mock_tool.__name__
-        
+
         fn3 = convert_langchain_tool_to_function(mock_tool)
         assert fn3.__name__ == "tool_func"  # Default fallback
 
     def test_description_fallback_behavior(self):
         """Test description fallback behavior for tools without explicit descriptions."""
+
         def func_with_docstring():
             """Function docstring."""
             pass
@@ -310,7 +316,7 @@ class TestConvertLangchainToolToFunction:
         del mock_tool.func
         del mock_tool._run
         mock_tool.__doc__ = "Mock docstring"
-        
+
         fn2 = convert_langchain_tool_to_function(mock_tool)
         assert fn2.__doc__ == "Mock docstring"
 
@@ -322,12 +328,13 @@ class TestConvertLangchainToolToFunction:
         del mock_tool2.func
         del mock_tool2._run
         mock_tool2.__doc__ = None
-        
+
         fn3 = convert_langchain_tool_to_function(mock_tool2)
         assert fn3.__doc__ == ""
 
     def test_error_handling_invalid_tool(self):
         """Test error handling for invalid tools."""
+
         class InvalidTool:
             def __init__(self):
                 self.name = "invalid"
@@ -387,6 +394,7 @@ class TestConvertLangchainToolToFunction:
 
     def test_structured_tool_priority(self):
         """Test that StructuredTool uses func attribute with priority."""
+
         # Create a StructuredTool that has both func and _run/_run
         def primary_func(x: int) -> str:
             """Primary function."""
@@ -398,7 +406,7 @@ class TestConvertLangchainToolToFunction:
 
         # Create StructuredTool with func
         tool = StructuredTool.from_function(func=primary_func)
-        
+
         # Manually add a _run method that would be different
         tool._run = fallback_func
 
@@ -412,7 +420,7 @@ class TestConvertLangchainToolToFunction:
     def test_multiple_conversion_idempotency(self):
         """Test that converting the same tool multiple times works correctly."""
         tool = multiply_decorator_tool
-        
+
         fn1 = convert_langchain_tool_to_function(tool)
         fn2 = convert_langchain_tool_to_function(tool)
 
@@ -423,6 +431,7 @@ class TestConvertLangchainToolToFunction:
 
     def test_edge_case_empty_signatures(self):
         """Test tools with empty or unusual signatures."""
+
         # Tool with no parameters
         @tool
         def no_params_tool():
