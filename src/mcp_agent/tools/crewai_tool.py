@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from pydantic_core import PydanticUndefined
 
 
-def convert_crewai_tool_to_function(
+def from_crewai_tool(
     crewai_tool: CrewaiBaseTool,
     *,
     name: Optional[str] = None,

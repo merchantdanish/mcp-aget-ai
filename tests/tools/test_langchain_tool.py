@@ -7,7 +7,7 @@ from unittest.mock import Mock
 from langchain_core.tools import tool, StructuredTool, BaseTool
 from mcp.server.fastmcp.tools import Tool as FastTool
 
-from mcp_agent.tools.langchain_tool import convert_langchain_tool_to_function
+from mcp_agent.tools.langchain_tool import from_langchain_tool
 
 
 # Test fixtures - tools for testing
@@ -84,7 +84,7 @@ class TestConvertLangchainToolToFunction:
 
     def test_tool_decorator_conversion(self):
         """Test conversion of @tool decorated functions."""
-        fn = convert_langchain_tool_to_function(multiply_decorator_tool)
+        fn = from_langchain_tool(multiply_decorator_tool)
 
         assert fn.__name__ == "multiply_decorator_tool"
         assert "Multiply two numbers" in fn.__doc__
@@ -102,7 +102,7 @@ class TestConvertLangchainToolToFunction:
 
     def test_tool_decorator_no_args_conversion(self):
         """Test conversion of @tool decorated functions with no arguments."""
-        fn = convert_langchain_tool_to_function(no_args_decorator_tool)
+        fn = from_langchain_tool(no_args_decorator_tool)
 
         assert fn.__name__ == "no_args_decorator_tool"
         assert "A tool that takes no arguments" in fn.__doc__
@@ -118,7 +118,7 @@ class TestConvertLangchainToolToFunction:
     def test_structured_tool_from_function_conversion(self):
         """Test conversion of StructuredTool.from_function() tools."""
         structured_tool = StructuredTool.from_function(func=multiply_func)
-        fn = convert_langchain_tool_to_function(structured_tool)
+        fn = from_langchain_tool(structured_tool)
 
         assert fn.__name__ == "multiply_func"
         assert "Multiply two numbers using function" in fn.__doc__
@@ -139,7 +139,7 @@ class TestConvertLangchainToolToFunction:
         structured_tool = StructuredTool.from_function(
             func=divide_func, coroutine=divide_async_func
         )
-        fn = convert_langchain_tool_to_function(structured_tool)
+        fn = from_langchain_tool(structured_tool)
 
         assert fn.__name__ == "divide_func"
         assert "Divide two numbers" in fn.__doc__
@@ -162,7 +162,7 @@ class TestConvertLangchainToolToFunction:
     def test_base_tool_with_run_method_conversion(self):
         """Test conversion of BaseTool with _run method."""
         tool = CustomBaseTool()
-        fn = convert_langchain_tool_to_function(tool)
+        fn = from_langchain_tool(tool)
 
         assert fn.__name__ == "custom_base_tool"
         assert "A custom tool that generates random numbers" in fn.__doc__
@@ -187,7 +187,7 @@ class TestConvertLangchainToolToFunction:
     def test_complex_base_tool_conversion(self):
         """Test conversion of complex BaseTool (from user's example)."""
         tool = GenerateRandomFloats()
-        fn = convert_langchain_tool_to_function(tool)
+        fn = from_langchain_tool(tool)
 
         assert fn.__name__ == "generate_random_floats"
         assert "Generate size random floats in the range [min, max]" in fn.__doc__
@@ -220,7 +220,7 @@ class TestConvertLangchainToolToFunction:
         del tool.func
         del tool._run
 
-        fn = convert_langchain_tool_to_function(tool)
+        fn = from_langchain_tool(tool)
 
         assert fn.__name__ == "mock_tool"
         assert fn.__doc__ == "A mock tool"
@@ -237,7 +237,7 @@ class TestConvertLangchainToolToFunction:
             """Simple callable function."""
             return f"{x}_{y}"
 
-        fn = convert_langchain_tool_to_function(simple_callable)
+        fn = from_langchain_tool(simple_callable)
 
         assert fn.__name__ == "simple_callable"
         assert "Simple callable function" in fn.__doc__
@@ -259,7 +259,7 @@ class TestConvertLangchainToolToFunction:
 
     def test_name_and_description_override(self):
         """Test that name and description can be overridden."""
-        fn = convert_langchain_tool_to_function(
+        fn = from_langchain_tool(
             multiply_decorator_tool,
             name="custom_multiply",
             description="Custom multiply description",
@@ -276,14 +276,14 @@ class TestConvertLangchainToolToFunction:
         """Test name fallback behavior for tools without explicit names."""
         # Tool with name attribute
         tool_with_name = CustomBaseTool()
-        fn1 = convert_langchain_tool_to_function(tool_with_name)
+        fn1 = from_langchain_tool(tool_with_name)
         assert fn1.__name__ == "custom_base_tool"
 
         # Function with __name__
         def named_func():
             pass
 
-        fn2 = convert_langchain_tool_to_function(named_func)
+        fn2 = from_langchain_tool(named_func)
         assert fn2.__name__ == "named_func"
 
         # Mock without name or __name__
@@ -295,7 +295,7 @@ class TestConvertLangchainToolToFunction:
         del mock_tool._run
         del mock_tool.__name__
 
-        fn3 = convert_langchain_tool_to_function(mock_tool)
+        fn3 = from_langchain_tool(mock_tool)
         assert fn3.__name__ == "tool_func"  # Default fallback
 
     def test_description_fallback_behavior(self):
@@ -305,7 +305,7 @@ class TestConvertLangchainToolToFunction:
             """Function docstring."""
             pass
 
-        fn1 = convert_langchain_tool_to_function(func_with_docstring)
+        fn1 = from_langchain_tool(func_with_docstring)
         assert fn1.__doc__ == "Function docstring."
 
         # Mock without description
@@ -317,7 +317,7 @@ class TestConvertLangchainToolToFunction:
         del mock_tool._run
         mock_tool.__doc__ = "Mock docstring"
 
-        fn2 = convert_langchain_tool_to_function(mock_tool)
+        fn2 = from_langchain_tool(mock_tool)
         assert fn2.__doc__ == "Mock docstring"
 
         # Mock without description or docstring
@@ -329,7 +329,7 @@ class TestConvertLangchainToolToFunction:
         del mock_tool2._run
         mock_tool2.__doc__ = None
 
-        fn3 = convert_langchain_tool_to_function(mock_tool2)
+        fn3 = from_langchain_tool(mock_tool2)
         assert fn3.__doc__ == ""
 
     def test_error_handling_invalid_tool(self):
@@ -344,24 +344,24 @@ class TestConvertLangchainToolToFunction:
         invalid_tool = InvalidTool()
 
         with pytest.raises(ValueError, match="LangChain tool must have"):
-            convert_langchain_tool_to_function(invalid_tool)
+            from_langchain_tool(invalid_tool)
 
     def test_fastmcp_integration(self):
         """Test that converted functions work with FastMCP."""
         # Test @tool decorated function
-        fn1 = convert_langchain_tool_to_function(multiply_decorator_tool)
+        fn1 = from_langchain_tool(multiply_decorator_tool)
         fast_tool1 = FastTool.from_function(fn1)
         assert fast_tool1.name == "multiply_decorator_tool"
 
         # Test StructuredTool
         structured_tool = StructuredTool.from_function(func=multiply_func)
-        fn2 = convert_langchain_tool_to_function(structured_tool)
+        fn2 = from_langchain_tool(structured_tool)
         fast_tool2 = FastTool.from_function(fn2)
         assert fast_tool2.name == "multiply_func"
 
         # Test BaseTool
         base_tool = CustomBaseTool()
-        fn3 = convert_langchain_tool_to_function(base_tool)
+        fn3 = from_langchain_tool(base_tool)
         fast_tool3 = FastTool.from_function(fn3)
         assert fast_tool3.name == "custom_base_tool"
 
@@ -369,14 +369,14 @@ class TestConvertLangchainToolToFunction:
         def simple_func(x: int) -> int:
             return x * 2
 
-        fn4 = convert_langchain_tool_to_function(simple_func)
+        fn4 = from_langchain_tool(simple_func)
         fast_tool4 = FastTool.from_function(fn4)
         assert fast_tool4.name == "simple_func"
 
     def test_signature_correctness_for_fastmcp(self):
         """Test that function signatures are correctly preserved for FastMCP."""
         tool = CustomBaseTool()
-        fn = convert_langchain_tool_to_function(tool)
+        fn = from_langchain_tool(tool)
 
         sig = inspect.signature(fn)
 
@@ -410,7 +410,7 @@ class TestConvertLangchainToolToFunction:
         # Manually add a _run method that would be different
         tool._run = fallback_func
 
-        fn = convert_langchain_tool_to_function(tool)
+        fn = from_langchain_tool(tool)
 
         # Should use the func attribute, not _run
         result = fn(5)
@@ -421,8 +421,8 @@ class TestConvertLangchainToolToFunction:
         """Test that converting the same tool multiple times works correctly."""
         tool = multiply_decorator_tool
 
-        fn1 = convert_langchain_tool_to_function(tool)
-        fn2 = convert_langchain_tool_to_function(tool)
+        fn1 = from_langchain_tool(tool)
+        fn2 = from_langchain_tool(tool)
 
         # Both should work identically
         assert fn1.__name__ == fn2.__name__
@@ -438,7 +438,7 @@ class TestConvertLangchainToolToFunction:
             """No parameters tool."""
             return "no params"
 
-        fn = convert_langchain_tool_to_function(no_params_tool)
+        fn = from_langchain_tool(no_params_tool)
         sig = inspect.signature(fn)
         assert len(sig.parameters) == 0
         assert fn() == "no params"
@@ -448,7 +448,7 @@ class TestConvertLangchainToolToFunction:
             """Args only function."""
             return sum(args)
 
-        fn2 = convert_langchain_tool_to_function(args_only_func)
+        fn2 = from_langchain_tool(args_only_func)
         result = fn2(1, 2, 3)
         assert result == 6
 
@@ -457,6 +457,6 @@ class TestConvertLangchainToolToFunction:
             """Kwargs only function."""
             return len(kwargs)
 
-        fn3 = convert_langchain_tool_to_function(kwargs_only_func)
+        fn3 = from_langchain_tool(kwargs_only_func)
         result = fn3(a=1, b=2, c=3)
         assert result == 3

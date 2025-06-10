@@ -3,7 +3,7 @@ from typing import Callable, Any, Optional, Union
 from langchain_core.tools import BaseTool, StructuredTool
 
 
-def convert_langchain_tool_to_function(
+def from_langchain_tool(
     lc_tool: Union["BaseTool", object],
     *,
     name: Optional[str] = None,

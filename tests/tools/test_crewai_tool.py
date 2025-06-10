@@ -8,7 +8,7 @@ from mcp.server.fastmcp.tools import Tool as FastTool
 from pydantic import BaseModel, Field
 
 from mcp_agent.tools.crewai_tool import (
-    convert_crewai_tool_to_function,
+    from_crewai_tool,
     _create_function_from_schema,
 )
 
@@ -84,7 +84,7 @@ class TestConvertCrewaiToolToFunction:
 
     def test_tool_decorated_function_conversion(self):
         """Test conversion of @tool decorated functions."""
-        fn = convert_crewai_tool_to_function(sample_multiply_tool)
+        fn = from_crewai_tool(sample_multiply_tool)
 
         assert fn.__name__ == "sample_multiply_tool"
         assert "Multiply two numbers together" in fn.__doc__
@@ -102,7 +102,7 @@ class TestConvertCrewaiToolToFunction:
 
     def test_tool_decorated_no_args_conversion(self):
         """Test conversion of @tool decorated functions with no arguments."""
-        fn = convert_crewai_tool_to_function(sample_no_args_tool)
+        fn = from_crewai_tool(sample_no_args_tool)
 
         assert fn.__name__ == "sample_no_args_tool"
         assert "A tool that takes no arguments" in fn.__doc__
@@ -118,7 +118,7 @@ class TestConvertCrewaiToolToFunction:
     def test_class_based_tool_with_required_args_conversion(self):
         """Test conversion of class-based tools with required arguments."""
         tool = MultiplyTool()
-        fn = convert_crewai_tool_to_function(tool)
+        fn = from_crewai_tool(tool)
 
         assert fn.__name__ == "multiply"
         assert "Multiply two numbers" in fn.__doc__
@@ -141,7 +141,7 @@ class TestConvertCrewaiToolToFunction:
     def test_class_based_tool_with_optional_args_conversion(self):
         """Test conversion of class-based tools with optional arguments."""
         tool = GreetTool()
-        fn = convert_crewai_tool_to_function(tool)
+        fn = from_crewai_tool(tool)
 
         assert fn.__name__ == "greet"
         assert "Greet someone with a custom message" in fn.__doc__
@@ -165,7 +165,7 @@ class TestConvertCrewaiToolToFunction:
     def test_class_based_tool_no_args_conversion(self):
         """Test conversion of class-based tools with no arguments."""
         tool = NoArgsTool()
-        fn = convert_crewai_tool_to_function(tool)
+        fn = from_crewai_tool(tool)
 
         assert fn.__name__ == "no_args_tool"
         assert "A tool that takes no arguments" in fn.__doc__
@@ -183,14 +183,14 @@ class TestConvertCrewaiToolToFunction:
         tool = NoArgsTool()
         tool.name = "My Custom Tool With Spaces"
 
-        fn = convert_crewai_tool_to_function(tool)
+        fn = from_crewai_tool(tool)
         assert fn.__name__ == "my_custom_tool_with_spaces"
 
     def test_name_and_description_override(self):
         """Test that name and description can be overridden."""
         tool = MultiplyTool()
 
-        fn = convert_crewai_tool_to_function(
+        fn = from_crewai_tool(
             tool, name="custom_multiply", description="Custom multiply description"
         )
 
@@ -200,25 +200,25 @@ class TestConvertCrewaiToolToFunction:
     def test_fastmcp_integration(self):
         """Test that converted functions work with FastMCP."""
         # Test @tool decorated function
-        fn1 = convert_crewai_tool_to_function(sample_multiply_tool)
+        fn1 = from_crewai_tool(sample_multiply_tool)
         fast_tool1 = FastTool.from_function(fn1)
         assert fast_tool1.name == "sample_multiply_tool"
 
         # Test class-based tool with required args
         multiply_tool = MultiplyTool()
-        fn2 = convert_crewai_tool_to_function(multiply_tool)
+        fn2 = from_crewai_tool(multiply_tool)
         fast_tool2 = FastTool.from_function(fn2)
         assert fast_tool2.name == "multiply"
 
         # Test class-based tool with optional args
         greet_tool = GreetTool()
-        fn3 = convert_crewai_tool_to_function(greet_tool)
+        fn3 = from_crewai_tool(greet_tool)
         fast_tool3 = FastTool.from_function(fn3)
         assert fast_tool3.name == "greet"
 
         # Test class-based tool with no args
         no_args_tool = NoArgsTool()
-        fn4 = convert_crewai_tool_to_function(no_args_tool)
+        fn4 = from_crewai_tool(no_args_tool)
         fast_tool4 = FastTool.from_function(fn4)
         assert fast_tool4.name == "no_args_tool"
 
@@ -235,7 +235,7 @@ class TestConvertCrewaiToolToFunction:
         invalid_tool = InvalidTool()
 
         with pytest.raises(ValueError, match="CrewAI tool must have"):
-            convert_crewai_tool_to_function(invalid_tool)
+            from_crewai_tool(invalid_tool)
 
     def test_fallback_to_run_method(self):
         """Test fallback to run method when func and _run are not available."""
@@ -250,7 +250,7 @@ class TestConvertCrewaiToolToFunction:
         del tool._run
         del tool.args_schema
 
-        fn = convert_crewai_tool_to_function(tool)
+        fn = from_crewai_tool(tool)
 
         assert fn.__name__ == "fallback_tool"
         assert fn.__doc__ == "A fallback tool"
@@ -264,7 +264,7 @@ class TestConvertCrewaiToolToFunction:
         """Test that function signatures are correctly preserved for FastMCP."""
         # Test that signatures have proper parameter names, not *args/**kwargs
         multiply_tool = MultiplyTool()
-        fn = convert_crewai_tool_to_function(multiply_tool)
+        fn = from_crewai_tool(multiply_tool)
 
         sig = inspect.signature(fn)
 
