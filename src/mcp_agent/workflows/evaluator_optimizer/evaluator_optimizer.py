@@ -150,7 +150,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         else:
             raise ValueError(f"Unsupported evaluator type: {type(evaluator)}")
         if share_memory:
-            self.evaluator_llm.share_memory_from(self.optimizer_llm)
+            self.evaluator_llm.history = self.optimizer_llm.history
         self.min_rating = min_rating
         self.max_refinements = max_refinements
 
