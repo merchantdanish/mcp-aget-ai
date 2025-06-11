@@ -167,6 +167,7 @@ class Agent(BaseModel):
         ) as span:
             if llm:
                 self.llm = llm
+                llm.agent = self
             elif llm_factory:
                 self.llm = llm_factory(agent=self)
             else:
