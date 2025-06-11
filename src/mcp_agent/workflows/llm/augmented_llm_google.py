@@ -539,7 +539,8 @@ def transform_mcp_tool_schema(schema: dict) -> dict:
 
     # Properties to exclude even if they would otherwise be supported
     # 'default' is excluded because Google throws error if included.
-    EXCLUDED_PROPERTIES = {"default"}
+    # 'additionalProperties' is excluded because Google throws an "Unknown name" error.
+    EXCLUDED_PROPERTIES = {"default", "additionalProperties"}
 
     # Special case mappings for camelCase to snake_case conversions
     CAMEL_TO_SNAKE_MAPPINGS = {
