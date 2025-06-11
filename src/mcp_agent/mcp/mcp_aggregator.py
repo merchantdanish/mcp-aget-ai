@@ -162,6 +162,7 @@ class MCPAggregator(ContextDependent):
 
                 if not hasattr(self.context, "_mcp_connection_manager_lock"):
                     import threading
+
                     self.context._mcp_connection_manager_lock = threading.Lock()
 
                 if not hasattr(self.context, "_mcp_connection_manager_ref_count"):
@@ -208,7 +209,7 @@ class MCPAggregator(ContextDependent):
                 if hasattr(self.context, "_mcp_connection_manager_lock") and hasattr(
                     self.context, "_mcp_connection_manager_ref_count"
                 ):
-                    async with self.context._mcp_connection_manager_lock:
+                    with self.context._mcp_connection_manager_lock:
                         # Decrement the reference count
                         self.context._mcp_connection_manager_ref_count -= 1
                         current_count = self.context._mcp_connection_manager_ref_count
