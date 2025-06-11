@@ -514,7 +514,7 @@ def transform_mcp_tool_schema(schema: dict) -> dict:
 
     Key transformations:
     1. Convert camelCase properties to snake_case (e.g., maxLength -> max_length)
-    2. Remove explicitly excluded fields (e.g., "default")
+    2. Remove explicitly excluded fields (e.g., "default", "additionalProperties")
     3. Recursively process nested structures (properties, items, anyOf)
     4. Handle nullable types by setting nullable=true when anyOf includes type:"null"
     5. Remove unsupported format values based on data type
@@ -539,7 +539,8 @@ def transform_mcp_tool_schema(schema: dict) -> dict:
 
     # Properties to exclude even if they would otherwise be supported
     # 'default' is excluded because Google throws error if included.
-    EXCLUDED_PROPERTIES = {"default"}
+    # 'additionalProperties' is excluded because Google throws an "Unknown name" error.
+    EXCLUDED_PROPERTIES = {"default", "additionalProperties"}
 
     # Special case mappings for camelCase to snake_case conversions
     CAMEL_TO_SNAKE_MAPPINGS = {
