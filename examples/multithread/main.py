@@ -11,10 +11,8 @@ from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 logger = logging.getLogger(__name__)
 
 
-app = MCPApp(name="script_generation_fewshot_eval")
-
-
 async def run() -> str:
+    app = MCPApp(name="script_generation_fewshot_eval")
     async with app.run():
         agent = Agent(
             name="agent",
@@ -40,12 +38,28 @@ def generate_step():
         logger.exception("Error during script generation", exc_info=e)
         return ""
     finally:
-        pending = asyncio.all_tasks(loop=loop)
-        for task in pending:
-            task.cancel()
-        if pending:
-            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-        loop.close()
+        # Properly cleanup tasks and subprocess transports
+        try:
+            # Cancel all pending tasks
+            pending = asyncio.all_tasks(loop=loop)
+            for task in pending:
+                task.cancel()
+
+            # Wait for all tasks to complete
+            if pending:
+                loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
+
+            # # Give subprocess transports time to cleanup
+            # loop.run_until_complete(asyncio.sleep(0.1))
+            loop.close()
+
+        except Exception as cleanup_error:
+            logger.warning(f"Error during cleanup: {cleanup_error}")
+        finally:
+            # Close the loop
+            loop.close()
 
 
 def main(concurrency: int) -> list[str]:
@@ -76,4 +90,4 @@ if __name__ == "__main__":
 
     print("\n\n")
     for idx, result in enumerate(results):
-        print(f"Story for step {idx} is {len(result.split())} words long.")
+        print(f"step {idx} result: {result}")
