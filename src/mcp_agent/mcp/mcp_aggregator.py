@@ -116,25 +116,13 @@ class MCPAggregator(ContextDependent):
         self._namespaced_tool_map: Dict[str, NamespacedTool] = {}
         # Maps server_name -> list of tools
         self._server_to_tool_map: Dict[str, List[NamespacedTool]] = {}
-        self._tool_map_lock = None
+        self._tool_map_lock = asyncio.Lock()
 
         # Maps namespaced_prompt_name -> namespaced prompt info
         self._namespaced_prompt_map: Dict[str, NamespacedPrompt] = {}
         # Cache for prompt objects, maps server_name -> list of prompt objects
         self._server_to_prompt_map: Dict[str, List[NamespacedPrompt]] = {}
-        self._prompt_map_lock = None
-
-    def _get_tool_map_lock(self):
-        """Lazily create tool map lock in current event loop."""
-        if self._tool_map_lock is None:
-            self._tool_map_lock = asyncio.Lock()
-        return self._tool_map_lock
-
-    def _get_prompt_map_lock(self):
-        """Lazily create prompt map lock in current event loop."""
-        if self._prompt_map_lock is None:
-            self._prompt_map_lock = asyncio.Lock()
-        return self._prompt_map_lock
+        self._prompt_map_lock = asyncio.Lock()
 
     async def initialize(self, force: bool = False):
         """Initialize the application."""
@@ -161,14 +149,12 @@ class MCPAggregator(ContextDependent):
                 connection_manager: MCPConnectionManager | None = None
 
                 if not hasattr(self.context, "_mcp_connection_manager_lock"):
-                    import threading
-
-                    self.context._mcp_connection_manager_lock = threading.Lock()
+                    self.context._mcp_connection_manager_lock = asyncio.Lock()
 
                 if not hasattr(self.context, "_mcp_connection_manager_ref_count"):
                     self.context._mcp_connection_manager_ref_count = int(0)
 
-                with self.context._mcp_connection_manager_lock:
+                async with self.context._mcp_connection_manager_lock:
                     self.context._mcp_connection_manager_ref_count += 1
 
                     if hasattr(self.context, "_mcp_connection_manager"):
@@ -209,7 +195,7 @@ class MCPAggregator(ContextDependent):
                 if hasattr(self.context, "_mcp_connection_manager_lock") and hasattr(
                     self.context, "_mcp_connection_manager_ref_count"
                 ):
-                    with self.context._mcp_connection_manager_lock:
+                    async with self.context._mcp_connection_manager_lock:
                         # Decrement the reference count
                         self.context._mcp_connection_manager_ref_count -= 1
                         current_count = self.context._mcp_connection_manager_ref_count
@@ -331,7 +317,7 @@ class MCPAggregator(ContextDependent):
             _, tools, prompts = await self._fetch_capabilities(server_name)
 
             # Process tools
-            async with self._get_tool_map_lock():
+            async with self._tool_map_lock:
                 self._server_to_tool_map[server_name] = []
                 for tool in tools:
                     namespaced_tool_name = f"{server_name}{SEP}{tool.name}"
@@ -345,7 +331,7 @@ class MCPAggregator(ContextDependent):
                     self._server_to_tool_map[server_name].append(namespaced_tool)
 
             # Process prompts
-            async with self._get_prompt_map_lock():
+            async with self._prompt_map_lock:
                 self._server_to_prompt_map[server_name] = []
                 for prompt in prompts:
                     namespaced_prompt_name = f"{server_name}{SEP}{prompt.name}"
@@ -407,11 +393,11 @@ class MCPAggregator(ContextDependent):
                 logger.debug("MCPAggregator already initialized. Skipping reload.")
                 return
 
-            async with self._get_tool_map_lock():
+            async with self._tool_map_lock:
                 self._namespaced_tool_map.clear()
                 self._server_to_tool_map.clear()
 
-            async with self._get_prompt_map_lock():
+            async with self._prompt_map_lock:
                 self._namespaced_prompt_map.clear()
                 self._server_to_prompt_map.clear()
 
@@ -1102,9 +1088,6 @@ class MCPAggregator(ContextDependent):
 
             return prompts
         except Exception as e:
-            import traceback
-
-            traceback.print_exc()
             logger.error(f"Error loading prompts from server '{server_name}': {e}")
             return prompts
 
