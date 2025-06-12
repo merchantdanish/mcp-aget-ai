@@ -1,5 +1,8 @@
 from typing import Type
 import base64
+
+from pydantic import BaseModel
+
 from google.genai import Client
 from google.genai import types
 from mcp.types import (
@@ -13,7 +16,10 @@ from mcp.types import (
     BlobResourceContents,
 )
 
+from mcp_agent.config import GoogleSettings
+from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MCPMessageParam,
@@ -21,9 +27,9 @@ from mcp_agent.workflows.llm.augmented_llm import (
     ModelT,
     ProviderToMCPConverter,
     RequestParams,
-    image_url_to_mime_and_base64,
     CallToolResult,
 )
+from mcp_agent.workflows.llm.multipart_converter_google import GoogleConverter
 
 
 class GoogleAugmentedLLM(
@@ -56,15 +62,6 @@ class GoogleAugmentedLLM(
             if hasattr(self.context.config.google, "default_model"):
                 default_model = self.context.config.google.default_model
 
-        if self.context.config.google and self.context.config.google.vertexai:
-            self.google_client = Client(
-                vertexai=self.context.config.google.vertexai,
-                project=self.context.config.google.project,
-                location=self.context.config.google.location,
-            )
-        else:
-            self.google_client = Client(api_key=self.context.config.google.api_key)
-
         self.default_request_params = self.default_request_params or RequestParams(
             model=default_model,
             modelPreferences=self.model_preferences,
@@ -88,16 +85,9 @@ class GoogleAugmentedLLM(
         if params.use_history:
             messages.extend(self.history.get())
 
-        if isinstance(message, str):
-            messages.append(
-                types.Content(role="user", parts=[types.Part.from_text(text=message)])
-            )
-        elif isinstance(message, list):
-            messages.extend(message)
-        else:
-            messages.append(message)
+        messages.extend(GoogleConverter.convert_mixed_messages_to_google(message))
 
-        response = await self.aggregator.list_tools()
+        response = await self.agent.list_tools()
 
         tools = [
             types.Tool(
@@ -138,11 +128,13 @@ class GoogleAugmentedLLM(
             self.logger.debug(f"{arguments}")
             self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
-            executor_result = await self.executor.execute(
-                self.google_client.models.generate_content, **arguments
+            response: types.GenerateContentResponse = await self.executor.execute(
+                GoogleCompletionTasks.request_completion_task,
+                RequestCompletionRequest(
+                    config=self.context.config.google,
+                    payload=arguments,
+                ),
             )
-
-            response = executor_result[0]
 
             if isinstance(response, BaseException):
                 self.logger.error(f"Error: {response}")
@@ -173,7 +165,7 @@ class GoogleAugmentedLLM(
             ]
 
             if function_calls:
-                results = await self.executor.execute(*function_calls)
+                results = await self.executor.execute_many(function_calls)
 
                 self.logger.debug(
                     f"Iteration {i}: Tool call results: {str(results) if results else 'None'}"
@@ -234,27 +226,38 @@ class GoogleAugmentedLLM(
         response_model: Type[ModelT],
         request_params: RequestParams | None = None,
     ) -> ModelT:
-        import instructor
-
         response = await self.generate_str(
             message=message,
             request_params=request_params,
         )
 
-        client = instructor.from_genai(
-            self.google_client, mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS
-        )
-
         params = self.get_request_params(request_params)
         model = await self.select_model(params) or "gemini-2.0-flash"
 
-        structured_response = client.chat.completions.create(
-            model=model,
-            response_model=response_model,
-            messages=[
-                {"role": "user", "content": response},
-            ],
+        serialized_response_model: str | None = None
+
+        if self.executor and self.executor.execution_engine == "temporal":
+            # Serialize the response model to a string
+            serialized_response_model = serialize_model(response_model)
+
+        structured_response = await self.executor.execute(
+            GoogleCompletionTasks.request_structured_completion_task,
+            RequestStructuredCompletionRequest(
+                config=self.context.config.google,
+                params=params,
+                response_model=response_model
+                if not serialized_response_model
+                else None,
+                serialized_response_model=serialized_response_model,
+                response_str=response,
+                model=model,
+            ),
         )
+
+        # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
+        # Convert dict back to the proper model instance if needed
+        if isinstance(structured_response, dict):
+            structured_response = response_model.model_validate(structured_response)
 
         return structured_response
 
@@ -301,6 +304,87 @@ class GoogleAugmentedLLM(
         return str(message.model_dump())
 
 
+class RequestCompletionRequest(BaseModel):
+    config: GoogleSettings
+    payload: dict
+
+
+class RequestStructuredCompletionRequest(BaseModel):
+    config: GoogleSettings
+    params: RequestParams
+    response_model: Type[ModelT] | None = None
+    serialized_response_model: str | None = None
+    response_str: str
+    model: str
+
+
+class GoogleCompletionTasks:
+    @staticmethod
+    @workflow_task
+    async def request_completion_task(
+        request: RequestCompletionRequest,
+    ) -> types.GenerateContentResponse:
+        """
+        Request a completion from Google's API.
+        """
+
+        if request.config and request.config.vertexai:
+            google_client = Client(
+                vertexai=request.config.vertexai,
+                project=request.config.project,
+                location=request.config.location,
+            )
+        else:
+            google_client = Client(api_key=request.config.api_key)
+
+        payload = request.payload
+        response = google_client.models.generate_content(**payload)
+        return response
+
+    @staticmethod
+    @workflow_task
+    async def request_structured_completion_task(
+        request: RequestStructuredCompletionRequest,
+    ):
+        """
+        Request a structured completion using Instructor's Google API.
+        """
+        import instructor
+
+        if request.response_model:
+            response_model = request.response_model
+        elif request.serialized_response_model:
+            response_model = deserialize_model(request.serialized_response_model)
+        else:
+            raise ValueError(
+                "Either response_model or serialized_response_model must be provided for structured completion."
+            )
+
+        if request.config and request.config.vertexai:
+            google_client = Client(
+                vertexai=request.config.vertexai,
+                project=request.config.project,
+                location=request.config.location,
+            )
+        else:
+            google_client = Client(api_key=request.config.api_key)
+
+        client = instructor.from_genai(
+            google_client, mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS
+        )
+
+        structured_response = client.chat.completions.create(
+            model=request.model,
+            response_model=response_model,
+            system="Convert the provided text into the required response model. Do not change the text or add any additional text. Just convert it into the required response model.",
+            messages=[
+                {"role": "user", "content": request.response_str},
+            ],
+        )
+
+        return structured_response
+
+
 class GoogleMCPTypeConverter(ProviderToMCPConverter[types.Content, types.Content]):
     """
     Convert between Azure and MCP types.
@@ -314,7 +398,7 @@ class GoogleMCPTypeConverter(ProviderToMCPConverter[types.Content, types.Content
             )
         if isinstance(result.content, TextContent):
             return types.Content(
-                role="model", parts=[types.Part.from_text(result.content.text)]
+                role="model", parts=[types.Part.from_text(text=result.content.text)]
             )
         else:
             return types.Content(
@@ -331,7 +415,7 @@ class GoogleMCPTypeConverter(ProviderToMCPConverter[types.Content, types.Content
     def from_mcp_message_param(cls, param: MCPMessageParam) -> types.Content:
         if param.role == "assistant":
             return types.Content(
-                role="model", parts=[types.Part.from_text(param.content)]
+                role="model", parts=[types.Part.from_text(text=param.content)]
             )
         elif param.role == "user":
             return types.Content(
@@ -349,10 +433,14 @@ class GoogleMCPTypeConverter(ProviderToMCPConverter[types.Content, types.Content
             raise NotImplementedError(
                 "Multiple content elements in a single message are not supported in MCP yet"
             )
+        if result.role == "model":
+            role = "assistant"
+        else:
+            role = result.role
         return MCPMessageResult(
-            role=result.role,
+            role=role,
             content=contents[0],
-            model=None,
+            model="",
             stopReason=None,
         )
 
@@ -420,7 +508,7 @@ def transform_mcp_tool_schema(schema: dict) -> dict:
 
     Key transformations:
     1. Convert camelCase properties to snake_case (e.g., maxLength -> max_length)
-    2. Remove explicitly excluded fields (e.g., "default")
+    2. Remove explicitly excluded fields (e.g., "default", "additionalProperties")
     3. Recursively process nested structures (properties, items, anyOf)
     4. Handle nullable types by setting nullable=true when anyOf includes type:"null"
     5. Remove unsupported format values based on data type
@@ -445,7 +533,8 @@ def transform_mcp_tool_schema(schema: dict) -> dict:
 
     # Properties to exclude even if they would otherwise be supported
     # 'default' is excluded because Google throws error if included.
-    EXCLUDED_PROPERTIES = {"default"}
+    # 'additionalProperties' is excluded because Google throws an "Unknown name" error.
+    EXCLUDED_PROPERTIES = {"default", "additionalProperties"}
 
     # Special case mappings for camelCase to snake_case conversions
     CAMEL_TO_SNAKE_MAPPINGS = {
@@ -626,3 +715,16 @@ def google_parts_to_mcp_content(
             mcp_content.append(TextContent(type="text", text=str(part)))
 
     return mcp_content
+
+
+def image_url_to_mime_and_base64(url: str) -> tuple[str, str]:
+    """
+    Extract mime type and base64 data from ImageUrl
+    """
+    import re
+
+    match = re.match(r"data:(image/\w+);base64,(.*)", url)
+    if not match:
+        raise ValueError(f"Invalid image data URI: {url[:30]}...")
+    mime_type, base64_data = match.groups()
+    return mime_type, base64_data

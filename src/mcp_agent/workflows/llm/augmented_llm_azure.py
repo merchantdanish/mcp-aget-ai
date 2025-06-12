@@ -1,7 +1,8 @@
 import json
-from typing import Iterable, List, Optional, Type, Union
+from typing import Any, Iterable, Optional, Type, Union
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import (
+    ChatCompletions,
     ChatResponseMessage,
     UserMessage,
     AssistantMessage,
@@ -22,6 +23,10 @@ from azure.ai.inference.models import (
 )
 from azure.core.credentials import AzureKeyCredential
 from azure.identity import DefaultAzureCredential
+from opentelemetry import trace
+
+from pydantic import BaseModel
+
 from mcp.types import (
     CallToolRequestParams,
     CallToolRequest,
@@ -32,6 +37,17 @@ from mcp.types import (
     TextResourceContents,
 )
 
+from mcp_agent.config import AzureSettings
+from mcp_agent.executor.workflow_task import workflow_task
+from mcp_agent.tracing.semconv import (
+    GEN_AI_AGENT_NAME,
+    GEN_AI_REQUEST_MODEL,
+    GEN_AI_RESPONSE_FINISH_REASONS,
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
+from mcp_agent.tracing.telemetry import get_tracer
+from mcp_agent.utils.common import typed_dict_extras
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     ModelT,
@@ -41,10 +57,16 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.llm.multipart_converter_azure import AzureConverter
 
 MessageParam = Union[
     SystemMessage, UserMessage, AssistantMessage, ToolMessage, DeveloperMessage
 ]
+
+
+class RequestCompletionRequest(BaseModel):
+    config: AzureSettings
+    payload: dict
 
 
 class ResponseMessage(ChatResponseMessage):
@@ -84,25 +106,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             if hasattr(self.context.config.azure, "default_model"):
                 default_model = self.context.config.azure.default_model
 
-        if self.context.config.azure:
-            if self.context.config.azure.api_key:
-                self.azure_client = ChatCompletionsClient(
-                    endpoint=self.context.config.azure.endpoint,
-                    credential=AzureKeyCredential(self.context.config.azure.api_key),
-                    **self.context.config.azure.model_dump(
-                        exclude={"endpoint", "credential"}
-                    ),
-                )
-            else:
-                self.azure_client = ChatCompletionsClient(
-                    endpoint=self.context.config.azure.endpoint,
-                    credential=DefaultAzureCredential(),
-                    credential_scopes=self.context.config.azure.credential_scopes,
-                    **self.context.config.azure.model_dump(
-                        exclude={"endpoint", "credential", "credential_scopes"}
-                    ),
-                )
-        else:
+        if not self.context.config.azure:
             self.logger.error(
                 "Azure configuration not found. Please provide Azure configuration."
             )
@@ -126,110 +130,157 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
         The default implementation uses Azure OpenAI 4o-mini as the LLM.
         Override this method to use a different LLM.
         """
-        messages: list[MessageParam] = []
-        responses: list[ResponseMessage] = []
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(f"llm_azure.{self.name}.generate") as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+            self._annotate_span_for_generation_message(span, message)
 
-        params = self.get_request_params(request_params)
+            messages: list[MessageParam] = []
+            responses: list[ResponseMessage] = []
 
-        if params.use_history:
-            messages.extend(self.history.get())
+            params = self.get_request_params(request_params)
 
-        system_prompt = self.instruction or params.systemPrompt
-        if system_prompt and len(messages) == 0:
-            messages.append(SystemMessage(content=system_prompt))
+            if self.context.tracing_enabled:
+                AugmentedLLM.annotate_span_with_request_params(span, params)
 
-        if isinstance(message, str):
-            messages.append(UserMessage(content=message))
-        elif isinstance(message, list):
-            messages.extend(message)
-        else:
-            messages.append(message)
+            if params.use_history:
+                span.set_attribute("use_history", params.use_history)
+                messages.extend(self.history.get())
 
-        response = await self.aggregator.list_tools()
+            system_prompt = self.instruction or params.systemPrompt
 
-        tools: list[ChatCompletionsToolDefinition] = [
-            ChatCompletionsToolDefinition(
-                function=FunctionDefinition(
-                    name=tool.name,
-                    description=tool.description,
-                    parameters=tool.inputSchema,
-                )
-            )
-            for tool in response.tools
-        ]
+            if system_prompt and len(messages) == 0:
+                messages.append(SystemMessage(content=system_prompt))
+                span.set_attribute("system_prompt", system_prompt)
 
-        model = await self.select_model(params)
+            messages.extend(AzureConverter.convert_mixed_messages_to_azure(message))
 
-        for i in range(params.max_iterations):
-            arguments = {
-                "messages": messages,
-                "temperature": params.temperature,
-                "model": model,
-                "max_tokens": params.maxTokens,
-                "stop": params.stopSequences,
-                "tools": tools,
-            }
+            response = await self.agent.list_tools()
 
-            if params.metadata:
-                arguments = {**arguments, **params.metadata}
-
-            self.logger.debug(f"{arguments}")
-            self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
-
-            executor_result = await self.executor.execute(
-                self.azure_client.complete, **arguments
-            )
-
-            response = executor_result[0]
-
-            if isinstance(response, BaseException):
-                self.logger.error(f"Error: {response}")
-                break
-
-            self.logger.debug(f"{model} response:", data=response)
-
-            message = response.choices[0].message
-            responses.append(message)
-            assistant_message = self.convert_message_to_message_param(message)
-            messages.append(assistant_message)
-
-            if response.choices[0].finish_reason == CompletionsFinishReason.TOOL_CALLS:
-                if (
-                    response.choices[0].message.tool_calls is not None
-                    and len(response.choices[0].message.tool_calls) == 1
-                ):
-                    tool_tasks = [
-                        self.execute_tool_call(tool_call)
-                        for tool_call in response.choices[0].message.tool_calls
-                    ]
-
-                    tool_results = await self.executor.execute(*tool_tasks)
-
-                    self.logger.debug(
-                        f"Iteration {i}: Tool call results: {str(tool_results) if tool_results else 'None'}"
+            tools: list[ChatCompletionsToolDefinition] = [
+                ChatCompletionsToolDefinition(
+                    function=FunctionDefinition(
+                        name=tool.name,
+                        description=tool.description,
+                        parameters=tool.inputSchema,
                     )
-
-                    for result in tool_results:
-                        if isinstance(result, BaseException):
-                            self.logger.error(
-                                f"Warning: Unexpected error during tool execution: {result}. Continuing..."
-                            )
-                            continue
-                        elif isinstance(result, ToolMessage):
-                            messages.append(result)
-                            responses.append(result)
-            else:
-                self.logger.debug(
-                    f"Iteration {i}: Stopping because finish_reason is '{response.choices[0].finish_reason}'"
                 )
-                break
+                for tool in response.tools
+            ]
 
-        if params.use_history:
-            self.history.set(messages)
+            span.set_attribute(
+                "available_tools",
+                [t.function.name for t in tools],
+            )
 
-        self._log_chat_finished(model=model)
+            model = await self.select_model(params)
+            if model:
+                span.set_attribute(GEN_AI_REQUEST_MODEL, model)
 
-        return responses
+            total_input_tokens = 0
+            total_output_tokens = 0
+            finish_reasons = []
+
+            for i in range(params.max_iterations):
+                arguments = {
+                    "messages": messages,
+                    "temperature": params.temperature,
+                    "model": model,
+                    "max_tokens": params.maxTokens,
+                    "stop": params.stopSequences,
+                    "tools": tools,
+                }
+
+                if params.metadata:
+                    arguments = {**arguments, **params.metadata}
+
+                self.logger.debug(f"{arguments}")
+                self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
+
+                request = RequestCompletionRequest(
+                    config=self.context.config.azure,
+                    payload=arguments,
+                )
+                self._annotate_span_for_completion_request(span, request, i)
+
+                response = await self.executor.execute(
+                    AzureCompletionTasks.request_completion_task,
+                    request,
+                )
+
+                if isinstance(response, BaseException):
+                    self.logger.error(f"Error: {response}")
+                    span.record_exception(response)
+                    span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    break
+
+                self.logger.debug(f"{model} response:", data=response)
+
+                self._annotate_span_for_completion_response(span, response, i)
+
+                total_input_tokens += response.usage["prompt_tokens"]
+                total_output_tokens += response.usage["completion_tokens"]
+                finish_reasons.append(response.choices[0].finish_reason)
+
+                message = response.choices[0].message
+                responses.append(message)
+                assistant_message = self.convert_message_to_message_param(message)
+                messages.append(assistant_message)
+
+                if (
+                    response.choices[0].finish_reason
+                    == CompletionsFinishReason.TOOL_CALLS
+                ):
+                    if (
+                        response.choices[0].message.tool_calls is not None
+                        and len(response.choices[0].message.tool_calls) > 0
+                    ):
+                        tool_tasks = [
+                            self.execute_tool_call(tool_call)
+                            for tool_call in response.choices[0].message.tool_calls
+                        ]
+
+                        tool_results = await self.executor.execute_many(tool_tasks)
+
+                        self.logger.debug(
+                            f"Iteration {i}: Tool call results: {str(tool_results) if tool_results else 'None'}"
+                        )
+
+                        for result in tool_results:
+                            if isinstance(result, BaseException):
+                                self.logger.error(
+                                    f"Warning: Unexpected error during tool execution: {result}. Continuing..."
+                                )
+                                span.record_exception(result)
+                                continue
+                            elif isinstance(result, ToolMessage):
+                                messages.append(result)
+                                responses.append(result)
+                else:
+                    self.logger.debug(
+                        f"Iteration {i}: Stopping because finish_reason is '{response.choices[0].finish_reason}'"
+                    )
+                    break
+
+            if params.use_history:
+                self.history.set(messages)
+
+            self._log_chat_finished(model=model)
+
+            if self.context.tracing_enabled:
+                span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS, total_input_tokens)
+                span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS, total_output_tokens)
+                span.set_attribute(GEN_AI_RESPONSE_FINISH_REASONS, finish_reasons)
+
+                for i, res in enumerate(responses):
+                    response_data = (
+                        self.extract_response_message_attributes_for_tracing(
+                            res, prefix=f"response.{i}"
+                        )
+                    )
+                    span.set_attributes(response_data)
+
+            return responses
 
     async def generate_str(
         self,
@@ -319,23 +370,34 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 tool_call_id=tool_call_id,
                 content=f"Invalid JSON provided in tool call arguments for '{tool_name}'. Failed to load JSON: {str(e)}",
             )
-
-        tool_call_request = CallToolRequest(
-            method="tools/call",
-            params=CallToolRequestParams(name=tool_name, arguments=tool_args),
-        )
-
-        result = await self.call_tool(
-            request=tool_call_request, tool_call_id=tool_call_id
-        )
-
-        if result.content:
+        except Exception as e:
             return ToolMessage(
                 tool_call_id=tool_call_id,
-                content=mcp_content_to_azure_content(result.content),
+                content=f"Error executing tool '{tool_name}': {str(e)}",
             )
 
-        return None
+        try:
+            tool_call_request = CallToolRequest(
+                method="tools/call",
+                params=CallToolRequestParams(name=tool_name, arguments=tool_args),
+            )
+
+            result = await self.call_tool(
+                request=tool_call_request, tool_call_id=tool_call_id
+            )
+
+            if result.content:
+                return ToolMessage(
+                    tool_call_id=tool_call_id,
+                    content=mcp_content_to_azure_content(result.content),
+                )
+
+            return None
+        except Exception as e:
+            return ToolMessage(
+                tool_call_id=tool_call_id,
+                content=f"Error executing tool '{tool_name}': {str(e)}",
+            )
 
     def message_param_str(self, message: MessageParam) -> str:
         """Convert an input message to a string representation."""
@@ -363,6 +425,98 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             return message.content
         return str(message)
 
+    def _annotate_span_for_completion_request(
+        self, span: trace.Span, request: RequestCompletionRequest, turn: int
+    ) -> None:
+        """Annotate the span with the completion request as an event."""
+        if not self.context.tracing_enabled:
+            return
+
+        event_data = {
+            "completion.request.turn": turn,
+            "config.endpoint": request.config.endpoint,
+        }
+
+        # TODO: rholinshead - serialize RequestCompletionRequest dict
+
+        # Event name is based on the latest message role
+        event_name = f"completion.request.{turn}"
+        latest_message_role = request.payload.get("messages", [{}])[-1].get("role")
+
+        if latest_message_role:
+            event_name = f"gen_ai.{latest_message_role}.message"
+
+        span.add_event(event_name, event_data)
+
+    def _annotate_span_for_completion_response(
+        self, span: trace.Span, response: ResponseMessage, turn: int
+    ) -> None:
+        """Annotate the span with the completion response as an event."""
+        if not self.context.tracing_enabled:
+            return
+
+        event_data = {
+            "completion.response.turn": turn,
+        }
+
+        event_data.update(
+            self.extract_response_message_attributes_for_tracing(response)
+        )
+
+        # Event name is based on the first choice for now
+        event_name = f"completion.response.{turn}"
+        if response.choices and len(response.choices) > 0:
+            latest_message_role = response.choices[0].message.role
+            event_name = f"gen_ai.{latest_message_role}.message"
+
+        span.add_event(event_name, event_data)
+
+    def _extract_message_param_attributes_for_tracing(
+        self, message_param: MessageParam, prefix: str = "message"
+    ) -> dict[str, Any]:
+        """Return a flat dict of span attributes for a given MessageParam."""
+        attrs = {}
+        # TODO: rholinshead - serialize MessageParam dict
+        return attrs
+
+    def extract_response_message_attributes_for_tracing(
+        self, message: ResponseMessage, prefix: str | None = None
+    ) -> dict[str, Any]:
+        """Return a flat dict of span attributes for a given ResponseMessage."""
+        attrs = {}
+        # TODO: rholinshead - serialize ResponseMessage dict
+        return attrs
+
+
+class AzureCompletionTasks:
+    @staticmethod
+    @workflow_task
+    async def request_completion_task(
+        request: RequestCompletionRequest,
+    ) -> ChatCompletions:
+        """
+        Request a completion from Azure's API.
+        """
+        if request.config.api_key:
+            azure_client = ChatCompletionsClient(
+                endpoint=request.config.endpoint,
+                credential=AzureKeyCredential(request.config.api_key),
+                **request.config.model_dump(exclude={"endpoint", "credential"}),
+            )
+        else:
+            azure_client = ChatCompletionsClient(
+                endpoint=request.config.endpoint,
+                credential=DefaultAzureCredential(),
+                credential_scopes=request.config.credential_scopes,
+                **request.config.model_dump(
+                    exclude={"endpoint", "credential", "credential_scopes"}
+                ),
+            )
+
+        payload = request.payload
+        response = azure_client.complete(**payload)
+        return response
+
 
 class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ResponseMessage]):
     """
@@ -387,7 +541,7 @@ class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ResponseMessage
         return MCPMessageResult(
             role=result.role,
             content=TextContent(type="text", text=result.content),
-            model=None,
+            model="",
             stopReason=None,
         )
 
@@ -511,8 +665,9 @@ def azure_content_to_mcp_content(
     content: str | list[ContentItem] | None,
 ) -> Iterable[TextContent | ImageContent | EmbeddedResource]:
     mcp_content: Iterable[TextContent | ImageContent | EmbeddedResource] = []
-
-    if isinstance(content, str):
+    if content is None:
+        return mcp_content
+    elif isinstance(content, str):
         return [TextContent(type="text", text=content)]
 
     for item in content:
@@ -546,8 +701,3 @@ def image_url_to_mime_and_base64(image_url: ImageUrl) -> tuple[str, str]:
         raise ValueError(f"Invalid image data URI: {url[:30]}...")
     mime_type, base64_data = match.groups()
     return mime_type, base64_data
-
-
-def typed_dict_extras(d: dict, exclude: List[str]):
-    extras = {k: v for k, v in d.items() if k not in exclude}
-    return extras

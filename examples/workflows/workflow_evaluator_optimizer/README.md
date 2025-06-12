@@ -30,11 +30,21 @@ git clone https://github.com/lastmile-ai/mcp-agent.git
 cd mcp-agent/examples/workflows/workflow_evaluator_optimizer
 ```
 
-Install the UV tool (if you don’t have it) to manage dependencies:
+Install `uv` (if you don’t have it):
 
 ```bash
 pip install uv
+```
 
+Sync `mcp-agent` project dependencies:
+
+```bash
+uv sync
+```
+
+Install requirements specific to this example:
+
+```bash
 uv pip install -r requirements.txt
 ```
 
@@ -47,6 +57,11 @@ cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
 ```
 
 Then open `mcp_agent.secrets.yaml` and add your api key for your preferred LLM.
+
+## (Optional) Configure tracing
+
+In `mcp_agent.config.yaml`, you can set `otel` to `enabled` to enable OpenTelemetry tracing for the workflow.
+You can [run Jaeger locally](https://www.jaegertracing.io/docs/2.5/getting-started/) to view the traces in the Jaeger UI.
 
 ## `3` Run locally
 

@@ -2,11 +2,16 @@ from typing import Type
 
 from openai import OpenAI
 
+from mcp_agent.executor.workflow_task import workflow_task
+from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
     ModelT,
     RequestParams,
 )
-from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.workflows.llm.augmented_llm_openai import (
+    OpenAIAugmentedLLM,
+    RequestStructuredCompletionRequest,
+)
 
 
 class OllamaAugmentedLLM(OpenAIAugmentedLLM):
@@ -38,31 +43,78 @@ class OllamaAugmentedLLM(OpenAIAugmentedLLM):
         # We need to do this in a two-step process because Instructor doesn't
         # know how to invoke MCP tools via call_tool, so we'll handle all the
         # processing first and then pass the final response through Instructor
-        import instructor
 
         response = await self.generate_str(
             message=message,
             request_params=request_params,
         )
 
+        params = self.get_request_params(request_params)
+        model = await self.select_model(params) or "llama3.2:3b"
+
+        serialized_response_model: str | None = None
+
+        if self.executor and self.executor.execution_engine == "temporal":
+            # Serialize the response model to a string
+            serialized_response_model = serialize_model(response_model)
+
+        structured_response = await self.executor.execute(
+            OllamaCompletionTasks.request_structured_completion_task,
+            RequestStructuredCompletionRequest(
+                config=self.context.config.openai,
+                response_model=response_model
+                if not serialized_response_model
+                else None,
+                serialized_response_model=serialized_response_model,
+                response_str=response,
+                model=model,
+            ),
+        )
+
+        # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
+        # Convert dict back to the proper model instance if needed
+        if isinstance(structured_response, dict):
+            structured_response = response_model.model_validate(structured_response)
+
+        return structured_response
+
+
+class OllamaCompletionTasks:
+    @staticmethod
+    @workflow_task
+    async def request_structured_completion_task(
+        request: RequestStructuredCompletionRequest,
+    ) -> ModelT:
+        """
+        Request a structured completion using Instructor's OpenAI API.
+        """
+        import instructor
+
+        if request.response_model:
+            response_model = request.response_model
+        elif request.serialized_response_model:
+            response_model = deserialize_model(request.serialized_response_model)
+        else:
+            raise ValueError(
+                "Either response_model or serialized_response_model must be provided for structured completion."
+            )
+
         # Next we pass the text through instructor to extract structured data
         client = instructor.from_openai(
             OpenAI(
-                api_key=self.context.config.openai.api_key,
-                base_url=self.context.config.openai.base_url,
+                api_key=request.config.api_key,
+                base_url=request.config.base_url,
+                http_client=request.config.http_client,
             ),
             mode=instructor.Mode.JSON,
         )
 
-        params = self.get_request_params(request_params)
-        model = await self.select_model(params)
-
         # Extract structured data from natural language
         structured_response = client.chat.completions.create(
-            model=model or "llama3.2:3b",
+            model=request.model,
             response_model=response_model,
             messages=[
-                {"role": "user", "content": response},
+                {"role": "user", "content": request.response_str},
             ],
         )
 

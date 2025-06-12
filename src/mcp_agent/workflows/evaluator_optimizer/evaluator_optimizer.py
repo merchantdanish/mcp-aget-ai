@@ -3,6 +3,8 @@ from enum import Enum
 from typing import Callable, List, Optional, Type, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
+from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME
+from mcp_agent.tracing.telemetry import get_tracer, record_attributes
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -14,7 +16,7 @@ from mcp_agent.agents.agent import Agent
 from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
-    from mcp_agent.context import Context
+    from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 
@@ -68,6 +70,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         self,
         optimizer: Agent | AugmentedLLM,
         evaluator: str | Agent | AugmentedLLM,
+        name: str | None = None,
         min_rating: QualityRating = QualityRating.GOOD,
         max_refinements: int = 3,
         llm_factory: Callable[[Agent], AugmentedLLM] | None = None,
@@ -87,10 +90,14 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
             max_refinements: Maximum refinement iterations
             llm_factory: Optional factory to create LLMs from agents
         """
-        super().__init__(context=context)
+        super().__init__(
+            name=name,
+            instruction="You are an evaluator-optimizer workflow that generates responses and evaluates them iteratively until they achieve a necessary quality criteria.",
+            context=context,
+        )
 
         # Set up the optimizer
-        self.name = optimizer.name
+        self.name = optimizer.name if not self.name else self.name
         self.llm_factory = llm_factory
         self.optimizer = optimizer
         self.evaluator = evaluator
@@ -100,7 +107,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                 raise ValueError("llm_factory is required when using an Agent")
 
             self.optimizer_llm = llm_factory(agent=optimizer)
-            self.aggregator = optimizer
+            self.agent = optimizer
             self.instruction = (
                 optimizer.instruction
                 if isinstance(optimizer.instruction, str)
@@ -109,7 +116,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
 
         elif isinstance(optimizer, AugmentedLLM):
             self.optimizer_llm = optimizer
-            self.aggregator = optimizer.aggregator
+            self.agent = optimizer.agent
             self.instruction = optimizer.instruction
 
         else:
@@ -153,103 +160,199 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ) -> List[MessageT]:
         """Generate an optimized response through evaluation-guided refinement"""
-        refinement_count = 0
-        response = None
-        best_response = None
-        best_rating = QualityRating.POOR
-        self.refinement_history = []
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.generate"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+            self._annotate_span_for_generation_message(span, message)
 
-        # Initial generation
-        async with contextlib.AsyncExitStack() as stack:
-            if isinstance(self.optimizer, Agent):
-                await stack.enter_async_context(self.optimizer)
-            response = await self.optimizer_llm.generate(
-                message=message,
-                request_params=request_params,
-            )
+            if self.context.tracing_enabled and request_params:
+                AugmentedLLM.annotate_span_with_request_params(span, request_params)
 
-        best_response = response
+            refinement_count = 0
+            response = None
+            best_response = None
+            best_rating = QualityRating.POOR
+            self.refinement_history = []
 
-        while refinement_count < self.max_refinements:
-            logger.debug("Optimizer result:", data=response)
-
-            # Evaluate current response
-            eval_prompt = self._build_eval_prompt(
-                original_request=str(message),
-                current_response="\n".join(str(r) for r in response)
-                if isinstance(response, list)
-                else str(response),
-                iteration=refinement_count,
-            )
-
-            evaluation_result = None
-            async with contextlib.AsyncExitStack() as stack:
-                if isinstance(self.evaluator, Agent):
-                    await stack.enter_async_context(self.evaluator)
-
-                evaluation_result = await self.evaluator_llm.generate_structured(
-                    message=eval_prompt,
-                    response_model=EvaluationResult,
-                    request_params=request_params,
-                )
-
-            # Track iteration
-            self.refinement_history.append(
-                {
-                    "attempt": refinement_count + 1,
-                    "response": response,
-                    "evaluation_result": evaluation_result,
-                }
-            )
-
-            logger.debug("Evaluator result:", data=evaluation_result)
-
-            # Track best response (using enum ordering)
-            if evaluation_result.rating.value > best_rating.value:
-                best_rating = evaluation_result.rating
-                best_response = response
-                logger.debug(
-                    "New best response:",
-                    data={"rating": best_rating, "response": best_response},
-                )
-
-            # Check if we've reached acceptable quality
-            if (
-                evaluation_result.rating.value >= self.min_rating.value
-                or not evaluation_result.needs_improvement
-            ):
-                logger.debug(
-                    f"Acceptable quality {evaluation_result.rating.value} reached",
-                    data={
-                        "rating": evaluation_result.rating.value,
-                        "needs_improvement": evaluation_result.needs_improvement,
-                        "min_rating": self.min_rating.value,
-                    },
-                )
-                break
-
-            # Generate refined response
-            refinement_prompt = self._build_refinement_prompt(
-                original_request=str(message),
-                current_response="\n".join(str(r) for r in response)
-                if isinstance(response, list)
-                else str(response),
-                feedback=evaluation_result,
-                iteration=refinement_count,
-            )
-
+            # Initial generation
             async with contextlib.AsyncExitStack() as stack:
                 if isinstance(self.optimizer, Agent):
                     await stack.enter_async_context(self.optimizer)
-
                 response = await self.optimizer_llm.generate(
-                    message=refinement_prompt,
+                    message=message,
                     request_params=request_params,
                 )
 
-            refinement_count += 1
+            best_response = response
+            if (
+                self.context.tracing_enabled
+                and isinstance(response, list)
+                and len(response) > 0
+            ):
+                for i, msg in enumerate(response):
+                    record_attributes(
+                        span,
+                        self.optimizer_llm.extract_response_message_attributes_for_tracing(
+                            msg
+                        ),
+                        f"initial_response.message.{i}",
+                    )
 
-        return best_response
+            while refinement_count < self.max_refinements:
+                logger.debug("Optimizer result:", data=response)
+
+                # Evaluate current response
+                eval_prompt = self._build_eval_prompt(
+                    original_request=str(message),
+                    current_response="\n".join(str(r) for r in response)
+                    if isinstance(response, list)
+                    else str(response),
+                    iteration=refinement_count,
+                )
+
+                evaluation_result = None
+                async with contextlib.AsyncExitStack() as stack:
+                    if isinstance(self.evaluator, Agent):
+                        await stack.enter_async_context(self.evaluator)
+
+                    evaluation_result = await self.evaluator_llm.generate_structured(
+                        message=eval_prompt,
+                        response_model=EvaluationResult,
+                        request_params=request_params,
+                    )
+
+                # Track iteration
+                self.refinement_history.append(
+                    {
+                        "attempt": refinement_count + 1,
+                        "response": response,
+                        "evaluation_result": evaluation_result,
+                    }
+                )
+
+                if self.context.tracing_enabled:
+                    eval_response_attributes = {}
+                    if isinstance(response, list):
+                        for i, msg in enumerate(response):
+                            eval_response_attributes.update(
+                                self.evaluator_llm.extract_response_message_attributes_for_tracing(
+                                    msg, f"response.message.{i}"
+                                )
+                            )
+
+                    span.add_event(
+                        f"refinement.{refinement_count}.evaluation_result",
+                        {
+                            "attempt": refinement_count + 1,
+                            "rating": evaluation_result.rating,
+                            "feedback": evaluation_result.feedback,
+                            "needs_improvement": evaluation_result.needs_improvement,
+                            "focus_areas": evaluation_result.focus_areas,
+                            **eval_response_attributes,
+                        },
+                    )
+
+                logger.debug("Evaluator result:", data=evaluation_result)
+
+                # Track best response (using enum ordering)
+                if evaluation_result.rating.value > best_rating.value:
+                    best_rating = evaluation_result.rating
+                    best_response = response
+                    logger.debug(
+                        "New best response:",
+                        data={"rating": best_rating, "response": best_response},
+                    )
+                    span.add_event(
+                        "new_best_response",
+                        {
+                            "rating": best_rating,
+                            "refinement": refinement_count,
+                        },
+                    )
+
+                # Check if we've reached acceptable quality
+                if (
+                    evaluation_result.rating.value >= self.min_rating.value
+                    or not evaluation_result.needs_improvement
+                ):
+                    logger.debug(
+                        f"Acceptable quality {evaluation_result.rating.value} reached",
+                        data={
+                            "rating": evaluation_result.rating.value,
+                            "needs_improvement": evaluation_result.needs_improvement,
+                            "min_rating": self.min_rating.value,
+                        },
+                    )
+                    span.add_event(
+                        "acceptable_quality_reached",
+                        {
+                            "rating": evaluation_result.rating.value,
+                            "needs_improvement": evaluation_result.needs_improvement,
+                            "min_rating": self.min_rating.value,
+                            "refinement": refinement_count,
+                        },
+                    )
+                    break
+
+                # Generate refined response
+                refinement_prompt = self._build_refinement_prompt(
+                    original_request=str(message),
+                    current_response="\n".join(str(r) for r in response)
+                    if isinstance(response, list)
+                    else str(response),
+                    feedback=evaluation_result,
+                    iteration=refinement_count,
+                )
+
+                async with contextlib.AsyncExitStack() as stack:
+                    if isinstance(self.optimizer, Agent):
+                        await stack.enter_async_context(self.optimizer)
+
+                    response = await self.optimizer_llm.generate(
+                        message=refinement_prompt,
+                        request_params=request_params,
+                    )
+
+                if self.context.tracing_enabled:
+                    optimizer_response_attributes = {}
+                    if isinstance(response, list):
+                        for i, msg in enumerate(response):
+                            optimizer_response_attributes.update(
+                                self.optimizer_llm.extract_response_message_attributes_for_tracing(
+                                    msg, f"response.message.{i}"
+                                )
+                            )
+
+                    span.add_event(
+                        f"refinement.{refinement_count}.optimizer_response",
+                        {
+                            **optimizer_response_attributes,
+                        },
+                    )
+
+                refinement_count += 1
+
+            if (
+                self.context.tracing_enabled
+                and isinstance(best_response, list)
+                and len(best_response) > 0
+            ):
+                response_attributes = {}
+                for i, msg in enumerate(best_response):
+                    response_attributes.update(
+                        self.optimizer_llm.extract_response_message_attributes_for_tracing(
+                            msg, f"best_response.message.{i}"
+                        )
+                    )
+                record_attributes(
+                    span,
+                    response_attributes,
+                    "best_response",
+                )
+
+            return best_response
 
     async def generate_str(
         self,
@@ -257,12 +360,24 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ) -> str:
         """Generate an optimized response and return it as a string"""
-        response = await self.generate(
-            message=message,
-            request_params=request_params,
-        )
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.generate_str"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+            self._annotate_span_for_generation_message(span, message)
 
-        return "\n".join(self.optimizer_llm.message_str(r) for r in response)
+            if self.context.tracing_enabled and request_params:
+                AugmentedLLM.annotate_span_with_request_params(span, request_params)
+
+            response = await self.generate(
+                message=message,
+                request_params=request_params,
+            )
+
+            res = "\n".join(self.optimizer_llm.message_str(r) for r in response)
+            span.set_attribute("response", res)
+            return res
 
     async def generate_structured(
         self,
@@ -271,15 +386,41 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         request_params: RequestParams | None = None,
     ) -> ModelT:
         """Generate an optimized structured response"""
-        response_str = await self.generate_str(
-            message=message, request_params=request_params
-        )
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.{self.name}.generate_structured"
+        ) as span:
+            span.set_attribute(GEN_AI_AGENT_NAME, self.agent.name)
+            self._annotate_span_for_generation_message(span, message)
 
-        return await self.optimizer.generate_structured(
-            message=response_str,
-            response_model=response_model,
-            request_params=request_params,
-        )
+            if self.context.tracing_enabled and request_params:
+                AugmentedLLM.annotate_span_with_request_params(span, request_params)
+
+            span.set_attribute(
+                "response_model",
+                f"{response_model.__module__}.{response_model.__name__}",
+            )
+
+            response_str = await self.generate_str(
+                message=message, request_params=request_params
+            )
+
+            res = await self.optimizer_llm.generate_structured(
+                message=response_str,
+                response_model=response_model,
+                request_params=request_params,
+            )
+
+            if self.context.tracing_enabled:
+                try:
+                    span.set_attribute(
+                        "structured_response_json", res.model_dump_json()
+                    )
+                # pylint: disable=broad-exception-caught
+                except Exception:
+                    span.set_attribute("unstructured_response", response_str)
+
+            return res
 
     def _build_eval_prompt(
         self, original_request: str, current_response: str, iteration: int
