@@ -74,3 +74,16 @@ def is_binary_content(mime_type: str) -> bool:
 def is_image_mime_type(mime_type: str) -> bool:
     """Check if a MIME type represents an image."""
     return mime_type.startswith("image/") and mime_type != "image/svg+xml"
+
+
+def image_url_to_mime_and_base64(image_url: str) -> tuple[str, str]:
+    """
+    Extract mime type and base64 data from ImageUrl
+    """
+    import re
+
+    match = re.match(r"data:(image/[\w.+-]+);base64,(.*)", image_url)
+    if not match:
+        raise ValueError(f"Invalid image data URI: {image_url[:30]}...")
+    mime_type, base64_data = match.groups()
+    return mime_type, base64_data
