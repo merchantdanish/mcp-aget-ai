@@ -168,6 +168,8 @@ class Agent(BaseModel):
             if llm:
                 self.llm = llm
                 llm.agent = self
+                if not llm.instruction:
+                    llm.instruction = self.instruction
             elif llm_factory:
                 self.llm = llm_factory(agent=self)
             else:
