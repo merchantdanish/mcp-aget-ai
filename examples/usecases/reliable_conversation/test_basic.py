@@ -403,7 +403,9 @@ async def test_fallback_behavior():
                 word in response
                 for word in ["mock", "test", "fallback", "technical difficulties"]
             )
-            assert is_fallback, f"Should indicate fallback behavior. Got: {result.value['response'][:200]}"
+            assert is_fallback, (
+                f"Should indicate fallback behavior. Got: {result.value['response'][:200]}"
+            )
 
             print("✓ Fallback behavior verified")
             return True

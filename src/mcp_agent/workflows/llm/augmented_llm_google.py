@@ -29,6 +29,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
     CallToolResult,
 )
+from mcp_agent.workflows.llm.multipart_converter_google import GoogleConverter
 
 
 class GoogleAugmentedLLM(
@@ -84,14 +85,7 @@ class GoogleAugmentedLLM(
         if params.use_history:
             messages.extend(self.history.get())
 
-        if isinstance(message, str):
-            messages.append(
-                types.Content(role="user", parts=[types.Part.from_text(text=message)])
-            )
-        elif isinstance(message, list):
-            messages.extend(message)
-        else:
-            messages.append(message)
+        messages.extend(GoogleConverter.convert_mixed_messages_to_google(message))
 
         response = await self.agent.list_tools()
 
@@ -514,7 +508,7 @@ def transform_mcp_tool_schema(schema: dict) -> dict:
 
     Key transformations:
     1. Convert camelCase properties to snake_case (e.g., maxLength -> max_length)
-    2. Remove explicitly excluded fields (e.g., "default")
+    2. Remove explicitly excluded fields (e.g., "default", "additionalProperties")
     3. Recursively process nested structures (properties, items, anyOf)
     4. Handle nullable types by setting nullable=true when anyOf includes type:"null"
     5. Remove unsupported format values based on data type
@@ -539,7 +533,8 @@ def transform_mcp_tool_schema(schema: dict) -> dict:
 
     # Properties to exclude even if they would otherwise be supported
     # 'default' is excluded because Google throws error if included.
-    EXCLUDED_PROPERTIES = {"default"}
+    # 'additionalProperties' is excluded because Google throws an "Unknown name" error.
+    EXCLUDED_PROPERTIES = {"default", "additionalProperties"}
 
     # Special case mappings for camelCase to snake_case conversions
     CAMEL_TO_SNAKE_MAPPINGS = {
