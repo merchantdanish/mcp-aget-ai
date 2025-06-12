@@ -11,7 +11,7 @@ Clone the repo and navigate to the third-party tools example:
 
 ```bash
 git clone https://github.com/lastmile-ai/mcp-agent.git
-cd mcp-agent/examples/third_party_tools_example
+cd mcp-agent/examples/langchain
 ```
 
 Install `uv` (if you don't have it):
