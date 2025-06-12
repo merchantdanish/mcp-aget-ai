@@ -15,28 +15,23 @@ https://github.com/user-attachments/assets/d6049e1b-1afc-4f5d-bebf-ed9aece9acfc
 This approach ensures high-quality reports by focusing on data verification before proceeding with analysis. The Research Agent and Research Evaluator iterate until the EvaluatorOptimizer determines the data meets quality requirements.
 
 ```plaintext
-┌─────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│             │      │                 │      │                 │
-│ Orchestrator│─────▶ Research Quality │──────▶  Research Agent ◀── ┐
-│             │      │   Controller    │      │                 │   │
-└─────────────┘      └─────────────────┘      └─────────────────┘   │
-       │                                                │           │
-       │                                                │           │
-       │                                                ▼           │
-       │                                       ┌──────────────────┐ │
-       │                                       │                  │ │
-       │                                       │Research Evaluator ─┘
-       │                                       │     Agent        │
-       │                                       └──────────────────┘
+┌──────────────┐      ┌──────────────────┐      ┌────────────────────┐
+│ Orchestrator │─────▶│ Research Quality │─────▶│      Research      │◀─┐
+│   Workflow   │      │    Controller    │      │        Agent       │  │
+└──────────────┘      └──────────────────┘      └────────────────────┘  │
+       │                                                   │            │
+       │                                                   │            │
+       │                                                   ▼            │
+       │                                        ┌────────────────────┐  │
+       │                                        │ Research Evaluator ├──┘
+       │                                        │        Agent       │
+       │                                        └────────────────────┘
        │             ┌─────────────────┐
-       │             │                 │
        └────────────▶│  Analyst Agent  │
-       │             │                 │
        │             └─────────────────┘
        │             ┌─────────────────┐
-       │             │                 │
-       └────────────▶│ Report Writer   │
-                     │     Agent       │
+       └────────────▶│  Report Writer  │
+                     │      Agent      │
                      └─────────────────┘
 ```
 
@@ -49,13 +44,24 @@ git clone https://github.com/lastmile-ai/mcp-agent.git
 cd mcp-agent/examples/usecases/mcp_financial_analyzer
 ```
 
-Install the UV tool (if you don't have it) to manage dependencies:
+Install `uv` (if you don’t have it):
 
 ```bash
 pip install uv
-# inside the example:
+```
+
+Sync `mcp-agent` project dependencies:
+
+```bash
+uv sync
+```
+
+Install requirements specific to this example:
+
+```bash
 uv pip install -r requirements.txt
 ```
+
 Install the g-search-mcp server (from https://github.com/jae-jae/g-search-mcp):
 
 ```bash
@@ -90,4 +96,3 @@ Or run with a different company:
 ```bash
 uv run main.py "Microsoft"
 ```
-

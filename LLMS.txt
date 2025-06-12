@@ -924,24 +924,6 @@ async def main():
             print(result)
 ```
 
-### Decorator Style Agent
-
-```python
-from mcp_agent.core.decorator_app import MCPAgentDecorator
-
-agent_app = MCPAgentDecorator("my-app")
-
-@agent_app.agent(
-    name="basic_agent",
-    instruction="A simple agent that helps with basic tasks",
-    servers=["filesystem"]
-)
-async def main():
-    async with agent_app.run() as agent:
-        result = await agent.send("basic_agent", "What files are here?")
-        print(result)
-```
-
 ### Router-Based Workflow
 
 ```python
@@ -1776,67 +1758,6 @@ Provides both global fallback and instance-specific context support.
 - **Parameters**
   - `self`
   - `context` ('Context')
-
-### src/mcp_agent/core/decorator_app.py
-
-**Module Description**: Decorator-based interface for MCP Agent applications. Provides a simplified way to create and manage agents using decorators.
-
-**Class: `MCPAgentDecorator`**
-- **Description**: A decorator-based interface for MCP Agent applications.
-Provides a simplified way to create and manage agents using decorators.
-
-**Class: `AgentAppWrapper`**
-- **Description**: Wrapper class providing a simplified interface to the agent application.
-
-**Function:** `MCPAgentDecorator.__init__(self, name: str, config_path: Optional[str] = None)`
-
-- **Description**: Initialize the decorator interface. Args: name: Name of the application config_path: Optional path to config file
-- **Parameters**
-  - `self`
-  - `name` (str): Name of the application
-  - `config_path` (Optional[str], optional): Optional path to config file
-
-**Function:** `MCPAgentDecorator._load_config(self)`
-
-- **Description**: Load configuration, properly handling YAML without dotenv processing
-- **Parameters**
-  - `self`
-
-**Function:** `MCPAgentDecorator.agent(self, name: str, instruction: str, servers: List[str]) -> Callable`
-
-- **Description**: Decorator to create and register an agent. Args: name: Name of the agent instruction: Base instruction for the agent servers: List of server names the agent should connect to
-- **Parameters**
-  - `self`
-  - `name` (str): Name of the agent
-  - `instruction` (str): Base instruction for the agent
-  - `servers` (List[str]): List of server names the agent should connect to
-- **Returns**
-  - `Callable`: Return value
-
-**Function:** `MCPAgentDecorator.decorator(func: Callable) -> Callable`
-
-
-**Function:** `MCPAgentDecorator.wrapper()`
-
-
-**Function:** `MCPAgentDecorator.run(self)`
-
-- **Description**: Context manager for running the application. Handles setup and teardown of the app and agents.
-- **Parameters**
-  - `self`
-
-**Function:** `AgentAppWrapper.__init__(self, app: MCPApp, agents: Dict[str, Agent])`
-
-
-**Function:** `AgentAppWrapper.send(self, agent_name: str, message: str) -> Any`
-
-- **Description**: Send a message to a specific agent and get the response. Args: agent_name: Name of the agent to send message to message: Message to send Returns: Agent's response
-- **Parameters**
-  - `self`
-  - `agent_name` (str): Name of the agent to send message to
-  - `message` (str): Message to send
-- **Returns**
-  - `Any`: Agent's response
 
 ### src/mcp_agent/core/exceptions.py
 

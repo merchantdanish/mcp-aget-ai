@@ -25,13 +25,22 @@ git clone https://github.com/lastmile-ai/mcp-agent.git
 cd mcp-agent/examples/usecases/mcp_browser_agent
 ```
 
-Install the UV tool (if you don’t have it) to manage dependencies:
+Install `uv` (if you don’t have it):
 
 ```bash
 pip install uv
+```
 
-# inside the example:
-uv pip install .
+Sync `mcp-agent` project dependencies:
+
+```bash
+uv sync
+```
+
+Install requirements specific to this example:
+
+```bash
+uv pip install -r requirements.txt
 ```
 
 Make sure Node.js and npm are installed:
@@ -68,7 +77,6 @@ uv run console_agent.py [URL]
 - "Navigate to the pricing page"
 - "Extract the main headings from this article"
 - "Take a screenshot of the current page"
-  <<<<<<< HEAD
 
 ## How It Works
 
@@ -88,5 +96,4 @@ The app maintains a continuous browser session, allowing you to:
 
 - Make sure Node.js and npm are properly installed
 - Check that your OpenAI API key is correctly configured in `mcp_agent.secrets.yaml`
-- # If you encounter issues with the Puppeteer server, ensure you have a compatible browser installed
-  > > > > > > > main
+- If you encounter issues with the Puppeteer server, ensure you have a compatible browser installed
