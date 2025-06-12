@@ -1,4 +1,11 @@
-# mime_utils.py
+"""
+Utilities for MIME type detection and content type classification.
+
+This module provides functions to:
+- Guess MIME types from file extensions
+- Classify content as text, binary, or image based on MIME type
+- Handle special cases for text-based formats that don't use 'text/' prefix
+"""
 
 import mimetypes
 

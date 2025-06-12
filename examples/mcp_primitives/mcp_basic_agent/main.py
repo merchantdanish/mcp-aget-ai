@@ -67,7 +67,7 @@ async def example_usage():
                 prompt_name="echo",
                 arguments={"message": "My name is John Doe."},
                 resource_uris="demo://docs/readme",
-                server_name="demo_server",
+                server_names=["demo_server"],
             )
 
             llm = await agent.attach_llm(OpenAIAugmentedLLM)

@@ -712,7 +712,7 @@ class MCPAggregator(ContextDependent):
                 span.set_attribute("server_name", server_name)
             else:
                 # Use the URI to find the server name
-                server_name = self._find_server_name_from_uri(uri)
+                server_name, _ = self._parse_capability_name(uri, "resource")
                 span.set_attribute("parsed_server_name", server_name)
 
             if server_name is None:
@@ -1135,18 +1135,19 @@ class MCPAggregator(ContextDependent):
             return result
 
     def _parse_capability_name(
-        self, name: str, capability: Literal["tool", "prompt"]
+        self, name: str, capability: Literal["tool", "prompt", "resource"]
     ) -> tuple[str, str]:
         """
         Parse a capability name into server name and local capability name.
 
         Args:
-            name: The tool or prompt name, possibly namespaced
-            capability: The type of capability, either 'tool' or 'prompt'
+            name: The tool, prompt, or resource URI, possibly namespaced
+            capability: The type of capability, either 'tool', 'prompt', or 'resource'
 
         Returns:
             Tuple of (server_name, local_name)
         """
+
         # First check if this is a namespaced name with a valid server prefix
         if SEP in name:
             parts = name.split(SEP)
@@ -1168,6 +1169,11 @@ class MCPAggregator(ContextDependent):
 
             def getter(item: NamespacedPrompt):
                 return item.prompt.name
+        elif capability == "resource":
+            capability_map = self._server_to_resource_map
+
+            def getter(item: NamespacedResource):
+                return str(item.resource.uri)
         else:
             raise ValueError(f"Unsupported capability: {capability}")
 
@@ -1180,29 +1186,6 @@ class MCPAggregator(ContextDependent):
 
         # No match found
         return None, None
-
-    def _find_server_name_from_uri(self, uri: str) -> str:
-        """
-        Find the server name from a resource URI.
-
-        Args:
-            uri: The URI of the resource.
-
-        Returns:
-            Server name if found, None otherwise
-        """
-        capability_map = self._server_to_resource_map
-
-        def getter(item: NamespacedResource):
-            return str(item.resource.uri)
-
-        for server_name, resources in capability_map.items():
-            for resource in resources:
-                if uri == getter(resource):
-                    return server_name
-
-        # No match found
-        return None
 
     async def _start_server(self, server_name: str):
         if self.connection_persistence:
