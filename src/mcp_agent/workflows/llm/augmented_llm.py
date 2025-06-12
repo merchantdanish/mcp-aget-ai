@@ -157,6 +157,12 @@ class RequestParams(CreateMessageRequestParams):
     The likelihood of the model selecting higher-probability options while generating a response.
     """
 
+    user: str | None = None
+    """
+    The user to use for the LLM generation.
+    This is used to stable identify the user in the LLM provider's logs.
+    """
+
 
 class AugmentedLLMProtocol(Protocol, Generic[MessageParamT, MessageT]):
     """Protocol defining the interface for augmented LLMs"""

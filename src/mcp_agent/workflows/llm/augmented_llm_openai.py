@@ -883,6 +883,9 @@ class OpenAICompletionTasks:
                 http_client=request.config.http_client
                 if hasattr(request.config, "http_client")
                 else None,
+                default_headers=request.config.default_headers
+                if hasattr(request.config, "default_headers")
+                else None
             ),
             mode=instructor.Mode.TOOLS_STRICT,
         )
@@ -905,6 +908,9 @@ class OpenAICompletionTasks:
                     http_client=request.config.http_client
                     if hasattr(request.config, "http_client")
                     else None,
+                    default_headers=request.config.default_headers
+                    if hasattr(request.config, "default_headers")
+                    else None
                 ),
                 mode=instructor.Mode.JSON,
             )
