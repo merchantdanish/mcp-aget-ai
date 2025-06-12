@@ -250,6 +250,9 @@ class Agent(BaseModel):
                 self._server_to_prompt_map.clear()
                 self._server_to_prompt_map.update(result.server_to_prompt_map)
 
+                self._namespaced_resource_map.clear()
+                self._namespaced_resource_map.update(result.namespaced_resource_map)
+
                 self._server_to_resource_map.clear()
                 self._server_to_resource_map.update(result.server_to_resource_map)
 

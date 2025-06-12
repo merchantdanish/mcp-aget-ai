@@ -694,7 +694,9 @@ class MCPAggregator(ContextDependent):
 
             return result
 
-    async def read_resource(self, uri: str, server_name: str | None = None):
+    async def read_resource(
+        self, uri: str, server_name: str | None = None
+    ) -> ReadResourceResult:
         """
         Read a resource from a server by its URI.
 
