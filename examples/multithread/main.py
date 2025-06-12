@@ -27,7 +27,6 @@ async def run() -> str:
             2. The story can be no longer than 150 words.
             """,
             server_names=[],
-            connection_persistence=False,
         )
         evaluator = Agent(
             name="evaluator",
@@ -45,7 +44,6 @@ async def run() -> str:
             - Include concrete feedback about script length expressed in number of words. This is very important!
             """,
             server_names=["word_count"],
-            connection_persistence=False,
         )
 
         evaluator_optimizer = EvaluatorOptimizerLLM(
@@ -90,8 +88,8 @@ def generate_step():
                 )
 
             # # Give subprocess transports time to cleanup
-            # loop.run_until_complete(asyncio.sleep(0.1))
-            loop.close()
+            loop.run_until_complete(asyncio.sleep(0.1))
+            # loop.close()
 
         except Exception as cleanup_error:
             logger.warning(f"Error during cleanup: {cleanup_error}")
