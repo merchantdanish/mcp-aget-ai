@@ -160,7 +160,7 @@ class RequestParams(CreateMessageRequestParams):
     user: str | None = None
     """
     The user to use for the LLM generation.
-    This is used to stable identify the user in the LLM provider's logs.
+    This is used to stably identify the user in the LLM provider's logs.
     """
 
 

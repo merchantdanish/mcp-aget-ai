@@ -641,3 +641,53 @@ class TestOpenAIAugmentedLLM:
         assert isinstance(result, TestResponseModel)
         assert result.name == "MixedTypes"
         assert result.value == 123
+
+    # Test: OpenAIAugmentedLLM with default_request_params set with a user
+    @pytest.mark.asyncio
+    async def test_default_request_params_with_user(self, mock_llm, default_usage):
+        """
+        Tests OpenAIAugmentedLLM with default_request_params set with a user.
+        """
+        # Set default_request_params with a user
+        mock_llm.default_request_params.user = "test_user_id"
+
+        # Setup mock executor
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response(
+                "Response with user in default_request_params", usage=default_usage
+            )
+        )
+
+        # Call LLM
+        responses = await mock_llm.generate("Test query with user")
+
+        # Assertions
+        assert len(responses) == 1
+        assert responses[0].content == "Response with user in default_request_params"
+        # Check that the user field is present in the payload
+        request_obj = mock_llm.executor.execute.call_args[0][1]
+        assert request_obj.payload.get("user") == "test_user_id"
+
+    # Test: OpenAIAugmentedLLM with user set in OpenAI config
+    @pytest.mark.asyncio
+    async def test_user_in_openai_config(self, mock_llm, default_usage):
+        """
+        Tests OpenAIAugmentedLLM with user set in the OpenAI config.
+        """
+        # Set user in OpenAI config after mock_llm is created
+        mock_llm.context.config.openai.user = "config_user_id"
+        # Setup mock executor
+        mock_llm.executor.execute = AsyncMock(
+            return_value=self.create_text_response(
+                "Response with user in openai config", usage=default_usage
+            )
+        )
+        # Call LLM
+        responses = await mock_llm.generate("Test query with config user")
+        # Assertions
+        assert len(responses) == 1
+        assert responses[0].content == "Response with user in openai config"
+        # Check that the user field is present in the payload
+        request_obj = mock_llm.executor.execute.call_args[0][1]
+        assert request_obj.payload.get("user") == "config_user_id"
+
