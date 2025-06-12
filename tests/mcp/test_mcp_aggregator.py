@@ -229,6 +229,7 @@ async def test_mcp_aggregator_call_tool_persistent(monkeypatch):
     # Patch _parse_capability_name to always return ("srv1", "toolA")
     async def mock_parse(name, cap):
         return ("srv1", "toolA")
+
     aggregator._parse_capability_name = mock_parse
 
     # Mock persistent connection manager and client session
@@ -299,6 +300,7 @@ async def test_mcp_aggregator_call_tool_nonpersistent(monkeypatch):
     # Patch _parse_capability_name to always return ("srv1", "toolA")
     async def mock_parse_nonpersistent(name, cap):
         return ("srv1", "toolA")
+
     aggregator._parse_capability_name = mock_parse_nonpersistent
 
     # Patch the *server_registry* so the non-persistent path receives
@@ -327,6 +329,7 @@ async def test_mcp_aggregator_call_tool_errors(monkeypatch):
     # Patch _parse_capability_name to return (None, None)
     async def mock_parse_none(name, cap):
         return (None, None)
+
     aggregator._parse_capability_name = mock_parse_none
 
     result = await aggregator.call_tool("nonexistent_tool", arguments={})
@@ -337,6 +340,7 @@ async def test_mcp_aggregator_call_tool_errors(monkeypatch):
     # Patch _parse_capability_name to return a valid tool
     async def mock_parse_valid(name, cap):
         return ("srv1", "toolA")
+
     aggregator._parse_capability_name = mock_parse_valid
     tool = SimpleNamespace()
     tool.name = "toolA"
@@ -399,8 +403,10 @@ async def test_mcp_aggregator_get_prompt(monkeypatch):
             )
         ]
     }
+
     async def mock_parse_prompt(name, cap):
         return ("srv1", "promptA")
+
     aggregator._parse_capability_name = mock_parse_prompt
 
     class DummyClient:
@@ -434,6 +440,7 @@ async def test_mcp_aggregator_get_prompt(monkeypatch):
     # --- Prompt not found ---
     async def mock_parse_prompt_none(name, cap):
         return (None, None)
+
     aggregator._parse_capability_name = mock_parse_prompt_none
     result = await aggregator.get_prompt("notfound_prompt", arguments={})
     assert result.isError is True
@@ -442,6 +449,7 @@ async def test_mcp_aggregator_get_prompt(monkeypatch):
     # --- Exception during prompt fetch ---
     async def mock_parse_prompt_error(name, cap):
         return ("srv1", "promptA")
+
     aggregator._parse_capability_name = mock_parse_prompt_error
 
     class DummyClientError:
