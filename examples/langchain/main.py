@@ -1,5 +1,4 @@
 import asyncio
-import os
 import time
 from dotenv import load_dotenv
 
@@ -19,9 +18,7 @@ async def example_usage():
     async with app.run() as agent_app:
         logger = agent_app.logger
 
-        search_tool = GoogleSerperAPIWrapper(
-            serper_api_key=os.environ["SERPER_API_KEY"]
-        )
+        search_tool = GoogleSerperAPIWrapper()
 
         finder_agent = Agent(
             name="search_agent",
