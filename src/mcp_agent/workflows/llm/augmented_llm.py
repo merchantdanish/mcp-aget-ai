@@ -515,7 +515,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         """Convert an input message to a string representation."""
         return str(message)
 
-    def message_str(self, message: MessageT) -> str:
+    def message_str(self, message: MessageT, content_only: bool = False) -> str:
         """Convert an output message to a string representation."""
         return str(message)
 
