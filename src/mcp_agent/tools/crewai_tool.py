@@ -100,9 +100,9 @@ def _create_function_from_schema(
     fields = schema.model_fields
 
     # Create parameter specifications
-    params = []
+    required_params = []
+    optional_params = []
     annotations = {}
-    defaults = []
 
     for field_name, field_info in fields.items():
         # Extract type annotation
@@ -113,8 +113,8 @@ def _create_function_from_schema(
             field_info.default is not ...
             and field_info.default is not PydanticUndefined
         ):
-            defaults.append(field_info.default)
-            params.append(
+            # Optional parameter (has default)
+            optional_params.append(
                 inspect.Parameter(
                     field_name,
                     inspect.Parameter.POSITIONAL_OR_KEYWORD,
@@ -124,13 +124,16 @@ def _create_function_from_schema(
             )
         else:
             # Required parameter (no default)
-            params.append(
+            required_params.append(
                 inspect.Parameter(
                     field_name,
                     inspect.Parameter.POSITIONAL_OR_KEYWORD,
                     annotation=field_info.annotation,
                 )
             )
+
+    # Combine parameters: required first, then optional
+    params = required_params + optional_params
 
     # Create new signature
     sig = inspect.Signature(params)
