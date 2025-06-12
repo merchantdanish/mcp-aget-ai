@@ -34,7 +34,7 @@ async def example_usage():
                 message="Who is Singapore's current prime minister?",
             )
 
-            logger.info(f"weather: {result}")
+            logger.info(f"result: {result}")
 
 
 if __name__ == "__main__":
