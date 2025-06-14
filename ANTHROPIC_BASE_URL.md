@@ -53,6 +53,86 @@ The implementation ensures:
 2. The client initialization only includes the base_url parameter if it's provided
 3. Both synchronous and asynchronous clients are supported
 
+## Code Changes Required
+
+### 1. Update AnthropicSettings Class in `src/mcp_agent/config.py`
+
+```python
+class AnthropicSettings(BaseModel):
+    """
+    Settings for using Anthropic models in the MCP Agent application.
+    """
+
+    api_key: str | None = None
+    base_url: str | None = None  # Add this line
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+```
+
+### 2. Update Anthropic Client Initialization
+
+#### 2.1. In `src/mcp_agent/workflows/llm/augmented_llm_anthropic.py`
+
+Update the `request_completion_task` method:
+
+```python
+@staticmethod
+@workflow_task
+@telemetry.traced()
+async def request_completion_task(
+    request: RequestCompletionRequest,
+) -> Message:
+    """
+    Request a completion from Anthropic's API.
+    """
+
+    # Current code
+    # anthropic = Anthropic(api_key=request.config.api_key)
+
+    # Updated code
+    client_args = {"api_key": request.config.api_key}
+    if hasattr(request.config, "base_url") and request.config.base_url:
+        client_args["base_url"] = request.config.base_url
+    anthropic = Anthropic(**client_args)
+
+    payload = request.payload
+    response = anthropic.messages.create(**payload)
+    response = ensure_serializable(response)
+    return response
+```
+
+Also update the instructor client initialization:
+
+```python
+# Current code
+# client = instructor.from_anthropic(
+#     Anthropic(api_key=request.config.api_key),
+# )
+
+# Updated code
+client_args = {"api_key": request.config.api_key}
+if hasattr(request.config, "base_url") and request.config.base_url:
+    client_args["base_url"] = request.config.base_url
+client = instructor.from_anthropic(
+    Anthropic(**client_args),
+)
+```
+
+#### 2.2. In `src/mcp_agent/mcp/mcp_agent_client_session.py`
+
+Update the AsyncAnthropic client initialization:
+
+```python
+# Current code
+# client = AsyncAnthropic(api_key=config.anthropic.api_key)
+
+# Updated code
+client_args = {"api_key": config.anthropic.api_key}
+if hasattr(config.anthropic, "base_url") and config.anthropic.base_url:
+    client_args["base_url"] = config.anthropic.base_url
+client = AsyncAnthropic(**client_args)
+```
+
 ## Troubleshooting
 
 If you encounter issues with your custom base URL:
