@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, Type, cast
 from pydantic import BaseModel
 
 
-from openai import OpenAI, AsyncOpenAI
+from openai import AsyncOpenAI
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionContentPartParam,
@@ -838,7 +838,7 @@ class OpenAICompletionTasks:
         Request a completion from OpenAI's API.
         """
 
-        openai_client = OpenAI(
+        async_client = AsyncOpenAI(
             api_key=request.config.api_key,
             base_url=request.config.base_url,
             http_client=request.config.http_client
@@ -849,10 +849,14 @@ class OpenAICompletionTasks:
             else None,
         )
 
-        payload = request.payload
-        response = openai_client.chat.completions.create(**payload)
-        response = ensure_serializable(response)
-        return response
+        try:
+            payload = request.payload
+            response = await async_client.chat.completions.create(**payload)
+            response = ensure_serializable(response)
+            return response
+        finally:
+            # Ensure the client is properly closed
+            async_client.close()
 
     @staticmethod
     @workflow_task
@@ -876,48 +880,48 @@ class OpenAICompletionTasks:
             )
 
         # Next we pass the text through instructor to extract structured data
+        async_client = AsyncOpenAI(
+            api_key=request.config.api_key,
+            base_url=request.config.base_url,
+            http_client=request.config.http_client
+            if hasattr(request.config, "http_client")
+            else None,
+        )
+
         client = instructor.from_openai(
-            AsyncOpenAI(
-                api_key=request.config.api_key,
-                base_url=request.config.base_url,
-                http_client=request.config.http_client
-                if hasattr(request.config, "http_client")
-                else None,
-            ),
+            async_client,
             mode=instructor.Mode.TOOLS_STRICT,
         )
 
         try:
-            # Extract structured data from natural language
-            structured_response = await client.chat.completions.create(
-                model=request.model,
-                response_model=response_model,
-                messages=[
-                    {"role": "user", "content": request.response_str},
-                ],
-            )
-        except InstructorRetryException:
-            # Retry the request with JSON mode
-            client = instructor.from_openai(
-                AsyncOpenAI(
-                    api_key=request.config.api_key,
-                    base_url=request.config.base_url,
-                    http_client=request.config.http_client
-                    if hasattr(request.config, "http_client")
-                    else None,
-                ),
-                mode=instructor.Mode.JSON,
-            )
+            try:
+                # Extract structured data from natural language
+                structured_response = await client.chat.completions.create(
+                    model=request.model,
+                    response_model=response_model,
+                    messages=[
+                        {"role": "user", "content": request.response_str},
+                    ],
+                )
+            except InstructorRetryException:
+                # Retry the request with JSON mode
+                client = instructor.from_openai(
+                    async_client,
+                    mode=instructor.Mode.JSON,
+                )
 
-            structured_response = await client.chat.completions.create(
-                model=request.model,
-                response_model=response_model,
-                messages=[
-                    {"role": "user", "content": request.response_str},
-                ],
-            )
+                structured_response = await client.chat.completions.create(
+                    model=request.model,
+                    response_model=response_model,
+                    messages=[
+                        {"role": "user", "content": request.response_str},
+                    ],
+                )
 
-        return structured_response
+            return structured_response
+        finally:
+            # Ensure the async client is properly closed
+            await async_client.close()
 
 
 class MCPOpenAITypeConverter(

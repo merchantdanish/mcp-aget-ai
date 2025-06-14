@@ -31,6 +31,15 @@ class OpenAIEmbeddingModel(EmbeddingModel):
             "text-embedding-3-large": 3072,
         }[model]
 
+    def close(self):
+        """Close the OpenAI client and clean up resources."""
+        if hasattr(self, "client") and self.client:
+            self.client.close()
+
+    def __del__(self):
+        """Cleanup when the object is garbage collected."""
+        self.close()
+
     async def embed(self, data: List[str]) -> FloatArray:
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(f"{self.__class__.__name__}.embed") as span:
