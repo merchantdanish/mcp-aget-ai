@@ -167,23 +167,23 @@ class MCPAggregator(ContextDependent):
 
                 connection_manager: MCPConnectionManager | None = None
 
-                if not hasattr(self, "_mcp_connection_manager_lock"):
-                    self._mcp_connection_manager_lock = asyncio.Lock()
+                if not hasattr(self.context, "_mcp_connection_manager_lock"):
+                    self.context._mcp_connection_manager_lock = asyncio.Lock()
 
-                if not hasattr(self, "_mcp_connection_manager_ref_count"):
-                    self._mcp_connection_manager_ref_count = int(0)
+                if not hasattr(self.context, "_mcp_connection_manager_ref_count"):
+                    self.context._mcp_connection_manager_ref_count = int(0)
 
-                async with self._mcp_connection_manager_lock:
-                    self._mcp_connection_manager_ref_count += 1
+                async with self.context._mcp_connection_manager_lock:
+                    self.context._mcp_connection_manager_ref_count += 1
 
-                    if hasattr(self, "_mcp_connection_manager"):
-                        connection_manager = self._mcp_connection_manager
+                    if hasattr(self.context, "_mcp_connection_manager"):
+                        connection_manager = self.context._mcp_connection_manager
                     else:
                         connection_manager = MCPConnectionManager(
                             self.context.server_registry
                         )
                         await connection_manager.__aenter__()
-                        self._mcp_connection_manager = connection_manager
+                        self.context._mcp_connection_manager = connection_manager
 
                     self._persistent_connection_manager = connection_manager
 
@@ -211,13 +211,13 @@ class MCPAggregator(ContextDependent):
 
             try:
                 # We only need to manage reference counting if we're using connection persistence
-                if hasattr(self, "_mcp_connection_manager_lock") and hasattr(
-                    self, "_mcp_connection_manager_ref_count"
+                if hasattr(self.context, "_mcp_connection_manager_lock") and hasattr(
+                    self.context, "_mcp_connection_manager_ref_count"
                 ):
-                    async with self._mcp_connection_manager_lock:
+                    async with self.context._mcp_connection_manager_lock:
                         # Decrement the reference count
-                        self._mcp_connection_manager_ref_count -= 1
-                        current_count = self._mcp_connection_manager_ref_count
+                        self.context._mcp_connection_manager_ref_count -= 1
+                        current_count = self.context._mcp_connection_manager_ref_count
                         logger.debug(
                             f"Decremented connection ref count to {current_count}"
                         )
@@ -230,7 +230,7 @@ class MCPAggregator(ContextDependent):
 
                             if (
                                 hasattr(self.context, "_mcp_connection_manager")
-                                and self._mcp_connection_manager
+                                and self.context._mcp_connection_manager
                                 == self._persistent_connection_manager
                             ):
                                 # Add timeout protection for the disconnect operation
