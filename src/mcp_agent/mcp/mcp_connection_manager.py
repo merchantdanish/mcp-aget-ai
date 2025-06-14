@@ -12,8 +12,7 @@ from typing import (
 )
 
 import anyio
-import asyncio
-from anyio import create_task_group, Lock
+from anyio import Event, create_task_group, Lock
 from anyio.abc import TaskGroup
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
@@ -77,14 +76,10 @@ class ServerConnection:
         self._init_hook = init_hook
         self._transport_context_factory = transport_context_factory
         # Signal that session is fully up and initialized
-        self._is_initialized = False
+        self._initialized_event = Event()
 
         # Signal we want to shut down
-        self._shutdown_requested = False
-
-        # Use threading lock to protect flag updates (thread-safe, not event-loop bound)
-        import threading
-        self._flag_lock = threading.Lock()
+        self._shutdown_event = Event()
 
         # Track error state
         self._error: bool = False
@@ -99,38 +94,17 @@ class ServerConnection:
         self._error = False
         self._error_message = None
 
-    def _set_initialized(self):
-        """Mark the connection as initialized."""
-        with self._flag_lock:
-            self._is_initialized = True
-
-    def _set_shutdown_requested(self):
-        """Mark shutdown as requested."""
-        with self._flag_lock:
-            self._shutdown_requested = True
-
-    def _is_initialized_flag(self) -> bool:
-        """Check if initialization is complete."""
-        with self._flag_lock:
-            return self._is_initialized
-
-    def _is_shutdown_requested_flag(self) -> bool:
-        """Check if shutdown has been requested."""
-        with self._flag_lock:
-            return self._shutdown_requested
-
     def request_shutdown(self) -> None:
         """
         Request the server to shut down. Signals the server lifecycle task to exit.
         """
-        self._set_shutdown_requested()
+        self._shutdown_event.set()
 
     async def wait_for_shutdown_request(self) -> None:
         """
-        Wait until shutdown is requested.
+        Wait until the shutdown event is set.
         """
-        while not self._is_shutdown_requested_flag():
-            await asyncio.sleep(0.01)  # Poll every 10ms
+        await self._shutdown_event.wait()
 
     async def initialize_session(self) -> None:
         """
@@ -147,23 +121,13 @@ class ServerConnection:
             self._init_hook(self.session, self.server_config.auth)
 
         # Now the session is ready for use
-        self._set_initialized()
+        self._initialized_event.set()
 
     async def wait_for_initialized(self) -> None:
         """
         Wait until the session is fully initialized.
         """
-        timeout = 30  # 30 second timeout
-        elapsed = 0
-        while not self._is_initialized_flag() and not self._error:
-            await asyncio.sleep(0.01)  # Poll every 10ms
-            elapsed += 0.01
-            if elapsed > timeout:
-                raise TimeoutError(f"Timeout waiting for server '{self.server_name}' to initialize")
-        
-        # Check if initialization failed
-        if self._error:
-            raise RuntimeError(f"Server '{self.server_name}' failed to initialize: {self._error_message}")
+        await self._initialized_event.wait()
 
     def create_session(
         self,
@@ -244,9 +208,9 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
 
         server_conn._error = True
         server_conn._error_message = str(exc)
-        # If there's an error, we should also set the flag so that
+        # If there's an error, we should also set the event so that
         # 'get_server' won't hang
-        server_conn._set_initialized()
+        server_conn._initialized_event.set()
         # No raise - allow graceful exit
 
 
@@ -514,5 +478,10 @@ class MCPConnectionManager(ContextDependent):
         for name, conn in servers_to_shutdown:
             logger.info(f"{name}: Requesting shutdown...")
             conn.request_shutdown()
+
+        # Give subprocess transports time to properly shut down
+        if servers_to_shutdown:
+            logger.debug("Allowing time for subprocess transports to clean up...")
+            await anyio.sleep(0.2)
 
         logger.info("All persistent server connections signaled to disconnect.")
