@@ -1,5 +1,4 @@
 import asyncio
-import threading
 from typing import List, Literal, Dict, Optional, TypeVar, TYPE_CHECKING
 
 from opentelemetry import trace
@@ -130,19 +129,19 @@ class MCPAggregator(ContextDependent):
         self._namespaced_tool_map: Dict[str, NamespacedTool] = {}
         # Maps server_name -> list of tools
         self._server_to_tool_map: Dict[str, List[NamespacedTool]] = {}
-        self._tool_map_lock = threading.Lock()
+        self._tool_map_lock = asyncio.Lock()
 
         # Maps namespaced_prompt_name -> namespaced prompt info
         self._namespaced_prompt_map: Dict[str, NamespacedPrompt] = {}
         # Cache for prompt objects, maps server_name -> list of prompt objects
         self._server_to_prompt_map: Dict[str, List[NamespacedPrompt]] = {}
-        self._prompt_map_lock = threading.Lock()
+        self._prompt_map_lock = asyncio.Lock()
 
         # Maps namespaced_resource_name -> namespaced resource info
         self._namespaced_resource_map: Dict[str, NamespacedResource] = {}
         # Cache for resource objects, maps server_name -> list of resource objects
         self._server_to_resource_map: Dict[str, List[NamespacedResource]] = {}
-        self._resource_map_lock = threading.Lock()
+        self._resource_map_lock = asyncio.Lock()
 
     async def initialize(self, force: bool = False):
         """Initialize the application."""
@@ -168,23 +167,23 @@ class MCPAggregator(ContextDependent):
 
                 connection_manager: MCPConnectionManager | None = None
 
-                if not hasattr(self.context, "_mcp_connection_manager_lock"):
-                    self.context._mcp_connection_manager_lock = threading.Lock()
+                if not hasattr(self, "_mcp_connection_manager_lock"):
+                    self._mcp_connection_manager_lock = asyncio.Lock()
 
-                if not hasattr(self.context, "_mcp_connection_manager_ref_count"):
-                    self.context._mcp_connection_manager_ref_count = int(0)
+                if not hasattr(self, "_mcp_connection_manager_ref_count"):
+                    self._mcp_connection_manager_ref_count = int(0)
 
-                with self.context._mcp_connection_manager_lock:
-                    self.context._mcp_connection_manager_ref_count += 1
+                async with self._mcp_connection_manager_lock:
+                    self._mcp_connection_manager_ref_count += 1
 
-                    if hasattr(self.context, "_mcp_connection_manager"):
-                        connection_manager = self.context._mcp_connection_manager
+                    if hasattr(self, "_mcp_connection_manager"):
+                        connection_manager = self._mcp_connection_manager
                     else:
                         connection_manager = MCPConnectionManager(
                             self.context.server_registry
                         )
                         await connection_manager.__aenter__()
-                        self.context._mcp_connection_manager = connection_manager
+                        self._mcp_connection_manager = connection_manager
 
                     self._persistent_connection_manager = connection_manager
 
@@ -212,13 +211,13 @@ class MCPAggregator(ContextDependent):
 
             try:
                 # We only need to manage reference counting if we're using connection persistence
-                if hasattr(self.context, "_mcp_connection_manager_lock") and hasattr(
-                    self.context, "_mcp_connection_manager_ref_count"
+                if hasattr(self, "_mcp_connection_manager_lock") and hasattr(
+                    self, "_mcp_connection_manager_ref_count"
                 ):
-                    with self.context._mcp_connection_manager_lock:
+                    async with self._mcp_connection_manager_lock:
                         # Decrement the reference count
-                        self.context._mcp_connection_manager_ref_count -= 1
-                        current_count = self.context._mcp_connection_manager_ref_count
+                        self._mcp_connection_manager_ref_count -= 1
+                        current_count = self._mcp_connection_manager_ref_count
                         logger.debug(
                             f"Decremented connection ref count to {current_count}"
                         )
@@ -231,7 +230,7 @@ class MCPAggregator(ContextDependent):
 
                             if (
                                 hasattr(self.context, "_mcp_connection_manager")
-                                and self.context._mcp_connection_manager
+                                and self._mcp_connection_manager
                                 == self._persistent_connection_manager
                             ):
                                 # Add timeout protection for the disconnect operation
@@ -337,7 +336,7 @@ class MCPAggregator(ContextDependent):
             _, tools, prompts, resources = await self._fetch_capabilities(server_name)
 
             # Process tools
-            with self._tool_map_lock:
+            async with self._tool_map_lock:
                 self._server_to_tool_map[server_name] = []
                 for tool in tools:
                     namespaced_tool_name = f"{server_name}{SEP}{tool.name}"
@@ -351,7 +350,7 @@ class MCPAggregator(ContextDependent):
                     self._server_to_tool_map[server_name].append(namespaced_tool)
 
             # Process prompts
-            with self._prompt_map_lock:
+            async with self._prompt_map_lock:
                 self._server_to_prompt_map[server_name] = []
                 for prompt in prompts:
                     namespaced_prompt_name = f"{server_name}{SEP}{prompt.name}"
@@ -367,7 +366,7 @@ class MCPAggregator(ContextDependent):
                     self._server_to_prompt_map[server_name].append(namespaced_prompt)
 
             # Process resources
-            with self._resource_map_lock:
+            async with self._resource_map_lock:
                 self._server_to_resource_map[server_name] = []
                 for resource in resources:
                     namespaced_resource_name = f"{server_name}{SEP}{resource.name}"
@@ -438,15 +437,15 @@ class MCPAggregator(ContextDependent):
                 logger.debug("MCPAggregator already initialized. Skipping reload.")
                 return
 
-            with self._tool_map_lock:
+            async with self._tool_map_lock:
                 self._namespaced_tool_map.clear()
                 self._server_to_tool_map.clear()
 
-            with self._prompt_map_lock:
+            async with self._prompt_map_lock:
                 self._namespaced_prompt_map.clear()
                 self._server_to_prompt_map.clear()
 
-            with self._resource_map_lock:
+            async with self._resource_map_lock:
                 self._namespaced_resource_map.clear()
                 self._server_to_resource_map.clear()
 
@@ -631,7 +630,7 @@ class MCPAggregator(ContextDependent):
                     ]
                 )
             else:
-                with self._tool_map_lock:
+                async with self._tool_map_lock:
                     result = ListToolsResult(
                         tools=[
                             namespaced_tool.tool.model_copy(
@@ -679,7 +678,7 @@ class MCPAggregator(ContextDependent):
                 )
 
             else:
-                with self._resource_map_lock:
+                async with self._resource_map_lock:
                     result = ListResourcesResult(
                         resources=[
                             namespaced_resource.resource.model_copy(
@@ -968,7 +967,7 @@ class MCPAggregator(ContextDependent):
                     ]
                 )
             else:
-                with self._prompt_map_lock:
+                async with self._prompt_map_lock:
                     res = ListPromptsResult(
                         prompts=[
                             namespaced_prompt.prompt.model_copy(
@@ -1200,7 +1199,7 @@ class MCPAggregator(ContextDependent):
             raise ValueError(f"Unsupported capability: {capability}")
 
         # Search servers in the order of self.server_names
-        with lock:
+        async with lock:
             for srv_name in self.server_names:
                 items = capability_map.get(srv_name, [])
                 for item in items:
