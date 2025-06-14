@@ -178,7 +178,6 @@ class MCPApp:
             task_registry=self._task_registry,
             decorator_registry=self._decorator_registry,
             signal_registry=self._signal_registry,
-            store_globally=True,
         )
 
         # Set the properties that were passed in the constructor
