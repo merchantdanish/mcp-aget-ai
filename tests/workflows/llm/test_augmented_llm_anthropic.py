@@ -809,3 +809,121 @@ class TestAnthropicAugmentedLLM:
         assert isinstance(result, TestResponseModel)
         assert result.name == "MixedTypes"
         assert result.value == 123
+
+    # Test 25: Base URL Configuration
+    @pytest.mark.asyncio
+    async def test_base_url_configuration(self, default_usage):
+        """
+        Tests that base_url is properly passed to Anthropic client when configured.
+        """
+        # Test with base_url configured
+        mock_context_with_base_url = MagicMock()
+        mock_context_with_base_url.config.anthropic = AnthropicSettings(
+            api_key="test_key",
+            base_url="https://custom-endpoint.com/v1"
+        )
+        mock_context_with_base_url.config.default_model = "claude-3-7-sonnet-latest"
+
+        # Create LLM instance with base_url
+        llm_with_base_url = AnthropicAugmentedLLM(name="test", context=mock_context_with_base_url)
+        
+        # Setup common mocks
+        llm_with_base_url.agent = MagicMock()
+        llm_with_base_url.agent.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
+        llm_with_base_url.history = MagicMock()
+        llm_with_base_url.history.get = MagicMock(return_value=[])
+        llm_with_base_url.history.set = MagicMock()
+        llm_with_base_url.select_model = AsyncMock(return_value="claude-3-7-sonnet-latest")
+        llm_with_base_url._log_chat_progress = MagicMock()
+        llm_with_base_url._log_chat_finished = MagicMock()
+        llm_with_base_url.executor = MagicMock()
+        llm_with_base_url.executor.execute = AsyncMock(
+            return_value=self.create_text_message("Base URL test response", default_usage)
+        )
+
+        # Call LLM to trigger client creation
+        responses = await llm_with_base_url.generate("Test query with base URL")
+
+        # Assertions
+        assert len(responses) == 1
+        assert responses[0].content[0].text == "Base URL test response"
+        
+        # Verify the executor was called (which means client was created successfully)
+        assert llm_with_base_url.executor.execute.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_base_url_not_configured(self, default_usage):
+        """
+        Tests that LLM works normally when base_url is not configured (backward compatibility).
+        """
+        # Test without base_url (existing behavior)
+        mock_context_without_base_url = MagicMock()
+        mock_context_without_base_url.config.anthropic = AnthropicSettings(api_key="test_key")
+        mock_context_without_base_url.config.default_model = "claude-3-7-sonnet-latest"
+
+        # Create LLM instance without base_url
+        llm_without_base_url = AnthropicAugmentedLLM(name="test", context=mock_context_without_base_url)
+        
+        # Setup common mocks
+        llm_without_base_url.agent = MagicMock()
+        llm_without_base_url.agent.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
+        llm_without_base_url.history = MagicMock()
+        llm_without_base_url.history.get = MagicMock(return_value=[])
+        llm_without_base_url.history.set = MagicMock()
+        llm_without_base_url.select_model = AsyncMock(return_value="claude-3-7-sonnet-latest")
+        llm_without_base_url._log_chat_progress = MagicMock()
+        llm_without_base_url._log_chat_finished = MagicMock()
+        llm_without_base_url.executor = MagicMock()
+        llm_without_base_url.executor.execute = AsyncMock(
+            return_value=self.create_text_message("Standard test response", default_usage)
+        )
+
+        # Call LLM to trigger client creation
+        responses = await llm_without_base_url.generate("Test query without base URL")
+
+        # Assertions
+        assert len(responses) == 1
+        assert responses[0].content[0].text == "Standard test response"
+        
+        # Verify the executor was called (which means client was created successfully)
+        assert llm_without_base_url.executor.execute.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_base_url_empty_string(self, default_usage):
+        """
+        Tests that empty string base_url is treated as not configured.
+        """
+        # Test with empty string base_url
+        mock_context_empty_base_url = MagicMock()
+        mock_context_empty_base_url.config.anthropic = AnthropicSettings(
+            api_key="test_key",
+            base_url=""
+        )
+        mock_context_empty_base_url.config.default_model = "claude-3-7-sonnet-latest"
+
+        # Create LLM instance with empty base_url
+        llm_empty_base_url = AnthropicAugmentedLLM(name="test", context=mock_context_empty_base_url)
+        
+        # Setup common mocks
+        llm_empty_base_url.agent = MagicMock()
+        llm_empty_base_url.agent.list_tools = AsyncMock(return_value=MagicMock(tools=[]))
+        llm_empty_base_url.history = MagicMock()
+        llm_empty_base_url.history.get = MagicMock(return_value=[])
+        llm_empty_base_url.history.set = MagicMock()
+        llm_empty_base_url.select_model = AsyncMock(return_value="claude-3-7-sonnet-latest")
+        llm_empty_base_url._log_chat_progress = MagicMock()
+        llm_empty_base_url._log_chat_finished = MagicMock()
+        llm_empty_base_url.executor = MagicMock()
+        llm_empty_base_url.executor.execute = AsyncMock(
+            return_value=self.create_text_message("Empty base URL test response", default_usage)
+        )
+
+        # Call LLM to trigger client creation
+        responses = await llm_empty_base_url.generate("Test query with empty base URL")
+
+        # Assertions
+        assert len(responses) == 1
+        assert responses[0].content[0].text == "Empty base URL test response"
+        
+        # Verify the executor was called (which means client was created successfully)
+        assert llm_empty_base_url.executor.execute.call_count == 1

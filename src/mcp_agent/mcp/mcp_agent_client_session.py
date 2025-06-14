@@ -332,7 +332,10 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
             try:
                 from anthropic import AsyncAnthropic
 
-                client = AsyncAnthropic(api_key=config.anthropic.api_key)
+                client_args = {"api_key": config.anthropic.api_key}
+                if hasattr(config.anthropic, "base_url") and config.anthropic.base_url:
+                    client_args["base_url"] = config.anthropic.base_url
+                client = AsyncAnthropic(**client_args)
 
                 response = await client.messages.create(
                     model="claude-3-sonnet-20240229",

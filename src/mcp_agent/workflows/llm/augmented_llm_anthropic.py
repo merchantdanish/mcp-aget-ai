@@ -709,7 +709,10 @@ class AnthropicCompletionTasks:
         Request a completion from Anthropic's API.
         """
 
-        anthropic = Anthropic(api_key=request.config.api_key)
+        client_args = {"api_key": request.config.api_key}
+        if hasattr(request.config, "base_url") and request.config.base_url:
+            client_args["base_url"] = request.config.base_url
+        anthropic = Anthropic(**client_args)
 
         payload = request.payload
         response = anthropic.messages.create(**payload)
@@ -737,8 +740,11 @@ class AnthropicCompletionTasks:
             )
 
         # We pass the text through instructor to extract structured data
+        client_args = {"api_key": request.config.api_key}
+        if hasattr(request.config, "base_url") and request.config.base_url:
+            client_args["base_url"] = request.config.base_url
         client = instructor.from_anthropic(
-            Anthropic(api_key=request.config.api_key),
+            Anthropic(**client_args),
         )
 
         # Extract structured data from natural language
