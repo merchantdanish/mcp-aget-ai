@@ -2,7 +2,7 @@ from typing import Any, Iterable, List, Type, Union, cast
 
 from pydantic import BaseModel
 
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 from anthropic.types import (
     ContentBlock,
     DocumentBlockParam,
@@ -705,12 +705,15 @@ class AnthropicCompletionTasks:
         Request a completion from Anthropic's API.
         """
 
-        anthropic = Anthropic(api_key=request.config.api_key)
+        anthropic = AsyncAnthropic(api_key=request.config.api_key)
 
-        payload = request.payload
-        response = anthropic.messages.create(**payload)
-        response = ensure_serializable(response)
-        return response
+        try:
+            payload = request.payload
+            response = await anthropic.messages.create(**payload)
+            response = ensure_serializable(response)
+            return response
+        finally:
+            await anthropic.close()
 
     @staticmethod
     @workflow_task
@@ -732,20 +735,23 @@ class AnthropicCompletionTasks:
                 "Either response_model or serialized_response_model must be provided for structured completion."
             )
 
+        anthropic = AsyncAnthropic(api_key=request.config.api_key)
+
         # We pass the text through instructor to extract structured data
-        client = instructor.from_anthropic(
-            Anthropic(api_key=request.config.api_key),
-        )
+        client = instructor.from_anthropic(anthropic)
 
-        # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
-            model=request.model,
-            response_model=response_model,
-            messages=[{"role": "user", "content": request.response_str}],
-            max_tokens=request.params.maxTokens,
-        )
+        try:
+            # Extract structured data from natural language
+            structured_response = await client.chat.completions.create(
+                model=request.model,
+                response_model=response_model,
+                messages=[{"role": "user", "content": request.response_str}],
+                max_tokens=request.params.maxTokens,
+            )
 
-        return structured_response
+            return structured_response
+        finally:
+            await anthropic.close()
 
 
 class AnthropicMCPTypeConverter(ProviderToMCPConverter[MessageParam, Message]):

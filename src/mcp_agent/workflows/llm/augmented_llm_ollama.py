@@ -124,4 +124,4 @@ class OllamaCompletionTasks:
             return structured_response
         finally:
             # Ensure the client is properly closed
-            async_client.close()
+            await async_client.close()

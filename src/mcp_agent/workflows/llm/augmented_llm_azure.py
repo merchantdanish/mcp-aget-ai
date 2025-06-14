@@ -1,6 +1,6 @@
 import json
 from typing import Any, Iterable, Optional, Type, Union
-from azure.ai.inference import ChatCompletionsClient
+from azure.ai.inference.aio import ChatCompletionsClient
 from azure.ai.inference.models import (
     ChatCompletions,
     ChatResponseMessage,
@@ -513,9 +513,12 @@ class AzureCompletionTasks:
                 ),
             )
 
-        payload = request.payload
-        response = azure_client.complete(**payload)
-        return response
+        try:
+            payload = request.payload
+            response = await azure_client.complete(**payload)
+            return response
+        finally:
+            await azure_client.close()
 
 
 class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ResponseMessage]):
