@@ -151,6 +151,7 @@ async def main():
         handle = await executor.start_workflow(
             "RouterWorkflow",
             None,
+            workflow_id=f"task-routing-router-{executor.uuid()}",
         )
         a = await handle.result()
         print(a)

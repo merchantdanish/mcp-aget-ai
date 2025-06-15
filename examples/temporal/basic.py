@@ -61,6 +61,7 @@ async def main():
         handle = await executor.start_workflow(
             "SimpleWorkflow",
             "Print the first 2 paragraphs of https://modelcontextprotocol.io/introduction",
+            workflow_id=f"intro-fetcher-simple-{executor.uuid()}",
         )
         a = await handle.result()
         print(a)

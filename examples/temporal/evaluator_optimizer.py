@@ -111,6 +111,7 @@ async def main():
         handle = await executor.start_workflow(
             "EvaluatorOptimizerWorkflow",
             task,
+            workflow_id=f"cover-letter-evaluator-optimizer-{executor.uuid()}",
         )
         a = await handle.result()
         print(a)

@@ -20,6 +20,8 @@ from typing import (
     TYPE_CHECKING,
 )
 import inspect
+import uuid
+import warnings
 
 from pydantic import ConfigDict
 from temporalio import activity, workflow, exceptions
@@ -36,10 +38,11 @@ from mcp_agent.logging.logger import get_logger
 from mcp_agent.utils.common import unwrap
 
 if TYPE_CHECKING:
-    from mcp_agent.app import MCPApp
-    from mcp_agent.core.context import Context
     from random import Random
     from uuid import UUID
+
+    from mcp_agent.app import MCPApp
+    from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
 
@@ -267,28 +270,68 @@ class TemporalExecutor(Executor):
 
     async def start_workflow(
         self,
-        workflow_id: str,
+        workflow_class_name_or_id: str,
         *args: Any,
+        workflow_id: str = None,
         wait_for_result: bool = False,
         **kwargs: Any,
     ) -> WorkflowHandle:
         """
-        Starts a workflow with the given workflow ID and arguments.
+        Starts a workflow instance of the specified workflow class.
+
+        The workflow class is looked up from the registered workflows using the provided
+        class name. A unique workflow instance ID is either provided explicitly or 
+        auto-generated to identify this specific execution.
 
         Args:
-            workflow_id (str): Identifier of the workflow to be started.
-            *workflow_args: Positional arguments to pass to the workflow.
-            wait_for_result: Whether to wait for the workflow to complete and return the result.
-            **workflow_kwargs: Keyword arguments to pass to the workflow.
+            workflow_class_name_or_id (str): Name of the registered workflow class to start.
+                This is used to lookup the workflow class from app.workflows registry.
+                For backward compatibility: if workflow_id is None, this also serves as 
+                the basis for auto-generating the instance ID (deprecated pattern).
+            *args: Positional arguments to pass to the workflow's run() method.
+            workflow_id (str, optional): Unique identifier for this workflow instance.
+                If not provided, auto-generated as '{workflow_class_name}-{uuid4()}'.
+                Used for querying, signaling, and distinguishing this execution.
+            wait_for_result (bool): Whether to wait for the workflow to complete and return the result.
+            **kwargs: Keyword arguments to pass to the workflow's run() method.
 
         Returns:
-            If wait_for_result is True, returns the workflow result.
-            Otherwise, returns a WorkflowHandle for the started workflow.
+            WorkflowHandle: Handle for the started workflow instance.
+            If wait_for_result is True, returns the workflow result instead.
+
+        Example:
+            # New recommended pattern
+            handle = await executor.start_workflow(
+                "MyWorkflowClass", 
+                arg1, arg2,
+                workflow_id="my-unique-id-123"
+            )
+            
+            # Old pattern (deprecated, issues warning)
+            handle = await executor.start_workflow("MyWorkflowClass", arg1, arg2)
         """
         await self.ensure_client()
 
+        # Handle backward compatibility
+        if workflow_id is None:
+            # Old calling pattern: start_workflow("MyWorkflowClass", ...)
+            # where first arg was used as both class lookup and instance ID
+            warnings.warn(
+                "Using the first parameter as both workflow class name and instance ID is deprecated. "
+                "Please use start_workflow(workflow_class_name, ..., workflow_id='unique-id') instead. "
+                "A workflow ID will be auto-generated, but you should consider providing your own "
+                "for better traceability and to enable workflow queries/signals by ID.",
+                DeprecationWarning,
+                stacklevel=2
+            )
+            workflow_class_name = workflow_class_name_or_id
+            workflow_id = f"{workflow_class_name_or_id}-{uuid.uuid4()}"
+        else:
+            # New calling pattern: start_workflow("MyWorkflowClass", ..., workflow_id="unique-id")
+            workflow_class_name = workflow_class_name_or_id
+
         # Lookup the workflow class
-        wf = self.context.app.workflows.get(workflow_id)
+        wf = self.context.app.workflows.get(workflow_class_name)
         if not inspect.isclass(wf):
             wf = wf.__class__
 

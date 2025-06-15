@@ -14,6 +14,7 @@ from typing import (
 
 
 from pydantic import BaseModel, ConfigDict, Field
+
 from mcp_agent.core.context_dependent import ContextDependent
 from mcp_agent.executor.temporal import TemporalExecutor
 from mcp_agent.executor.temporal.workflow_signal import (
@@ -25,6 +26,7 @@ from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
     from temporalio.client import WorkflowHandle
+
     from mcp_agent.core.context import Context
 
 T = TypeVar("T")
@@ -191,10 +193,9 @@ class Workflow(ABC, Generic[T], ContextDependent):
             str: A unique workflow ID that can be used to reference this workflow instance
         """
 
-        import asyncio
         from concurrent.futures import CancelledError
 
-        handle: "WorkflowHandle" | None = None
+        handle: WorkflowHandle | None = None
 
         self.update_status("scheduled")
 
@@ -205,7 +206,13 @@ class Workflow(ABC, Generic[T], ContextDependent):
         elif self.context.config.execution_engine == "temporal":
             # For Temporal workflows, we'll start the workflow immediately
             executor: TemporalExecutor = self.executor
-            handle = await executor.start_workflow(self.name, *args, **kwargs)
+            # Use the new start_workflow signature with explicit workflow_id
+            handle = await executor.start_workflow(
+                self.name,  # workflow class name
+                *args,
+                workflow_id=f"{self.name}-{executor.uuid()}",  # generate meaningful workflow_id
+                **kwargs
+            )
             self._run_id = handle.result_run_id or handle.run_id
             self._logger.debug(f"Workflow started with run ID: {self._run_id}")
 
@@ -351,43 +358,8 @@ class Workflow(ABC, Generic[T], ContextDependent):
             self._logger.error(f"Error cancelling workflow {self._run_id}: {e}")
             return False
 
-    # Add the dynamic signal handler method in the case that the workflow is running under Temporal
-    if "temporalio.workflow" in sys.modules:
-        from temporalio import workflow
-        from temporalio.common import RawValue
-        from typing import Sequence
-
-        @workflow.signal(dynamic=True)
-        async def _signal_receiver(self, name: str, args: Sequence[RawValue]):
-            """Dynamic signal handler for Temporal workflows."""
-            from temporalio import workflow
-
-            self._logger.debug(f"Dynamic signal received: name={name}, args={args}")
-
-            # Extract payload and update mailbox
-            payload = args[0] if args else None
-
-            if hasattr(self, "_signal_mailbox"):
-                self._signal_mailbox.push(name, payload)
-                self._logger.debug(f"Updated mailbox for signal {name}")
-            else:
-                self._logger.warning("No _signal_mailbox found on workflow instance")
-
-            if hasattr(self, "_handlers"):
-                # Create a signal object for callbacks
-                sig_obj = Signal(
-                    name=name,
-                    payload=payload,
-                    workflow_id=workflow.info().workflow_id,
-                    run_id=workflow.info().run_id,
-                )
-
-                # Live lookup of handlers (enables callbacks added after attach_to_workflow)
-                for _, cb in self._handlers.get(name, ()):
-                    if asyncio.iscoroutinefunction(cb):
-                        await cb(sig_obj)
-                    else:
-                        cb(sig_obj)
+    # Note: Dynamic signal handler removed for now due to Temporal validation issues
+    # This functionality may be added back later with proper conditional decoration
 
     async def get_status(self) -> Dict[str, Any]:
         """

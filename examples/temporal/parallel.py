@@ -105,6 +105,7 @@ async def main():
         handle = await executor.start_workflow(
             "ParallelWorkflow",
             SHORT_STORY,
+            workflow_id=f"story-review-parallel-{executor.uuid()}",
         )
         a = await handle.result()
         print(a)
