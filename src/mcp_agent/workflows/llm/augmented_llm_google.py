@@ -298,7 +298,7 @@ class GoogleAugmentedLLM(
         # TODO: Jerron - to make more comprehensive
         return str(message.model_dump())
 
-    def message_str(self, message) -> str:
+    def message_str(self, message, content_only: bool = False) -> str:
         """Convert an output message to a string representation."""
         # TODO: Jerron - to make more comprehensive
         return str(message.model_dump())

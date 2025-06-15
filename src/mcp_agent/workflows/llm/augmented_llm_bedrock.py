@@ -331,9 +331,10 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         """Convert a response object to an input parameter object to allow LLM calls to be chained."""
         return message
 
-    def message_param_str(self, message: MessageUnionTypeDef) -> str:
-        """Convert an input message to a string representation."""
-
+    def message_str(
+        self, message: MessageUnionTypeDef, content_only: bool = False
+    ) -> str:
+        """Convert an output message to a string representation."""
         if message.get("content"):
             final_text: list[str] = []
             for content in message["content"]:
@@ -342,11 +343,11 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
                 else:
                     final_text.append(str(content))
             return "\n".join(final_text)
-        return str(message)
+        elif content_only:
+            # If content_only is True, return empty string if no content
+            return ""
 
-    def message_str(self, message: MessageUnionTypeDef) -> str:
-        """Convert an output message to a string representation."""
-        return self.message_param_str(message)
+        return str(message)
 
 
 class RequestCompletionRequest(BaseModel):
