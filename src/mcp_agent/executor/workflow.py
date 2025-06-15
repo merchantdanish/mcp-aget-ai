@@ -358,8 +358,43 @@ class Workflow(ABC, Generic[T], ContextDependent):
             self._logger.error(f"Error cancelling workflow {self._run_id}: {e}")
             return False
 
-    # Note: Dynamic signal handler removed for now due to Temporal validation issues
-    # This functionality may be added back later with proper conditional decoration
+    # Add the dynamic signal handler method in the case that the workflow is running under Temporal
+    if "temporalio.workflow" in sys.modules:
+        from temporalio import workflow
+        from temporalio.common import RawValue
+        from typing import Sequence
+
+        @workflow.signal(dynamic=True)
+        async def _signal_receiver(self, name: str, args: Sequence[RawValue]):
+            """Dynamic signal handler for Temporal workflows."""
+            from temporalio import workflow
+
+            self._logger.debug(f"Dynamic signal received: name={name}, args={args}")
+
+            # Extract payload and update mailbox
+            payload = args[0] if args else None
+
+            if hasattr(self, "_signal_mailbox"):
+                self._signal_mailbox.push(name, payload)
+                self._logger.debug(f"Updated mailbox for signal {name}")
+            else:
+                self._logger.warning("No _signal_mailbox found on workflow instance")
+
+            if hasattr(self, "_handlers"):
+                # Create a signal object for callbacks
+                sig_obj = Signal(
+                    name=name,
+                    payload=payload,
+                    workflow_id=workflow.info().workflow_id,
+                    run_id=workflow.info().run_id,
+                )
+
+                # Live lookup of handlers (enables callbacks added after attach_to_workflow)
+                for _, cb in self._handlers.get(name, ()):
+                    if asyncio.iscoroutinefunction(cb):
+                        await cb(sig_obj)
+                    else:
+                        cb(sig_obj)
 
     async def get_status(self) -> Dict[str, Any]:
         """
