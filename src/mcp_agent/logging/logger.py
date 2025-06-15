@@ -69,6 +69,12 @@ class Logger:
         else:
             # If no loop is running, run it until the emit completes
             try:
+                # Check if the event loop is closed before trying to use it
+                if loop.is_closed():
+                    # Fallback to basic logging when event loop is closed
+                    import sys
+                    print(f"[{event.type.upper()}] {event.name}: {event.message}", file=sys.stderr)
+                    return
                 loop.run_until_complete(self.event_bus.emit(event))
             except NotImplementedError:
                 # Handle Temporal workflow environment where run_until_complete() is not implemented
