@@ -87,15 +87,15 @@ def generate_step():
                     asyncio.gather(*pending, return_exceptions=True)
                 )
 
-            # # Give subprocess transports time to cleanup
+            # Give subprocess transports time to cleanup
             loop.run_until_complete(asyncio.sleep(0.1))
-            # loop.close()
 
         except Exception as cleanup_error:
             logger.warning(f"Error during cleanup: {cleanup_error}")
         finally:
             # Close the loop
             loop.close()
+            asyncio.set_event_loop(None)
 
 
 def main(concurrency: int) -> list[str]:
