@@ -7,6 +7,7 @@ Logger module for the MCP Agent, which provides:
 - Developer-friendly Logger that can be used anywhere
 """
 
+import sys
 import asyncio
 import threading
 import time
@@ -51,6 +52,14 @@ class Logger:
             asyncio.set_event_loop(loop)
             return loop
 
+    @staticmethod
+    def _basic_logging(event: Event):
+        """Use basic logging"""
+        print(
+            f"[{event.type.upper()}] {getattr(event, 'name', getattr(event, 'namespace', ''))}: {event.message}",
+            file=sys.stderr,
+        )
+
     def _emit_event(self, event: Event):
         """Emit an event by running it in the event loop."""
         loop = self._ensure_event_loop()
@@ -62,30 +71,34 @@ class Logger:
             is_running = False
 
         if is_running:
-            # Schedule the emit coroutine safely on the event loop from another thread
-            loop.call_soon_threadsafe(
-                lambda: asyncio.create_task(self.event_bus.emit(event))
-            )
+            # In multithreaded environments, cross-thread event scheduling can cause
+            # "Task was destroyed but it is pending" warnings when the main loop shuts down.
+            # For reliability, fallback to basic logging when called from a different thread.
+            try:
+                current_loop = asyncio.get_running_loop()
+                if current_loop == loop:
+                    # Same thread, safe to create task directly
+                    asyncio.create_task(self.event_bus.emit(event))
+                else:
+                    # Different thread, use basic logging to avoid pending task issues
+                    self._basic_logging(event)
+            except RuntimeError:
+                # No running loop in current thread, fallback to basic logging
+                self._basic_logging(event)
         else:
             # If no loop is running, run it until the emit completes
             try:
                 # Check if the event loop is closed before trying to use it
                 if loop.is_closed():
                     # Fallback to basic logging when event loop is closed
-                    import sys
-                    print(f"[{event.type.upper()}] {event.name}: {event.message}", file=sys.stderr)
+                    self._basic_logging(event)
                     return
                 loop.run_until_complete(self.event_bus.emit(event))
             except NotImplementedError:
                 # Handle Temporal workflow environment where run_until_complete() is not implemented
                 # In Temporal, we can't block on async operations, so we'll need to avoid this
                 # Simply log to stdout/stderr as a fallback
-                import sys
-
-                print(
-                    f"[{event.type}] {event.namespace}: {event.message}",
-                    file=sys.stderr,
-                )
+                self._basic_logging(event)
 
     def event(
         self,
