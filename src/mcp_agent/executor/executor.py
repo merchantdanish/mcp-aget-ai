@@ -226,10 +226,6 @@ class Executor(ABC, ContextDependent):
         if not self.signal_bus:
             raise RuntimeError("Signal bus is not initialized for this executor.")
 
-        # Check if the method exists on the signal bus
-        if not hasattr(self.signal_bus, 'wait_for_any_signal'):
-             raise NotImplementedError(f"The configured signal handler ({type(self.signal_bus).__name__}) does not support wait_for_any_signal.")
-
         return await self.signal_bus.wait_for_any_signal(
             signal_names=signal_names,
             workflow_id=workflow_id,

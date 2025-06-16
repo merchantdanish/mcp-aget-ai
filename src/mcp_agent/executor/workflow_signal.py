@@ -240,10 +240,6 @@ class ConsoleSignalHandler(SignalHandler[str]):
         Wait for any of the specified signals using console input.
         Note: This is a simplified implementation for console-based workflows.
         """
-        print(f"\n[WAITING FOR SIGNALS: {', '.join(signal_names)}]")
-        if timeout_seconds:
-            print(f"(Timeout in {timeout_seconds} seconds)")
-        
         # For console handler, we'll just wait for the first signal name entered
         loop = asyncio.get_event_loop()
         if timeout_seconds is not None:

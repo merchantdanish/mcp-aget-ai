@@ -48,8 +48,7 @@ def mock_workflow():
     return workflow
 
 
-@patch('mcp_agent.executor.temporal.workflow_signal.logger')
-def test_attach_to_workflow(mock_logger, handler, mock_workflow):
+def test_attach_to_workflow(handler, mock_workflow):
     handler.attach_to_workflow(mock_workflow)
     # MagicMock does not set real attributes, so cast to bool
     assert bool(mock_workflow._signal_handler_attached) is True
