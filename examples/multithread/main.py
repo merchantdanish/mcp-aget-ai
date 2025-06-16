@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import concurrent.futures
-import logging
 import traceback
 
 from mcp_agent.app import MCPApp
@@ -12,8 +11,6 @@ from mcp_agent.workflows.evaluator_optimizer.evaluator_optimizer import (
 )
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-
-logger = logging.getLogger(__name__)
 
 
 async def run() -> str:
@@ -71,7 +68,7 @@ def generate_step():
         result = loop.run_until_complete(run())
         return result
     except Exception as e:
-        logger.exception("Error during script generation", exc_info=e)
+        print(f"Error during script generation: {e}")
         return ""
     finally:
         # Properly cleanup tasks and subprocess transports
@@ -91,7 +88,7 @@ def generate_step():
             loop.run_until_complete(asyncio.sleep(0.1))
 
         except Exception as cleanup_error:
-            logger.warning(f"Error during cleanup: {cleanup_error}")
+            print(f"Error during cleanup: {cleanup_error}")
         finally:
             # Close the loop
             loop.close()
