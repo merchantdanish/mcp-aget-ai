@@ -11,7 +11,6 @@ from typing import (
     TYPE_CHECKING,
 )
 import threading
-import asyncio
 
 import anyio
 from anyio import create_task_group
@@ -127,7 +126,7 @@ class ServerConnection:
         Wait until shutdown is requested using polling.
         """
         while not self._is_shutdown_requested_flag():
-            await asyncio.sleep(0.01)  # Poll every 10ms
+            await anyio.sleep(0.01)  # Poll every 10ms
 
     async def initialize_session(self) -> None:
         """
@@ -153,7 +152,7 @@ class ServerConnection:
         timeout = 30  # 30 second timeout
         elapsed = 0
         while not self._is_initialized_flag() and not self._error:
-            await asyncio.sleep(0.01)  # Poll every 10ms
+            await anyio.sleep(0.01)  # Poll every 10ms
             elapsed += 0.01
             if elapsed > timeout:
                 raise TimeoutError(

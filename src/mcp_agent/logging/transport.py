@@ -412,19 +412,24 @@ class AsyncEventBus:
 
         if self._running:
             return
-        self.init_queue()
 
-        # Verify we're using the correct event loop
+        # Get current running loop and reinitialize if needed
         try:
             current_loop = asyncio.get_running_loop()
-            if current_loop != self._loop:
-                raise RuntimeError(
-                    "AsyncEventBus must be started in the same event loop where it was initialized"
-                )
+            # If we have a different loop or no loop initialized, reinitialize
+            if self._loop is None or current_loop != self._loop:
+                self._loop = current_loop
+                self._queue = asyncio.Queue()
+                self._stop_event = asyncio.Event()
+                self._initialized = True
         except RuntimeError:
             raise RuntimeError(
                 "AsyncEventBus must be started within a running event loop"
             )
+
+        # Ensure queue is initialized
+        if not self._initialized:
+            self.init_queue()
 
         # Start each lifecycle-aware listener
         for listener in self.listeners.values():
