@@ -10,9 +10,11 @@ from typing import (
     Optional,
     TYPE_CHECKING,
 )
+import threading
+import asyncio
 
 import anyio
-from anyio import Event, create_task_group, Lock
+from anyio import create_task_group
 from anyio.abc import TaskGroup
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
@@ -75,11 +77,11 @@ class ServerConnection:
         self._client_session_factory = client_session_factory
         self._init_hook = init_hook
         self._transport_context_factory = transport_context_factory
-        # Signal that session is fully up and initialized
-        self._initialized_event = Event()
 
-        # Signal we want to shut down
-        self._shutdown_event = Event()
+        # Use thread-safe flags instead of event loop bound Events
+        self._is_initialized = False
+        self._shutdown_requested = False
+        self._flag_lock = threading.Lock()  # Thread-safe access to flags
 
         # Track error state
         self._error: bool = False
@@ -94,17 +96,38 @@ class ServerConnection:
         self._error = False
         self._error_message = None
 
+    def _is_initialized_flag(self) -> bool:
+        """Thread-safe check if initialized."""
+        with self._flag_lock:
+            return self._is_initialized
+
+    def _set_initialized_flag(self, value: bool) -> None:
+        """Thread-safe set initialized flag."""
+        with self._flag_lock:
+            self._is_initialized = value
+
+    def _is_shutdown_requested_flag(self) -> bool:
+        """Thread-safe check if shutdown requested."""
+        with self._flag_lock:
+            return self._shutdown_requested
+
+    def _set_shutdown_requested_flag(self, value: bool) -> None:
+        """Thread-safe set shutdown requested flag."""
+        with self._flag_lock:
+            self._shutdown_requested = value
+
     def request_shutdown(self) -> None:
         """
         Request the server to shut down. Signals the server lifecycle task to exit.
         """
-        self._shutdown_event.set()
+        self._set_shutdown_requested_flag(True)
 
     async def wait_for_shutdown_request(self) -> None:
         """
-        Wait until the shutdown event is set.
+        Wait until shutdown is requested using polling.
         """
-        await self._shutdown_event.wait()
+        while not self._is_shutdown_requested_flag():
+            await asyncio.sleep(0.01)  # Poll every 10ms
 
     async def initialize_session(self) -> None:
         """
@@ -121,13 +144,21 @@ class ServerConnection:
             self._init_hook(self.session, self.server_config.auth)
 
         # Now the session is ready for use
-        self._initialized_event.set()
+        self._set_initialized_flag(True)
 
     async def wait_for_initialized(self) -> None:
         """
-        Wait until the session is fully initialized.
+        Wait until the session is fully initialized using polling.
         """
-        await self._initialized_event.wait()
+        timeout = 30  # 30 second timeout
+        elapsed = 0
+        while not self._is_initialized_flag() and not self._error:
+            await asyncio.sleep(0.01)  # Poll every 10ms
+            elapsed += 0.01
+            if elapsed > timeout:
+                raise TimeoutError(
+                    f"Timeout waiting for server '{self.server_name}' to initialize"
+                )
 
     def create_session(
         self,
@@ -208,9 +239,9 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
 
         server_conn._error = True
         server_conn._error_message = str(exc)
-        # If there's an error, we should also set the event so that
+        # If there's an error, we should also set the initialized flag so that
         # 'get_server' won't hang
-        server_conn._initialized_event.set()
+        server_conn._set_initialized_flag(True)
         # No raise - allow graceful exit
 
 
@@ -225,10 +256,11 @@ class MCPConnectionManager(ContextDependent):
         super().__init__(context)
         self.server_registry = server_registry
         self.running_servers: Dict[str, ServerConnection] = {}
-        self._lock = Lock()
+        self._lock = threading.Lock()  # Use thread-safe lock instead of anyio Lock
         # Manage our own task group - independent of task context
         self._tg: TaskGroup | None = None
         self._tg_active = False
+        self._thread_id = threading.get_ident()  # Track the thread this was created in
 
     async def __aenter__(self):
         # We create a task group to manage all server lifecycle tasks
@@ -246,21 +278,32 @@ class MCPConnectionManager(ContextDependent):
             logger.debug("MCPConnectionManager: shutting down all server tasks...")
             await self.disconnect_all()
 
-            # TODO: saqadri (FA1) - Is this needed?
             # Add a small delay to allow for clean shutdown
             await anyio.sleep(0.5)
 
-            # Then close the task group if it's active
-            if self._tg_active:
-                try:
-                    await self._tg.__aexit__(exc_type, exc_val, exc_tb)
-                except Exception as e:
+            # Then close the task group if it's active and we're in the same thread
+            if self._tg_active and self._tg:
+                current_thread = threading.get_ident()
+                if current_thread == self._thread_id:
+                    # We're in the same thread, safe to cleanup task group
+                    try:
+                        await self._tg.__aexit__(exc_type, exc_val, exc_tb)
+                    except Exception as e:
+                        logger.warning(
+                            f"MCPConnectionManager: Error during task group cleanup: {e}"
+                        )
+                else:
+                    # Different thread - cannot safely cleanup anyio TaskGroup
+                    # Just mark as inactive and let the original thread handle cleanup
                     logger.warning(
-                        f"MCPConnectionManager: Error during task group cleanup: {e}"
+                        f"MCPConnectionManager: Task group cleanup called from different thread "
+                        f"(created in {self._thread_id}, called from {current_thread}). "
+                        f"Skipping task group cleanup to avoid cross-thread issues."
                     )
-                finally:
-                    self._tg_active = False
-                    self._tg = None
+
+                # Always mark as inactive
+                self._tg_active = False
+                self._tg = None
         except AttributeError:  # Handle missing `_exceptions`
             pass
         except Exception as e:
@@ -367,7 +410,7 @@ class MCPConnectionManager(ContextDependent):
             init_hook=init_hook or self.server_registry.init_hooks.get(server_name),
         )
 
-        async with self._lock:
+        with self._lock:
             # Check if already running
             if server_name in self.running_servers:
                 return self.running_servers[server_name]
@@ -392,7 +435,7 @@ class MCPConnectionManager(ContextDependent):
         Get a running server instance, launching it if needed.
         """
         # Get the server connection if it's already running and healthy
-        async with self._lock:
+        with self._lock:
             server_conn = self.running_servers.get(server_name)
             if server_conn and server_conn.is_healthy():
                 return server_conn
@@ -444,7 +487,7 @@ class MCPConnectionManager(ContextDependent):
         """
         logger.info(f"{server_name}: Disconnecting persistent connection to server...")
 
-        async with self._lock:
+        with self._lock:
             server_conn = self.running_servers.pop(server_name, None)
         if server_conn:
             server_conn.request_shutdown()
@@ -465,7 +508,7 @@ class MCPConnectionManager(ContextDependent):
         # Get a copy of servers to shutdown
         servers_to_shutdown = []
 
-        async with self._lock:
+        with self._lock:
             if not self.running_servers:
                 return
 

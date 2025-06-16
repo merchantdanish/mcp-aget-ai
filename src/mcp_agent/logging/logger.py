@@ -39,14 +39,20 @@ class Logger:
         self._thread_local = threading.local()
 
     def _ensure_event_loop(self):
-        """Ensure we have an event loop we can use."""
+        """Ensure we have an event loop we can use for this thread."""
         try:
-            return asyncio.get_running_loop()
+            # Try to get the current running loop
+            loop = asyncio.get_running_loop()
+            return loop
         except RuntimeError:
-            # No running loop: either we're in a thread, or nothing's been started yet
-            if hasattr(self._thread_local, "loop"):
-                return self._thread_local.loop
+            # No running loop in this thread
+            # Check if we have a stored loop for this thread
+            if hasattr(self._thread_local, "loop") and self._thread_local.loop:
+                loop = self._thread_local.loop
+                if not loop.is_closed():
+                    return loop
 
+            # Create a new event loop for this thread
             loop = asyncio.new_event_loop()
             self._thread_local.loop = loop
             asyncio.set_event_loop(loop)
@@ -61,43 +67,42 @@ class Logger:
         )
 
     def _emit_event(self, event: Event):
-        """Emit an event by running it in the event loop."""
-        loop = self._ensure_event_loop()
+        """Emit an event using the thread-local event bus."""
+        # Get the thread-local event bus instance
+        event_bus = AsyncEventBus.get()
+        
         try:
-            is_running = loop.is_running()
-        except NotImplementedError:
-            # Handle Temporal workflow environment where is_running() is not implemented
-            # Default to assuming the loop is not running
-            is_running = False
+            # Try to get the current running loop
+            loop = asyncio.get_running_loop()
+            is_running = True
+        except RuntimeError:
+            # No running loop, we'll need to create one or use the stored one
+            loop = self._ensure_event_loop()
+            try:
+                is_running = loop.is_running()
+            except NotImplementedError:
+                # Handle Temporal workflow environment
+                is_running = False
 
         if is_running:
-            # In multithreaded environments, cross-thread event scheduling can cause
-            # "Task was destroyed but it is pending" warnings when the main loop shuts down.
-            # For reliability, fallback to basic logging when called from a different thread.
+            # We're in a running event loop, create task directly
             try:
-                current_loop = asyncio.get_running_loop()
-                if current_loop == loop:
-                    # Same thread, safe to create task directly
-                    asyncio.create_task(self.event_bus.emit(event))
-                else:
-                    # Different thread, use basic logging to avoid pending task issues
-                    self._basic_logging(event)
+                asyncio.create_task(event_bus.emit(event))
             except RuntimeError:
-                # No running loop in current thread, fallback to basic logging
+                # If task creation fails, fallback to basic logging
                 self._basic_logging(event)
         else:
-            # If no loop is running, run it until the emit completes
+            # No running loop, run the emission synchronously
             try:
-                # Check if the event loop is closed before trying to use it
                 if loop.is_closed():
-                    # Fallback to basic logging when event loop is closed
+                    # Loop is closed, fallback to basic logging
                     self._basic_logging(event)
                     return
-                loop.run_until_complete(self.event_bus.emit(event))
-            except NotImplementedError:
-                # Handle Temporal workflow environment where run_until_complete() is not implemented
-                # In Temporal, we can't block on async operations, so we'll need to avoid this
-                # Simply log to stdout/stderr as a fallback
+                    
+                # Run the emission in the event loop
+                loop.run_until_complete(event_bus.emit(event))
+            except (RuntimeError, NotImplementedError):
+                # If synchronous execution fails, fallback to basic logging
                 self._basic_logging(event)
 
     def event(
