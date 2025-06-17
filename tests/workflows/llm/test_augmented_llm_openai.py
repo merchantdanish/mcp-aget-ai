@@ -690,4 +690,3 @@ class TestOpenAIAugmentedLLM:
         # Check that the user field is present in the payload
         request_obj = mock_llm.executor.execute.call_args[0][1]
         assert request_obj.payload.get("user") == "config_user_id"
-
