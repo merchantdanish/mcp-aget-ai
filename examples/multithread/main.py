@@ -50,7 +50,7 @@ async def run() -> str:
             optimizer=optimizer,
             evaluator=evaluator,
             llm_factory=OpenAIAugmentedLLM,
-            min_rating=QualityRating.EXCELLENT,
+            min_rating=QualityRating.GOOD,
         )
 
         result = await evaluator_optimizer.generate_str(
@@ -74,28 +74,9 @@ def generate_step():
         logger.exception("Error during script generation", exc_info=e)
         return ""
     finally:
-        # Properly cleanup tasks and subprocess transports
-        try:
-            # Cancel all pending tasks
-            pending = asyncio.all_tasks(loop=loop)
-            for task in pending:
-                task.cancel()
-
-            # Wait for all tasks to complete
-            if pending:
-                loop.run_until_complete(
-                    asyncio.gather(*pending, return_exceptions=True)
-                )
-
-            # Give subprocess transports time to cleanup
-            loop.run_until_complete(asyncio.sleep(0.1))
-
-        except Exception as cleanup_error:
-            logger.warning(f"Error during cleanup: {cleanup_error}")
-        finally:
-            # Close the loop
-            loop.close()
-            asyncio.set_event_loop(None)
+        # Close the loop
+        loop.close()
+        asyncio.set_event_loop(None)
 
 
 def main(concurrency: int) -> list[str]:
