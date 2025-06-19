@@ -865,14 +865,11 @@ class OpenAICompletionTasks:
             else None,
         )
 
-        try:
+        async with async_client:
             payload = request.payload
             response = await async_client.chat.completions.create(**payload)
             response = ensure_serializable(response)
             return response
-        finally:
-            # Ensure the client is properly closed
-            await async_client.close()
 
     @staticmethod
     @workflow_task
@@ -907,13 +904,12 @@ class OpenAICompletionTasks:
             else None,
         )
 
-        client = instructor.from_openai(
-            async_client,
-            mode=instructor.Mode.TOOLS_STRICT,
-        )
-
-        try:
+        async with async_client:
             try:
+                client = instructor.from_openai(
+                    async_client,
+                    mode=instructor.Mode.TOOLS_STRICT,
+                )
                 # Extract structured data from natural language
                 structured_response = await client.chat.completions.create(
                     model=request.model,
@@ -938,9 +934,6 @@ class OpenAICompletionTasks:
                 )
 
             return structured_response
-        finally:
-            # Ensure the async client is properly closed
-            await async_client.close()
 
 
 class MCPOpenAITypeConverter(

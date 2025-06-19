@@ -517,12 +517,10 @@ class AzureCompletionTasks:
                 ),
             )
 
-        try:
+        async with azure_client:
             payload = request.payload
             response = await azure_client.complete(**payload)
             return response
-        finally:
-            await azure_client.close()
 
 
 class MCPAzureTypeConverter(ProviderToMCPConverter[MessageParam, ResponseMessage]):

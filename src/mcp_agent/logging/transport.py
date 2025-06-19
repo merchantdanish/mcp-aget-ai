@@ -493,6 +493,9 @@ class AsyncEventBus:
 
     async def emit(self, event: Event):
         """Emit an event to all listeners and transport."""
+        # start() ensures initialization happens once only
+        await self.start()
+
         # Inject current tracing info if available
         span = trace.get_current_span()
         if span.is_recording():
@@ -506,11 +509,7 @@ class AsyncEventBus:
         except Exception as e:
             print(f"Error in transport.send_event: {e}")
 
-        # Initialize queue if not already done
-        if not self._queue:
-            self.init_queue()
-
-        # Then queue for listeners
+        # Queue for listeners
         if self._queue:
             await self._queue.put(event)
 

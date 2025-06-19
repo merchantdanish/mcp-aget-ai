@@ -238,13 +238,20 @@ async def cleanup_context():
                 await asyncio.sleep(0.1)
 
                 # Mark the connection manager as inactive to avoid cross-context cleanup
-                if hasattr(connection_manager, "_tg_active") and connection_manager._tg_active:
+                if (
+                    hasattr(connection_manager, "_tg_active")
+                    and connection_manager._tg_active
+                ):
                     try:
                         connection_manager._tg_active = False
                         connection_manager._tg = None
-                        logger.debug("Context cleanup: Connection manager marked as inactive")
+                        logger.debug(
+                            "Context cleanup: Connection manager marked as inactive"
+                        )
                     except Exception as e:
-                        logger.warning(f"Error during connection manager state cleanup: {e}")
+                        logger.warning(
+                            f"Error during connection manager state cleanup: {e}"
+                        )
 
             except Exception as e:
                 logger.warning(f"Error during server connection cleanup: {e}")
@@ -272,8 +279,11 @@ def get_current_context() -> Context:
 
             def run_async():
                 new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
-                return new_loop.run_until_complete(initialize_context())
+                try:
+                    asyncio.set_event_loop(new_loop)
+                    return new_loop.run_until_complete(initialize_context())
+                finally:
+                    new_loop.close()
 
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 _thread_local.context = pool.submit(run_async).result()

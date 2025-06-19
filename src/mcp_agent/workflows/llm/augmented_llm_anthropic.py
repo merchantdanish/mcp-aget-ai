@@ -711,13 +711,11 @@ class AnthropicCompletionTasks:
 
         anthropic = AsyncAnthropic(api_key=request.config.api_key)
 
-        try:
+        async with anthropic:
             payload = request.payload
             response = await anthropic.messages.create(**payload)
             response = ensure_serializable(response)
             return response
-        finally:
-            await anthropic.close()
 
     @staticmethod
     @workflow_task
@@ -741,11 +739,10 @@ class AnthropicCompletionTasks:
 
         anthropic = AsyncAnthropic(api_key=request.config.api_key)
 
-        # We pass the text through instructor to extract structured data
-        client = instructor.from_anthropic(anthropic)
+        async with anthropic:
+            # We pass the text through instructor to extract structured data
+            client = instructor.from_anthropic(anthropic)
 
-        try:
-            # Extract structured data from natural language
             structured_response = await client.chat.completions.create(
                 model=request.model,
                 response_model=response_model,
@@ -754,8 +751,6 @@ class AnthropicCompletionTasks:
             )
 
             return structured_response
-        finally:
-            await anthropic.close()
 
 
 class AnthropicMCPTypeConverter(ProviderToMCPConverter[MessageParam, Message]):
