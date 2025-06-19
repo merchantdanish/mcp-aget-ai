@@ -70,7 +70,7 @@ class Logger:
         """Emit an event using the thread-local event bus."""
         # Get the thread-local event bus instance
         event_bus = AsyncEventBus.get()
-        
+
         try:
             # Try to get the current running loop
             loop = asyncio.get_running_loop()
@@ -98,7 +98,7 @@ class Logger:
                     # Loop is closed, fallback to basic logging
                     self._basic_logging(event)
                     return
-                    
+
                 # Run the emission in the event loop
                 loop.run_until_complete(event_bus.emit(event))
             except (RuntimeError, NotImplementedError):

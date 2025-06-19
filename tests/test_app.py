@@ -86,7 +86,7 @@ class TestMCPApp:
         # Make the function unique by setting a unique name based on the test
         task_function.__name__ = f"task_function_{request.node.name}"
         task_function.__qualname__ = f"task_function_{request.node.name}"
-        
+
         return task_function
 
     #

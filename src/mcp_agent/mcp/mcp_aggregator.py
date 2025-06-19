@@ -248,10 +248,15 @@ class MCPAggregator(ContextDependent):
                                 # This avoids cross-context TaskGroup cleanup issues
                                 try:
                                     # Just mark the task group as inactive to prevent cleanup issues
-                                    if hasattr(self._persistent_connection_manager, '_tg_active'):
+                                    if hasattr(
+                                        self._persistent_connection_manager,
+                                        "_tg_active",
+                                    ):
                                         self._persistent_connection_manager._tg_active = False
                                         self._persistent_connection_manager._tg = None
-                                        logger.debug("Connection manager marked as inactive, skipping direct __aexit__ call")
+                                        logger.debug(
+                                            "Connection manager marked as inactive, skipping direct __aexit__ call"
+                                        )
                                 except Exception as e:
                                     logger.warning(
                                         f"Error during connection manager state cleanup: {e}"
