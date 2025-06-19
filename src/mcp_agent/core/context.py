@@ -18,11 +18,18 @@ from mcp_agent.config import Settings
 from mcp_agent.executor.executor import AsyncioExecutor, Executor
 from mcp_agent.executor.decorator_registry import (
     DecoratorRegistry,
+    get_global_decorator_registry,
     register_asyncio_decorators,
     register_temporal_decorators,
 )
-from mcp_agent.executor.signal_registry import SignalRegistry
-from mcp_agent.executor.task_registry import ActivityRegistry
+from mcp_agent.executor.signal_registry import (
+    SignalRegistry,
+    get_global_signal_registry,
+)
+from mcp_agent.executor.task_registry import (
+    ActivityRegistry,
+    get_global_activity_registry,
+)
 
 from mcp_agent.logging.events import EventFilter
 from mcp_agent.logging.logger import LoggingConfig
@@ -156,6 +163,7 @@ async def initialize_context(
     task_registry: Optional[ActivityRegistry] = None,
     decorator_registry: Optional[DecoratorRegistry] = None,
     signal_registry: Optional[SignalRegistry] = None,
+    store_globally: bool = False,
 ):
     """
     Initialize the global application context.
@@ -180,12 +188,12 @@ async def initialize_context(
     await configure_logger(config, context.session_id)
     await configure_usage_telemetry(config)
 
-    context.task_registry = task_registry or ActivityRegistry()
+    context.task_registry = task_registry or get_global_activity_registry()
 
-    context.signal_registry = signal_registry or SignalRegistry()
+    context.signal_registry = signal_registry or get_global_signal_registry()
 
     if not decorator_registry:
-        context.decorator_registry = DecoratorRegistry()
+        context.decorator_registry = get_global_decorator_registry()
         register_asyncio_decorators(context.decorator_registry)
         register_temporal_decorators(context.decorator_registry)
     else:
@@ -195,6 +203,10 @@ async def initialize_context(
     if config.otel.enabled:
         context.tracing_enabled = True
         context.tracer = trace.get_tracer(config.otel.service_name)
+
+    if store_globally:
+        global _thread_local
+        _thread_local.context = context
 
     return context
 
@@ -235,16 +247,11 @@ def get_current_context() -> Context:
     Thread-local getter for application context.
     Each thread gets its own context instance.
     """
-    # Check if we already have a context for this thread
-    if hasattr(_thread_local, "context") and _thread_local.context is not None:
-        return _thread_local.context
+    global _thread_local
+    if not getattr(_thread_local, "context", None):
+        try:
+            loop = asyncio.get_running_loop()
 
-    # Initialize context for this thread
-    try:
-        # Try to get the current event loop
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # Create a new loop in a separate thread
             def run_async():
                 new_loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(new_loop)
@@ -252,11 +259,10 @@ def get_current_context() -> Context:
 
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 _thread_local.context = pool.submit(run_async).result()
-        else:
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             _thread_local.context = loop.run_until_complete(initialize_context())
-    except RuntimeError:
-        _thread_local.context = asyncio.run(initialize_context())
-
     return _thread_local.context
 
 
