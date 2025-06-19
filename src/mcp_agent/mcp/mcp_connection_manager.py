@@ -246,7 +246,7 @@ class MCPConnectionManager(ContextDependent):
         super().__init__(context)
         self.server_registry = server_registry
         self.running_servers: Dict[str, ServerConnection] = {}
-        self._lock = threading.Lock()  # Use thread-safe lock instead of anyio Lock
+        self._lock = anyio.Lock()
         # Manage our own task group - independent of task context
         self._tg: TaskGroup | None = None
         self._tg_active = False
@@ -410,7 +410,7 @@ class MCPConnectionManager(ContextDependent):
             init_hook=init_hook or self.server_registry.init_hooks.get(server_name),
         )
 
-        with self._lock:
+        async with self._lock:
             # Check if already running
             if server_name in self.running_servers:
                 return self.running_servers[server_name]
@@ -435,7 +435,7 @@ class MCPConnectionManager(ContextDependent):
         Get a running server instance, launching it if needed.
         """
         # Get the server connection if it's already running and healthy
-        with self._lock:
+        async with self._lock:
             server_conn = self.running_servers.get(server_name)
             if server_conn and server_conn.is_healthy():
                 return server_conn
@@ -487,7 +487,7 @@ class MCPConnectionManager(ContextDependent):
         """
         logger.info(f"{server_name}: Disconnecting persistent connection to server...")
 
-        with self._lock:
+        async with self._lock:
             server_conn = self.running_servers.pop(server_name, None)
         if server_conn:
             server_conn.request_shutdown()
@@ -508,7 +508,7 @@ class MCPConnectionManager(ContextDependent):
         # Get a copy of servers to shutdown
         servers_to_shutdown = []
 
-        with self._lock:
+        async with self._lock:
             if not self.running_servers:
                 return
 
