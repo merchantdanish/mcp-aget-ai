@@ -13,7 +13,7 @@ from typing import (
 import threading
 
 import anyio
-from anyio import create_task_group
+from anyio import create_task_group, move_on_after, Event
 from anyio.abc import TaskGroup
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
@@ -77,10 +77,14 @@ class ServerConnection:
         self._init_hook = init_hook
         self._transport_context_factory = transport_context_factory
 
-        # Use thread-safe flags instead of event loop bound Events
+        # Thread-safe flags
         self._is_initialized = False
         self._shutdown_requested = False
-        self._flag_lock = threading.Lock()  # Thread-safe access to flags
+        self._flag_lock = threading.Lock()
+
+        # Async events
+        self._initialized_event = Event()
+        self._shutdown_event = Event()
 
         # Track error state
         self._error: bool = False
@@ -120,23 +124,22 @@ class ServerConnection:
         Request the server to shut down. Signals the server lifecycle task to exit.
         """
         self._set_shutdown_requested_flag(True)
+        self._shutdown_event.set()
 
     async def wait_for_shutdown_request(self) -> None:
         """
-        Wait until shutdown is requested using polling.
+        Wait until shutdown is requested using an async event.
         """
-        while not self._is_shutdown_requested_flag():
-            await anyio.sleep(0.01)  # Poll every 10ms
+        await self._shutdown_event.wait()
 
     async def initialize_session(self) -> None:
         """
         Initializes the server connection and session.
         Must be called within an async context.
         """
-
         result = await self.session.initialize()
-
         self.server_capabilities = result.capabilities
+
         # If there's an init hook, run it
         if self._init_hook:
             logger.info(f"{self.server_name}: Executing init hook.")
@@ -144,20 +147,18 @@ class ServerConnection:
 
         # Now the session is ready for use
         self._set_initialized_flag(True)
+        self._initialized_event.set()
 
     async def wait_for_initialized(self) -> None:
         """
-        Wait until the session is fully initialized using polling.
+        Wait until the session is fully initialized using an async event with timeout.
         """
-        timeout = 30  # 30 second timeout
-        elapsed = 0
-        while not self._is_initialized_flag() and not self._error:
-            await anyio.sleep(0.01)  # Poll every 10ms
-            elapsed += 0.01
-            if elapsed > timeout:
-                raise TimeoutError(
-                    f"Timeout waiting for server '{self.server_name}' to initialize"
-                )
+        with move_on_after(30):
+            await self._initialized_event.wait()
+        if not self._is_initialized_flag() and not self._error:
+            raise TimeoutError(
+                f"Timeout waiting for server '{self.server_name}' to initialize"
+            )
 
     def create_session(
         self,
@@ -167,21 +168,15 @@ class ServerConnection:
         """
         Create a new session instance for this server connection.
         """
-
         read_timeout = (
             timedelta(seconds=self.server_config.read_timeout_seconds)
             if self.server_config.read_timeout_seconds
             else None
         )
-
         session = self._client_session_factory(read_stream, send_stream, read_timeout)
-
-        # Make the server config available to the session for initialization
         if hasattr(session, "server_config"):
             session.server_config = self.server_config
-
         self.session = session
-
         return session
 
 
@@ -195,8 +190,7 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
         transport_context = server_conn._transport_context_factory()
 
         async with transport_context as (read_stream, write_stream, *extras):
-            # If the transport provides a session ID callback (streamable_http does),
-            # store it in the server connection
+            # If the transport provides a session ID callback...
             if (
                 len(extras) > 0
                 and callable(extras[0])
@@ -216,9 +210,7 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
     except Exception as exc:
         import traceback
 
-        if hasattr(
-            exc, "exceptions"
-        ):  # ExceptionGroup or BaseExceptionGroup in Python 3.11+
+        if hasattr(exc, "exceptions"):
             for i, subexc in enumerate(exc.exceptions):
                 tb_lines = traceback.format_exception(
                     type(subexc), subexc, subexc.__traceback__
@@ -238,10 +230,9 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
 
         server_conn._error = True
         server_conn._error_message = str(exc)
-        # If there's an error, we should also set the initialized flag so that
-        # 'get_server' won't hang
+        # Signal initialization complete to unblock waiters
         server_conn._set_initialized_flag(True)
-        # No raise - allow graceful exit
+        server_conn._initialized_event.set()
 
 
 class MCPConnectionManager(ContextDependent):
