@@ -273,6 +273,13 @@ class MCPConnectionManager(ContextDependent):
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Ensure clean shutdown of all connections before exiting."""
         try:
+            # Check if we've already been cleaned up
+            if not self._tg_active:
+                logger.debug(
+                    "MCPConnectionManager: Already cleaned up, skipping __aexit__"
+                )
+                return
+
             # First request all servers to shutdown
             logger.debug("MCPConnectionManager: shutting down all server tasks...")
             await self.disconnect_all()
@@ -287,6 +294,9 @@ class MCPConnectionManager(ContextDependent):
                     # We're in the same thread, safe to cleanup task group
                     try:
                         await self._tg.__aexit__(exc_type, exc_val, exc_tb)
+                        logger.debug(
+                            "MCPConnectionManager: Task group cleaned up successfully"
+                        )
                     except Exception as e:
                         logger.warning(
                             f"MCPConnectionManager: Error during task group cleanup: {e}"

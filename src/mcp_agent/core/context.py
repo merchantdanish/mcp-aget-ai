@@ -225,9 +225,27 @@ async def cleanup_context():
         ):
             try:
                 logger.debug("Cleaning up server registry connection manager...")
-                await context.server_registry.connection_manager.disconnect_all()
+                connection_manager = context.server_registry.connection_manager
+
+                try:
+                    await connection_manager.disconnect_all()
+                except Exception as e:
+                    logger.warning(
+                        f"Timeout during disconnect_all(), forcing shutdown. Error: {e}"
+                    )
+
                 # Give a brief moment for subprocess transports to clean up
                 await asyncio.sleep(0.1)
+
+                # Mark the connection manager as inactive to avoid cross-context cleanup
+                if hasattr(connection_manager, "_tg_active") and connection_manager._tg_active:
+                    try:
+                        connection_manager._tg_active = False
+                        connection_manager._tg = None
+                        logger.debug("Context cleanup: Connection manager marked as inactive")
+                    except Exception as e:
+                        logger.warning(f"Error during connection manager state cleanup: {e}")
+
             except Exception as e:
                 logger.warning(f"Error during server connection cleanup: {e}")
 
