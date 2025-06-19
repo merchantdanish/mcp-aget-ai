@@ -5,7 +5,8 @@ mcp = FastMCP("Script Duration Server")
 
 
 @mcp.tool()
-def get_script_word_count(script: str) -> float:
+def get_script_word_count(script: str) -> int:
+    """Return the number of whitespace-separated tokens in *script*."""
     return len(script.split())
 
 
