@@ -36,8 +36,10 @@ class OpenAIEmbeddingModel(EmbeddingModel):
         if hasattr(self, "async_client") and self.async_client:
             await self.async_client.close()
 
-    async def __del__(self):
-        """Cleanup when the object is garbage collected."""
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
         await self.close()
 
     async def embed(self, data: List[str]) -> FloatArray:
