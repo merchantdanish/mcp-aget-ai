@@ -35,7 +35,6 @@ class Logger:
     def __init__(self, namespace: str, session_id: str | None = None):
         self.namespace = namespace
         self.session_id = session_id
-        self.event_bus = AsyncEventBus.get()
         self._thread_local = threading.local()
 
     def _ensure_event_loop(self):
