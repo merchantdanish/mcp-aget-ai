@@ -31,3 +31,12 @@ async def book_table(date: str, party_size: int, ctx: Context) -> str:
             return "Booking declined"
         case CancelledElicitation():
             return "Booking cancelled"
+
+
+def main():
+    """Main entry point for the MCP server."""
+    mcp.run()
+
+
+if __name__ == "__main__":
+    main()
