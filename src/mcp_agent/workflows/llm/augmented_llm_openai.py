@@ -75,6 +75,7 @@ class RequestStructuredCompletionRequest(BaseModel):
     serialized_response_model: str | None = None
     response_str: str
     model: str
+    user: str | None = None
 
 
 class OpenAIAugmentedLLM(
@@ -458,6 +459,8 @@ class OpenAIAugmentedLLM(
                     serialized_response_model=serialized_response_model,
                     response_str=response,
                     model=model,
+                    user=params.user or getattr(self.context.config.openai,
+                                                "user", None),
                 ),
             )
             # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
@@ -914,6 +917,7 @@ class OpenAICompletionTasks:
                 messages=[
                     {"role": "user", "content": request.response_str},
                 ],
+                user=request.user,
             )
         except InstructorRetryException:
             # Retry the request with JSON mode
@@ -937,6 +941,7 @@ class OpenAICompletionTasks:
                 messages=[
                     {"role": "user", "content": request.response_str},
                 ],
+                user=request.user,
             )
 
         return structured_response
