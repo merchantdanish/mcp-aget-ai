@@ -396,11 +396,10 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         try:
             # Check if human input handler is available
             if not self.context.human_input_handler:
-                logger.error("No human input handler configured for elicitation")
-                return ErrorData(
-                    code=-32603,
-                    message="Human input handler not configured for elicitation requests",
+                logger.error(
+                    "No human input handler configured for elicitation. Rejecting elicitation."
                 )
+                return ElicitResult(action="decline")
 
             # Get server name from config if available
             server_name = None
