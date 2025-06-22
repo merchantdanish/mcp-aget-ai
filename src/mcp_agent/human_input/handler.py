@@ -85,7 +85,7 @@ async def _handle_simple_input(request: HumanInputRequest) -> str:
             try:
                 user_input = await asyncio.wait_for(
                     asyncio.get_event_loop().run_in_executor(
-                        None, lambda: console.input()
+                        None, lambda: console.input("> ")
                     ),
                     request.timeout_seconds,
                 )
@@ -94,7 +94,7 @@ async def _handle_simple_input(request: HumanInputRequest) -> str:
                 raise TimeoutError("No response received within timeout period")
         else:
             user_input = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: console.input()
+                None, lambda: console.input("> ")
             )
 
         user_input = user_input.strip()
@@ -125,9 +125,22 @@ async def _handle_schema_input(request: HumanInputRequest) -> str:
         )
 
         while True:
-            console.print(f"\n[cyan]{loop_prompt}[/cyan]")
+            console.print(f"\n{loop_prompt}", style="cyan", markup=False)
             console.print("[dim]Type / to see available commands[/dim]")
-            value = console.input().strip() or (
+            # Show type-specific input hints
+            field_type = props.get("type", "string")
+            if field_type == "boolean":
+                console.print("[dim]Enter: true/false, yes/no, y/n, or 1/0[/dim]")
+            elif field_type == "number":
+                console.print("[dim]Enter a decimal number[/dim]")
+            elif field_type == "integer":
+                console.print("[dim]Enter a whole number[/dim]")
+
+            # Show optional hint when a default exists
+            if default is not None:
+                console.print(f"[dim]Press Enter to accept default [{default}][/dim]")
+
+            value = console.input("> ").strip() or (
                 str(default) if default is not None else ""
             )
             cmd_result = _process_slash_command(value)
