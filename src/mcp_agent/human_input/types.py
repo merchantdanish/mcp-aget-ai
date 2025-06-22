@@ -1,4 +1,4 @@
-from typing import Any, AsyncIterator, Protocol
+from typing import Any, Protocol
 from pydantic import BaseModel
 
 HUMAN_INPUT_SIGNAL_NAME = "__human_input__"
@@ -25,6 +25,12 @@ class HumanInputRequest(BaseModel):
     metadata: dict | None = None
     """Additional request payload"""
 
+    requested_schema: dict[str, Any] | None = None
+    """Optional schema to define structure of expected response. Should be a flat object with primitive properties only."""
+
+    server_name: str | None = None
+    """Name of the MCP server making the elicitation request"""
+
 
 class HumanInputResponse(BaseModel):
     """Represents a response to a human input request"""
@@ -44,7 +50,7 @@ class HumanInputCallback(Protocol):
 
     async def __call__(
         self, request: HumanInputRequest
-    ) -> AsyncIterator[HumanInputResponse]:
+    ) -> HumanInputResponse:
         """
         Handle a human input request.
 
@@ -52,7 +58,6 @@ class HumanInputCallback(Protocol):
             request: The input request to handle
 
         Returns:
-            AsyncIterator yielding responses as they come in
-            TODO: saqadri - Keep it simple and just return HumanInputResponse?
+            The response from the human input
         """
         ...
