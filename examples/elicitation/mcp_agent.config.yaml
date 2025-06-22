@@ -2,7 +2,7 @@ $schema: ../../schema/mcp-agent.config.schema.json
 
 execution_engine: asyncio
 logger:
-  transports: [console, file]
+  transports: [file]
   level: debug
   progress_display: true
   path_settings:

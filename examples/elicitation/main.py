@@ -3,9 +3,11 @@ import time
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
+from mcp_agent.human_input.handler import console_input_callback
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
-app = MCPApp(name="mcp_basic_agent")
+# Human input callback is required to handle elicitation requests
+app = MCPApp(name="mcp_basic_agent", human_input_callback=console_input_callback)
 
 
 async def example_usage():
@@ -27,6 +29,7 @@ async def example_usage():
                 ]
             )
             logger.info(f"Result: {res}")
+            print(f"Result: {res}")
 
 
 if __name__ == "__main__":
