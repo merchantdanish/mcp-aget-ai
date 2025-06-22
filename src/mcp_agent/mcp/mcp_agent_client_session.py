@@ -3,6 +3,7 @@ A derived client session for the MCP Agent framework.
 It adds logging and supports sampling requests.
 """
 
+import json
 from datetime import timedelta
 from typing import Any, Callable, Optional, TYPE_CHECKING
 from opentelemetry import trace
@@ -27,6 +28,7 @@ from mcp.client.session import (
     LoggingFnT,
     MessageHandlerFnT,
     SamplingFnT,
+    ElicitationFnT,
 )
 
 from mcp.types import (
@@ -44,10 +46,13 @@ from mcp.types import (
     NotificationParams,
     RequestParams,
     Root,
+    ElicitRequestParams,
+    ElicitResult,
 )
 
 from mcp_agent.config import MCPServerSettings
 from mcp_agent.core.context_dependent import ContextDependent
+from mcp_agent.human_input.types import HumanInputRequest
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.tracing.semconv import (
     MCP_METHOD_NAME,
@@ -83,6 +88,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         read_timeout_seconds: timedelta | None = None,
         sampling_callback: SamplingFnT | None = None,
         list_roots_callback: ListRootsFnT | None = None,
+        elicitation_callback: ElicitationFnT | None = None,
         logging_callback: LoggingFnT | None = None,
         message_handler: MessageHandlerFnT | None = None,
         client_info: Implementation | None = None,
@@ -94,6 +100,8 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
             sampling_callback = self._handle_sampling_callback
         if list_roots_callback is None:
             list_roots_callback = self._handle_list_roots_callback
+        if elicitation_callback is None:
+            elicitation_callback = self._handle_elicitation_callback
 
         ClientSession.__init__(
             self,
@@ -105,6 +113,7 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
             logging_callback=logging_callback,
             message_handler=message_handler,
             client_info=client_info,
+            elicitation_callback=elicitation_callback,
         )
 
         self.server_config: Optional[MCPServerSettings] = None
@@ -375,6 +384,73 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
                 return result
             except Exception as e:
                 return ErrorData(code=-32603, message=str(e))
+
+    async def _handle_elicitation_callback(
+        self,
+        context: RequestContext["ClientSession", Any],
+        params: ElicitRequestParams,
+    ) -> ElicitResult | ErrorData:
+        """Handle elicitation requests by prompting user for input via console."""
+        logger.info("Handling elicitation request", data=params.model_dump())
+
+        try:
+            # Check if human input handler is available
+            if not self.context.human_input_handler:
+                logger.error("No human input handler configured for elicitation")
+                return ErrorData(
+                    code=-32603,
+                    message="Human input handler not configured for elicitation requests",
+                )
+
+            # Get server name from config if available
+            server_name = None
+            if hasattr(self, "server_config") and self.server_config:
+                server_name = getattr(self.server_config, "name", None)
+
+            # Create a human input request with the elicitation data
+            human_input_request = HumanInputRequest(
+                prompt=params.message,
+                description="Elicitation Request",
+                request_id=f"elicitation-{id(params)}",
+                requested_schema=params.requestedSchema,
+                server_name=server_name,
+            )
+
+            # Get user input using the configured handler
+            human_input = await self.context.human_input_handler(human_input_request)
+
+            # Parse the human input - if it's JSON, the user completed the form
+            try:
+                content = json.loads(human_input.response)
+                logger.info("User accepted elicitation", data=content)
+                return ElicitResult(action="accept", content=content)
+            except json.JSONDecodeError:
+                # If not JSON, treat as simple text response or decline
+                response_text = human_input.response.strip().lower()
+                if response_text in ["decline", "no", "reject"]:
+                    logger.info("User declined elicitation")
+                    return ElicitResult(action="decline")
+                elif response_text in ["cancel"]:
+                    logger.info("User cancelled elicitation")
+                    return ElicitResult(action="cancel")
+                else:
+                    # For non-schema requests, return the text as-is
+                    logger.info("User provided response", data=human_input.response)
+                    return ElicitResult(
+                        action="accept", content={"response": human_input.response}
+                    )
+
+        except KeyboardInterrupt:
+            logger.info("User cancelled elicitation")
+            return ElicitResult(action="cancel")
+        except TimeoutError:
+            logger.info("Elicitation timed out")
+            return ElicitResult(action="cancel")
+        except Exception as e:
+            logger.error(f"Error handling elicitation: {e}")
+            return ErrorData(
+                code=-32603, message=f"Failed to handle elicitation: {str(e)}"
+            )
 
     async def _handle_list_roots_callback(
         self,
