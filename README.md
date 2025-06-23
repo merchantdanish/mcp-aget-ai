@@ -227,7 +227,7 @@ then an aggregator summarizes their findings into a final response.
 - dynamically defines agents to do the job
 - uses the appropriate workflow to orchestrate those agents (in this case the Parallel workflow)
 
-**Link to code**: [examples/basic/mcp_agent_server](./examples/basic/mcp_agent_server)
+**Link to code**: [examples/basic/mcp_server_aggregator](./examples/basic/mcp_server_aggregator)
 
 > [!NOTE]
 > Huge thanks to [Jerron Lim (@StreetLamb)](https://github.com/StreetLamb)
