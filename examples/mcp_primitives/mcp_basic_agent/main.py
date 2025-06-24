@@ -75,13 +75,16 @@ async def example_usage():
             )
 
             llm = await agent.attach_llm(OpenAIAugmentedLLM)
-            res = await llm.generate_str(
+            summary = await llm.generate_str(
                 [
                     "Summarise what are my prompts and resources?",
                     *combined_messages,
                 ]
             )
-            logger.info(f"Summary: {res}")
+            logger.info(f"Summary: {summary}")
+
+            haiku = await llm.generate_str("Write me a haiku")
+            logger.info(f"Haiku: {haiku}")
 
 
 if __name__ == "__main__":

@@ -56,9 +56,6 @@ google = [
 cohere = [
     "cohere>=5.13.4",
 ]
-fastmcp = [
-    "fastmcp>=2.5.2",
-]
 langchain = [
     "langchain-core>=0.3.64",
 ]
