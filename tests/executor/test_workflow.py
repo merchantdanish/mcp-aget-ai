@@ -84,7 +84,8 @@ class TestWorkflowBase:
         assert workflow._initialized is False
 
     def test_id_and_run_id_properties(self, workflow):
-        assert workflow.id == "TestWorkflow"
+        assert workflow.name == "TestWorkflow"
+        assert workflow.id is None
         assert workflow.run_id is None
 
     def test_executor_property(self, workflow, mock_context):
@@ -141,6 +142,117 @@ class TestWorkflowAsyncMethods:
         # wait for completion
         await workflow._run_task
         assert workflow.state.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_parallel_workflows_unique_ids(self, mock_context):
+        from unittest.mock import AsyncMock
+        import uuid
+
+        # Create multiple workflows of the same class
+        workflows = []
+        run_ids = []
+
+        # Mock uuid generation to return unique values
+        unique_ids = [str(uuid.uuid4()) for _ in range(3)]
+        mock_context.executor.uuid.side_effect = unique_ids
+        mock_context.workflow_registry.register = AsyncMock()
+
+        # Create and start 3 workflows in parallel
+        for i in range(3):
+            wf = MockWorkflow(name="TestWorkflow", context=mock_context)
+            wf.context.config.execution_engine = "asyncio"
+
+            # Make wait_for_signal never return so cancel task never completes
+            async def never_return(*args, **kwargs):
+                await asyncio.Future()
+
+            wf.executor.wait_for_signal = AsyncMock(side_effect=never_return)
+            workflows.append(wf)
+
+        # Start all workflows concurrently
+        run_id_tasks = [wf.run_async() for wf in workflows]
+        run_ids = await asyncio.gather(*run_id_tasks)
+
+        # Verify each workflow has a unique run_id
+        assert len(set(run_ids)) == 3, "All run_ids should be unique"
+        assert run_ids == unique_ids, "Run IDs should match the mocked UUIDs"
+
+        # Verify each workflow has the same workflow_id (name)
+        for wf in workflows:
+            assert wf._workflow_id == "TestWorkflow"
+            assert wf.id == "TestWorkflow"
+
+        # Verify each workflow has a unique run_id
+        for i, wf in enumerate(workflows):
+            assert wf._run_id == unique_ids[i]
+            assert wf.run_id == unique_ids[i]
+
+        # Clean up - wait for all workflows to complete
+        await asyncio.gather(
+            *[wf._run_task for wf in workflows], return_exceptions=True
+        )
+
+    @pytest.mark.asyncio
+    async def test_parallel_workflows_registry_tracking(self, mock_context):
+        from unittest.mock import AsyncMock
+        import uuid
+
+        # Create a registry to track registrations
+        registered_workflows = []
+
+        async def mock_register(workflow, run_id, workflow_id, task):
+            registered_workflows.append(
+                {
+                    "workflow": workflow,
+                    "run_id": run_id,
+                    "workflow_id": workflow_id,
+                    "task": task,
+                }
+            )
+
+        mock_context.workflow_registry.register = AsyncMock(side_effect=mock_register)
+
+        # Mock uuid generation
+        unique_ids = [f"run-{i}-{uuid.uuid4()!s}" for i in range(3)]
+        mock_context.executor.uuid.side_effect = unique_ids
+
+        # Create and start workflows
+        workflows = []
+        for i in range(3):
+            wf = MockWorkflow(name="ParallelWorkflow", context=mock_context)
+            wf.context.config.execution_engine = "asyncio"
+
+            async def never_return(*args, **kwargs):
+                await asyncio.Future()
+
+            wf.executor.wait_for_signal = AsyncMock(side_effect=never_return)
+            workflows.append(wf)
+
+        # Start all workflows
+        run_ids = await asyncio.gather(*[wf.run_async() for wf in workflows])
+
+        # Verify each workflow has a unique run_id
+        assert len(set(run_ids)) == 3, "All run_ids should be unique"
+
+        # Verify registry was called for each workflow
+        assert len(registered_workflows) == 3
+
+        # Verify each registration has correct data
+        for i, reg in enumerate(registered_workflows):
+            assert reg["workflow"] == workflows[i]
+            assert reg["run_id"] == unique_ids[i]
+            assert reg["workflow_id"] == "ParallelWorkflow"  # All have same workflow_id
+            assert reg["task"] is not None
+            assert isinstance(reg["task"], asyncio.Task)
+
+        # Verify workflow registry can distinguish between instances
+        all_run_ids = [reg["run_id"] for reg in registered_workflows]
+        assert len(set(all_run_ids)) == 3, "All registered run_ids should be unique"
+
+        # Clean up
+        await asyncio.gather(
+            *[wf._run_task for wf in workflows], return_exceptions=True
+        )
 
     @pytest.mark.asyncio
     async def test_cancel_no_run_id(self, workflow):

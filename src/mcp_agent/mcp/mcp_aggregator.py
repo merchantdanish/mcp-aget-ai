@@ -1,7 +1,6 @@
 import asyncio
 from typing import List, Literal, Dict, Optional, TypeVar, TYPE_CHECKING
 
-from mcp import ListResourcesResult, ReadResourceResult, ServerCapabilities
 from opentelemetry import trace
 from pydantic import BaseModel
 from mcp.client.session import ClientSession
@@ -12,6 +11,9 @@ from mcp.types import (
     GetPromptResult,
     ListPromptsResult,
     ListToolsResult,
+    ListResourcesResult,
+    ReadResourceResult,
+    ServerCapabilities,
     Prompt,
     Tool,
     TextContent,
@@ -248,8 +250,8 @@ class MCPAggregator(ContextDependent):
                                         None, None, None
                                     )
                                 except Exception as e:
-                                    logger.error(
-                                        f"Error during connection manager __aexit__: {e}"
+                                    logger.warning(
+                                        f"Error during connection manager cleanup: {e}"
                                     )
 
                                 # Clean up the connection manager from the context
@@ -257,16 +259,20 @@ class MCPAggregator(ContextDependent):
                                 logger.info(
                                     "Connection manager successfully closed and removed from context"
                                 )
-
-                self.initialized = False
+                        else:
+                            logger.debug(
+                                f"Aggregator closing with ref count {current_count}, "
+                                "connection manager will remain active"
+                            )
             except Exception as e:
                 logger.error(
                     f"Error during connection manager cleanup: {e}", exc_info=True
                 )
-                # TODO: saqadri (FA1) - Even if there's an error, we should mark ourselves as uninitialized
-                self.initialized = False
                 span.set_status(trace.Status(trace.StatusCode.ERROR))
                 span.record_exception(e)
+            finally:
+                # Always mark as uninitialized regardless of errors
+                self.initialized = False
 
     @classmethod
     async def create(
@@ -306,7 +312,12 @@ class MCPAggregator(ContextDependent):
                 logger.error(f"Error creating MCPAggregator: {e}")
                 span.set_status(trace.Status(trace.StatusCode.ERROR))
                 span.record_exception(e)
-                await instance.__aexit__(None, None, None)
+                try:
+                    await instance.__aexit__(None, None, None)
+                except Exception as cleanup_error:
+                    logger.warning(
+                        f"Error during MCPAggregator cleanup: {cleanup_error}"
+                    )
 
     async def load_server(self, server_name: str):
         """
@@ -619,14 +630,15 @@ class MCPAggregator(ContextDependent):
                     ]
                 )
             else:
-                result = ListToolsResult(
-                    tools=[
-                        namespaced_tool.tool.model_copy(
-                            update={"name": namespaced_tool_name}
-                        )
-                        for namespaced_tool_name, namespaced_tool in self._namespaced_tool_map.items()
-                    ]
-                )
+                async with self._tool_map_lock:
+                    result = ListToolsResult(
+                        tools=[
+                            namespaced_tool.tool.model_copy(
+                                update={"name": namespaced_tool_name}
+                            )
+                            for namespaced_tool_name, namespaced_tool in self._namespaced_tool_map.items()
+                        ]
+                    )
 
             if self.context.tracing_enabled:
                 span.set_attribute("tool_count", len(result.tools))
@@ -666,14 +678,15 @@ class MCPAggregator(ContextDependent):
                 )
 
             else:
-                result = ListResourcesResult(
-                    resources=[
-                        namespaced_resource.resource.model_copy(
-                            update={"name": namespaced_resource_name}
-                        )
-                        for namespaced_resource_name, namespaced_resource in self._namespaced_resource_map.items()
-                    ]
-                )
+                async with self._resource_map_lock:
+                    result = ListResourcesResult(
+                        resources=[
+                            namespaced_resource.resource.model_copy(
+                                update={"name": namespaced_resource_name}
+                            )
+                            for namespaced_resource_name, namespaced_resource in self._namespaced_resource_map.items()
+                        ]
+                    )
 
             if self.context.tracing_enabled:
                 span.set_attribute("resource_count", len(result.resources))
@@ -685,7 +698,9 @@ class MCPAggregator(ContextDependent):
 
             return result
 
-    async def read_resource(self, uri: str, server_name: str | None = None):
+    async def read_resource(
+        self, uri: str, server_name: str | None = None
+    ) -> ReadResourceResult:
         """
         Read a resource from a server by its URI.
 
@@ -712,7 +727,7 @@ class MCPAggregator(ContextDependent):
                 span.set_attribute("server_name", server_name)
             else:
                 # Use the URI to find the server name
-                server_name = self._find_server_name_from_uri(uri)
+                server_name, _ = await self._parse_capability_name(uri, "resource")
                 span.set_attribute("parsed_server_name", server_name)
 
             if server_name is None:
@@ -809,7 +824,9 @@ class MCPAggregator(ContextDependent):
                 span.set_attribute("server_name", server_name)
                 local_tool_name = name
             else:
-                server_name, local_tool_name = self._parse_capability_name(name, "tool")
+                server_name, local_tool_name = await self._parse_capability_name(
+                    name, "tool"
+                )
                 span.set_attribute("parsed_server_name", server_name)
                 span.set_attribute("parsed_tool_name", local_tool_name)
 
@@ -950,14 +967,15 @@ class MCPAggregator(ContextDependent):
                     ]
                 )
             else:
-                res = ListPromptsResult(
-                    prompts=[
-                        namespaced_prompt.prompt.model_copy(
-                            update={"name": namespaced_prompt_name}
-                        )
-                        for namespaced_prompt_name, namespaced_prompt in self._namespaced_prompt_map.items()
-                    ]
-                )
+                async with self._prompt_map_lock:
+                    res = ListPromptsResult(
+                        prompts=[
+                            namespaced_prompt.prompt.model_copy(
+                                update={"name": namespaced_prompt_name}
+                            )
+                            for namespaced_prompt_name, namespaced_prompt in self._namespaced_prompt_map.items()
+                        ]
+                    )
 
             if self.context.tracing_enabled:
                 span.set_attribute("prompts", [prompt.name for prompt in res.prompts])
@@ -1019,7 +1037,7 @@ class MCPAggregator(ContextDependent):
                 span.set_attribute("server_name", server_name)
                 local_prompt_name = name
             else:
-                server_name, local_prompt_name = self._parse_capability_name(
+                server_name, local_prompt_name = await self._parse_capability_name(
                     name, "prompt"
                 )
                 span.set_attribute("parsed_server_name", server_name)
@@ -1134,19 +1152,20 @@ class MCPAggregator(ContextDependent):
 
             return result
 
-    def _parse_capability_name(
-        self, name: str, capability: Literal["tool", "prompt"]
+    async def _parse_capability_name(
+        self, name: str, capability: Literal["tool", "prompt", "resource"]
     ) -> tuple[str, str]:
         """
         Parse a capability name into server name and local capability name.
 
         Args:
-            name: The tool or prompt name, possibly namespaced
-            capability: The type of capability, either 'tool' or 'prompt'
+            name: The tool, prompt, or resource URI, possibly namespaced
+            capability: The type of capability, either 'tool', 'prompt', or 'resource'
 
         Returns:
             Tuple of (server_name, local_name)
         """
+
         # First check if this is a namespaced name with a valid server prefix
         if SEP in name:
             parts = name.split(SEP)
@@ -1159,24 +1178,33 @@ class MCPAggregator(ContextDependent):
 
         # If no server name prefix is found, search all servers for a capability with this exact name
         if capability == "tool":
+            lock = self._tool_map_lock
             capability_map = self._server_to_tool_map
 
             def getter(item: NamespacedTool):
                 return item.tool.name
         elif capability == "prompt":
+            lock = self._prompt_map_lock
             capability_map = self._server_to_prompt_map
 
             def getter(item: NamespacedPrompt):
                 return item.prompt.name
+        elif capability == "resource":
+            lock = self._resource_map_lock
+            capability_map = self._server_to_resource_map
+
+            def getter(item: NamespacedResource):
+                return str(item.resource.uri)
         else:
             raise ValueError(f"Unsupported capability: {capability}")
 
         # Search servers in the order of self.server_names
-        for srv_name in self.server_names:
-            items = capability_map.get(srv_name, [])
-            for item in items:
-                if getter(item) == name:
-                    return srv_name, name
+        async with lock:
+            for srv_name in self.server_names:
+                items = capability_map.get(srv_name, [])
+                for item in items:
+                    if getter(item) == name:
+                        return srv_name, name
 
         # No match found
         return None, None

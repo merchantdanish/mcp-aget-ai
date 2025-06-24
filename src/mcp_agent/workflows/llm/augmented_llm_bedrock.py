@@ -70,6 +70,13 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         if self.context.config.bedrock:
             if hasattr(self.context.config.bedrock, "default_model"):
                 default_model = self.context.config.bedrock.default_model
+        else:
+            self.logger.error(
+                "Bedrock configuration not found. Please provide Bedrock configuration."
+            )
+            raise ValueError(
+                "Bedrock configuration not found. Please provide Bedrock configuration."
+            )
 
         self.default_request_params = self.default_request_params or RequestParams(
             model=default_model,
@@ -324,9 +331,10 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         """Convert a response object to an input parameter object to allow LLM calls to be chained."""
         return message
 
-    def message_param_str(self, message: MessageUnionTypeDef) -> str:
-        """Convert an input message to a string representation."""
-
+    def message_str(
+        self, message: MessageUnionTypeDef, content_only: bool = False
+    ) -> str:
+        """Convert an output message to a string representation."""
         if message.get("content"):
             final_text: list[str] = []
             for content in message["content"]:
@@ -335,11 +343,11 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
                 else:
                     final_text.append(str(content))
             return "\n".join(final_text)
-        return str(message)
+        elif content_only:
+            # If content_only is True, return empty string if no content
+            return ""
 
-    def message_str(self, message: MessageUnionTypeDef) -> str:
-        """Convert an output message to a string representation."""
-        return self.message_param_str(message)
+        return str(message)
 
 
 class RequestCompletionRequest(BaseModel):
@@ -373,7 +381,7 @@ class BedrockCompletionTasks:
                 aws_access_key_id=request.config.aws_access_key_id,
                 aws_secret_access_key=request.config.aws_secret_access_key,
                 aws_session_token=request.config.aws_session_token,
-                region_name=request.config.bedrock.aws_region,
+                region_name=request.config.aws_region,
             )
         else:
             session = Session()
@@ -409,7 +417,7 @@ class BedrockCompletionTasks:
                 aws_access_key_id=request.config.aws_access_key_id,
                 aws_secret_access_key=request.config.aws_secret_access_key,
                 aws_session_token=request.config.aws_session_token,
-                region_name=request.config.bedrock.aws_region,
+                region_name=request.config.aws_region,
             )
         else:
             session = Session()
@@ -420,7 +428,7 @@ class BedrockCompletionTasks:
         # Extract structured data from natural language
         structured_response = client.chat.completions.create(
             modelId=request.model,
-            messages=[{"role": "user", "content": [{"text": request.response_str}]}],
+            messages=[{"role": "user", "content": request.response_str}],
             response_model=response_model,
         )
 

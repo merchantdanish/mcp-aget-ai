@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/6f4e40c4-dc88-47b6-b965-5856b69416d2" alt="Logo" width="300" />
+  <img src="https://github.com/user-attachments/assets/c8d059e5-bd56-4ea2-a72d-807fb4897bde" alt="Logo" width="300" />
 </p>
 
 <p align="center">
@@ -19,6 +19,10 @@
 <a href="https://lmai.link/discord/mcp-agent"><img src="https://shields.io/discord/1089284610329952357" alt="discord" /></a>
 <img alt="Pepy Total Downloads" src="https://img.shields.io/pepy/dt/mcp-agent?label=pypi%20%7C%20downloads"/>
 <a href="https://github.com/lastmile-ai/mcp-agent/blob/main/LICENSE"><img src="https://img.shields.io/pypi/l/mcp-agent" /></a>
+</p>
+
+<p align="center">
+<a href="https://trendshift.io/repositories/13216" target="_blank"><img src="https://trendshift.io/api/badge/repositories/13216" alt="lastmile-ai%2Fmcp-agent | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </p>
 
 ## Overview
@@ -223,7 +227,7 @@ then an aggregator summarizes their findings into a final response.
 - dynamically defines agents to do the job
 - uses the appropriate workflow to orchestrate those agents (in this case the Parallel workflow)
 
-**Link to code**: [examples/basic/mcp_agent_server](./examples/basic/mcp_agent_server)
+**Link to code**: [examples/basic/mcp_server_aggregator](./examples/basic/mcp_server_aggregator)
 
 > [!NOTE]
 > Huge thanks to [Jerron Lim (@StreetLamb)](https://github.com/StreetLamb)

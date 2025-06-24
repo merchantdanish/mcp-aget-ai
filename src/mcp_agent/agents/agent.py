@@ -185,6 +185,9 @@ class Agent(BaseModel):
         ) as span:
             if llm:
                 self.llm = llm
+                llm.agent = self
+                if not llm.instruction:
+                    llm.instruction = self.instruction
             elif llm_factory:
                 self.llm = llm_factory(agent=self)
             else:
@@ -248,6 +251,9 @@ class Agent(BaseModel):
 
                 self._server_to_prompt_map.clear()
                 self._server_to_prompt_map.update(result.server_to_prompt_map)
+
+                self._namespaced_resource_map.clear()
+                self._namespaced_resource_map.update(result.namespaced_resource_map)
 
                 self._server_to_resource_map.clear()
                 self._server_to_resource_map.update(result.server_to_resource_map)
@@ -535,7 +541,7 @@ class Agent(BaseModel):
         prompt_name: str | None = None,
         arguments: dict[str, str] | None = None,
         resource_uris: list[str | AnyUrl] | str | AnyUrl | None = None,
-        server_name: str | None = None,
+        server_names: list[str] | None = None,
     ) -> list[PromptMessage]:
         """
         Create prompt messages from a prompt name and/or resource URIs.
@@ -544,7 +550,7 @@ class Agent(BaseModel):
             prompt_name: Name of the prompt to retrieve
             arguments: Arguments for the prompt (only used with prompt_name)
             resource_uris: URI(s) of the resource(s) to retrieve. Can be a single URI or list of URIs.
-            server_name: Optional server name to target
+            server_names: List of server names to search across. If None, searches across all servers the agent have access to.
 
         Returns:
             List of PromptMessage objects. If both prompt_name and resource_uris are provided,
@@ -560,16 +566,30 @@ class Agent(BaseModel):
 
         messages = []
 
+        # Use provided server_names or default to all servers
+        target_servers = server_names or self.server_names
+
         # Get prompt messages if prompt_name is provided
         if prompt_name is not None:
-            result = await self.get_prompt(
-                prompt_name, arguments, server_name=server_name
-            )
-            if getattr(result, "isError", False):
+            # Try to find the prompt across the specified servers
+            prompt_found = False
+            for server in target_servers:
+                try:
+                    result = await self.get_prompt(
+                        prompt_name, arguments, server_name=server
+                    )
+                    if not getattr(result, "isError", False):
+                        messages.extend(result.messages)
+                        prompt_found = True
+                        break
+                except Exception:
+                    # Continue to next server if this one fails
+                    continue
+
+            if not prompt_found:
                 raise ValueError(
-                    f"Error getting prompt '{prompt_name}': {result.description}"
+                    f"Prompt '{prompt_name}' not found in any of the specified servers: {target_servers}"
                 )
-            messages.extend(result.messages)
 
         # Get resource messages if resource_uris is provided
         if resource_uris is not None:
@@ -579,17 +599,32 @@ class Agent(BaseModel):
             else:
                 uris_list = resource_uris
 
-            # Process each URI
+            # Process each URI - try to find it across the specified servers
             for uri in uris_list:
-                resource_result = await self.read_resource(str(uri), server_name)
-                resource_messages = [
-                    PromptMessage(
-                        role="user",
-                        content=EmbeddedResource(type="resource", resource=content),
+                resource_found = False
+                for server in target_servers:
+                    try:
+                        resource_result = await self.read_resource(str(uri), server)
+                        resource_messages = [
+                            PromptMessage(
+                                role="user",
+                                content=EmbeddedResource(
+                                    type="resource", resource=content
+                                ),
+                            )
+                            for content in resource_result.contents
+                        ]
+                        messages.extend(resource_messages)
+                        resource_found = True
+                        break
+                    except Exception:
+                        # Continue to next server if this one fails
+                        continue
+
+                if not resource_found:
+                    raise ValueError(
+                        f"Resource '{uri}' not found in any of the specified servers: {target_servers}"
                     )
-                    for content in resource_result.contents
-                ]
-                messages.extend(resource_messages)
 
         return messages
 

@@ -86,7 +86,8 @@ class Workflow(ABC, Generic[T], ContextDependent):
         self.name = name or self.__class__.__name__
         self._logger = get_logger(f"workflow.{self.name}")
         self._initialized = False
-        self._run_id = None
+        self._workflow_id = None  # Will be set during run_async
+        self._run_id = None  # Will be set during run_async
         self._run_task = None
 
         # A simple workflow state object
@@ -112,7 +113,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
         """
         Get the workflow ID for this workflow.
         """
-        return self.name
+        return self._workflow_id
 
     @property
     def run_id(self) -> str | None:
@@ -200,14 +201,19 @@ class Workflow(ABC, Generic[T], ContextDependent):
 
         if self.context.config.execution_engine == "asyncio":
             # Generate a unique ID for this workflow instance
+            if not self._workflow_id:
+                self._workflow_id = self.name
             if not self._run_id:
                 self._run_id = str(self.executor.uuid())
         elif self.context.config.execution_engine == "temporal":
             # For Temporal workflows, we'll start the workflow immediately
             executor: TemporalExecutor = self.executor
             handle = await executor.start_workflow(self.name, *args, **kwargs)
+            self._workflow_id = handle.id
             self._run_id = handle.result_run_id or handle.run_id
-            self._logger.debug(f"Workflow started with run ID: {self._run_id}")
+            self._logger.debug(
+                f"Workflow started with workflow ID: {self._workflow_id}, run ID: {self._run_id}"
+            )
 
         # Define the workflow execution function
         async def _execute_workflow():
@@ -285,7 +291,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
             await self.context.workflow_registry.register(
                 workflow=self,
                 run_id=self._run_id,
-                workflow_id=self.name,
+                workflow_id=self.id,
                 task=self._run_task,
             )
 
@@ -314,7 +320,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
             )
             signal = Signal(
                 name=signal_name,
-                workflow_id=self.name,
+                workflow_id=self.id,
                 run_id=self._run_id,
                 payload=payload,
             )
@@ -344,7 +350,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
             # when the workflow checks for cancellation
             self._logger.info(f"Sending cancel signal to workflow {self._run_id}")
             await self.executor.signal(
-                "cancel", workflow_id=self.name, run_id=self._run_id
+                "cancel", workflow_id=self.id, run_id=self._run_id
             )
             return True
         except Exception as e:
