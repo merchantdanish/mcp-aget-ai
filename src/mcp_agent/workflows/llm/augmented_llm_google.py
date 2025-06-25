@@ -165,20 +165,36 @@ class GoogleAugmentedLLM(
             ]
 
             if function_calls:
-                results = await self.executor.execute_many(function_calls)
+                results: list[
+                    types.Content | BaseException | None
+                ] = await self.executor.execute_many(function_calls)
 
                 self.logger.debug(
                     f"Iteration {i}: Tool call results: {str(results) if results else 'None'}"
                 )
 
+                function_response_parts: list[types.Part] = []
                 for result in results:
-                    if isinstance(result, BaseException):
+                    if (
+                        result
+                        and not isinstance(result, BaseException)
+                        and result.parts
+                    ):
+                        function_response_parts.extend(result.parts)
+                    else:
                         self.logger.error(
-                            f"Warning: Unexpected error during tool execution: {result}. Continuing.."
+                            f"Warning: Unexpected error during tool execution: {result}. Continuing..."
                         )
-                        break
-                    if result is not None:
-                        messages.append(result)
+                        function_response_parts.append(
+                            types.Part.from_text(text=f"Error executing tool: {result}")
+                        )
+
+                # Combine all parallel function responses into a single message
+                if function_response_parts:
+                    function_response_content = types.Content(
+                        role="tool", parts=function_response_parts
+                    )
+                    messages.append(function_response_content)
             else:
                 self.logger.debug(
                     f"Iteration {i}: Stopping because finish_reason is '{candidate.finish_reason}'"
