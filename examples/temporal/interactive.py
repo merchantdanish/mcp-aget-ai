@@ -38,7 +38,7 @@ class WorkflowWithInteraction(InteractiveWorkflow[str]):
         Run the workflow, processing the input data.
 
         Args:
-            input_data: The data to process
+            input: The data to process
 
         Returns:
             A WorkflowResult containing the processed data
