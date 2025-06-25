@@ -74,7 +74,7 @@ class InteractiveWorkflow(Workflow[T], Generic[T]):
             await workflow.wait_condition(lambda: self._response is not None)
 
             if self._response is None:
-                logger.warning("Input request timed out after")
+                logger.warning("Input request timed out")
                 return HumanInputResponse(request_id=request.request_id, response="")
 
             return HumanInputResponse(
