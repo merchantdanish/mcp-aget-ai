@@ -19,6 +19,9 @@ class HumanInputRequest(BaseModel):
     workflow_id: str | None = None
     """Optional workflow ID if using workflow engine"""
 
+    run_id: str | None = None
+    """Optional run ID if using workflow engine"""
+
     timeout_seconds: int | None = None
     """Optional timeout in seconds"""
 

@@ -785,12 +785,19 @@ class Agent(BaseModel):
                                 "metadata": json.dumps(user_input.metadata or {}),
                             },
                         )
+
                     await self.context.executor.signal(
-                        signal_name=request_id, payload=user_input
+                        signal_name=request_id,
+                        payload=user_input,
+                        workflow_id=request.workflow_id,
+                        run_id=request.run_id,
                     )
                 except Exception as e:
                     await self.context.executor.signal(
-                        request_id, payload=f"Error getting human input: {str(e)}"
+                        request_id,
+                        payload=f"Error getting human input: {str(e)}",
+                        workflow_id=request.workflow_id,
+                        run_id=request.run_id,
                     )
 
             asyncio.create_task(call_callback_and_signal())
@@ -899,7 +906,9 @@ class Agent(BaseModel):
     ) -> CallToolResult:
         # Handle human input request
         try:
-            request = HumanInputRequest(**arguments["request"])
+            request = self.context.executor.create_human_input_request(
+                arguments["request"]
+            )
             result: HumanInputResponse = await self.request_human_input(request=request)
             return CallToolResult(
                 content=[

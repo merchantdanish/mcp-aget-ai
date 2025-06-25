@@ -21,6 +21,7 @@ from typing import (
 )
 import inspect
 
+from mcp_agent.human_input.types import HumanInputRequest
 from pydantic import ConfigDict
 from temporalio import activity, workflow, exceptions
 from temporalio.client import Client as TemporalClient, WorkflowHandle
@@ -366,6 +367,22 @@ class TemporalExecutor(Executor):
         """
         return await self.start_workflow(
             workflow_type, *workflow_args, wait_for_result=True, **workflow_kwargs
+        )
+
+    def create_human_input_request(self, request: dict) -> HumanInputRequest:
+        """
+        Create a human input request from the arguments.
+
+        Args:
+            request: Optional arguments to include in the request.
+
+        Returns:
+            A HumanInputRequest object with workflow_id and run_id populated.
+        """
+        return HumanInputRequest(
+            **request,
+            workflow_id=workflow.info().workflow_id,
+            run_id=workflow.info().run_id,
         )
 
     async def terminate_workflow(
