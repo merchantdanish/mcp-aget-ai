@@ -86,7 +86,9 @@ async def _handle_simple_input(request: HumanInputRequest) -> str:
                 )
             except asyncio.TimeoutError:
                 console.print("\n[red]Timeout waiting for input[/red]")
-                raise TimeoutError("No response received within timeout period")
+                raise TimeoutError(
+                    "No response received within timeout period"
+                ) from None
         else:
             user_input = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: console.input("> ")
