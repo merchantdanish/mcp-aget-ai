@@ -7,10 +7,10 @@ from mcp_agent.human_input.handler import console_input_callback
 from mcp_agent.elicitation.handler import console_elicitation_callback
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
-# Human input callback is required to handle elicitation requests
+# Elicitation callback is required to handle elicitation requests
 app = MCPApp(
     name="mcp_basic_agent",
-    human_input_callback=console_input_callback,
+    human_input_callback=console_input_callback,  # Optional
     elicitation_callback=console_elicitation_callback,
 )
 
