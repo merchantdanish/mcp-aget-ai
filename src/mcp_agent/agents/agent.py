@@ -468,13 +468,7 @@ class Agent(BaseModel):
                 Tool(
                     name=HUMAN_INPUT_TOOL_NAME,
                     description=human_input_tool.description,
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "request": HumanInputRequest.model_json_schema()
-                        },
-                        "required": ["request"],
-                    },
+                    inputSchema=human_input_tool.parameters,
                 )
             )
 
