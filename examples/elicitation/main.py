@@ -28,11 +28,7 @@ async def example_usage():
 
         async with agent:
             llm = await agent.attach_llm(OpenAIAugmentedLLM)
-            res = await llm.generate_str(
-                [
-                    "Can you book a table for 2 on 21 Jun at 5pm?",
-                ]
-            )
+            res = await llm.generate_str("Can you book a table for 2 on 21 Jun at 5pm?")
             logger.info(f"Result: {res}")
             print(f"Result: {res}")
 
