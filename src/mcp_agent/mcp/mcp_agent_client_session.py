@@ -3,7 +3,6 @@ A derived client session for the MCP Agent framework.
 It adds logging and supports sampling requests.
 """
 
-import json
 from datetime import timedelta
 from typing import Any, Callable, Optional, TYPE_CHECKING
 from opentelemetry import trace
@@ -46,13 +45,12 @@ from mcp.types import (
     NotificationParams,
     RequestParams,
     Root,
-    ElicitRequestParams,
+    ElicitRequestParams as MCPElicitRequestParams,
     ElicitResult,
 )
 
 from mcp_agent.config import MCPServerSettings
 from mcp_agent.core.context_dependent import ContextDependent
-from mcp_agent.human_input.types import HumanInputRequest
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.tracing.semconv import (
     MCP_METHOD_NAME,
@@ -388,57 +386,27 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
     async def _handle_elicitation_callback(
         self,
         context: RequestContext["ClientSession", Any],
-        params: ElicitRequestParams,
+        params: MCPElicitRequestParams,
     ) -> ElicitResult | ErrorData:
         """Handle elicitation requests by prompting user for input via console."""
         logger.info("Handling elicitation request", data=params.model_dump())
 
         try:
-            # Check if human input handler is available
-            if not self.context.human_input_handler:
+            if not self.context.elicitation_handler:
                 logger.error(
-                    "No human input handler configured for elicitation. Rejecting elicitation."
+                    "No elicitation handler configured for elicitation. Rejecting elicitation."
                 )
                 return ElicitResult(action="decline")
 
-            # Get server name from config if available
             server_name = None
             if hasattr(self, "server_config") and self.server_config:
                 server_name = getattr(self.server_config, "name", None)
 
-            # Create a human input request with the elicitation data
-            human_input_request = HumanInputRequest(
-                prompt=params.message,
-                description="Elicitation Request",
-                request_id=f"elicitation-{id(params)}",
-                requested_schema=params.requestedSchema,
-                server_name=server_name,
+            elicitation_request = params.model_copy(update={"server_name": server_name})
+            elicitation_response = await self.context.elicitation_handler(
+                elicitation_request
             )
-
-            # Get user input using the configured handler
-            human_input = await self.context.human_input_handler(human_input_request)
-
-            # Parse the human input - if it's JSON, the user completed the form
-            try:
-                content = json.loads(human_input.response)
-                logger.info("User accepted elicitation", data=content)
-                return ElicitResult(action="accept", content=content)
-            except json.JSONDecodeError:
-                # If not JSON, treat as simple text response or decline
-                response_text = human_input.response.strip().lower()
-                if response_text in ["decline", "no", "reject"]:
-                    logger.info("User declined elicitation")
-                    return ElicitResult(action="decline")
-                elif response_text in ["cancel"]:
-                    logger.info("User cancelled elicitation")
-                    return ElicitResult(action="cancel")
-                else:
-                    # For non-schema requests, return the text as-is
-                    logger.info("User provided response", data=human_input.response)
-                    return ElicitResult(
-                        action="accept", content={"response": human_input.response}
-                    )
-
+            return elicitation_response
         except KeyboardInterrupt:
             logger.info("User cancelled elicitation")
             return ElicitResult(action="cancel")

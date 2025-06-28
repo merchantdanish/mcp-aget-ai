@@ -25,12 +25,6 @@ class HumanInputRequest(BaseModel):
     metadata: dict | None = None
     """Additional request payload"""
 
-    requested_schema: dict[str, Any] | None = None
-    """Optional schema to define structure of expected response. Should be a flat object with primitive properties only."""
-
-    server_name: str | None = None
-    """Name of the MCP server making the elicitation request"""
-
 
 class HumanInputResponse(BaseModel):
     """Represents a response to a human input request"""
@@ -48,9 +42,7 @@ class HumanInputResponse(BaseModel):
 class HumanInputCallback(Protocol):
     """Protocol for callbacks that handle human input requests."""
 
-    async def __call__(
-        self, request: HumanInputRequest
-    ) -> HumanInputResponse:
+    async def __call__(self, request: HumanInputRequest) -> HumanInputResponse:
         """
         Handle a human input request.
 
