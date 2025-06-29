@@ -14,10 +14,10 @@ MCP Agent bridges the gap between the low-level [Model Context Protocol](https:/
     Seamless connection to any MCP server with tools, resources, prompts, and
     file system roots
   </Card>
-  <Card title="Agent Patterns" icon="brain">
+  <Card title="Agent Patterns" icon="diagram-project">
     Pre-built implementations of proven agent workflow patterns
   </Card>
-  <Card title="Model Agnostic" icon="refresh">
+  <Card title="Model Agnostic" icon="brain">
     Works with OpenAI, Anthropic, Azure, AWS Bedrock, Google, and Ollama
   </Card>
   <Card title="Composable" icon="puzzle-piece">
@@ -42,19 +42,34 @@ As [more services become MCP-aware](https://github.com/punkpeye/awesome-mcp-serv
 MCP Agent implements every pattern from Anthropic's research on building effective agents:
 
 <CardGroup cols={3}>
-  <Card title="Parallel Processing" icon="diagram-split">
+  <Card
+    title="Parallel Workflow"
+    icon="arrows-split-up-and-left"
+    href="/workflows/parallel"
+  >
     Fan-out tasks to multiple agents
   </Card>
-  <Card title="Router" icon="route">
+  <Card title="Router Pattern" icon="route" href="/workflows/router">
     Route inputs to appropriate handlers
   </Card>
-  <Card title="Evaluator-Optimizer" icon="arrows-rotate">
+  <Card
+    title="Intent Classifier"
+    href="/workflows/intent-classifier"
+    icon="brain"
+  >
+    Intent classification with confidence scoring
+  </Card>
+  <Card
+    title="Evaluator-Optimizer"
+    icon="arrows-rotate"
+    href="/workflows/evaluator-optimizer"
+  >
     Iteratively improve responses
   </Card>
-  <Card title="Orchestrator-Workers" icon="users">
+  <Card title="Orchestrator" icon="users" href="/workflows/orchestrator">
     Plan and execute complex tasks
   </Card>
-  <Card title="Swarm" icon="hexagon">
+  <Card title="Swarm" icon="hexagon" href="/workflows/swarm">
     Multi-agent collaboration
   </Card>
 </CardGroup>

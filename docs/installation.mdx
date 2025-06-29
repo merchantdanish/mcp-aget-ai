@@ -118,7 +118,7 @@ MCP Agent works with MCP servers that provide tools, resources, and other capabi
     icon="globe"
     href="https://github.com/modelcontextprotocol/servers/tree/main/src/fetch"
   >
-    Web content fetching capabilities ```bash uvx install mcp-server-fetch ```
+    Web content fetching capabilities
   </Card>
 
 <Card
@@ -126,8 +126,7 @@ MCP Agent works with MCP servers that provide tools, resources, and other capabi
   icon="folder"
   href="https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem"
 >
-  Local file system access ```bash npm install -g
-  @modelcontextprotocol/server-filesystem ```
+  Local file system access
 </Card>
 
 <Card
@@ -135,8 +134,7 @@ MCP Agent works with MCP servers that provide tools, resources, and other capabi
   icon="database"
   href="https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite"
 >
-  SQLite database operations ```bash npm install -g
-  @modelcontextprotocol/server-sqlite ```
+  SQLite database operations
 </Card>
 
   <Card
@@ -144,7 +142,7 @@ MCP Agent works with MCP servers that provide tools, resources, and other capabi
     icon="git-branch"
     href="https://github.com/modelcontextprotocol/servers/tree/main/src/git"
   >
-    Git repository operations ```bash uvx install mcp-server-git ```
+    Git repository operations
   </Card>
 </CardGroup>
 
@@ -158,28 +156,31 @@ MCP Agent works with MCP servers that provide tools, resources, and other capabi
 Create a simple test file to verify your installation:
 
 <CodeGroup>
+
 ```python test_mcp_agent.py
 import asyncio
 from mcp_agent.app import MCPApp
 
 async def test_installation():
-app = MCPApp(name="test_app")
-async with app.run() as mcp_agent_app:
-logger = mcp_agent_app.logger
-logger.info("MCP Agent installed successfully!")
-print("✅ MCP Agent is working!")
+  app = MCPApp(name="test_app")
 
-if **name** == "**main**":
+  async with app.run() as mcp_agent_app:
+    logger = mcp_agent_app.logger
+    logger.info("MCP Agent installed successfully!")
+    print("✅ MCP Agent is working!")
+
+if __name__ == "__main__":
 asyncio.run(test_installation())
 
-````
+```
+
 </CodeGroup>
 
 Run the test:
 
 ```bash
 python test_mcp_agent.py
-````
+```
 
 <Check>
   You should see output confirming that MCP Agent is working correctly.
@@ -198,10 +199,7 @@ python test_mcp_agent.py
   <Step title="Install Dependencies">
     ```bash
     # Sync project dependencies
-    uv sync
-
-    # Install development dependencies
-    uv pip install -r requirements-dev.txt
+    uv sync --all-extras
     ```
 
   </Step>
@@ -209,10 +207,7 @@ python test_mcp_agent.py
   <Step title="Run Examples">
     ```bash
     # Navigate to any example
-    cd examples/basic/mcp_hello_world
-
-    # Install example requirements
-    uv pip install -r requirements.txt
+    cd examples/basic/mcp_basic_agent
 
     # Copy and configure secrets
     cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
@@ -228,20 +223,6 @@ python test_mcp_agent.py
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title="Permission Issues with MCP Servers">
-    If you encounter permission issues when installing MCP servers globally:
-
-    ```bash
-    # Use a different npm prefix
-    npm config set prefix ~/.npm-global
-    export PATH=~/.npm-global/bin:$PATH
-
-    # Then install servers
-    npm install -g @modelcontextprotocol/server-filesystem
-    ```
-
-  </Accordion>
-
   <Accordion title="Python Version Issues">
     MCP Agent requires Python 3.10+. Check your Python version:
 
@@ -258,20 +239,6 @@ python test_mcp_agent.py
     # Install Python 3.11
     pyenv install 3.11.0
     pyenv global 3.11.0
-    ```
-
-  </Accordion>
-
-  <Accordion title="Network Issues">
-    If you're behind a corporate firewall, configure proxy settings:
-
-    ```bash
-    # For pip
-    pip install --proxy http://user:password@proxy.server:port mcp-agent
-
-    # For npm
-    npm config set proxy http://proxy.server:port
-    npm config set https-proxy http://proxy.server:port
     ```
 
   </Accordion>

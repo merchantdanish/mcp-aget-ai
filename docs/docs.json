@@ -1,13 +1,13 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "MCP Agent",
+  "name": "mcp-agent",
   "colors": {
     "primary": "#16A34A",
     "light": "#07C983",
     "dark": "#15803D"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/favicon.png",
   "navigation": {
     "tabs": [
       {
@@ -31,17 +31,6 @@
             ]
           },
           {
-            "group": "MCP Protocol",
-            "pages": [
-              "mcp/overview",
-              "mcp/tools",
-              "mcp/resources",
-              "mcp/prompts",
-              "mcp/roots",
-              "mcp/server-management"
-            ]
-          },
-          {
             "group": "Workflow Patterns",
             "pages": [
               "workflows/overview",
@@ -51,17 +40,6 @@
               "workflows/evaluator-optimizer",
               "workflows/orchestrator",
               "workflows/swarm"
-            ]
-          },
-          {
-            "group": "Model Providers",
-            "pages": [
-              "providers/openai",
-              "providers/anthropic",
-              "providers/azure",
-              "providers/bedrock",
-              "providers/google",
-              "providers/ollama"
             ]
           },
           {
@@ -76,9 +54,7 @@
           {
             "group": "Advanced Features",
             "pages": [
-              "advanced/human-input",
               "advanced/composition",
-              "advanced/custom-servers",
               "advanced/monitoring",
               "advanced/temporal"
             ]
@@ -118,8 +94,8 @@
     }
   },
   "logo": {
-    "light": "logo/light.png",
-    "dark": "logo/light.png"
+    "light": "logo/mcp-agent.png",
+    "dark": "logo/mcp-agent.png"
   },
   "navbar": {
     "links": [

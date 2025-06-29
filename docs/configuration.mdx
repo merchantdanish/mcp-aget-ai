@@ -17,55 +17,111 @@ MCP Agent uses two configuration files:
 
 ## Basic Configuration
 
-<Steps>
-  <Step title="Create config file">
-    Create `mcp_agent.config.yaml` in your project root:
+<Tabs>
+  <Tab title="YAML Configuration (Recommended)">
+    <Steps>
+      <Step title="Create config file">
+        Create `mcp_agent.config.yaml` in your project root:
 
-    ```yaml
-    execution_engine: asyncio
-    logger:
-      transports: [console]
-      level: info
+        ```yaml
+        execution_engine: asyncio
+        logger:
+          transports: [console]
+          level: info
 
-    mcp:
-      servers:
-        fetch:
-          command: "uvx"
-          args: ["mcp-server-fetch"]
-        
-        filesystem:
-          command: "npx"
-          args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+        mcp:
+          servers:
+            fetch:
+              command: "uvx"
+              args: ["mcp-server-fetch"]
+            
+            filesystem:
+              command: "npx"
+              args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
 
-    openai:
-      default_model: gpt-4o
-    ```
-  </Step>
+        openai:
+          default_model: gpt-4o
+        ```
+      </Step>
 
-  <Step title="Create secrets file">
-    Create `mcp_agent.secrets.yaml` for sensitive data:
+      <Step title="Create secrets file">
+        Create `mcp_agent.secrets.yaml` for sensitive data:
 
-    ```yaml
-    openai:
-      api_key: "your-openai-api-key"
-    ```
+        ```yaml
+        openai:
+          api_key: "your-openai-api-key"
+        ```
 
-    <Warning>
-      Add `mcp_agent.secrets.yaml` to your `.gitignore` file to avoid committing API keys.
-    </Warning>
-  </Step>
+        <Warning>
+          Add `mcp_agent.secrets.yaml` to your `.gitignore` file to avoid committing API keys.
+        </Warning>
+      </Step>
 
-  <Step title="Load configuration">
-    MCP Agent automatically loads these files when you create an `MCPApp`:
+      <Step title="Load configuration">
+        MCP Agent automatically loads these files when you create an `MCPApp`:
 
-    ```python
-    from mcp_agent.app import MCPApp
+        ```python
+        from mcp_agent.app import MCPApp
 
-    # Configuration is loaded automatically
-    app = MCPApp(name="my_agent")
-    ```
-  </Step>
-</Steps>
+        # Configuration is loaded automatically
+        app = MCPApp(name="my_agent")
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Programmatic Configuration">
+    <Steps>
+      <Step title="Create settings object">
+        Configure MCP Agent programmatically using the `Settings` class:
+
+        ```python
+        from mcp_agent.app import MCPApp
+        from mcp_agent.settings import (
+            Settings,
+            LoggerSettings,
+            MCPSettings,
+            MCPServerSettings,
+            OpenAISettings
+        )
+
+        settings = Settings(
+            execution_engine="asyncio",
+            logger=LoggerSettings(type="console", level="info"),
+            mcp=MCPSettings(
+                servers={
+                    "fetch": MCPServerSettings(
+                        command="uvx",
+                        args=["mcp-server-fetch"],
+                    ),
+                    "filesystem": MCPServerSettings(
+                        command="npx",
+                        args=["-y", "@modelcontextprotocol/server-filesystem", "."],
+                    ),
+                }
+            ),
+            openai=OpenAISettings(
+                api_key="your-openai-api-key",
+                default_model="gpt-4o",
+            ),
+        )
+        ```
+      </Step>
+
+      <Step title="Initialize with settings">
+        Pass the settings object to `MCPApp`:
+
+        ```python
+        app = MCPApp(name="my_agent", settings=settings)
+        ```
+      </Step>
+    </Steps>
+
+    <Note>
+      Programmatic configuration is useful for dynamic configuration, testing, or when you need to compute settings at runtime.
+    </Note>
+  </Tab>
+</Tabs>
 
 ## Configuration Reference
 
@@ -166,7 +222,6 @@ mcp:
     git:
       command: "uvx"
       args: ["mcp-server-git", "--repository", "."]
-      cwd: "/path/to/repo"
 ```
 </CodeGroup>
 
@@ -243,19 +298,48 @@ anthropic:
 
 ### Azure OpenAI
 
-<CodeGroup>
-```yaml Config File
-azure:
-  default_model: gpt-4o
-  api_version: "2024-02-15-preview"
-```
+Configure Azure OpenAI with different endpoint types:
 
-```yaml Secrets File
-azure:
-  api_key: "your-azure-key"
-  endpoint: "https://your-resource.openai.azure.com/"
-```
-</CodeGroup>
+<Tabs>
+  <Tab title="Azure OpenAI Endpoint">
+    <CodeGroup>
+    ```yaml Config File
+    azure:
+      default_model: gpt-4o-mini
+      api_version: "2025-01-01-preview"
+    ```
+
+    ```yaml Secrets File
+    azure:
+      api_key: "your-azure-key"
+      endpoint: "https://<your-resource-name>.cognitiveservices.azure.com/openai/deployments/<your-deployment-name>"
+    ```
+    </CodeGroup>
+
+    <Note>
+      Use `api_version: "2025-01-01-preview"` for structured outputs support.
+    </Note>
+  </Tab>
+
+  <Tab title="Azure AI Inference Endpoint">
+    <CodeGroup>
+    ```yaml Config File
+    azure:
+      default_model: DeepSeek-V3
+    ```
+
+    ```yaml Secrets File
+    azure:
+      api_key: "your-azure-key"
+      endpoint: "https://<your-resource-name>.services.ai.azure.com/models"
+    ```
+    </CodeGroup>
+
+    <Note>
+      Azure AI inference endpoints support various models beyond OpenAI.
+    </Note>
+  </Tab>
+</Tabs>
 
 ### AWS Bedrock
 
@@ -276,74 +360,54 @@ bedrock:
 
 ### Google Gemini
 
-<CodeGroup>
-```yaml Config File
-google:
-  default_model: gemini-1.5-pro
-  temperature: 0.7
-```
-
-```yaml Secrets File
-google:
-  api_key: "AI..."
-```
-</CodeGroup>
-
-## Advanced Configuration
-
-### Multiple Environments
-
-Use different configurations for different environments:
+Configure Google Gemini with different authentication methods:
 
 <Tabs>
-  <Tab title="Development">
-    ```yaml
-    # mcp_agent.config.dev.yaml
-    execution_engine: asyncio
-    logger:
-      transports: [console]
-      level: debug
-
-    openai:
-      default_model: gpt-3.5-turbo  # Cheaper for development
+  <Tab title="Gemini API">
+    <CodeGroup>
+    ```yaml Config File
+    google:
+      default_model: gemini-2.0-flash
+      temperature: 0.7
+      vertexai: false
     ```
+
+    ```yaml Secrets File
+    google:
+      api_key: "AI..."
+    ```
+    </CodeGroup>
+
+    <Note>
+      Use the Gemini Developer API with your API key. Set `vertexai: false` (default).
+    </Note>
   </Tab>
-  
-  <Tab title="Production">
-    ```yaml
-    # mcp_agent.config.prod.yaml
-    execution_engine: temporal
-    logger:
-      transports: [file]
-      level: info
-      path: "/var/log/mcp-agent/app.jsonl"
 
-    openai:
-      default_model: gpt-4o
+  <Tab title="Vertex AI">
+    <CodeGroup>
+    ```yaml Config File
+    google:
+      default_model: gemini-2.0-flash
+      temperature: 0.7
+      vertexai: true
+      project: "your-google-cloud-project"
+      location: "us-central1"
     ```
+
+    ```yaml Secrets File
+    # Authentication handled via Google Cloud credentials
+    # Set GOOGLE_APPLICATION_CREDENTIALS environment variable
+    # or use gcloud auth application-default login
+    ```
+    </CodeGroup>
+
+    <Note>
+      Use Vertex AI for enterprise workloads. Requires Google Cloud project setup and authentication.
+    </Note>
   </Tab>
 </Tabs>
 
-Load specific configurations:
-
-```python
-from mcp_agent.app import MCPApp
-
-# Load development config
-app = MCPApp(name="my_agent", config_file="mcp_agent.config.dev.yaml")
-```
-
-### Environment Variables
-
-Override configuration with environment variables:
-
-```bash
-export MCP_AGENT_OPENAI_API_KEY="sk-..."
-export MCP_AGENT_LOG_LEVEL="debug"
-export MCP_AGENT_EXECUTION_ENGINE="temporal"
-```
-
-### Validation
+## Advanced Configuration
 
 MCP Agent validates configuration against a schema. Check the [configuration schema](https://github.com/lastmile-ai/mcp-agent/blob/main/schema/mcp-agent.config.schema.json) for all available options.
 
@@ -425,23 +489,11 @@ azure:
 
 <AccordionGroup>
   <Accordion title="Configuration Not Found">
-    Ensure configuration files are in the same directory as your Python script or use absolute paths:
-
-    ```python
-    app = MCPApp(
-        name="my_agent",
-        config_file="/absolute/path/to/mcp_agent.config.yaml"
-    )
-    ```
+    Ensure configuration files are in the same directory as your Python script.
   </Accordion>
 
   <Accordion title="Schema Validation Errors">
-    Check that your YAML syntax is correct and all required fields are present. Use the schema for validation:
-
-    ```bash
-    # Validate against schema
-    python -c "from mcp_agent.config import load_config; load_config('mcp_agent.config.yaml')"
-    ```
+    Check that your YAML syntax is correct and all required fields are present. Check the latest [configuration schema](https://github.com/lastmile-ai/mcp-agent/blob/main/schema/mcp-agent.config.schema.json).
   </Accordion>
 
   <Accordion title="MCP Server Connection Errors">
