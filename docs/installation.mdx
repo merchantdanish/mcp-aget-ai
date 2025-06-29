@@ -1,0 +1,282 @@
+---
+title: Installation
+description: "Learn how to install MCP Agent and set up your development environment."
+---
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Python 3.10+" icon="python">
+    MCP Agent requires Python 3.10 or higher
+  </Card>
+  <Card title="Node.js" icon="node-js">
+    Required for some MCP servers like filesystem (optional)
+  </Card>
+</CardGroup>
+
+## Install MCP Agent
+
+<Tabs>
+  <Tab title="uv (Recommended)">
+    We recommend using [uv](https://docs.astral.sh/uv/) for Python project management:
+
+    ```bash
+    # Install uv if you don't have it
+    pip install uv
+
+    # Add MCP Agent to your project
+    uv add "mcp-agent"
+    ```
+
+  </Tab>
+  <Tab title="pip">
+    ```bash
+    pip install mcp-agent
+    ```
+  </Tab>
+</Tabs>
+
+## Install Model Provider Dependencies
+
+MCP Agent supports multiple LLM providers. Choose your preferred provider:
+
+<AccordionGroup>
+  <Accordion title="OpenAI">
+    ```bash
+    # With uv
+    uv add "mcp-agent[openai]"
+
+    # With pip
+    pip install "mcp-agent[openai]"
+    ```
+
+  </Accordion>
+
+  <Accordion title="Anthropic">
+    ```bash
+    # With uv
+    uv add "mcp-agent[anthropic]"
+
+    # With pip
+    pip install "mcp-agent[anthropic]"
+    ```
+
+  </Accordion>
+
+  <Accordion title="Azure OpenAI">
+    ```bash
+    # With uv
+    uv add "mcp-agent[azure]"
+
+    # With pip
+    pip install "mcp-agent[azure]"
+    ```
+
+  </Accordion>
+
+  <Accordion title="AWS Bedrock">
+    ```bash
+    # With uv
+    uv add "mcp-agent[bedrock]"
+
+    # With pip
+    pip install "mcp-agent[bedrock]"
+    ```
+
+  </Accordion>
+
+  <Accordion title="Google Gemini">
+    ```bash
+    # With uv
+    uv add "mcp-agent[google]"
+
+    # With pip
+    pip install "mcp-agent[google]"
+    ```
+
+  </Accordion>
+
+  <Accordion title="All Providers">
+    ```bash
+    # With uv
+    uv add "mcp-agent[openai,anthropic,azure,bedrock,google]"
+
+    # With pip
+    pip install "mcp-agent[openai,anthropic,azure,bedrock,google]"
+    ```
+
+  </Accordion>
+</AccordionGroup>
+
+## Install MCP Servers
+
+MCP Agent works with MCP servers that provide tools, resources, and other capabilities.
+
+<CardGroup cols={2}>
+  <Card
+    title="Fetch Server"
+    icon="globe"
+    href="https://github.com/modelcontextprotocol/servers/tree/main/src/fetch"
+  >
+    Web content fetching capabilities ```bash uvx install mcp-server-fetch ```
+  </Card>
+
+<Card
+  title="Filesystem Server"
+  icon="folder"
+  href="https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem"
+>
+  Local file system access ```bash npm install -g
+  @modelcontextprotocol/server-filesystem ```
+</Card>
+
+<Card
+  title="SQLite Server"
+  icon="database"
+  href="https://github.com/modelcontextprotocol/servers/tree/main/src/sqlite"
+>
+  SQLite database operations ```bash npm install -g
+  @modelcontextprotocol/server-sqlite ```
+</Card>
+
+  <Card
+    title="Git Server"
+    icon="git-branch"
+    href="https://github.com/modelcontextprotocol/servers/tree/main/src/git"
+  >
+    Git repository operations ```bash uvx install mcp-server-git ```
+  </Card>
+</CardGroup>
+
+<Info>
+  For more MCP servers, check out the [Awesome MCP
+  Servers](https://github.com/punkpeye/awesome-mcp-servers) repository.
+</Info>
+
+## Verify Installation
+
+Create a simple test file to verify your installation:
+
+<CodeGroup>
+```python test_mcp_agent.py
+import asyncio
+from mcp_agent.app import MCPApp
+
+async def test_installation():
+app = MCPApp(name="test_app")
+async with app.run() as mcp_agent_app:
+logger = mcp_agent_app.logger
+logger.info("MCP Agent installed successfully!")
+print("✅ MCP Agent is working!")
+
+if **name** == "**main**":
+asyncio.run(test_installation())
+
+````
+</CodeGroup>
+
+Run the test:
+
+```bash
+python test_mcp_agent.py
+````
+
+<Check>
+  You should see output confirming that MCP Agent is working correctly.
+</Check>
+
+## Development Setup
+
+<Steps>
+  <Step title="Clone the Repository">
+    ```bash
+    git clone https://github.com/lastmile-ai/mcp-agent.git
+    cd mcp-agent
+    ```
+  </Step>
+  
+  <Step title="Install Dependencies">
+    ```bash
+    # Sync project dependencies
+    uv sync
+
+    # Install development dependencies
+    uv pip install -r requirements-dev.txt
+    ```
+
+  </Step>
+  
+  <Step title="Run Examples">
+    ```bash
+    # Navigate to any example
+    cd examples/basic/mcp_hello_world
+
+    # Install example requirements
+    uv pip install -r requirements.txt
+
+    # Copy and configure secrets
+    cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
+    # Edit mcp_agent.secrets.yaml with your API keys
+
+    # Run the example
+    uv run main.py
+    ```
+
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Permission Issues with MCP Servers">
+    If you encounter permission issues when installing MCP servers globally:
+
+    ```bash
+    # Use a different npm prefix
+    npm config set prefix ~/.npm-global
+    export PATH=~/.npm-global/bin:$PATH
+
+    # Then install servers
+    npm install -g @modelcontextprotocol/server-filesystem
+    ```
+
+  </Accordion>
+
+  <Accordion title="Python Version Issues">
+    MCP Agent requires Python 3.10+. Check your Python version:
+
+    ```bash
+    python --version
+    ```
+
+    If you need to install a newer Python version, consider using [pyenv](https://github.com/pyenv/pyenv):
+
+    ```bash
+    # Install pyenv (macOS)
+    brew install pyenv
+
+    # Install Python 3.11
+    pyenv install 3.11.0
+    pyenv global 3.11.0
+    ```
+
+  </Accordion>
+
+  <Accordion title="Network Issues">
+    If you're behind a corporate firewall, configure proxy settings:
+
+    ```bash
+    # For pip
+    pip install --proxy http://user:password@proxy.server:port mcp-agent
+
+    # For npm
+    npm config set proxy http://proxy.server:port
+    npm config set https-proxy http://proxy.server:port
+    ```
+
+  </Accordion>
+</AccordionGroup>
+
+<Card title="Next Steps" icon="arrow-right" href="/quickstart">
+  Now that you have MCP Agent installed, let's create your first agent!
+</Card>

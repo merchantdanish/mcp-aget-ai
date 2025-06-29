@@ -1,0 +1,471 @@
+# Configuration
+
+Learn how to configure MCP Agent using configuration files to control logging, execution, model providers, and MCP server connections.
+
+## Configuration Files
+
+MCP Agent uses two configuration files:
+
+<CardGroup cols={2}>
+  <Card title="mcp_agent.config.yaml" icon="gear">
+    Application settings, logging, and server configurations
+  </Card>
+  <Card title="mcp_agent.secrets.yaml" icon="key">
+    API keys and sensitive information (should be gitignored)
+  </Card>
+</CardGroup>
+
+## Basic Configuration
+
+<Steps>
+  <Step title="Create config file">
+    Create `mcp_agent.config.yaml` in your project root:
+
+    ```yaml
+    execution_engine: asyncio
+    logger:
+      transports: [console]
+      level: info
+
+    mcp:
+      servers:
+        fetch:
+          command: "uvx"
+          args: ["mcp-server-fetch"]
+        
+        filesystem:
+          command: "npx"
+          args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+    openai:
+      default_model: gpt-4o
+    ```
+  </Step>
+
+  <Step title="Create secrets file">
+    Create `mcp_agent.secrets.yaml` for sensitive data:
+
+    ```yaml
+    openai:
+      api_key: "your-openai-api-key"
+    ```
+
+    <Warning>
+      Add `mcp_agent.secrets.yaml` to your `.gitignore` file to avoid committing API keys.
+    </Warning>
+  </Step>
+
+  <Step title="Load configuration">
+    MCP Agent automatically loads these files when you create an `MCPApp`:
+
+    ```python
+    from mcp_agent.app import MCPApp
+
+    # Configuration is loaded automatically
+    app = MCPApp(name="my_agent")
+    ```
+  </Step>
+</Steps>
+
+## Configuration Reference
+
+### Execution Engine
+
+Controls how MCP Agent executes workflows:
+
+<Tabs>
+  <Tab title="asyncio (Default)">
+    ```yaml
+    execution_engine: asyncio
+    ```
+    Standard async execution for most use cases.
+  </Tab>
+  
+  <Tab title="temporal">
+    ```yaml
+    execution_engine: temporal
+    temporal:
+      host: "localhost"
+      port: 7233
+      namespace: "default"
+      task_queue: "mcp-agent"
+    ```
+    Durable execution with workflow persistence and recovery.
+  </Tab>
+</Tabs>
+
+### Logging Configuration
+
+<AccordionGroup>
+  <Accordion title="Console Logging">
+    ```yaml
+    logger:
+      transports: [console]
+      level: debug  # debug, info, warning, error
+    ```
+  </Accordion>
+
+  <Accordion title="File Logging">
+    ```yaml
+    logger:
+      transports: [file]
+      level: info
+      path: "logs/mcp-agent.jsonl"
+    ```
+  </Accordion>
+
+  <Accordion title="Both Console and File">
+    ```yaml
+    logger:
+      transports: [console, file]
+      level: info
+      path: "logs/mcp-agent.jsonl"
+    ```
+  </Accordion>
+
+  <Accordion title="Dynamic Log Files">
+    ```yaml
+    logger:
+      transports: [file]
+      level: info
+      path_settings:
+        path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+        unique_id: "timestamp"  # or "session_id"
+        timestamp_format: "%Y%m%d_%H%M%S"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### MCP Server Configuration
+
+Define MCP servers your agents can connect to:
+
+<CodeGroup>
+```yaml Basic Server
+mcp:
+  servers:
+    server_name:
+      command: "command_to_run"
+      args: ["arg1", "arg2"]
+      description: "Optional description"
+```
+
+```yaml Server with Environment
+mcp:
+  servers:
+    postgres:
+      command: "uvx"
+      args: ["mcp-server-postgres"]
+      env:
+        POSTGRES_CONNECTION_STRING: "postgresql://user:pass@localhost/db"
+```
+
+```yaml Server with Working Directory
+mcp:
+  servers:
+    git:
+      command: "uvx"
+      args: ["mcp-server-git", "--repository", "."]
+      cwd: "/path/to/repo"
+```
+</CodeGroup>
+
+### Common MCP Servers
+
+<CardGroup cols={2}>
+  <Card title="Fetch Server" icon="globe">
+    ```yaml
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    ```
+  </Card>
+  
+  <Card title="Filesystem Server" icon="folder">
+    ```yaml
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    ```
+  </Card>
+  
+  <Card title="SQLite Server" icon="database">
+    ```yaml
+    sqlite:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-sqlite", "database.db"]
+    ```
+  </Card>
+  
+  <Card title="Git Server" icon="git-branch">
+    ```yaml
+    git:
+      command: "uvx"
+      args: ["mcp-server-git", "--repository", "."]
+    ```
+  </Card>
+</CardGroup>
+
+## Model Provider Configuration
+
+### OpenAI
+
+<CodeGroup>
+```yaml Config File
+openai:
+  default_model: gpt-4o
+  max_tokens: 4096
+  temperature: 0.7
+```
+
+```yaml Secrets File
+openai:
+  api_key: "sk-..."
+  organization: "org-..."  # Optional
+```
+</CodeGroup>
+
+### Anthropic
+
+<CodeGroup>
+```yaml Config File
+anthropic:
+  default_model: claude-3-5-sonnet-20241022
+  max_tokens: 4096
+  temperature: 0.7
+```
+
+```yaml Secrets File
+anthropic:
+  api_key: "sk-ant-..."
+```
+</CodeGroup>
+
+### Azure OpenAI
+
+<CodeGroup>
+```yaml Config File
+azure:
+  default_model: gpt-4o
+  api_version: "2024-02-15-preview"
+```
+
+```yaml Secrets File
+azure:
+  api_key: "your-azure-key"
+  endpoint: "https://your-resource.openai.azure.com/"
+```
+</CodeGroup>
+
+### AWS Bedrock
+
+<CodeGroup>
+```yaml Config File
+bedrock:
+  default_model: anthropic.claude-3-5-sonnet-20241022-v2:0
+  region: us-east-1
+```
+
+```yaml Secrets File
+bedrock:
+  aws_access_key_id: "AKIA..."
+  aws_secret_access_key: "..."
+  aws_session_token: "..."  # Optional
+```
+</CodeGroup>
+
+### Google Gemini
+
+<CodeGroup>
+```yaml Config File
+google:
+  default_model: gemini-1.5-pro
+  temperature: 0.7
+```
+
+```yaml Secrets File
+google:
+  api_key: "AI..."
+```
+</CodeGroup>
+
+## Advanced Configuration
+
+### Multiple Environments
+
+Use different configurations for different environments:
+
+<Tabs>
+  <Tab title="Development">
+    ```yaml
+    # mcp_agent.config.dev.yaml
+    execution_engine: asyncio
+    logger:
+      transports: [console]
+      level: debug
+
+    openai:
+      default_model: gpt-3.5-turbo  # Cheaper for development
+    ```
+  </Tab>
+  
+  <Tab title="Production">
+    ```yaml
+    # mcp_agent.config.prod.yaml
+    execution_engine: temporal
+    logger:
+      transports: [file]
+      level: info
+      path: "/var/log/mcp-agent/app.jsonl"
+
+    openai:
+      default_model: gpt-4o
+    ```
+  </Tab>
+</Tabs>
+
+Load specific configurations:
+
+```python
+from mcp_agent.app import MCPApp
+
+# Load development config
+app = MCPApp(name="my_agent", config_file="mcp_agent.config.dev.yaml")
+```
+
+### Environment Variables
+
+Override configuration with environment variables:
+
+```bash
+export MCP_AGENT_OPENAI_API_KEY="sk-..."
+export MCP_AGENT_LOG_LEVEL="debug"
+export MCP_AGENT_EXECUTION_ENGINE="temporal"
+```
+
+### Validation
+
+MCP Agent validates configuration against a schema. Check the [configuration schema](https://github.com/lastmile-ai/mcp-agent/blob/main/schema/mcp-agent.config.schema.json) for all available options.
+
+## Configuration Examples
+
+### Basic Web Agent
+
+```yaml
+execution_engine: asyncio
+logger:
+  transports: [console]
+  level: info
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+
+openai:
+  default_model: gpt-4o
+```
+
+### File Processing Agent
+
+```yaml
+execution_engine: asyncio
+logger:
+  transports: [file]
+  level: info
+  path: "logs/file-processor.jsonl"
+
+mcp:
+  servers:
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "/data"]
+    
+    sqlite:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-sqlite", "results.db"]
+
+anthropic:
+  default_model: claude-3-5-sonnet-20241022
+```
+
+### Multi-Provider Agent
+
+```yaml
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: info
+  path: "logs/multi-provider.jsonl"
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+# Configure multiple providers
+openai:
+  default_model: gpt-4o
+
+anthropic:
+  default_model: claude-3-5-sonnet-20241022
+
+azure:
+  default_model: gpt-4o
+  api_version: "2024-02-15-preview"
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Configuration Not Found">
+    Ensure configuration files are in the same directory as your Python script or use absolute paths:
+
+    ```python
+    app = MCPApp(
+        name="my_agent",
+        config_file="/absolute/path/to/mcp_agent.config.yaml"
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Schema Validation Errors">
+    Check that your YAML syntax is correct and all required fields are present. Use the schema for validation:
+
+    ```bash
+    # Validate against schema
+    python -c "from mcp_agent.config import load_config; load_config('mcp_agent.config.yaml')"
+    ```
+  </Accordion>
+
+  <Accordion title="MCP Server Connection Errors">
+    Verify that:
+    - MCP server commands are installed and accessible
+    - Arguments are correct
+    - Required environment variables are set
+    - File paths exist and are accessible
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book" href="/concepts/agents">
+    Learn about agents, MCP servers, and augmented LLMs
+  </Card>
+  <Card title="MCP Protocol" icon="link" href="/mcp/overview">
+    Understand tools, resources, prompts, and roots
+  </Card>
+  <Card title="Model Providers" icon="brain" href="/providers/openai">
+    Configure different LLM providers
+  </Card>
+  <Card title="Examples" icon="code" href="https://github.com/lastmile-ai/mcp-agent/tree/main/examples">
+    See real configuration examples
+  </Card>
+</CardGroup>
