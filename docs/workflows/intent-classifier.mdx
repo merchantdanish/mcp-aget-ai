@@ -43,7 +43,7 @@ async with app.run() as intent_app:
         top_k=1,
     )
 
-    print("Embedding-based Intent classification results:", data=results)
+    print(f"Embedding-based Intent classification results: {results}")
 
     llm_intent_classifier = OpenAILLMIntentClassifier(
         intents=[
@@ -66,7 +66,7 @@ async with app.run() as intent_app:
         top_k=1,
     )
 
-    print("LLM-based Intent classification results:", data=results)
+    print(f"LLM-based Intent classification results: {results}")
 ```
 
 ## Key Features
