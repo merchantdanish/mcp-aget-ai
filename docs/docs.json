@@ -3,9 +3,12 @@
   "theme": "maple",
   "name": "mcp-agent",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#2563EB",
+    "light": "#60A5FA",
+    "dark": "#1E3A8A"
+  },
+  "background": {
+    "decoration": "grid"
   },
   "favicon": "/favicon.png",
   "navigation": {
