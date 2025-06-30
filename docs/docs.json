@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
+  "theme": "maple",
   "name": "mcp-agent",
   "colors": {
     "primary": "#16A34A",
@@ -44,6 +44,7 @@
           },
           {
             "group": "Integration Examples",
+            "hidden": true,
             "pages": [
               "integrations/streamlit",
               "integrations/claude-desktop",
@@ -54,20 +55,7 @@
           {
             "group": "Advanced Features",
             "pages": [
-              "advanced/composition",
-              "advanced/monitoring",
               "advanced/temporal"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "SDK Reference",
-        "groups": [
-          {
-            "group": "API Documentation",
-            "pages": [
-              "api/introduction"
             ]
           }
         ]
