@@ -85,8 +85,8 @@
     }
   },
   "logo": {
-    "light": "logo/mcp-agent.png",
-    "dark": "logo/mcp-agent.png"
+    "light": "logo/phetch.gif",
+    "dark": "logo/phetch.gif"
   },
   "navbar": {
     "links": [

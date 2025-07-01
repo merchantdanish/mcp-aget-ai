@@ -1,10 +1,10 @@
 # Configuration
 
-Learn how to configure MCP Agent using configuration files to control logging, execution, model providers, and MCP server connections.
+Learn how to configure mcp-agent using configuration files to control logging, execution, model providers, and MCP server connections.
 
 ## Configuration Files
 
-MCP Agent uses two configuration files:
+mcp-agent uses two configuration files:
 
 <CardGroup cols={2}>
   <Card title="mcp_agent.config.yaml" icon="gear">
@@ -58,7 +58,7 @@ MCP Agent uses two configuration files:
       </Step>
 
       <Step title="Load configuration">
-        MCP Agent automatically loads these files when you create an `MCPApp`:
+        mcp-agent automatically loads these files when you create an `MCPApp`:
 
         ```python
         from mcp_agent.app import MCPApp
@@ -73,7 +73,7 @@ MCP Agent uses two configuration files:
   <Tab title="Programmatic Configuration">
     <Steps>
       <Step title="Create settings object">
-        Configure MCP Agent programmatically using the `Settings` class:
+        Configure mcp-agent programmatically using the `Settings` class:
 
         ```python
         from mcp_agent.app import MCPApp
@@ -127,7 +127,7 @@ MCP Agent uses two configuration files:
 
 ### Execution Engine
 
-Controls how MCP Agent executes workflows:
+Controls how mcp-agent executes workflows:
 
 <Tabs>
   <Tab title="asyncio (Default)">
@@ -409,7 +409,7 @@ Configure Google Gemini with different authentication methods:
 
 ## Advanced Configuration
 
-MCP Agent validates configuration against a schema. Check the [configuration schema](https://github.com/lastmile-ai/mcp-agent/blob/main/schema/mcp-agent.config.schema.json) for all available options.
+mcp-agent validates configuration against a schema. Check the [configuration schema](https://github.com/lastmile-ai/mcp-agent/blob/main/schema/mcp-agent.config.schema.json) for all available options.
 
 ## Configuration Examples
 

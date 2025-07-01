@@ -1,20 +1,20 @@
 ---
 title: Installation
-description: "Learn how to install MCP Agent and set up your development environment."
+description: "Learn how to install mcp-agent and set up your development environment."
 ---
 
 ## Prerequisites
 
 <CardGroup cols={2}>
   <Card title="Python 3.10+" icon="python">
-    MCP Agent requires Python 3.10 or higher
+    mcp-agent requires Python 3.10 or higher
   </Card>
   <Card title="Node.js" icon="node-js">
     Required for some MCP servers like filesystem (optional)
   </Card>
 </CardGroup>
 
-## Install MCP Agent
+## Install mcp-agent
 
 <Tabs>
   <Tab title="uv (Recommended)">
@@ -24,7 +24,7 @@ description: "Learn how to install MCP Agent and set up your development environ
     # Install uv if you don't have it
     pip install uv
 
-    # Add MCP Agent to your project
+    # Add mcp-agent to your project
     uv add "mcp-agent"
     ```
 
@@ -38,7 +38,7 @@ description: "Learn how to install MCP Agent and set up your development environ
 
 ## Install Model Provider Dependencies
 
-MCP Agent supports multiple LLM providers. Choose your preferred provider:
+mcp-agent supports multiple LLM providers. Choose your preferred provider:
 
 <AccordionGroup>
   <Accordion title="OpenAI">
@@ -110,7 +110,7 @@ MCP Agent supports multiple LLM providers. Choose your preferred provider:
 
 ## Install MCP Servers
 
-MCP Agent works with MCP servers that provide tools, resources, and other capabilities.
+mcp-agent works with MCP servers that provide tools, resources, and other capabilities.
 
 <CardGroup cols={2}>
   <Card
@@ -166,8 +166,8 @@ async def test_installation():
 
   async with app.run() as mcp_agent_app:
     logger = mcp_agent_app.logger
-    logger.info("MCP Agent installed successfully!")
-    print("✅ MCP Agent is working!")
+    logger.info("mcp-agent installed successfully!")
+    print("✅ mcp-agent is working!")
 
 if __name__ == "__main__":
 asyncio.run(test_installation())
@@ -183,7 +183,7 @@ python test_mcp_agent.py
 ```
 
 <Check>
-  You should see output confirming that MCP Agent is working correctly.
+  You should see output confirming that mcp-agent is working correctly.
 </Check>
 
 ## Development Setup
@@ -224,7 +224,7 @@ python test_mcp_agent.py
 
 <AccordionGroup>
   <Accordion title="Python Version Issues">
-    MCP Agent requires Python 3.10+. Check your Python version:
+    mcp-agent requires Python 3.10+. Check your Python version:
 
     ```bash
     python --version
@@ -245,5 +245,5 @@ python test_mcp_agent.py
 </AccordionGroup>
 
 <Card title="Next Steps" icon="arrow-right" href="/quickstart">
-  Now that you have MCP Agent installed, let's create your first agent!
+  Now that you have mcp-agent installed, let's create your first agent!
 </Card>
