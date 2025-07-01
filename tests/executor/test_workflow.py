@@ -131,8 +131,9 @@ class TestWorkflowAsyncMethods:
             await asyncio.Future()
 
         workflow.executor.wait_for_signal = AsyncMock(side_effect=never_return)
-        run_id = await workflow.run_async()
-        assert run_id == "uuid-123"
+        execution = await workflow.run_async()
+        assert execution.run_id == "uuid-123"
+        assert execution.workflow_id == "TestWorkflow"
         assert workflow._run_id == "uuid-123"
         # verify status transitions
         assert workflow.state.status == "scheduled"
@@ -170,8 +171,9 @@ class TestWorkflowAsyncMethods:
             workflows.append(wf)
 
         # Start all workflows concurrently
-        run_id_tasks = [wf.run_async() for wf in workflows]
-        run_ids = await asyncio.gather(*run_id_tasks)
+        execution_tasks = [wf.run_async() for wf in workflows]
+        executions = await asyncio.gather(*execution_tasks)
+        run_ids = [exec.run_id for exec in executions]
 
         # Verify each workflow has a unique run_id
         assert len(set(run_ids)) == 3, "All run_ids should be unique"
@@ -229,7 +231,9 @@ class TestWorkflowAsyncMethods:
             workflows.append(wf)
 
         # Start all workflows
-        run_ids = await asyncio.gather(*[wf.run_async() for wf in workflows])
+        execution_tasks = [wf.run_async() for wf in workflows]
+        executions = await asyncio.gather(*execution_tasks)
+        run_ids = [exec.run_id for exec in executions]
 
         # Verify each workflow has a unique run_id
         assert len(set(run_ids)) == 3, "All run_ids should be unique"
