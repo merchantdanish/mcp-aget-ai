@@ -56,6 +56,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     CallToolResult,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.llm.multipart_converter_anthropic import AnthropicConverter
 
 MessageParamContent = Union[
     str,
@@ -154,22 +155,18 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             if params.use_history:
                 messages.extend(self.history.get())
+            messages.extend(
+                AnthropicConverter.convert_mixed_messages_to_anthropic(message)
+            )
 
-            if isinstance(message, str):
-                messages.append({"role": "user", "content": message})
-            elif isinstance(message, list):
-                messages.extend(message)
-            else:
-                messages.append(message)
-
-            response = await self.agent.list_tools()
+            list_tools_result = await self.agent.list_tools()
             available_tools: List[ToolParam] = [
                 {
                     "name": tool.name,
                     "description": tool.description,
                     "input_schema": tool.inputSchema,
                 }
-                for tool in response.tools
+                for tool in list_tools_result.tools
             ]
 
             responses: List[Message] = []
@@ -185,7 +182,8 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             for i in range(params.max_iterations):
                 if (
                     i == params.max_iterations - 1
-                    and response.stop_reason == "tool_use"
+                    and responses
+                    and responses[-1].stop_reason == "tool_use"
                 ):
                     final_prompt_message = MessageParam(
                         role="user",
@@ -480,7 +478,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
         return str(message)
 
-    def message_str(self, message: Message) -> str:
+    def message_str(self, message: Message, content_only: bool = False) -> str:
         """Convert an output message to a string representation."""
         content = message.content
 
@@ -496,6 +494,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 return "\n".join(final_text)
             else:
                 return str(content)
+        elif content_only:
+            # If content_only is True, we return an empty string if there's no content
+            return ""
 
         return str(message)
 

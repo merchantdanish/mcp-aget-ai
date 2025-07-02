@@ -114,6 +114,7 @@ class AnthropicSettings(BaseModel):
     """
 
     api_key: str | None = None
+    default_model: str | None = None
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
@@ -149,8 +150,11 @@ class OpenAISettings(BaseModel):
 
     api_key: str | None = None
     reasoning_effort: Literal["low", "medium", "high"] = "medium"
-
     base_url: str | None = None
+    user: str | None = None
+
+    default_headers: Dict[str, str] | None = None
+    default_model: str | None = None
 
     # NOTE: An http_client can be programmatically specified
     # and will be used by the OpenAI client. However, since it is
@@ -158,10 +162,6 @@ class OpenAISettings(BaseModel):
     # http_client: Client | None = None
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
-
-    user: str | None = None
-
-    default_headers: Dict[str, str] | None = None
 
 
 class AzureSettings(BaseModel):
@@ -204,9 +204,10 @@ class TemporalSettings(BaseModel):
 
     host: str
     namespace: str = "default"
+    api_key: str | None = None
+    tls: bool = False
     task_queue: str
     max_concurrent_activities: int | None = None
-    api_key: str | None = None
     timeout_seconds: int | None = 60
 
 

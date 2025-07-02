@@ -15,6 +15,18 @@
           ],
           "default": null,
           "title": "Api Key"
+        },
+        "default_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Model"
         }
       },
       "title": "AnthropicSettings",
@@ -659,6 +671,18 @@
           ],
           "default": null,
           "title": "Default Headers"
+        },
+        "default_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Model"
         }
       },
       "title": "OpenAISettings",
@@ -760,6 +784,23 @@
           "title": "Namespace",
           "type": "string"
         },
+        "api_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
+        },
+        "tls": {
+          "default": false,
+          "title": "Tls",
+          "type": "boolean"
+        },
         "task_queue": {
           "title": "Task Queue",
           "type": "string"
@@ -775,18 +816,6 @@
           ],
           "default": null,
           "title": "Max Concurrent Activities"
-        },
-        "api_key": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Api Key"
         },
         "timeout_seconds": {
           "anyOf": [

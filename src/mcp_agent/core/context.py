@@ -34,12 +34,14 @@ from mcp_agent.logging.logger import get_logger
 
 if TYPE_CHECKING:
     from mcp_agent.human_input.types import HumanInputCallback
+    from mcp_agent.elicitation.types import ElicitationCallback
     from mcp_agent.executor.workflow_signal import SignalWaitCallback
     from mcp_agent.executor.workflow_registry import WorkflowRegistry
     from mcp_agent.app import MCPApp
 else:
     # Runtime placeholders for the types
     HumanInputCallback = Any
+    ElicitationCallback = Any
     SignalWaitCallback = Any
     WorkflowRegistry = Any
     MCPApp = Any
@@ -56,6 +58,7 @@ class Context(BaseModel):
     config: Optional[Settings] = None
     executor: Optional[Executor] = None
     human_input_handler: Optional[HumanInputCallback] = None
+    elicitation_handler: Optional[ElicitationCallback] = None
     signal_notification: Optional[SignalWaitCallback] = None
     upstream_session: Optional[ServerSession] = None  # TODO: saqadri - figure this out
     model_selector: Optional[ModelSelector] = None

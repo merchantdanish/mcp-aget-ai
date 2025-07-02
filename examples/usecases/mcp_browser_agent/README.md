@@ -96,4 +96,4 @@ The app maintains a continuous browser session, allowing you to:
 
 - Make sure Node.js and npm are properly installed
 - Check that your OpenAI API key is correctly configured in `mcp_agent.secrets.yaml`
-- # If you encounter issues with the Puppeteer server, ensure you have a compatible browser installed
+- If you encounter issues with the Puppeteer server, ensure you have a compatible browser installed

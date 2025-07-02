@@ -21,6 +21,7 @@ from typing import (
 )
 import inspect
 
+from mcp_agent.human_input.types import HumanInputRequest
 from pydantic import ConfigDict
 from temporalio import activity, workflow, exceptions
 from temporalio.client import Client as TemporalClient, WorkflowHandle
@@ -259,6 +260,7 @@ class TemporalExecutor(Executor):
                 target_host=self.config.host,
                 namespace=self.config.namespace,
                 api_key=self.config.api_key,
+                tls=self.config.tls,
                 data_converter=pydantic_data_converter,
             )
 
@@ -266,16 +268,16 @@ class TemporalExecutor(Executor):
 
     async def start_workflow(
         self,
-        workflow_id: str,
+        workflow_type: str,
         *args: Any,
         wait_for_result: bool = False,
         **kwargs: Any,
     ) -> WorkflowHandle:
         """
-        Starts a workflow with the given workflow ID and arguments.
+        Starts a workflow of the given workflow type and arguments.
 
         Args:
-            workflow_id (str): Identifier of the workflow to be started.
+            workflow_type (str): Type (class name) of the Workflow to be started.
             *workflow_args: Positional arguments to pass to the workflow.
             wait_for_result: Whether to wait for the workflow to complete and return the result.
             **workflow_kwargs: Keyword arguments to pass to the workflow.
@@ -287,7 +289,7 @@ class TemporalExecutor(Executor):
         await self.ensure_client()
 
         # Lookup the workflow class
-        wf = self.context.app.workflows.get(workflow_id)
+        wf = self.context.app.workflows.get(workflow_type)
         if not inspect.isclass(wf):
             wf = wf.__class__
 
@@ -326,6 +328,9 @@ class TemporalExecutor(Executor):
             # multi-arg workflow - pack into a sequence
             input_arg = bound_args
 
+        # Generate a unique execution ID for this workflow instance
+        workflow_id = f"{workflow_type}-{self.uuid()}"
+
         # Start the workflow
         if input_arg is not None:
             handle: WorkflowHandle = await self.client.start_workflow(
@@ -351,7 +356,7 @@ class TemporalExecutor(Executor):
 
     async def execute_workflow(
         self,
-        workflow_id: str,
+        workflow_type: str,
         *workflow_args: Any,
         **workflow_kwargs: Any,
     ) -> Any:
@@ -361,7 +366,23 @@ class TemporalExecutor(Executor):
         This is a convenience wrapper around start_workflow with wait_for_result=True.
         """
         return await self.start_workflow(
-            workflow_id, *workflow_args, wait_for_result=True, **workflow_kwargs
+            workflow_type, *workflow_args, wait_for_result=True, **workflow_kwargs
+        )
+
+    def create_human_input_request(self, request: dict) -> HumanInputRequest:
+        """
+        Create a human input request from the arguments.
+
+        Args:
+            request: Optional arguments to include in the request.
+
+        Returns:
+            A HumanInputRequest object with workflow_id and run_id populated.
+        """
+        return HumanInputRequest(
+            **request,
+            workflow_id=workflow.info().workflow_id,
+            run_id=workflow.info().run_id,
         )
 
     async def terminate_workflow(
