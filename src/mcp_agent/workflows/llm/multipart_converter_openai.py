@@ -11,6 +11,7 @@ from openai.types.chat import (
     ChatCompletionMessageParam,
     ChatCompletionUserMessageParam,
     ChatCompletionMessage,
+    ChatCompletionToolMessageParam,
 )
 
 from mcp_agent.logging.logger import get_logger
@@ -362,7 +363,10 @@ class OpenAIConverter(
         tool_result: CallToolResult,
         tool_call_id: str,
         concatenate_text_blocks: bool = False,
-    ) -> Union[Dict[str, Any], Tuple[Dict[str, Any], List[Dict[str, Any]]]]:
+    ) -> Union[
+        ChatCompletionToolMessageParam,
+        Tuple[ChatCompletionToolMessageParam, list[ChatCompletionMessageParam]],
+    ]:
         """
         Convert a CallToolResult to an OpenAI tool message.
 
@@ -380,15 +384,15 @@ class OpenAIConverter(
         """
         # Handle empty content case
         if not tool_result.content:
-            return {
-                "role": "tool",
-                "tool_call_id": tool_call_id,
-                "content": "[No content in tool result]",
-            }
+            return ChatCompletionToolMessageParam(
+                role="tool",
+                tool_call_id=tool_call_id,
+                content="[No content in tool result]",
+            )
 
         # Separate text and non-text content
-        text_content = []
-        non_text_content = []
+        text_content: list[TextContent] = []
+        non_text_content: list[ContentBlock] = []
 
         for item in tool_result.content:
             if isinstance(item, TextContent):
@@ -414,11 +418,9 @@ class OpenAIConverter(
             tool_message_content = "[Tool returned non-text content]"
 
         # Create the tool message with just the text
-        tool_message = {
-            "role": "tool",
-            "tool_call_id": tool_call_id,
-            "content": tool_message_content,
-        }
+        tool_message = ChatCompletionToolMessageParam(
+            role="tool", tool_call_id=tool_call_id, content=tool_message_content
+        )
 
         # If there's no non-text content, return just the tool message
         if not non_text_content:
@@ -441,7 +443,7 @@ class OpenAIConverter(
     def convert_function_results_to_openai(
         results: List[Tuple[str, CallToolResult]],
         concatenate_text_blocks: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[ChatCompletionMessageParam]:
         """
         Convert a list of function call results to OpenAI messages.
 
@@ -452,7 +454,7 @@ class OpenAIConverter(
         Returns:
             List of OpenAI API messages for tool responses
         """
-        messages = []
+        messages: list[ChatCompletionMessageParam] = []
 
         for tool_call_id, result in results:
             converted = OpenAIConverter.convert_tool_result_to_openai(
