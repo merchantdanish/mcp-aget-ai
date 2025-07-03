@@ -368,7 +368,7 @@ class AnthropicConverter(MessageConverter[MessageParam, Message]):
         return TextBlockParam(type="text", text=f"[{message}]")
 
     @staticmethod
-    def convert_tool_result_to_anthropic(
+    def from_tool_result(
         tool_result: CallToolResult, tool_use_id: str
     ) -> ToolResultBlockParam:
         """
@@ -413,7 +413,7 @@ class AnthropicConverter(MessageConverter[MessageParam, Message]):
         )
 
     @staticmethod
-    def create_tool_results_message(
+    def from_tool_results(
         tool_results: List[tuple[str, CallToolResult]],
     ) -> MessageParam:
         """

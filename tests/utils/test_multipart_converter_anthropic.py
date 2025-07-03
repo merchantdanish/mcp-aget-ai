@@ -234,9 +234,7 @@ class TestAnthropicConverter:
         content = [TextContent(type="text", text="Tool result")]
         tool_result = CallToolResult(content=content, isError=False)
 
-        result = AnthropicConverter.convert_tool_result_to_anthropic(
-            tool_result, "tool_use_123"
-        )
+        result = AnthropicConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert result["type"] == "tool_result"
         assert result["tool_use_id"] == "tool_use_123"
@@ -248,9 +246,7 @@ class TestAnthropicConverter:
     def test_convert_tool_result_to_anthropic_empty_content(self):
         tool_result = CallToolResult(content=[], isError=False)
 
-        result = AnthropicConverter.convert_tool_result_to_anthropic(
-            tool_result, "tool_use_123"
-        )
+        result = AnthropicConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert result["type"] == "tool_result"
         assert result["tool_use_id"] == "tool_use_123"
@@ -266,7 +262,7 @@ class TestAnthropicConverter:
 
         tool_results = [("tool_1", result1), ("tool_2", result2)]
 
-        message = AnthropicConverter.create_tool_results_message(tool_results)
+        message = AnthropicConverter.from_tool_results(tool_results)
 
         assert message["role"] == "user"
         assert len(message["content"]) == 2

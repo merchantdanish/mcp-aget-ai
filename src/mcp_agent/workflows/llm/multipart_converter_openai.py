@@ -359,7 +359,7 @@ class OpenAIConverter(
         )
 
     @staticmethod
-    def convert_tool_result_to_openai(
+    def from_tool_result(
         tool_result: CallToolResult,
         tool_call_id: str,
         concatenate_text_blocks: bool = False,
@@ -440,7 +440,7 @@ class OpenAIConverter(
         return (tool_message, [user_message])
 
     @staticmethod
-    def convert_function_results_to_openai(
+    def from_tool_results(
         results: List[Tuple[str, CallToolResult]],
         concatenate_text_blocks: bool = False,
     ) -> list[ChatCompletionMessageParam]:
@@ -457,7 +457,7 @@ class OpenAIConverter(
         messages: list[ChatCompletionMessageParam] = []
 
         for tool_call_id, result in results:
-            converted = OpenAIConverter.convert_tool_result_to_openai(
+            converted = OpenAIConverter.from_tool_result(
                 tool_result=result,
                 tool_call_id=tool_call_id,
                 concatenate_text_blocks=concatenate_text_blocks,

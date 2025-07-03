@@ -284,9 +284,7 @@ class GoogleConverter(
         return types.Part.from_text(text=f"[{message}]")
 
     @staticmethod
-    def convert_tool_result_to_google(
-        tool_result: CallToolResult, tool_use_id: str
-    ) -> types.Part:
+    def from_tool_result(tool_result: CallToolResult, tool_use_id: str) -> types.Part:
         """
         Convert an MCP CallToolResult to a Google function response part.
 
@@ -324,7 +322,7 @@ class GoogleConverter(
         )
 
     @staticmethod
-    def create_tool_results_message(
+    def from_tool_results(
         tool_results: List[tuple[str, CallToolResult]],
     ) -> types.Content:
         """
@@ -339,7 +337,7 @@ class GoogleConverter(
         parts = []
 
         for tool_use_id, result in tool_results:
-            part = GoogleConverter.convert_tool_result_to_google(result, tool_use_id)
+            part = GoogleConverter.from_tool_result(result, tool_use_id)
             parts.append(part)
 
         return types.Content(role="user", parts=parts)

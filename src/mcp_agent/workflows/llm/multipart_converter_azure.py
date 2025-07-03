@@ -259,9 +259,7 @@ class AzureConverter(
         return TextContentItem(text=f"[{message}]")
 
     @staticmethod
-    def convert_tool_result_to_azure(
-        tool_result: CallToolResult, tool_use_id: str
-    ) -> ToolMessage:
+    def from_tool_result(tool_result: CallToolResult, tool_use_id: str) -> ToolMessage:
         """
         Convert an MCP CallToolResult to an Azure ToolMessage.
 
@@ -319,7 +317,7 @@ class AzureConverter(
         return "\n".join(texts)
 
     @staticmethod
-    def create_tool_results_message(
+    def from_tool_results(
         tool_results: List[tuple[str, CallToolResult]],
     ) -> List[ToolMessage]:
         """
@@ -333,9 +331,7 @@ class AzureConverter(
         """
         tool_messages = []
         for tool_use_id, result in tool_results:
-            tool_message = AzureConverter.convert_tool_result_to_azure(
-                result, tool_use_id
-            )
+            tool_message = AzureConverter.from_tool_result(result, tool_use_id)
             tool_messages.append(tool_message)
         return tool_messages
 

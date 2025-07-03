@@ -235,9 +235,7 @@ class TestAzureConverter:
         content = [TextContent(type="text", text="Tool result")]
         tool_result = CallToolResult(content=content, isError=False)
 
-        result = AzureConverter.convert_tool_result_to_azure(
-            tool_result, "tool_use_123"
-        )
+        result = AzureConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert result.role == "tool"
         assert isinstance(result.content, str)
@@ -246,9 +244,7 @@ class TestAzureConverter:
     def test_convert_tool_result_to_azure_empty_content(self):
         tool_result = CallToolResult(content=[], isError=False)
 
-        result = AzureConverter.convert_tool_result_to_azure(
-            tool_result, "tool_use_123"
-        )
+        result = AzureConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert result.role == "tool"
         assert isinstance(result.content, str)
@@ -263,7 +259,7 @@ class TestAzureConverter:
 
         tool_results = [("tool_1", result1), ("tool_2", result2)]
 
-        messages = AzureConverter.create_tool_results_message(tool_results)
+        messages = AzureConverter.from_tool_results(tool_results)
 
         assert isinstance(messages, list)
         assert len(messages) == 2
@@ -282,9 +278,7 @@ class TestAzureConverter:
         content = [embedded]
         tool_result = CallToolResult(content=content, isError=False)
 
-        result = AzureConverter.convert_tool_result_to_azure(
-            tool_result, "tool_use_123"
-        )
+        result = AzureConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert result.role == "tool"
         assert isinstance(result.content, str)
@@ -297,9 +291,7 @@ class TestAzureConverter:
         ]
         tool_result = CallToolResult(content=content, isError=False)
 
-        result = AzureConverter.convert_tool_result_to_azure(
-            tool_result, "tool_use_123"
-        )
+        result = AzureConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert result.role == "tool"
         assert isinstance(result.content, str)

@@ -289,7 +289,7 @@ class TestOpenAIConverter:
         content = [TextContent(type="text", text="Tool result")]
         tool_result = CallToolResult(content=content, isError=False)
 
-        result = OpenAIConverter.convert_tool_result_to_openai(tool_result, "call_123")
+        result = OpenAIConverter.from_tool_result(tool_result, "call_123")
 
         assert result["role"] == "tool"
         assert result["tool_call_id"] == "call_123"
@@ -298,7 +298,7 @@ class TestOpenAIConverter:
     def test_convert_tool_result_to_openai_empty_content(self):
         tool_result = CallToolResult(content=[], isError=False)
 
-        result = OpenAIConverter.convert_tool_result_to_openai(tool_result, "call_123")
+        result = OpenAIConverter.from_tool_result(tool_result, "call_123")
 
         assert result["role"] == "tool"
         assert result["tool_call_id"] == "call_123"
@@ -311,7 +311,7 @@ class TestOpenAIConverter:
         ]
         tool_result = CallToolResult(content=content, isError=False)
 
-        result = OpenAIConverter.convert_tool_result_to_openai(tool_result, "call_123")
+        result = OpenAIConverter.from_tool_result(tool_result, "call_123")
 
         # Should return tuple with tool message and additional user message
         assert isinstance(result, tuple)
@@ -334,7 +334,7 @@ class TestOpenAIConverter:
 
         results = [("call_1", result1), ("call_2", result2)]
 
-        messages = OpenAIConverter.convert_function_results_to_openai(results)
+        messages = OpenAIConverter.from_tool_results(results)
 
         assert len(messages) == 2
         assert messages[0]["role"] == "tool"
@@ -353,7 +353,7 @@ class TestOpenAIConverter:
         tool_result = CallToolResult(content=content, isError=False)
         results = [("call_1", tool_result)]
 
-        messages = OpenAIConverter.convert_function_results_to_openai(results)
+        messages = OpenAIConverter.from_tool_results(results)
 
         # Should get tool message + additional user message
         assert len(messages) == 2

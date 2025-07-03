@@ -228,7 +228,7 @@ class BedrockConverter(MessageConverter[MessageUnionTypeDef, MessageUnionTypeDef
         return {"text": f"[{message}]"}
 
     @staticmethod
-    def convert_tool_result_to_bedrock(
+    def from_tool_result(
         tool_result: CallToolResult, tool_use_id: str
     ) -> ToolResultBlockTypeDef:
         """
@@ -246,7 +246,7 @@ class BedrockConverter(MessageConverter[MessageUnionTypeDef, MessageUnionTypeDef
         }
 
     @staticmethod
-    def create_tool_results_message(
+    def from_tool_results(
         tool_results: List[tuple[str, CallToolResult]],
     ) -> MessageUnionTypeDef:
         """
