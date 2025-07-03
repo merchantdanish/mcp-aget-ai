@@ -182,7 +182,7 @@ class OpenAIAugmentedLLM(
                         role="system", content=system_prompt
                     )
                 )
-            messages.extend((OpenAIConverter.convert_mixed_messages_to_openai(message)))
+            messages.extend((OpenAIConverter.from_mixed_messages(message)))
 
             response: ListToolsResult = await self.agent.list_tools()
             available_tools: List[ChatCompletionToolParam] = [

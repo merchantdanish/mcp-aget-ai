@@ -12,6 +12,7 @@ from anthropic.types import (
     ToolResultBlockParam,
     URLImageSourceParam,
     URLPDFSourceParam,
+    Message,
 )
 from mcp.types import (
     BlobResourceContents,
@@ -40,6 +41,7 @@ from mcp_agent.utils.mime_utils import (
 from mcp_agent.utils.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.utils.resource_utils import extract_title_from_uri
 from mcp_agent.workflows.llm.augmented_llm import MessageTypes
+from mcp_agent.workflows.llm.multipart_converter import MessageConverter
 
 _logger = get_logger("multipart_converter_anthropic")
 
@@ -47,7 +49,7 @@ _logger = get_logger("multipart_converter_anthropic")
 SUPPORTED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
 
-class AnthropicConverter:
+class AnthropicConverter(MessageConverter[MessageParam, Message]):
     """Converts MCP message types to Anthropic API format."""
 
     @staticmethod
@@ -63,7 +65,9 @@ class AnthropicConverter:
         return mime_type in SUPPORTED_IMAGE_MIME_TYPES
 
     @staticmethod
-    def convert_to_anthropic(multipart_msg: PromptMessageMultipart) -> MessageParam:
+    def from_prompt_message_multipart(
+        multipart_msg: PromptMessageMultipart,
+    ) -> MessageParam:
         """
         Convert a PromptMessageMultipart message to Anthropic API format.
 
@@ -100,7 +104,7 @@ class AnthropicConverter:
         return MessageParam(role=role, content=anthropic_blocks)
 
     @staticmethod
-    def convert_prompt_message_to_anthropic(message: PromptMessage) -> MessageParam:
+    def from_prompt_message(message: PromptMessage) -> MessageParam:
         """
         Convert a standard PromptMessage to Anthropic API format.
 
@@ -114,7 +118,7 @@ class AnthropicConverter:
         multipart = PromptMessageMultipart(role=message.role, content=[message.content])
 
         # Use the existing conversion method
-        return AnthropicConverter.convert_to_anthropic(multipart)
+        return AnthropicConverter.from_prompt_message_multipart(multipart)
 
     @staticmethod
     def _convert_content_items(
@@ -482,7 +486,7 @@ class AnthropicConverter:
         return MessageParam(role="user", content=content_blocks)
 
     @staticmethod
-    def convert_mixed_messages_to_anthropic(
+    def from_mixed_messages(
         message: MessageTypes,
     ) -> List[MessageParam]:
         """
@@ -499,15 +503,11 @@ class AnthropicConverter:
         if isinstance(message, str):
             messages.append(MessageParam(role="user", content=message))
         elif isinstance(message, PromptMessage):
-            messages.append(
-                AnthropicConverter.convert_prompt_message_to_anthropic(message)
-            )
+            messages.append(AnthropicConverter.from_prompt_message(message))
         elif isinstance(message, list):
             for m in message:
                 if isinstance(m, PromptMessage):
-                    messages.append(
-                        AnthropicConverter.convert_prompt_message_to_anthropic(m)
-                    )
+                    messages.append(AnthropicConverter.from_prompt_message(m))
                 elif isinstance(m, str):
                     messages.append(MessageParam(role="user", content=m))
                 else:

@@ -27,6 +27,7 @@ from mcp_agent.utils.mime_utils import (
 from mcp_agent.utils.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.utils.resource_utils import extract_title_from_uri
 from mcp_agent.workflows.llm.augmented_llm import MessageTypes
+from mcp_agent.workflows.llm.multipart_converter import MessageConverter
 
 if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime.type_defs import (
@@ -44,7 +45,7 @@ _logger = get_logger("multipart_converter_bedrock")
 SUPPORTED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png"}
 
 
-class BedrockConverter:
+class BedrockConverter(MessageConverter[MessageUnionTypeDef, MessageUnionTypeDef]):
     """Converts MCP message types to Amazon Bedrock API format."""
 
     @staticmethod
@@ -53,7 +54,7 @@ class BedrockConverter:
         return mime_type in SUPPORTED_IMAGE_MIME_TYPES
 
     @staticmethod
-    def convert_to_bedrock(
+    def from_prompt_message_multipart(
         multipart_msg: PromptMessageMultipart,
     ) -> MessageUnionTypeDef:
         """
@@ -68,14 +69,14 @@ class BedrockConverter:
         return {"role": role, "content": bedrock_blocks}
 
     @staticmethod
-    def convert_prompt_message_to_bedrock(
+    def from_prompt_message(
         message: PromptMessage,
     ) -> MessageUnionTypeDef:
         """
         Convert a standard PromptMessage to Bedrock API format.
         """
         multipart = PromptMessageMultipart(role=message.role, content=[message.content])
-        return BedrockConverter.convert_to_bedrock(multipart)
+        return BedrockConverter.from_prompt_message_multipart(multipart)
 
     @staticmethod
     def _convert_content_items(
@@ -268,7 +269,7 @@ class BedrockConverter:
         return {"role": "user", "content": content_blocks}
 
     @staticmethod
-    def convert_mixed_messages_to_bedrock(
+    def from_mixed_messages(
         message: MessageTypes,
     ) -> List[MessageUnionTypeDef]:
         """
@@ -286,13 +287,11 @@ class BedrockConverter:
         if isinstance(message, str):
             messages.append({"role": "user", "content": [{"text": message}]})
         elif isinstance(message, PromptMessage):
-            messages.append(BedrockConverter.convert_prompt_message_to_bedrock(message))
+            messages.append(BedrockConverter.from_prompt_message(message))
         elif isinstance(message, list):
             for m in message:
                 if isinstance(m, PromptMessage):
-                    messages.append(
-                        BedrockConverter.convert_prompt_message_to_bedrock(m)
-                    )
+                    messages.append(BedrockConverter.from_prompt_message(m))
                 elif isinstance(m, str):
                     messages.append({"role": "user", "content": [{"text": m}]})
                 else:

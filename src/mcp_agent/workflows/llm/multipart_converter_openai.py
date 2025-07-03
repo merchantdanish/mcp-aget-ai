@@ -7,7 +7,11 @@ from mcp.types import (
     PromptMessage,
     TextContent,
 )
-from openai.types.chat import ChatCompletionMessageParam, ChatCompletionUserMessageParam
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionUserMessageParam,
+    ChatCompletionMessage,
+)
 
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.utils.content_utils import (
@@ -26,15 +30,18 @@ from mcp_agent.utils.mime_utils import (
 from mcp_agent.utils.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.utils.resource_utils import extract_title_from_uri
 from mcp_agent.workflows.llm.augmented_llm import MessageTypes
+from mcp_agent.workflows.llm.multipart_converter import MessageConverter
 
 _logger = get_logger("multipart_converter_openai")
 
 # Define type aliases for content blocks
 ContentBlock = Dict[str, Any]
-OpenAIMessage = Dict[str, Any]
+OpenAIMessage = Dict[str, str | ContentBlock | List[ContentBlock]]
 
 
-class OpenAIConverter:
+class OpenAIConverter(
+    MessageConverter[ChatCompletionMessageParam, ChatCompletionMessage]
+):
     """Converts MCP message types to OpenAI API format."""
 
     @staticmethod
@@ -55,9 +62,9 @@ class OpenAIConverter:
         )
 
     @staticmethod
-    def convert_to_openai(
+    def from_prompt_message_multipart(
         multipart_msg: PromptMessageMultipart, concatenate_text_blocks: bool = False
-    ) -> Dict[str, str | ContentBlock | List[ContentBlock]]:
+    ) -> ChatCompletionMessageParam:
         """
         Convert a PromptMessageMultipart message to OpenAI API format.
 
@@ -158,7 +165,7 @@ class OpenAIConverter:
         return combined_blocks
 
     @staticmethod
-    def convert_prompt_message_to_openai(
+    def from_prompt_message(
         message: PromptMessage, concatenate_text_blocks: bool = False
     ) -> ChatCompletionMessageParam:
         """
@@ -175,7 +182,9 @@ class OpenAIConverter:
         multipart = PromptMessageMultipart(role=message.role, content=[message.content])
 
         # Use the existing conversion method with the specified concatenation option
-        return OpenAIConverter.convert_to_openai(multipart, concatenate_text_blocks)
+        return OpenAIConverter.from_prompt_message_multipart(
+            multipart, concatenate_text_blocks
+        )
 
     @staticmethod
     def _convert_image_content(content: ImageContent) -> ContentBlock:
@@ -392,7 +401,7 @@ class OpenAIConverter:
         if text_content:
             # Convert text content to OpenAI format
             temp_multipart = PromptMessageMultipart(role="user", content=text_content)
-            converted = OpenAIConverter.convert_to_openai(
+            converted = OpenAIConverter.from_prompt_message_multipart(
                 temp_multipart, concatenate_text_blocks=concatenate_text_blocks
             )
 
@@ -421,7 +430,7 @@ class OpenAIConverter:
         )
 
         # Convert to OpenAI format
-        user_message = OpenAIConverter.convert_to_openai(non_text_multipart)
+        user_message = OpenAIConverter.from_prompt_message_multipart(non_text_multipart)
 
         # We need to add tool_call_id manually
         user_message["tool_call_id"] = tool_call_id
@@ -464,7 +473,7 @@ class OpenAIConverter:
         return messages
 
     @staticmethod
-    def convert_mixed_messages_to_openai(
+    def from_mixed_messages(
         message: MessageTypes,
     ) -> List[ChatCompletionMessageParam]:
         """
@@ -483,11 +492,11 @@ class OpenAIConverter:
                 ChatCompletionUserMessageParam(role="user", content=message)
             )
         elif isinstance(message, PromptMessage):
-            messages.append(OpenAIConverter.convert_prompt_message_to_openai(message))
+            messages.append(OpenAIConverter.from_prompt_message(message))
         elif isinstance(message, list):
             for m in message:
                 if isinstance(m, PromptMessage):
-                    messages.append(OpenAIConverter.convert_prompt_message_to_openai(m))
+                    messages.append(OpenAIConverter.from_prompt_message(m))
                 elif isinstance(m, str):
                     messages.append(
                         ChatCompletionUserMessageParam(role="user", content=m)

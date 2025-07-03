@@ -11,6 +11,7 @@ from azure.ai.inference.models import (
     AssistantMessage,
     ToolMessage,
     DeveloperMessage,
+    ChatResponseMessage,
 )
 from mcp.types import (
     BlobResourceContents,
@@ -38,13 +39,23 @@ from mcp_agent.utils.mime_utils import (
 from mcp_agent.utils.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.utils.resource_utils import extract_title_from_uri
 from mcp_agent.workflows.llm.augmented_llm import MessageTypes
+from mcp_agent.workflows.llm.multipart_converter import MessageConverter
 
 _logger = get_logger("multipart_converter_azure")
+
+AzureMessageParam = Union[
+    SystemMessage, UserMessage, AssistantMessage, ToolMessage, DeveloperMessage
+]
 
 SUPPORTED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
 
-class AzureConverter:
+class AzureConverter(
+    MessageConverter[
+        AzureMessageParam,
+        ChatResponseMessage,
+    ]
+):
     """Converts MCP message types to Azure API format."""
 
     @staticmethod
@@ -52,7 +63,7 @@ class AzureConverter:
         return mime_type in SUPPORTED_IMAGE_MIME_TYPES
 
     @staticmethod
-    def convert_to_azure(
+    def from_prompt_message_multipart(
         multipart_msg: PromptMessageMultipart,
     ) -> UserMessage | AssistantMessage:
         """
@@ -92,7 +103,7 @@ class AzureConverter:
             return UserMessage(content=content)
 
     @staticmethod
-    def convert_prompt_message_to_azure(
+    def from_prompt_message(
         message: PromptMessage,
     ) -> UserMessage | AssistantMessage:
         """
@@ -105,7 +116,7 @@ class AzureConverter:
             An Azure UserMessage or AssistantMessage object
         """
         multipart = PromptMessageMultipart(role=message.role, content=[message.content])
-        return AzureConverter.convert_to_azure(multipart)
+        return AzureConverter.from_prompt_message_multipart(multipart)
 
     @staticmethod
     def _convert_content_items(
@@ -329,13 +340,9 @@ class AzureConverter:
         return tool_messages
 
     @staticmethod
-    def convert_mixed_messages_to_azure(
+    def from_mixed_messages(
         message: MessageTypes,
-    ) -> List[
-        Union[
-            SystemMessage, UserMessage, AssistantMessage, ToolMessage, DeveloperMessage
-        ]
-    ]:
+    ) -> List[AzureMessageParam]:
         """
         Convert a list of mixed messages to a list of Azure-compatible messages.
 
@@ -351,11 +358,11 @@ class AzureConverter:
         if isinstance(message, str):
             messages.append(UserMessage(content=message))
         elif isinstance(message, PromptMessage):
-            messages.append(AzureConverter.convert_prompt_message_to_azure(message))
+            messages.append(AzureConverter.from_prompt_message(message))
         elif isinstance(message, list):
             for m in message:
                 if isinstance(m, PromptMessage):
-                    messages.append(AzureConverter.convert_prompt_message_to_azure(m))
+                    messages.append(AzureConverter.from_prompt_message(m))
                 elif isinstance(m, str):
                     messages.append(UserMessage(content=m))
                 else:

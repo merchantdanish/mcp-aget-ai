@@ -153,7 +153,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 messages.append(SystemMessage(content=system_prompt))
                 span.set_attribute("system_prompt", system_prompt)
 
-            messages.extend(AzureConverter.convert_mixed_messages_to_azure(message))
+            messages.extend(AzureConverter.from_mixed_messages(message))
 
             response = await self.agent.list_tools()
 

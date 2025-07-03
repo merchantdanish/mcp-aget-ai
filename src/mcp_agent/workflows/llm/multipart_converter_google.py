@@ -29,6 +29,7 @@ from mcp_agent.utils.mime_utils import (
 from mcp_agent.utils.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.utils.resource_utils import extract_title_from_uri
 from mcp_agent.workflows.llm.augmented_llm import MessageTypes
+from mcp_agent.workflows.llm.multipart_converter import MessageConverter
 
 _logger = get_logger("multipart_converter_google")
 
@@ -36,7 +37,12 @@ _logger = get_logger("multipart_converter_google")
 SUPPORTED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
 
-class GoogleConverter:
+class GoogleConverter(
+    MessageConverter[
+        types.Content,
+        types.Content,
+    ]
+):
     """Converts MCP message types to Google API format."""
 
     @staticmethod
@@ -52,7 +58,9 @@ class GoogleConverter:
         return mime_type in SUPPORTED_IMAGE_MIME_TYPES
 
     @staticmethod
-    def convert_to_google(multipart_msg: PromptMessageMultipart) -> types.Content:
+    def from_prompt_message_multipart(
+        multipart_msg: PromptMessageMultipart,
+    ) -> types.Content:
         """
         Convert a PromptMessageMultipart message to Google API format.
 
@@ -73,7 +81,7 @@ class GoogleConverter:
         return types.Content(role=role, parts=google_parts)
 
     @staticmethod
-    def convert_prompt_message_to_google(message: PromptMessage) -> types.Content:
+    def from_prompt_message(message: PromptMessage) -> types.Content:
         """
         Convert a standard PromptMessage to Google API format.
 
@@ -84,7 +92,7 @@ class GoogleConverter:
             A Google API Content object
         """
         multipart = PromptMessageMultipart(role=message.role, content=[message.content])
-        return GoogleConverter.convert_to_google(multipart)
+        return GoogleConverter.from_prompt_message_multipart(multipart)
 
     @staticmethod
     def _convert_content_items(
@@ -337,7 +345,7 @@ class GoogleConverter:
         return types.Content(role="user", parts=parts)
 
     @staticmethod
-    def convert_mixed_messages_to_google(
+    def from_mixed_messages(
         message: MessageTypes,
     ) -> List[types.Content]:
         """
@@ -357,11 +365,11 @@ class GoogleConverter:
                 types.Content(role="user", parts=[types.Part.from_text(text=message)])
             )
         elif isinstance(message, PromptMessage):
-            messages.append(GoogleConverter.convert_prompt_message_to_google(message))
+            messages.append(GoogleConverter.from_prompt_message(message))
         elif isinstance(message, list):
             for m in message:
                 if isinstance(m, PromptMessage):
-                    messages.append(GoogleConverter.convert_prompt_message_to_google(m))
+                    messages.append(GoogleConverter.from_prompt_message(m))
                 elif isinstance(m, str):
                     messages.append(
                         types.Content(role="user", parts=[types.Part.from_text(text=m)])

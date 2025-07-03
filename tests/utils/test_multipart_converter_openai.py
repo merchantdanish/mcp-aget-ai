@@ -27,7 +27,7 @@ class TestOpenAIConverter:
 
     def test_convert_to_openai_empty_content(self):
         multipart = PromptMessageMultipart(role="user", content=[])
-        result = OpenAIConverter.convert_to_openai(multipart)
+        result = OpenAIConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert result["content"] == ""
@@ -35,7 +35,7 @@ class TestOpenAIConverter:
     def test_convert_to_openai_single_text_content(self):
         content = [TextContent(type="text", text="Hello, world!")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = OpenAIConverter.convert_to_openai(multipart)
+        result = OpenAIConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert result["content"] == "Hello, world!"
@@ -46,7 +46,7 @@ class TestOpenAIConverter:
             ImageContent(type="image", data="base64data", mimeType="image/png"),
         ]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = OpenAIConverter.convert_to_openai(multipart)
+        result = OpenAIConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert isinstance(result["content"], list)
@@ -69,7 +69,7 @@ class TestOpenAIConverter:
             TextContent(type="text", text="World"),
         ]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = OpenAIConverter.convert_to_openai(
+        result = OpenAIConverter.from_prompt_message_multipart(
             multipart, concatenate_text_blocks=True
         )
 
@@ -104,7 +104,7 @@ class TestOpenAIConverter:
         message = PromptMessage(
             role="user", content=TextContent(type="text", text="Hello")
         )
-        result = OpenAIConverter.convert_prompt_message_to_openai(message)
+        result = OpenAIConverter.from_prompt_message(message)
 
         assert result["role"] == "user"
         assert result["content"] == "Hello"

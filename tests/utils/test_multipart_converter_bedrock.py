@@ -28,7 +28,7 @@ class TestBedrockConverter:
 
     def test_convert_to_bedrock_empty_content(self):
         multipart = PromptMessageMultipart(role="user", content=[])
-        result = BedrockConverter.convert_to_bedrock(multipart)
+        result = BedrockConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert result["content"] == []
@@ -36,7 +36,7 @@ class TestBedrockConverter:
     def test_convert_to_bedrock_text_content(self):
         content = [TextContent(type="text", text="Hello, world!")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = BedrockConverter.convert_to_bedrock(multipart)
+        result = BedrockConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert len(result["content"]) == 1
@@ -45,7 +45,7 @@ class TestBedrockConverter:
     def test_convert_to_bedrock_image_content_supported(self):
         content = [ImageContent(type="image", data="base64data", mimeType="image/png")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = BedrockConverter.convert_to_bedrock(multipart)
+        result = BedrockConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert len(result["content"]) == 1
@@ -56,7 +56,7 @@ class TestBedrockConverter:
     def test_convert_to_bedrock_image_content_unsupported(self):
         content = [ImageContent(type="image", data="base64data", mimeType="image/gif")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = BedrockConverter.convert_to_bedrock(multipart)
+        result = BedrockConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert len(result["content"]) == 1
@@ -67,7 +67,7 @@ class TestBedrockConverter:
         message = PromptMessage(
             role="user", content=TextContent(type="text", text="Hello")
         )
-        result = BedrockConverter.convert_prompt_message_to_bedrock(message)
+        result = BedrockConverter.from_prompt_message(message)
 
         assert result["role"] == "user"
         assert len(result["content"]) == 1

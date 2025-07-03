@@ -101,7 +101,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
         if params.use_history:
             messages.extend(self.history.get())
 
-        messages.extend(BedrockConverter.convert_mixed_messages_to_bedrock(message))
+        messages.extend(BedrockConverter.from_mixed_messages(message))
 
         response = await self.agent.list_tools()
 

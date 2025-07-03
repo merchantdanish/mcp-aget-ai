@@ -28,7 +28,7 @@ class TestAzureConverter:
 
     def test_convert_to_azure_empty_content(self):
         multipart = PromptMessageMultipart(role="user", content=[])
-        result = AzureConverter.convert_to_azure(multipart)
+        result = AzureConverter.from_prompt_message_multipart(multipart)
 
         assert result.role == "user"
         assert result.content == ""
@@ -36,7 +36,7 @@ class TestAzureConverter:
     def test_convert_to_azure_text_content(self):
         content = [TextContent(type="text", text="Hello, world!")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = AzureConverter.convert_to_azure(multipart)
+        result = AzureConverter.from_prompt_message_multipart(multipart)
 
         assert result.role == "user"
         assert isinstance(result.content, list)
@@ -45,7 +45,7 @@ class TestAzureConverter:
     def test_convert_to_azure_image_content_supported(self):
         content = [ImageContent(type="image", data="base64data", mimeType="image/png")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = AzureConverter.convert_to_azure(multipart)
+        result = AzureConverter.from_prompt_message_multipart(multipart)
 
         assert result.role == "user"
         assert isinstance(result.content, list)
@@ -54,7 +54,7 @@ class TestAzureConverter:
     def test_convert_to_azure_image_content_unsupported(self):
         content = [ImageContent(type="image", data="base64data", mimeType="image/bmp")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = AzureConverter.convert_to_azure(multipart)
+        result = AzureConverter.from_prompt_message_multipart(multipart)
 
         assert result.role == "user"
         assert isinstance(result.content, list)
@@ -66,7 +66,7 @@ class TestAzureConverter:
             ImageContent(type="image", data="base64data", mimeType="image/png"),
         ]
         multipart = PromptMessageMultipart(role="assistant", content=content)
-        result = AzureConverter.convert_to_azure(multipart)
+        result = AzureConverter.from_prompt_message_multipart(multipart)
 
         assert result.role == "assistant"
         assert result.content == "Hello"
@@ -75,7 +75,7 @@ class TestAzureConverter:
         message = PromptMessage(
             role="user", content=TextContent(type="text", text="Hello")
         )
-        result = AzureConverter.convert_prompt_message_to_azure(message)
+        result = AzureConverter.from_prompt_message(message)
 
         assert result.role == "user"
         assert isinstance(result.content, list)
