@@ -30,7 +30,9 @@
             "pages": [
               "concepts/agents",
               "concepts/mcp-servers",
-              "concepts/augmented-llms"
+              "concepts/augmented-llms",
+              "concepts/mcp-primitives",
+              "concepts/elicitation"
             ]
           },
           {
@@ -77,7 +79,7 @@
           "icon": "discord"
         },
         {
-          "anchor": "MCP Protocol",
+          "anchor": "MCP",
           "href": "https://modelcontextprotocol.io/introduction",
           "icon": "link"
         }
