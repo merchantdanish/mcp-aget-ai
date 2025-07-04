@@ -38,29 +38,89 @@
           "title": "Vertexai",
           "type": "boolean"
         },
-        "bedrock_settings": {
+        "project": {
           "anyOf": [
             {
-              "$ref": "#/$defs/BedrockSettings"
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "title": "Bedrock Settings"
+          "title": "Project"
         },
-        "vertexai_settings": {
+        "location": {
           "anyOf": [
             {
-              "$ref": "#/$defs/VertexAISettings"
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "title": "Vertexai Settings"
+          "title": "Location"
+        },
+        "aws_access_key_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aws Access Key Id"
+        },
+        "aws_secret_access_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aws Secret Access Key"
+        },
+        "aws_session_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aws Session Token"
+        },
+        "aws_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aws Region"
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Profile"
         }
       },
       "title": "AnthropicSettings",

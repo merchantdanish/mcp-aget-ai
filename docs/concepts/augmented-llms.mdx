@@ -58,26 +58,24 @@ llm = await agent.attach_llm(AnthropicAugmentedLLM)
       default_model: "claude-3-5-sonnet-latest"
     ```
   </Tab>
-  <Tab title="Amazon Bedrock API">
+  <Tab title="AWS Bedrock">
     ```yaml mcp_agent.secrets.yaml
-    # Configuration for Claude models through Bedrock
+    # Configuration for Claude models through AWS Bedrock
     anthropic:
       bedrock: true
-      bedrock_settings:
-        aws_region: "us-east-1"
-        aws_access_key_id: "your-aws-access-key"
-        aws_secret_access_key: "your-aws-secret-key"
-        # Optional: aws_session_token for temporary credentials
+      aws_region: "us-east-1"
+      aws_access_key_id: "your-aws-access-key"
+      aws_secret_access_key: "your-aws-secret-key"
+      # Optional: aws_session_token for temporary credentials
     ```
   </Tab>
-  <Tab title="Vertex AI API">
+  <Tab title="Google Vertex AI">
     ```yaml mcp_agent.secrets.yaml
-    # Configuration for Claude models through Vertex AI
+    # Configuration for Claude models through Google Vertex AI
     anthropic:
       vertexai: true
-      vertexai_settings:
-        project: "your-gcp-project-id"
-        location: "us-central1"
+      project: "your-gcp-project-id"
+      location: "us-central1"
     ```
   </Tab>
 </Tabs>

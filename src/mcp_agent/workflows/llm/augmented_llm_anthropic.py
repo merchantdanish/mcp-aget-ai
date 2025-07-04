@@ -93,15 +93,15 @@ def create_anthropic_instance(settings: AnthropicSettings):
     """Select and initialise the appropriate anthropic client instance based on settings"""
     if settings.bedrock:
         anthropic = AnthropicBedrock(
-            aws_access_key=settings.bedrock_settings.aws_access_key_id,
-            aws_secret_key=settings.bedrock_settings.aws_secret_access_key,
-            aws_session_token=settings.bedrock_settings.aws_session_token,
-            aws_region=settings.bedrock_settings.aws_region,
+            aws_access_key=settings.aws_access_key_id,
+            aws_secret_key=settings.aws_secret_access_key,
+            aws_session_token=settings.aws_session_token,
+            aws_region=settings.aws_region,
         )
     elif settings.vertexai:
         anthropic = AnthropicVertex(
-            region=settings.vertexai_settings.location,
-            project_id=settings.vertexai_settings.project,
+            region=settings.location,
+            project_id=settings.project,
         )
     else:
         anthropic = Anthropic(api_key=settings.api_key)
