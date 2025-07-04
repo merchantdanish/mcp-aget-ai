@@ -3,7 +3,7 @@ title: "Augmented LLMs"
 description: "Understanding augmented LLMs in mcp-agent - enhanced language models with tools, memory, and agent capabilities."
 ---
 
-import { Card, CardGroup } from "@mintlify/components";
+import { Card, CardGroup, Tabs, Tab } from "@mintlify/components";
 
 ## What are Augmented LLMs?
 
@@ -47,12 +47,39 @@ from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLL
 
 # Create Anthropic-powered augmented LLM
 llm = await agent.attach_llm(AnthropicAugmentedLLM)
-
-# Configuration (in mcp_agent.secrets.yaml or mcp_agent.config.yaml)
-anthropic:
-  api_key: "your-anthropic-api-key"
-  default_model: "claude-3-5-sonnet-latest"
 ```
+
+<Tabs>
+  <Tab title="Anthropic API">
+    ```yaml mcp_agent.secrets.yaml
+    # Configuration for Claude models directly from Anthropic
+    anthropic:
+      api_key: "your-anthropic-api-key"
+      default_model: "claude-3-5-sonnet-latest"
+    ```
+  </Tab>
+  <Tab title="Amazon Bedrock API">
+    ```yaml mcp_agent.secrets.yaml
+    # Configuration for Claude models through Bedrock
+    anthropic:
+      bedrock: true
+      bedrock_settings:
+        aws_region: "us-east-1"
+        aws_access_key_id: "your-aws-access-key"
+        aws_secret_access_key: "your-aws-secret-key"
+    ```
+  </Tab>
+  <Tab title="Vertex AI API">
+    ```yaml mcp_agent.secrets.yaml
+    # Configuration for Claude models through Vertex AI
+    anthropic:
+      vertexai: true
+      vertexai_settings:
+        project: "your-gcp-project-id"
+        location: "us-central1"
+    ```
+  </Tab>
+</Tabs>
 
 ### Other Providers
 
