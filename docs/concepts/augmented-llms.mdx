@@ -67,6 +67,7 @@ llm = await agent.attach_llm(AnthropicAugmentedLLM)
         aws_region: "us-east-1"
         aws_access_key_id: "your-aws-access-key"
         aws_secret_access_key: "your-aws-secret-key"
+        # Optional: aws_session_token for temporary credentials
     ```
   </Tab>
   <Tab title="Vertex AI API">
@@ -81,14 +82,102 @@ llm = await agent.attach_llm(AnthropicAugmentedLLM)
   </Tab>
 </Tabs>
 
-### Other Providers
+### Azure
 
-Additional providers available:
+```python
+from mcp_agent.workflows.llm.augmented_llm_azure import AzureAugmentedLLM
 
-- **Azure OpenAI**: `AzureAugmentedLLM`
-- **Amazon Bedrock**: `BedrockAugmentedLLM`
-- **Google AI**: `GoogleAugmentedLLM`
-- **Ollama**: `OllamaAugmentedLLM`
+# Create Azure-powered augmented LLM
+llm = await agent.attach_llm(AzureAugmentedLLM)
+```
+
+<Tabs>
+  <Tab title="Azure OpenAI">
+    ```yaml mcp_agent.secrets.yaml
+    # Configuration for Azure OpenAI inference endpoint
+    azure:
+      api_key: "your-azure-api-key"
+      endpoint: "https://your-resource-name.cognitiveservices.azure.com/openai/deployments/your-deployment-name"
+      api_version: "2025-01-01-preview"
+      default_model: "gpt-4o-mini"
+    ```
+  </Tab>
+  <Tab title="Azure AI">
+    ```yaml mcp_agent.secrets.yaml
+    # Configuration for Azure AI inference endpoint
+    azure:
+      api_key: "your-azure-api-key"
+      endpoint: "https://your-resource-name.services.ai.azure.com/models"
+      default_model: "DeepSeek-V3"
+    ```
+  </Tab>
+</Tabs>
+
+### Amazon Bedrock
+
+```python
+from mcp_agent.workflows.llm.augmented_llm_bedrock import BedrockAugmentedLLM
+
+# Create Bedrock-powered augmented LLM
+llm = await agent.attach_llm(BedrockAugmentedLLM)
+```
+
+```yaml mcp_agent.secrets.yaml
+# Configuration for Amazon Bedrock
+bedrock:
+  aws_region: "us-east-1"
+  aws_access_key_id: "your-aws-access-key"
+  aws_secret_access_key: "your-aws-secret-key"
+  # Optional: aws_session_token for temporary credentials
+  default_model: "anthropic.claude-3-haiku-20240307-v1:0"
+```
+
+### Google AI
+
+```python
+from mcp_agent.workflows.llm.augmented_llm_google import GoogleAugmentedLLM
+
+# Create Google-powered augmented LLM
+llm = await agent.attach_llm(GoogleAugmentedLLM)
+```
+
+<Tabs>
+  <Tab title="Google AI API">
+    ```yaml mcp_agent.secrets.yaml
+    # Configuration for Google AI (Gemini)
+    google:
+      api_key: "your-google-api-key"
+      default_model: "gemini-2.0-flash"
+    ```
+  </Tab>
+  <Tab title="Vertex AI">
+    ```yaml mcp_agent.secrets.yaml
+    # Configuration for Vertex AI
+    google:
+      vertexai: true
+      project: "your-gcp-project-id"
+      location: "us-central1"
+      default_model: "gemini-2.0-flash"
+    ```
+  </Tab>
+</Tabs>
+
+### Ollama
+
+```python
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+# Create Ollama-powered augmented LLM (uses OpenAI-compatible API)
+llm = await agent.attach_llm(OpenAIAugmentedLLM)
+```
+
+```yaml mcp_agent.config.yaml
+# Configuration for Ollama (local models)
+openai:
+  base_url: "http://localhost:11434/v1"
+  api_key: "ollama"  # Can be any value for local Ollama
+  default_model: "llama3.2"  # Or any model you have installed
+```
 
 ## Core Capabilities
 
