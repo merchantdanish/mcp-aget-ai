@@ -133,13 +133,13 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             intelligencePriority=0.3,
         )
 
-        default_model = "claude-3-7-sonnet-20250219"
+        default_model = "claude-sonnet-4-20250514"
 
         if self.context.config.anthropic:
             if self.context.config.anthropic.bedrock:
-                default_model = "anthropic.claude-3-7-sonnet-20250219-v1:0"
+                default_model = "anthropic.claude-sonnet-4-20250514-v1:0"
             elif self.context.config.anthropic.vertexai:
-                default_model = "claude-3-7-sonnet@20250219"
+                default_model = "claude-sonnet-4@20250514"
 
             if hasattr(self.context.config.anthropic, "default_model"):
                 default_model = self.context.config.anthropic.default_model
