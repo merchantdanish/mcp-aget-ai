@@ -57,6 +57,12 @@ mcp-agent supports multiple LLM providers. Choose your preferred provider:
     # With uv
     uv add "mcp-agent[anthropic]"
 
+    # Use Anthropic's Claude models via Amazon Bedrock
+    uv add "mcp-agent[anthropic_bedrock]"
+
+    # Use Anthropic's Claude models via Google's Vertex AI
+    uv add "mcp-agent[anthropic_vertexai]"
+
     # With pip
     pip install "mcp-agent[anthropic]"
     ```
@@ -97,6 +103,7 @@ mcp-agent supports multiple LLM providers. Choose your preferred provider:
   </Accordion>
 
   <Accordion title="All Providers">
+    You can also install dependencies for multiple providers. For example:
     ```bash
     # With uv
     uv add "mcp-agent[openai,anthropic,azure,bedrock,google]"
