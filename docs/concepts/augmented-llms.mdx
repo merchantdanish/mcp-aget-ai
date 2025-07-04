@@ -62,7 +62,7 @@ llm = await agent.attach_llm(AnthropicAugmentedLLM)
     ```yaml mcp_agent.secrets.yaml
     # Configuration for Claude models through AWS Bedrock
     anthropic:
-      bedrock: true
+      provider: "bedrock"
       aws_region: "us-east-1"
       aws_access_key_id: "your-aws-access-key"
       aws_secret_access_key: "your-aws-secret-key"
@@ -73,7 +73,7 @@ llm = await agent.attach_llm(AnthropicAugmentedLLM)
     ```yaml mcp_agent.secrets.yaml
     # Configuration for Claude models through Google Vertex AI
     anthropic:
-      vertexai: true
+      provider: "vertexai"
       project: "your-gcp-project-id"
       location: "us-central1"
     ```
