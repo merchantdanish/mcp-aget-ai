@@ -28,7 +28,7 @@ class TestGoogleConverter:
 
     def test_convert_to_google_empty_content(self):
         multipart = PromptMessageMultipart(role="user", content=[])
-        result = GoogleConverter.convert_to_google(multipart)
+        result = GoogleConverter.from_prompt_message_multipart(multipart)
 
         assert result.role == "user"
         assert result.parts == []
@@ -44,7 +44,7 @@ class TestGoogleConverter:
             mock_types.Part.from_text.return_value = mock_part
             mock_types.Content.return_value = Mock(role="user", parts=[mock_part])
 
-            GoogleConverter.convert_to_google(multipart)
+            GoogleConverter.from_prompt_message_multipart(multipart)
 
             mock_types.Part.from_text.assert_called_once_with(text="Hello, world!")
 
@@ -61,7 +61,7 @@ class TestGoogleConverter:
             mock_types.Part.from_bytes.return_value = mock_part
             mock_types.Content.return_value = Mock(role="user", parts=[mock_part])
 
-            GoogleConverter.convert_to_google(multipart)
+            GoogleConverter.from_prompt_message_multipart(multipart)
 
             # Should call from_bytes with decoded data
             mock_types.Part.from_bytes.assert_called_once_with(
@@ -80,7 +80,7 @@ class TestGoogleConverter:
             mock_types.Part.from_text.return_value = mock_part
             mock_types.Content.return_value = Mock(role="user", parts=[mock_part])
 
-            GoogleConverter.convert_to_google(multipart)
+            GoogleConverter.from_prompt_message_multipart(multipart)
 
             # Should call from_text with fallback message
             args, kwargs = mock_types.Part.from_text.call_args
@@ -97,7 +97,7 @@ class TestGoogleConverter:
             mock_types.Part.from_text.return_value = mock_part
             mock_types.Content.return_value = Mock(role="user", parts=[mock_part])
 
-            GoogleConverter.convert_to_google(multipart)
+            GoogleConverter.from_prompt_message_multipart(multipart)
 
             # Should call from_text with fallback message
             args, kwargs = mock_types.Part.from_text.call_args
@@ -115,7 +115,7 @@ class TestGoogleConverter:
             mock_types.Part.from_text.return_value = mock_part
             mock_types.Content.return_value = Mock(role="user", parts=[mock_part])
 
-            GoogleConverter.convert_prompt_message_to_google(message)
+            GoogleConverter.from_prompt_message(message)
 
             mock_types.Part.from_text.assert_called_once_with(text="Hello")
 
@@ -403,9 +403,7 @@ class TestGoogleConverter:
             # Make from_function_response return a sentinel value
             mock_part = mock_types.Part.from_function_response.return_value
 
-            part = GoogleConverter.convert_tool_result_to_google(
-                tool_result, "tool_use_123"
-            )
+            part = GoogleConverter.from_tool_result(tool_result, "tool_use_123")
             assert part == mock_part
 
             mock_types.Part.from_function_response.assert_called_once_with(
@@ -423,7 +421,7 @@ class TestGoogleConverter:
             mock_part = Mock()
             mock_types.Part.from_function_response.return_value = mock_part
 
-            GoogleConverter.convert_tool_result_to_google(tool_result, "tool_use_123")
+            GoogleConverter.from_tool_result(tool_result, "tool_use_123")
 
             # Error case should have different response format
             args, kwargs = mock_types.Part.from_function_response.call_args
@@ -441,7 +439,7 @@ class TestGoogleConverter:
             mock_types.Part.from_function_response.return_value = mock_part
             mock_types.Part.from_text.return_value = Mock()
 
-            GoogleConverter.convert_tool_result_to_google(tool_result, "tool_use_123")
+            GoogleConverter.from_tool_result(tool_result, "tool_use_123")
 
             # Should add fallback text and call function response
             mock_types.Part.from_text.assert_called_once_with(
@@ -466,7 +464,7 @@ class TestGoogleConverter:
             mock_content = Mock()
             mock_types.Content.return_value = mock_content
 
-            GoogleConverter.create_tool_results_message(tool_results)
+            GoogleConverter.from_tool_results(tool_results)
 
             # Should call Content with user role and 2 parts
             mock_types.Content.assert_called_once_with(
@@ -488,7 +486,7 @@ class TestGoogleConverter:
             mock_types.Part.from_text.return_value = mock_part
             mock_types.Part.from_function_response.return_value = mock_part
 
-            GoogleConverter.convert_tool_result_to_google(tool_result, "tool_use_123")
+            GoogleConverter.from_tool_result(tool_result, "tool_use_123")
 
             # Should process embedded resource as text
             mock_types.Part.from_text.assert_called_once_with(text="Resource content")
@@ -511,7 +509,7 @@ class TestGoogleConverter:
             mock_types.Part.from_bytes.return_value = mock_part
             mock_types.Part.from_function_response.return_value = mock_part
 
-            GoogleConverter.convert_tool_result_to_google(tool_result, "tool_use_123")
+            GoogleConverter.from_tool_result(tool_result, "tool_use_123")
 
             # Should process both text and image content
             mock_types.Part.from_text.assert_called_once_with(text="Text content")

@@ -28,7 +28,7 @@ class TestBedrockConverter:
 
     def test_convert_to_bedrock_empty_content(self):
         multipart = PromptMessageMultipart(role="user", content=[])
-        result = BedrockConverter.convert_to_bedrock(multipart)
+        result = BedrockConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert result["content"] == []
@@ -36,7 +36,7 @@ class TestBedrockConverter:
     def test_convert_to_bedrock_text_content(self):
         content = [TextContent(type="text", text="Hello, world!")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = BedrockConverter.convert_to_bedrock(multipart)
+        result = BedrockConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert len(result["content"]) == 1
@@ -45,7 +45,7 @@ class TestBedrockConverter:
     def test_convert_to_bedrock_image_content_supported(self):
         content = [ImageContent(type="image", data="base64data", mimeType="image/png")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = BedrockConverter.convert_to_bedrock(multipart)
+        result = BedrockConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert len(result["content"]) == 1
@@ -56,7 +56,7 @@ class TestBedrockConverter:
     def test_convert_to_bedrock_image_content_unsupported(self):
         content = [ImageContent(type="image", data="base64data", mimeType="image/gif")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = BedrockConverter.convert_to_bedrock(multipart)
+        result = BedrockConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert len(result["content"]) == 1
@@ -67,7 +67,7 @@ class TestBedrockConverter:
         message = PromptMessage(
             role="user", content=TextContent(type="text", text="Hello")
         )
-        result = BedrockConverter.convert_prompt_message_to_bedrock(message)
+        result = BedrockConverter.from_prompt_message(message)
 
         assert result["role"] == "user"
         assert len(result["content"]) == 1
@@ -259,9 +259,7 @@ class TestBedrockConverter:
         content = [TextContent(type="text", text="Tool result")]
         tool_result = CallToolResult(content=content, isError=False)
 
-        result = BedrockConverter.convert_tool_result_to_bedrock(
-            tool_result, "tool_use_123"
-        )
+        result = BedrockConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert "toolResult" in result
         assert result["toolResult"]["toolUseId"] == "tool_use_123"
@@ -273,9 +271,7 @@ class TestBedrockConverter:
         content = [TextContent(type="text", text="Error occurred")]
         tool_result = CallToolResult(content=content, isError=True)
 
-        result = BedrockConverter.convert_tool_result_to_bedrock(
-            tool_result, "tool_use_123"
-        )
+        result = BedrockConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert "toolResult" in result
         assert result["toolResult"]["toolUseId"] == "tool_use_123"
@@ -286,9 +282,7 @@ class TestBedrockConverter:
     def test_convert_tool_result_to_bedrock_empty_content(self):
         tool_result = CallToolResult(content=[], isError=False)
 
-        result = BedrockConverter.convert_tool_result_to_bedrock(
-            tool_result, "tool_use_123"
-        )
+        result = BedrockConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert "toolResult" in result
         assert result["toolResult"]["toolUseId"] == "tool_use_123"
@@ -307,7 +301,7 @@ class TestBedrockConverter:
 
         tool_results = [("tool_1", result1), ("tool_2", result2)]
 
-        message = BedrockConverter.create_tool_results_message(tool_results)
+        message = BedrockConverter.from_tool_results(tool_results)
 
         assert message["role"] == "user"
         assert len(message["content"]) == 2
@@ -330,9 +324,7 @@ class TestBedrockConverter:
         content = [embedded]
         tool_result = CallToolResult(content=content, isError=False)
 
-        result = BedrockConverter.convert_tool_result_to_bedrock(
-            tool_result, "tool_use_123"
-        )
+        result = BedrockConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert "toolResult" in result
         assert result["toolResult"]["toolUseId"] == "tool_use_123"
@@ -347,9 +339,7 @@ class TestBedrockConverter:
         ]
         tool_result = CallToolResult(content=content, isError=False)
 
-        result = BedrockConverter.convert_tool_result_to_bedrock(
-            tool_result, "tool_use_123"
-        )
+        result = BedrockConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert "toolResult" in result
         assert result["toolResult"]["toolUseId"] == "tool_use_123"

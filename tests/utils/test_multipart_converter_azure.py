@@ -28,7 +28,7 @@ class TestAzureConverter:
 
     def test_convert_to_azure_empty_content(self):
         multipart = PromptMessageMultipart(role="user", content=[])
-        result = AzureConverter.convert_to_azure(multipart)
+        result = AzureConverter.from_prompt_message_multipart(multipart)
 
         assert result.role == "user"
         assert result.content == ""
@@ -36,7 +36,7 @@ class TestAzureConverter:
     def test_convert_to_azure_text_content(self):
         content = [TextContent(type="text", text="Hello, world!")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = AzureConverter.convert_to_azure(multipart)
+        result = AzureConverter.from_prompt_message_multipart(multipart)
 
         assert result.role == "user"
         assert isinstance(result.content, list)
@@ -45,7 +45,7 @@ class TestAzureConverter:
     def test_convert_to_azure_image_content_supported(self):
         content = [ImageContent(type="image", data="base64data", mimeType="image/png")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = AzureConverter.convert_to_azure(multipart)
+        result = AzureConverter.from_prompt_message_multipart(multipart)
 
         assert result.role == "user"
         assert isinstance(result.content, list)
@@ -54,7 +54,7 @@ class TestAzureConverter:
     def test_convert_to_azure_image_content_unsupported(self):
         content = [ImageContent(type="image", data="base64data", mimeType="image/bmp")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = AzureConverter.convert_to_azure(multipart)
+        result = AzureConverter.from_prompt_message_multipart(multipart)
 
         assert result.role == "user"
         assert isinstance(result.content, list)
@@ -66,7 +66,7 @@ class TestAzureConverter:
             ImageContent(type="image", data="base64data", mimeType="image/png"),
         ]
         multipart = PromptMessageMultipart(role="assistant", content=content)
-        result = AzureConverter.convert_to_azure(multipart)
+        result = AzureConverter.from_prompt_message_multipart(multipart)
 
         assert result.role == "assistant"
         assert result.content == "Hello"
@@ -75,7 +75,7 @@ class TestAzureConverter:
         message = PromptMessage(
             role="user", content=TextContent(type="text", text="Hello")
         )
-        result = AzureConverter.convert_prompt_message_to_azure(message)
+        result = AzureConverter.from_prompt_message(message)
 
         assert result.role == "user"
         assert isinstance(result.content, list)
@@ -235,9 +235,7 @@ class TestAzureConverter:
         content = [TextContent(type="text", text="Tool result")]
         tool_result = CallToolResult(content=content, isError=False)
 
-        result = AzureConverter.convert_tool_result_to_azure(
-            tool_result, "tool_use_123"
-        )
+        result = AzureConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert result.role == "tool"
         assert isinstance(result.content, str)
@@ -246,9 +244,7 @@ class TestAzureConverter:
     def test_convert_tool_result_to_azure_empty_content(self):
         tool_result = CallToolResult(content=[], isError=False)
 
-        result = AzureConverter.convert_tool_result_to_azure(
-            tool_result, "tool_use_123"
-        )
+        result = AzureConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert result.role == "tool"
         assert isinstance(result.content, str)
@@ -263,7 +259,7 @@ class TestAzureConverter:
 
         tool_results = [("tool_1", result1), ("tool_2", result2)]
 
-        messages = AzureConverter.create_tool_results_message(tool_results)
+        messages = AzureConverter.from_tool_results(tool_results)
 
         assert isinstance(messages, list)
         assert len(messages) == 2
@@ -282,9 +278,7 @@ class TestAzureConverter:
         content = [embedded]
         tool_result = CallToolResult(content=content, isError=False)
 
-        result = AzureConverter.convert_tool_result_to_azure(
-            tool_result, "tool_use_123"
-        )
+        result = AzureConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert result.role == "tool"
         assert isinstance(result.content, str)
@@ -297,9 +291,7 @@ class TestAzureConverter:
         ]
         tool_result = CallToolResult(content=content, isError=False)
 
-        result = AzureConverter.convert_tool_result_to_azure(
-            tool_result, "tool_use_123"
-        )
+        result = AzureConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert result.role == "tool"
         assert isinstance(result.content, str)

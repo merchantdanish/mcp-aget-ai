@@ -28,7 +28,7 @@ class TestAnthropicConverter:
 
     def test_convert_to_anthropic_empty_content(self):
         multipart = PromptMessageMultipart(role="user", content=[])
-        result = AnthropicConverter.convert_to_anthropic(multipart)
+        result = AnthropicConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert result["content"] == []
@@ -36,7 +36,7 @@ class TestAnthropicConverter:
     def test_convert_to_anthropic_text_content(self):
         content = [TextContent(type="text", text="Hello, world!")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = AnthropicConverter.convert_to_anthropic(multipart)
+        result = AnthropicConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert len(result["content"]) == 1
@@ -46,7 +46,7 @@ class TestAnthropicConverter:
     def test_convert_to_anthropic_image_content_supported(self):
         content = [ImageContent(type="image", data="base64data", mimeType="image/png")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = AnthropicConverter.convert_to_anthropic(multipart)
+        result = AnthropicConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert len(result["content"]) == 1
@@ -58,7 +58,7 @@ class TestAnthropicConverter:
     def test_convert_to_anthropic_image_content_unsupported(self):
         content = [ImageContent(type="image", data="base64data", mimeType="image/bmp")]
         multipart = PromptMessageMultipart(role="user", content=content)
-        result = AnthropicConverter.convert_to_anthropic(multipart)
+        result = AnthropicConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "user"
         assert len(result["content"]) == 1
@@ -71,7 +71,7 @@ class TestAnthropicConverter:
             ImageContent(type="image", data="base64data", mimeType="image/png"),
         ]
         multipart = PromptMessageMultipart(role="assistant", content=content)
-        result = AnthropicConverter.convert_to_anthropic(multipart)
+        result = AnthropicConverter.from_prompt_message_multipart(multipart)
 
         assert result["role"] == "assistant"
         assert len(result["content"]) == 1
@@ -82,7 +82,7 @@ class TestAnthropicConverter:
         message = PromptMessage(
             role="user", content=TextContent(type="text", text="Hello")
         )
-        result = AnthropicConverter.convert_prompt_message_to_anthropic(message)
+        result = AnthropicConverter.from_prompt_message(message)
 
         assert result["role"] == "user"
         assert len(result["content"]) == 1
@@ -234,9 +234,7 @@ class TestAnthropicConverter:
         content = [TextContent(type="text", text="Tool result")]
         tool_result = CallToolResult(content=content, isError=False)
 
-        result = AnthropicConverter.convert_tool_result_to_anthropic(
-            tool_result, "tool_use_123"
-        )
+        result = AnthropicConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert result["type"] == "tool_result"
         assert result["tool_use_id"] == "tool_use_123"
@@ -248,9 +246,7 @@ class TestAnthropicConverter:
     def test_convert_tool_result_to_anthropic_empty_content(self):
         tool_result = CallToolResult(content=[], isError=False)
 
-        result = AnthropicConverter.convert_tool_result_to_anthropic(
-            tool_result, "tool_use_123"
-        )
+        result = AnthropicConverter.from_tool_result(tool_result, "tool_use_123")
 
         assert result["type"] == "tool_result"
         assert result["tool_use_id"] == "tool_use_123"
@@ -266,7 +262,7 @@ class TestAnthropicConverter:
 
         tool_results = [("tool_1", result1), ("tool_2", result2)]
 
-        message = AnthropicConverter.create_tool_results_message(tool_results)
+        message = AnthropicConverter.from_tool_results(tool_results)
 
         assert message["role"] == "user"
         assert len(message["content"]) == 2

@@ -155,9 +155,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
             if params.use_history:
                 messages.extend(self.history.get())
-            messages.extend(
-                AnthropicConverter.convert_mixed_messages_to_anthropic(message)
-            )
+            messages.extend(AnthropicConverter.from_mixed_messages(message))
 
             list_tools_result = await self.agent.list_tools()
             available_tools: List[ToolParam] = [

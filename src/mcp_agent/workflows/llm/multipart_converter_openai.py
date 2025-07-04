@@ -7,7 +7,12 @@ from mcp.types import (
     PromptMessage,
     TextContent,
 )
-from openai.types.chat import ChatCompletionMessageParam, ChatCompletionUserMessageParam
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionUserMessageParam,
+    ChatCompletionMessage,
+    ChatCompletionToolMessageParam,
+)
 
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.utils.content_utils import (
@@ -26,15 +31,18 @@ from mcp_agent.utils.mime_utils import (
 from mcp_agent.utils.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.utils.resource_utils import extract_title_from_uri
 from mcp_agent.workflows.llm.augmented_llm import MessageTypes
+from mcp_agent.workflows.llm.multipart_converter import MessageConverter
 
 _logger = get_logger("multipart_converter_openai")
 
 # Define type aliases for content blocks
 ContentBlock = Dict[str, Any]
-OpenAIMessage = Dict[str, Any]
+OpenAIMessage = Dict[str, str | ContentBlock | List[ContentBlock]]
 
 
-class OpenAIConverter:
+class OpenAIConverter(
+    MessageConverter[ChatCompletionMessageParam, ChatCompletionMessage]
+):
     """Converts MCP message types to OpenAI API format."""
 
     @staticmethod
@@ -55,9 +63,9 @@ class OpenAIConverter:
         )
 
     @staticmethod
-    def convert_to_openai(
+    def from_prompt_message_multipart(
         multipart_msg: PromptMessageMultipart, concatenate_text_blocks: bool = False
-    ) -> Dict[str, str | ContentBlock | List[ContentBlock]]:
+    ) -> ChatCompletionMessageParam:
         """
         Convert a PromptMessageMultipart message to OpenAI API format.
 
@@ -158,7 +166,7 @@ class OpenAIConverter:
         return combined_blocks
 
     @staticmethod
-    def convert_prompt_message_to_openai(
+    def from_prompt_message(
         message: PromptMessage, concatenate_text_blocks: bool = False
     ) -> ChatCompletionMessageParam:
         """
@@ -175,7 +183,9 @@ class OpenAIConverter:
         multipart = PromptMessageMultipart(role=message.role, content=[message.content])
 
         # Use the existing conversion method with the specified concatenation option
-        return OpenAIConverter.convert_to_openai(multipart, concatenate_text_blocks)
+        return OpenAIConverter.from_prompt_message_multipart(
+            multipart, concatenate_text_blocks
+        )
 
     @staticmethod
     def _convert_image_content(content: ImageContent) -> ContentBlock:
@@ -349,11 +359,14 @@ class OpenAIConverter:
         )
 
     @staticmethod
-    def convert_tool_result_to_openai(
+    def from_tool_result(
         tool_result: CallToolResult,
         tool_call_id: str,
         concatenate_text_blocks: bool = False,
-    ) -> Union[Dict[str, Any], Tuple[Dict[str, Any], List[Dict[str, Any]]]]:
+    ) -> Union[
+        ChatCompletionToolMessageParam,
+        Tuple[ChatCompletionToolMessageParam, list[ChatCompletionMessageParam]],
+    ]:
         """
         Convert a CallToolResult to an OpenAI tool message.
 
@@ -371,15 +384,15 @@ class OpenAIConverter:
         """
         # Handle empty content case
         if not tool_result.content:
-            return {
-                "role": "tool",
-                "tool_call_id": tool_call_id,
-                "content": "[No content in tool result]",
-            }
+            return ChatCompletionToolMessageParam(
+                role="tool",
+                tool_call_id=tool_call_id,
+                content="[No content in tool result]",
+            )
 
         # Separate text and non-text content
-        text_content = []
-        non_text_content = []
+        text_content: list[TextContent] = []
+        non_text_content: list[ContentBlock] = []
 
         for item in tool_result.content:
             if isinstance(item, TextContent):
@@ -392,7 +405,7 @@ class OpenAIConverter:
         if text_content:
             # Convert text content to OpenAI format
             temp_multipart = PromptMessageMultipart(role="user", content=text_content)
-            converted = OpenAIConverter.convert_to_openai(
+            converted = OpenAIConverter.from_prompt_message_multipart(
                 temp_multipart, concatenate_text_blocks=concatenate_text_blocks
             )
 
@@ -405,11 +418,9 @@ class OpenAIConverter:
             tool_message_content = "[Tool returned non-text content]"
 
         # Create the tool message with just the text
-        tool_message = {
-            "role": "tool",
-            "tool_call_id": tool_call_id,
-            "content": tool_message_content,
-        }
+        tool_message = ChatCompletionToolMessageParam(
+            role="tool", tool_call_id=tool_call_id, content=tool_message_content
+        )
 
         # If there's no non-text content, return just the tool message
         if not non_text_content:
@@ -421,7 +432,7 @@ class OpenAIConverter:
         )
 
         # Convert to OpenAI format
-        user_message = OpenAIConverter.convert_to_openai(non_text_multipart)
+        user_message = OpenAIConverter.from_prompt_message_multipart(non_text_multipart)
 
         # We need to add tool_call_id manually
         user_message["tool_call_id"] = tool_call_id
@@ -429,10 +440,10 @@ class OpenAIConverter:
         return (tool_message, [user_message])
 
     @staticmethod
-    def convert_function_results_to_openai(
+    def from_tool_results(
         results: List[Tuple[str, CallToolResult]],
         concatenate_text_blocks: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[ChatCompletionMessageParam]:
         """
         Convert a list of function call results to OpenAI messages.
 
@@ -443,10 +454,10 @@ class OpenAIConverter:
         Returns:
             List of OpenAI API messages for tool responses
         """
-        messages = []
+        messages: list[ChatCompletionMessageParam] = []
 
         for tool_call_id, result in results:
-            converted = OpenAIConverter.convert_tool_result_to_openai(
+            converted = OpenAIConverter.from_tool_result(
                 tool_result=result,
                 tool_call_id=tool_call_id,
                 concatenate_text_blocks=concatenate_text_blocks,
@@ -464,7 +475,7 @@ class OpenAIConverter:
         return messages
 
     @staticmethod
-    def convert_mixed_messages_to_openai(
+    def from_mixed_messages(
         message: MessageTypes,
     ) -> List[ChatCompletionMessageParam]:
         """
@@ -483,11 +494,11 @@ class OpenAIConverter:
                 ChatCompletionUserMessageParam(role="user", content=message)
             )
         elif isinstance(message, PromptMessage):
-            messages.append(OpenAIConverter.convert_prompt_message_to_openai(message))
+            messages.append(OpenAIConverter.from_prompt_message(message))
         elif isinstance(message, list):
             for m in message:
                 if isinstance(m, PromptMessage):
-                    messages.append(OpenAIConverter.convert_prompt_message_to_openai(m))
+                    messages.append(OpenAIConverter.from_prompt_message(m))
                 elif isinstance(m, str):
                     messages.append(
                         ChatCompletionUserMessageParam(role="user", content=m)
