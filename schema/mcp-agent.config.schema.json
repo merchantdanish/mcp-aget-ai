@@ -28,15 +28,15 @@
           "default": null,
           "title": "Default Model"
         },
-        "bedrock": {
-          "default": false,
+        "provider": {
+          "default": "anthropic",
           "title": "Bedrock",
-          "type": "boolean"
-        },
-        "vertexai": {
-          "default": false,
-          "title": "Vertexai",
-          "type": "boolean"
+          "type": "string",
+          "enum": [
+            "anthropic",
+            "bedrock",
+            "vertexai"
+          ]
         },
         "project": {
           "anyOf": [

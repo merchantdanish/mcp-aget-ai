@@ -138,6 +138,7 @@ class AnthropicSettings(VertexAISettings, BedrockSettings):
 
     api_key: str | None = None
     default_model: str | None = None
+    provider: Literal["anthropic", "bedrock", "vertexai"] = "anthropic"
     bedrock: bool = False
     vertexai: bool = False
 

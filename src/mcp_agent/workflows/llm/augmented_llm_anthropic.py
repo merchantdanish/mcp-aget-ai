@@ -91,14 +91,14 @@ class RequestStructuredCompletionRequest(BaseModel):
 
 def create_anthropic_instance(settings: AnthropicSettings):
     """Select and initialise the appropriate anthropic client instance based on settings"""
-    if settings.bedrock:
+    if settings.provider == "bedrock":
         anthropic = AnthropicBedrock(
             aws_access_key=settings.aws_access_key_id,
             aws_secret_key=settings.aws_secret_access_key,
             aws_session_token=settings.aws_session_token,
             aws_region=settings.aws_region,
         )
-    elif settings.vertexai:
+    elif settings.provider == "vertexai":
         anthropic = AnthropicVertex(
             region=settings.location,
             project_id=settings.project,
@@ -136,9 +136,9 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         default_model = "claude-sonnet-4-20250514"
 
         if self.context.config.anthropic:
-            if self.context.config.anthropic.bedrock:
+            if self.context.config.anthropic.provider == "bedrock":
                 default_model = "anthropic.claude-sonnet-4-20250514-v1:0"
-            elif self.context.config.anthropic.vertexai:
+            elif self.context.config.anthropic.provider == "vertexai":
                 default_model = "claude-sonnet-4@20250514"
 
             if hasattr(self.context.config.anthropic, "default_model"):
