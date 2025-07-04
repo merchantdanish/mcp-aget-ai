@@ -27,6 +27,40 @@
           ],
           "default": null,
           "title": "Default Model"
+        },
+        "bedrock": {
+          "default": false,
+          "title": "Bedrock",
+          "type": "boolean"
+        },
+        "vertexai": {
+          "default": false,
+          "title": "Vertexai",
+          "type": "boolean"
+        },
+        "bedrock_settings": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BedrockSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bedrock Settings"
+        },
+        "vertexai_settings": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VertexAISettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vertexai Settings"
         }
       },
       "title": "AnthropicSettings",
@@ -142,6 +176,38 @@
         }
       },
       "title": "BedrockSettings",
+      "type": "object"
+    },
+    "VertexAISettings": {
+      "additionalProperties": true,
+      "description": "Settings for using VertexAI models in the MCP Agent application",
+      "properties": {
+        "project": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Location"
+        }
+      },
+      "title": "VertexAISettings",
       "type": "object"
     },
     "CohereSettings": {

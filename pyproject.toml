@@ -40,6 +40,16 @@ temporal = [
 anthropic = [
     "anthropic>=0.48.0",
 ]
+
+anthropic_bedrock = [
+    "anthropic[bedrock]>=0.52.0",
+]
+
+anthropic_vertex = [
+    "anthropic[vertex]>=0.52.0",
+    "google-cloud-aiplatform>=1.101.0",
+]
+
 bedrock = [
     "boto3>=1.37.23"
 ]

@@ -2,7 +2,7 @@ from typing import Any, Iterable, List, Type, Union, cast
 
 from pydantic import BaseModel
 
-from anthropic import Anthropic
+from anthropic import Anthropic, AnthropicBedrock, AnthropicVertex
 from anthropic.types import (
     ContentBlock,
     DocumentBlockParam,
@@ -89,6 +89,25 @@ class RequestStructuredCompletionRequest(BaseModel):
     model: str
 
 
+def create_anthropic_instance(settings: AnthropicSettings):
+    """Select and initialise the appropriate anthropic client instance based on settings"""
+    if settings.bedrock:
+        anthropic = AnthropicBedrock(
+            aws_access_key=settings.bedrock_settings.aws_access_key_id,
+            aws_secret_key=settings.bedrock_settings.aws_secret_access_key,
+            aws_session_token=settings.bedrock_settings.aws_session_token,
+            aws_region=settings.bedrock_settings.aws_region,
+        )
+    elif settings.vertexai:
+        anthropic = AnthropicVertex(
+            region=settings.vertexai_settings.location,
+            project_id=settings.vertexai_settings.project,
+        )
+    else:
+        anthropic = Anthropic(api_key=settings.api_key)
+    return anthropic
+
+
 class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
     """
     The basic building block of agentic systems is an LLM enhanced with augmentations
@@ -114,11 +133,17 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             intelligencePriority=0.3,
         )
 
-        default_model = "claude-3-7-sonnet-latest"  # Fallback default
-
         if self.context.config.anthropic:
+            if self.context.config.anthropic.bedrock:
+                default_model = "anthropic.claude-3-7-sonnet-20250219-v1:0"
+            elif self.context.config.anthropic.vertexai:
+                default_model = "claude-3-7-sonnet@20250219"
+            else:
+                default_model = "claude-3-7-sonnet-20250219"
+
             if hasattr(self.context.config.anthropic, "default_model"):
                 default_model = self.context.config.anthropic.default_model
+
         self.default_request_params = self.default_request_params or RequestParams(
             model=default_model,
             modelPreferences=self.model_preferences,
@@ -199,7 +224,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                     "max_tokens": params.maxTokens,
                     "messages": messages,
                     "system": self.instruction or params.systemPrompt,
-                    "stop_sequences": params.stopSequences,
+                    "stop_sequences": params.stopSequences or [],
                     "tools": available_tools,
                 }
 
@@ -709,7 +734,7 @@ class AnthropicCompletionTasks:
         Request a completion from Anthropic's API.
         """
 
-        anthropic = Anthropic(api_key=request.config.api_key)
+        anthropic = create_anthropic_instance(request.config)
 
         payload = request.payload
         response = anthropic.messages.create(**payload)
@@ -737,9 +762,7 @@ class AnthropicCompletionTasks:
             )
 
         # We pass the text through instructor to extract structured data
-        client = instructor.from_anthropic(
-            Anthropic(api_key=request.config.api_key),
-        )
+        client = instructor.from_anthropic(create_anthropic_instance(request.config))
 
         # Extract structured data from natural language
         structured_response = client.chat.completions.create(
