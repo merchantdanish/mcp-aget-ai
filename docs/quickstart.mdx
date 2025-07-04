@@ -121,8 +121,8 @@ async def main():
 
         async with finder_agent:
             # List available tools
-            tools = await finder_agent.list_tools()
-            logger.info("Available tools:", data=[tool.name for tool in tools.tools])
+            tool_listing = await finder_agent.list_tools()
+            logger.info("Available tools:", data=[tool.name for tool in tool_listing.tools])
 
             # Attach an OpenAI LLM to the agent
             llm = await finder_agent.attach_llm(OpenAIAugmentedLLM)
