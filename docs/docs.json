@@ -62,6 +62,17 @@
             "pages": [
               "advanced/temporal"
             ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "codeboarding/overview",
+              "codeboarding/core-orchestration-execution",
+              "codeboarding/agent-workflow-framework",
+              "codeboarding/llm-external-tooling",
+              "codeboarding/mcp-api-gateway",
+              "codeboarding/intent-interaction-management"
+            ]
           }
         ]
       }
