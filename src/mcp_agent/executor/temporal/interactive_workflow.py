@@ -51,7 +51,7 @@ class InteractiveWorkflow(Workflow[T], Generic[T]):
         """
         if self._request is None:
             return "{}"
-        return self._request.model_dump_json(include={'prompt', 'description'})
+        return self._request.model_dump_json(include={"prompt", "description"})
 
     @workflow.signal
     async def provide_human_input(self, input: HumanResponse) -> None:

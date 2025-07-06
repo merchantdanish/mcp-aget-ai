@@ -160,7 +160,7 @@ def get_tracer(context: "Context") -> trace.Tracer:
     """
     Get the OpenTelemetry tracer for the context.
     """
-    return context.tracer or trace.get_tracer("mcp-agent")
+    return getattr(context, "tracer", None) or trace.get_tracer("mcp-agent")
 
 
 telemetry = TelemetryManager()

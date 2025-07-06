@@ -6,7 +6,7 @@ InteractiveWorkflow class, allowing the workflow to pause and wait for user inpu
 When running this workflow, it will pause for human input. From the temporal UI,
 you can inspect the requested information by going to the "Queries" tab
 and executing the `get_human_input_request` query to see the requested information.
-The response can be provided by sending a signal of type "provide_human_input", 
+The response can be provided by sending a signal of type "provide_human_input",
 with a message body like '{"response": "Your input here"}'
 """
 
