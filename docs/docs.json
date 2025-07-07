@@ -66,7 +66,7 @@
           {
             "group": "Architecture",
             "pages": [
-              "codeboarding/analysis",
+              "codeboarding/on_boarding",
               "codeboarding/Core_Application_Setup",
               "codeboarding/Agent_Execution_Workflow_Engine",
               "codeboarding/Agent_Core_LLM_Integration",
