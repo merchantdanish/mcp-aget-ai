@@ -7,13 +7,13 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent/app.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/app.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/app.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         },
         {
           "qualified_name": "mcp_agent/config.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/config.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         }
@@ -25,31 +25,31 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent/executor/executor.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/executor.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/executor.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         },
         {
           "qualified_name": "mcp_agent/executor/task_registry.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/task_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/task_registry.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         },
         {
           "qualified_name": "mcp_agent/executor/signal_registry.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/signal_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/signal_registry.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         },
         {
           "qualified_name": "mcp_agent/executor/decorator_registry.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/decorator_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/decorator_registry.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         },
         {
           "qualified_name": "mcp_agent/executor/workflow.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/workflow.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/workflow.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         }
@@ -61,19 +61,19 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent/agents/agent.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/agents/agent.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/agents/agent.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         },
         {
           "qualified_name": "mcp_agent/workflows/llm/augmented_llm.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         },
         {
           "qualified_name": "mcp_agent/workflows/llm/llm_selector.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/workflows/llm/llm_selector.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/llm_selector.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         }
@@ -85,19 +85,19 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent/mcp/mcp_aggregator.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/mcp/mcp_aggregator.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_aggregator.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         },
         {
           "qualified_name": "mcp_agent/mcp/mcp_connection_manager.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/mcp/mcp_connection_manager.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_connection_manager.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         },
         {
           "qualified_name": "mcp_agent/mcp/mcp_server_registry.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/mcp/mcp_server_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_server_registry.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         }
@@ -109,31 +109,31 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent/workflows/orchestrator/orchestrator.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/workflows/orchestrator/orchestrator.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/orchestrator/orchestrator.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         },
         {
           "qualified_name": "mcp_agent/workflows/router/router_base.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/workflows/router/router_base.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/router/router_base.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         },
         {
           "qualified_name": "mcp_agent/workflows/intent_classifier/intent_classifier_base.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/workflows/intent_classifier/intent_classifier_base.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/intent_classifier/intent_classifier_base.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         },
         {
           "qualified_name": "mcp_agent/workflows/parallel/parallel_llm.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/workflows/parallel/parallel_llm.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/parallel/parallel_llm.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         },
         {
           "qualified_name": "mcp_agent/workflows/swarm/swarm.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/workflows/swarm/swarm.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/swarm/swarm.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         }
@@ -145,13 +145,13 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent/human_input/handler.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/human_input/handler.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/human_input/handler.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         },
         {
           "qualified_name": "mcp_agent/human_input/types.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/human_input/types.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/human_input/types.py",
           "reference_start_line": 1,
           "reference_end_line": 1
         }

@@ -7,7 +7,7 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent/executor/executor.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/executor.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/executor.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         },
@@ -25,13 +25,13 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent/executor/workflow.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/workflow.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/workflow.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         },
         {
           "qualified_name": "mcp_agent/executor/temporal/interactive_workflow.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/temporal/interactive_workflow.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/temporal/interactive_workflow.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         }
@@ -43,7 +43,7 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent/executor/task_registry.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/task_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/task_registry.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         }
@@ -55,13 +55,13 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent/executor/signal_registry.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/signal_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/signal_registry.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         },
         {
           "qualified_name": "mcp_agent/executor/workflow_signal.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/workflow_signal.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/workflow_signal.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         }
@@ -73,7 +73,7 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent/executor/decorator_registry.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/decorator_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/decorator_registry.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         }
@@ -85,13 +85,13 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent/executor/workflow_registry.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/workflow_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/workflow_registry.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         },
         {
           "qualified_name": "mcp_agent/executor/temporal/workflow_registry.py",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/temporal/workflow_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/temporal/workflow_registry.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         }

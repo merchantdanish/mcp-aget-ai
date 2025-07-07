@@ -7,7 +7,7 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent.app.MCPApp",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/app.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/app.py",
           "reference_start_line": 34,
           "reference_end_line": 508
         }
@@ -19,43 +19,43 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent.config.Settings",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/config.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         },
         {
           "qualified_name": "mcp_agent.config.AnthropicSettings",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/config.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         },
         {
           "qualified_name": "mcp_agent.config.OpenAISettings",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/config.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         },
         {
           "qualified_name": "mcp_agent.config.TemporalSettings",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/config.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         },
         {
           "qualified_name": "mcp_agent.config.AzureSettings",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/config.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         },
         {
           "qualified_name": "mcp_agent.config.BedrockSettings",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/config.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         },
         {
           "qualified_name": "mcp_agent.config.GoogleSettings",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/config.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/config.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         }
@@ -67,7 +67,7 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent.executor.decorator_registry.DecoratorRegistry",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/decorator_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/decorator_registry.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         }
@@ -79,7 +79,7 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent.executor.signal_registry.SignalRegistry",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/signal_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/signal_registry.py",
           "reference_start_line": 3,
           "reference_end_line": 29
         }
@@ -91,7 +91,7 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent.executor.task_registry.ActivityRegistry",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/executor/task_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/executor/task_registry.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         }
@@ -103,19 +103,19 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent.mcp.mcp_connection_manager.MCPConnectionManager",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/mcp/mcp_connection_manager.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_connection_manager.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         },
         {
           "qualified_name": "mcp_agent.mcp.mcp_server_registry.ServerRegistry",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/mcp/mcp_server_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_server_registry.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         },
         {
           "qualified_name": "mcp_agent.mcp.mcp_aggregator.MCPAggregator",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/mcp/mcp_aggregator.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_aggregator.py",
           "reference_start_line": 77,
           "reference_end_line": 1357
         }
@@ -127,13 +127,13 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent.workflows.llm.llm_selector.ModelSelector",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/workflows/llm/llm_selector.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/llm_selector.py",
           "reference_start_line": 96,
           "reference_end_line": 413
         },
         {
           "qualified_name": "mcp_agent.workflows.llm.augmented_llm.AugmentedLLM",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/workflows/llm/augmented_llm.py",
           "reference_start_line": 218,
           "reference_end_line": 668
         }

@@ -7,7 +7,7 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent.mcp.mcp_aggregator.MCPAggregator",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/mcp/mcp_aggregator.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_aggregator.py",
           "reference_start_line": 77,
           "reference_end_line": 1357
         }
@@ -19,7 +19,7 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent.mcp.mcp_connection_manager.MCPConnectionManager",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/mcp/mcp_connection_manager.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_connection_manager.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         }
@@ -31,7 +31,7 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent.mcp.mcp_server_registry.ServerRegistry",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/mcp/mcp_server_registry.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_server_registry.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         }
@@ -43,7 +43,7 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent.mcp.mcp_agent_client_session.MCPClientSession",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/mcp/mcp_agent_client_session.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/mcp_agent_client_session.py",
           "reference_start_line": 0,
           "reference_end_line": 0
         }
@@ -55,7 +55,7 @@
       "referenced_source_code": [
         {
           "qualified_name": "mcp_agent.mcp.gen_client",
-          "reference_file": "/home/ivan/StartUp/CodeBoarding/repos/mcp-agent/src/mcp_agent/mcp/gen_client.py",
+          "reference_file": "/mnt/e/StartUp/mcp-agent/src/mcp_agent/mcp/gen_client.py",
           "reference_start_line": 15,
           "reference_end_line": 40
         }
