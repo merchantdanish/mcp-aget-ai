@@ -101,6 +101,10 @@ def serialize_attribute(key: str, value: Any) -> Dict[str, Any]:
         for sub_key, sub_value in value.items():
             serialized.update(serialize_attribute(f"{key}.{sub_key}", sub_value))
 
+    elif isinstance(value, (list, tuple)):
+        for idx, item in enumerate(value):
+            serialized.update(serialize_attribute(f"{key}.{idx}", item))
+
     elif isinstance(value, Callable):
         serialized[f"{key}_callable_name"] = getattr(value, "__qualname__", str(value))
         serialized[f"{key}_callable_module"] = getattr(value, "__module__", "unknown")
@@ -109,6 +113,11 @@ def serialize_attribute(key: str, value: Any) -> Dict[str, Any]:
     elif inspect.iscoroutine(value):
         serialized[f"{key}_coroutine"] = str(value)
         serialized[f"{key}_is_coroutine"] = True
+
+    else:
+        s = str(value)
+        # TODO: jerron - Truncate very long strings. Not sure if this is necessary.
+        serialized[key] = s if len(s) < 256 else s[:255] + "…"
 
     return serialized
 
