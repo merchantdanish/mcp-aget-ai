@@ -7,7 +7,6 @@ from mcp.server.sse import SseServerTransport
 from mcp.types import EmbeddedResource, ImageContent, TextContent
 from openinference.instrumentation.mcp import MCPInstrumentor
 from opentelemetry import trace
-from pydantic import BaseModel, create_model
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 
