@@ -182,23 +182,23 @@ def annotate_span_for_call_tool_result(span: trace.Span, result: CallToolResult)
     if hasattr(result, "isError"):
         span.set_attribute("result.isError", result.isError)
 
-    content = getattr(result, "content", [])
+    result_content = getattr(result, "content", [])
 
     if getattr(result, "isError", False):
         span.set_status(trace.Status(trace.StatusCode.ERROR))
         error_message = (
-            content[0].text
-            if len(content) > 0 and content[0].type == "text"
+            result_content[0].text
+            if len(result_content) > 0 and result_content[0].type == "text"
             else "Error calling tool"
         )
         span.record_exception(Exception(error_message))
 
-    for idx, content in enumerate(content):
+    for idx, content in enumerate(result_content):
         span.set_attribute(f"result.content.{idx}.type", content.type)
         if content.type == "text":
             span.set_attribute(
                 f"result.content.{idx}.text",
-                content[idx].text,
+                content.text,
             )
 
 
