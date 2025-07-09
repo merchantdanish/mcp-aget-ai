@@ -60,7 +60,7 @@ def main():
         span.set_attribute(GEN_AI_TOOL_NAME, name)
         span.set_attribute("result", res)
         if arguments:
-            record_attributes(span, arguments)
+            record_attributes(span, arguments, "arguments")
 
         return [
             TextContent(type="text", text=res)
