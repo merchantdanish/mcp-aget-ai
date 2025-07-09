@@ -13,6 +13,9 @@ from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from mcp_agent.core.context_dependent import ContextDependent
+from mcp.types import (
+    CallToolResult,
+)
 
 if TYPE_CHECKING:
     from mcp_agent.core.context import Context
@@ -136,7 +139,7 @@ def serialize_attributes(
     return serialized
 
 
-def record_attribute(span, key, value):
+def record_attribute(span: trace.Span, key, value):
     """Record a single serializable value on the span."""
     if is_otel_serializable(value):
         span.set_attribute(key, value)
@@ -146,7 +149,7 @@ def record_attribute(span, key, value):
             span.set_attribute(attr_key, attr_value)
 
 
-def record_attributes(span, attributes: Dict[str, Any], prefix: str = ""):
+def record_attributes(span: trace.Span, attributes: Dict[str, Any], prefix: str = ""):
     """Record a dict of attributes on the span after serialization."""
     serialized = serialize_attributes(attributes, prefix)
     for attr_key, attr_value in serialized.items():
@@ -170,6 +173,33 @@ def get_tracer(context: "Context") -> trace.Tracer:
     Get the OpenTelemetry tracer for the context.
     """
     return getattr(context, "tracer", None) or trace.get_tracer("mcp-agent")
+
+
+def annotate_span_for_call_tool_result(span: trace.Span, result: CallToolResult):
+    """
+    Annotate the span with attributes from the CallToolResult.
+    """
+    if hasattr(result, "isError"):
+        span.set_attribute("result.isError", result.isError)
+
+    content = getattr(result, "content", [])
+
+    if getattr(result, "isError", False):
+        span.set_status(trace.Status(trace.StatusCode.ERROR))
+        error_message = (
+            content[0].text
+            if len(content) > 0 and content[0].type == "text"
+            else "Error calling tool"
+        )
+        span.record_exception(Exception(error_message))
+
+    for idx, content in enumerate(content):
+        span.set_attribute(f"result.content.{idx}.type", content.type)
+        if content.type == "text":
+            span.set_attribute(
+                f"result.content.{idx}.text",
+                content[idx].text,
+            )
 
 
 telemetry = TelemetryManager()
