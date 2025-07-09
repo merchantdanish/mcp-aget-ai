@@ -853,22 +853,28 @@ class Agent(BaseModel):
             def _annotate_span_for_result(result: CallToolResult):
                 if not self.context.tracing_enabled:
                     return
-                span.set_attribute("result.isError", result.isError)
-                if result.isError:
-                    span.set_status(trace.Status(trace.StatusCode.ERROR))
-                    error_message = (
-                        result.content[0].text
-                        if len(result.content) > 0 and result.content[0].type == "text"
-                        else "Error calling tool"
-                    )
-                    span.record_exception(Exception(error_message))
-                else:
-                    for idx, content in enumerate(result.content):
-                        span.set_attribute(f"result.content.{idx}.type", content.type)
-                        if content.type == "text":
-                            span.set_attribute(
-                                f"result.content.{idx}.text", result.content[idx].text
-                            )
+                if hasattr(result, "isError"):
+                    span.set_attribute("result.isError", result.isError)
+                    if result.isError:
+                        span.set_status(trace.Status(trace.StatusCode.ERROR))
+                        error_message = (
+                            result.content[0].text
+                            if len(result.content) > 0
+                            and result.content[0].type == "text"
+                            else "Error calling tool"
+                        )
+                        span.record_exception(Exception(error_message))
+                    else:
+                        if hasattr(result, "content"):
+                            for idx, content in enumerate(result.content):
+                                span.set_attribute(
+                                    f"result.content.{idx}.type", content.type
+                                )
+                                if content.type == "text":
+                                    span.set_attribute(
+                                        f"result.content.{idx}.text",
+                                        result.content[idx].text,
+                                    )
 
             if name == HUMAN_INPUT_TOOL_NAME:
                 # Call the human input tool
