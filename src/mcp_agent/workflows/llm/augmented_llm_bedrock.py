@@ -206,6 +206,9 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
                 )
                 break
             elif response["stopReason"] == "tool_use":
+                # Collect all tool results first
+                tool_results = []
+
                 for content in response["output"]["message"]["content"]:
                     if content.get("toolUse"):
                         tool_use_block = content["toolUse"]
@@ -224,25 +227,27 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
                             request=tool_call_request, tool_call_id=tool_use_id
                         )
 
-                        tool_result_message = {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "toolResult": {
-                                        "content": mcp_content_to_bedrock_content(
-                                            result.content
-                                        ),
-                                        "toolUseId": tool_use_id,
-                                        "status": "error"
-                                        if result.isError
-                                        else "success",
-                                    }
+                        tool_results.append(
+                            {
+                                "toolResult": {
+                                    "content": mcp_content_to_bedrock_content(
+                                        result.content
+                                    ),
+                                    "toolUseId": tool_use_id,
+                                    "status": "error" if result.isError else "success",
                                 }
-                            ],
-                        }
+                            }
+                        )
 
-                        messages.append(tool_result_message)
-                        responses.append(tool_result_message)
+                # Create a single message with all tool results
+                if tool_results:
+                    tool_result_message = {
+                        "role": "user",
+                        "content": tool_results,
+                    }
+
+                    messages.append(tool_result_message)
+                    responses.append(tool_result_message)
 
         if params.use_history:
             self.history.set(messages)

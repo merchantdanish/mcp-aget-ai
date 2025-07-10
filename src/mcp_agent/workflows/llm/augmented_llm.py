@@ -541,18 +541,27 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         span: trace.Span, request_params: RequestParams
     ):
         """Annotate the span with request parameters"""
-        span.set_attribute(GEN_AI_REQUEST_MAX_TOKENS, request_params.maxTokens)
-        span.set_attribute(
-            "request_params.max_iterations", request_params.max_iterations
-        )
-        span.set_attribute(GEN_AI_REQUEST_TEMPERATURE, request_params.temperature)
-        span.set_attribute("request_params.use_history", request_params.use_history)
-        span.set_attribute(
-            "request_params.parallel_tool_calls", request_params.parallel_tool_calls
-        )
-        if request_params.model:
+        # Handle case where request_params might not be a proper RequestParams object
+        if hasattr(request_params, "maxTokens"):
+            span.set_attribute(GEN_AI_REQUEST_MAX_TOKENS, request_params.maxTokens)
+        if hasattr(request_params, "max_iterations"):
+            span.set_attribute(
+                "request_params.max_iterations", request_params.max_iterations
+            )
+        if hasattr(request_params, "temperature"):
+            span.set_attribute(GEN_AI_REQUEST_TEMPERATURE, request_params.temperature)
+        if hasattr(request_params, "use_history"):
+            span.set_attribute("request_params.use_history", request_params.use_history)
+        if hasattr(request_params, "parallel_tool_calls"):
+            span.set_attribute(
+                "request_params.parallel_tool_calls", request_params.parallel_tool_calls
+            )
+        if hasattr(request_params, "model") and request_params.model:
             span.set_attribute(GEN_AI_REQUEST_MODEL, request_params.model)
-        if request_params.modelPreferences:
+        if (
+            hasattr(request_params, "modelPreferences")
+            and request_params.modelPreferences
+        ):
             for attr, value in request_params.modelPreferences.model_dump(
                 exclude_unset=True
             ).items():
@@ -565,21 +574,21 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                     record_attribute(
                         span, f"request_params.modelPreferences.{attr}", value
                     )
-        if request_params.systemPrompt:
+        if hasattr(request_params, "systemPrompt") and request_params.systemPrompt:
             span.set_attribute(
                 "request_params.systemPrompt", request_params.systemPrompt
             )
-        if request_params.includeContext:
+        if hasattr(request_params, "includeContext") and request_params.includeContext:
             span.set_attribute(
                 "request_params.includeContext",
                 request_params.includeContext,
             )
-        if request_params.stopSequences:
+        if hasattr(request_params, "stopSequences") and request_params.stopSequences:
             span.set_attribute(
                 GEN_AI_REQUEST_STOP_SEQUENCES,
                 request_params.stopSequences,
             )
-        if request_params.metadata:
+        if hasattr(request_params, "metadata") and request_params.metadata:
             record_attributes(span, request_params.metadata, "request_params.metadata")
 
     def _annotate_span_for_generation_message(

@@ -75,6 +75,7 @@ class RequestStructuredCompletionRequest(BaseModel):
     serialized_response_model: str | None = None
     response_str: str
     model: str
+    user: str | None = None
 
 
 class OpenAIAugmentedLLM(
@@ -112,7 +113,7 @@ class OpenAIAugmentedLLM(
             if hasattr(self.context.config.openai, "reasoning_effort"):
                 self._reasoning_effort = self.context.config.openai.reasoning_effort
 
-        self._reasoning = lambda model: model.startswith(("o1", "o3", "o4"))
+        self._reasoning = lambda model: model and model.startswith(("o1", "o3", "o4"))
 
         if self._reasoning(default_model):
             self.logger.info(
@@ -458,6 +459,8 @@ class OpenAIAugmentedLLM(
                     serialized_response_model=serialized_response_model,
                     response_str=response,
                     model=model,
+                    user=params.user
+                    or getattr(self.context.config.openai, "user", None),
                 ),
             )
             # TODO: saqadri (MAC) - fix request_structured_completion_task to return ensure_serializable
@@ -917,6 +920,7 @@ class OpenAICompletionTasks:
                     messages=[
                         {"role": "user", "content": request.response_str},
                     ],
+                    user=request.user,
                 )
             except InstructorRetryException:
                 # Retry the request with JSON mode
@@ -931,6 +935,7 @@ class OpenAICompletionTasks:
                     messages=[
                         {"role": "user", "content": request.response_str},
                     ],
+                    user=request.user,
                 )
 
             return structured_response
