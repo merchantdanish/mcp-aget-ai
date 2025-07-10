@@ -311,8 +311,11 @@ def get_current_context() -> Context:
                 _thread_local.context = pool.submit(run_async).result()
         except RuntimeError:
             loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            _thread_local.context = loop.run_until_complete(initialize_context())
+            try:
+                asyncio.set_event_loop(loop)
+                _thread_local.context = loop.run_until_complete(initialize_context())
+            finally:
+                loop.close()
     return _thread_local.context
 
 
