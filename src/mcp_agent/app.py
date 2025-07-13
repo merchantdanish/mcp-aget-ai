@@ -109,6 +109,7 @@ class MCPApp:
         self._logger = None
         self._context: Optional[Context] = None
         self._initialized = False
+        self._tracer_provider = None
 
         try:
             # Set event loop policy for Windows
@@ -184,6 +185,10 @@ class MCPApp:
             store_globally=True,
         )
 
+        # Store the app-specific tracer provider
+        if self._context.tracing_enabled and self._context.tracing_config:
+            self._tracer_provider = self._context.tracing_config._tracer_provider
+
         # Set the properties that were passed in the constructor
         self._context.human_input_handler = self._human_input_callback
         self._context.elicitation_handler = self._elicitation_callback
@@ -222,13 +227,24 @@ class MCPApp:
             },
         )
 
+        # Force flush traces before cleanup
+        if self._context and self._context.tracing_config:
+            await self._context.tracing_config.flush()
+
         try:
-            await cleanup_context()
+            # Don't shutdown OTEL completely, just cleanup app-specific resources
+            await cleanup_context(shutdown_logger=False)
         except asyncio.CancelledError:
             self.logger.debug("Cleanup cancelled during shutdown")
 
+        # Shutdown the tracer provider to stop background threads
+        # This prevents dangling span exports after cleanup
+        if self._context and self._context.tracing_config:
+            self._context.tracing_config.shutdown()
+
         self._context = None
         self._initialized = False
+        self._tracer_provider = None
 
     @asynccontextmanager
     async def run(self):

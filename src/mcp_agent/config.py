@@ -287,10 +287,17 @@ class OpenTelemetrySettings(BaseModel):
     otlp_settings: TraceOTLPSettings | None = None
     """OTLP settings for OpenTelemetry tracing. Required if using otlp exporter."""
 
+    path: str | None = None
+    """
+    Direct path for trace file. If specified, this takes precedence over path_settings.
+    Useful for test scenarios where you want full control over the trace file location.
+    """
+
     # Settings for advanced trace path configuration for file exporter
     path_settings: TracePathSettings | None = None
     """
     Save trace files with more advanced path semantics, like having timestamps or session id in the trace name.
+    Ignored if 'path' is specified.
     """
 
 

@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 from mcp_agent.executor.workflow import WorkflowState, WorkflowResult, Workflow
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 
 class TestWorkflowState:
@@ -280,3 +280,103 @@ class TestWorkflowAsyncMethods:
         assert "status" in status
         assert "running" in status
         assert "state" in status
+
+    @pytest.mark.asyncio
+    async def test_run_async_with_custom_workflow_id(self, mock_context):
+        """Test that custom workflow_id is properly passed through"""
+        workflow = MockWorkflow(name="TestWorkflow", context=mock_context)
+        workflow.context.config.execution_engine = "asyncio"
+
+        # Mock the workflow registry
+        mock_context.workflow_registry.register = AsyncMock()
+
+        # Use a custom workflow ID
+        custom_workflow_id = "my-custom-workflow-id"
+        execution = await workflow.run_async(__mcp_agent_workflow_id=custom_workflow_id)
+
+        assert execution.workflow_id == custom_workflow_id
+        assert workflow._workflow_id == custom_workflow_id
+
+    @pytest.mark.asyncio
+    async def test_run_async_with_temporal_custom_params(self, mock_context):
+        """Test that custom workflow_id and task_queue are passed to Temporal executor"""
+        workflow = MockWorkflow(name="TestWorkflow", context=mock_context)
+        workflow.context.config.execution_engine = "temporal"
+
+        # Mock the workflow registry
+        mock_context.workflow_registry.register = AsyncMock()
+
+        # Mock the Temporal executor
+        mock_handle = MagicMock()
+        mock_handle.id = "temporal-workflow-id"
+        mock_handle.run_id = "temporal-run-id"
+        mock_handle.result_run_id = None
+        mock_handle.result = AsyncMock()
+
+        workflow.executor.start_workflow = AsyncMock(return_value=mock_handle)
+
+        # Use custom parameters
+        custom_workflow_id = "my-custom-workflow-id"
+        custom_task_queue = "my-custom-task-queue"
+
+        execution = await workflow.run_async(
+            __mcp_agent_workflow_id=custom_workflow_id,
+            __mcp_agent_task_queue=custom_task_queue,
+        )
+
+        # Verify start_workflow was called with correct parameters
+        workflow.executor.start_workflow.assert_called_once_with(
+            "TestWorkflow", workflow_id=custom_workflow_id, task_queue=custom_task_queue
+        )
+
+        # Verify execution uses the handle's ID
+        assert execution.workflow_id == "temporal-workflow-id"
+        assert execution.run_id == "temporal-run-id"
+
+    @pytest.mark.asyncio
+    async def test_run_async_regular_params_not_affected(self, mock_context):
+        """Test that regular parameters are not affected by special parameters"""
+
+        # Create a test workflow that captures parameters
+        class ParameterCaptureWorkflow(Workflow):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.params_received = None
+
+            async def run(self, **kwargs):
+                self.params_received = kwargs
+                return WorkflowResult(value="test")
+
+        workflow = ParameterCaptureWorkflow(name="TestWorkflow", context=mock_context)
+        workflow.context.config.execution_engine = "asyncio"
+
+        # Mock the workflow registry to avoid background task issues
+        mock_context.workflow_registry = None
+
+        # Use a custom workflow ID
+        custom_workflow_id = "custom-id"
+
+        # Run with both special and regular parameters
+        execution = await workflow.run_async(
+            __mcp_agent_workflow_id=custom_workflow_id,
+            regular_param="regular_value",
+            another_param=123,
+        )
+
+        # Wait for the task to complete by accessing the internal task
+        if workflow._run_task:
+            try:
+                await workflow._run_task
+            except Exception:
+                pass  # Ignore any exceptions from the background task
+
+        # Verify special parameters were not passed to run()
+        assert workflow.params_received is not None
+        assert "__mcp_agent_workflow_id" not in workflow.params_received
+        assert "regular_param" in workflow.params_received
+        assert workflow.params_received["regular_param"] == "regular_value"
+        assert "another_param" in workflow.params_received
+        assert workflow.params_received["another_param"] == 123
+
+        # Verify the workflow ID was set correctly
+        assert execution.workflow_id == custom_workflow_id

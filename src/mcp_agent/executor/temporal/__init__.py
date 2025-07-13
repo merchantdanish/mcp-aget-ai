@@ -271,6 +271,8 @@ class TemporalExecutor(Executor):
         workflow_type: str,
         *args: Any,
         wait_for_result: bool = False,
+        workflow_id: str | None = None,
+        task_queue: str | None = None,
         **kwargs: Any,
     ) -> WorkflowHandle:
         """
@@ -280,6 +282,8 @@ class TemporalExecutor(Executor):
             workflow_type (str): Type (class name) of the Workflow to be started.
             *workflow_args: Positional arguments to pass to the workflow.
             wait_for_result: Whether to wait for the workflow to complete and return the result.
+            workflow_id: Optional workflow ID to use (instead of auto-generating).
+            task_queue: Optional task queue to use (instead of default from config).
             **workflow_kwargs: Keyword arguments to pass to the workflow.
 
         Returns:
@@ -328,8 +332,13 @@ class TemporalExecutor(Executor):
             # multi-arg workflow - pack into a sequence
             input_arg = bound_args
 
-        # Generate a unique execution ID for this workflow instance
-        workflow_id = f"{workflow_type}-{self.uuid()}"
+        # Use provided workflow_id or generate a unique one
+        if workflow_id is None:
+            workflow_id = f"{workflow_type}-{self.uuid()}"
+
+        # Use provided task_queue or use the one from config
+        if task_queue is None:
+            task_queue = self.config.task_queue
 
         # Start the workflow
         if input_arg is not None:
@@ -337,14 +346,14 @@ class TemporalExecutor(Executor):
                 wf,
                 input_arg,
                 id=workflow_id,
-                task_queue=self.config.task_queue,
+                task_queue=task_queue,
                 id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             )
         else:
             handle: WorkflowHandle = await self.client.start_workflow(
                 wf,
                 id=workflow_id,
-                task_queue=self.config.task_queue,
+                task_queue=task_queue,
                 id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             )
 
@@ -358,6 +367,8 @@ class TemporalExecutor(Executor):
         self,
         workflow_type: str,
         *workflow_args: Any,
+        workflow_id: str | None = None,
+        task_queue: str | None = None,
         **workflow_kwargs: Any,
     ) -> Any:
         """
@@ -366,7 +377,12 @@ class TemporalExecutor(Executor):
         This is a convenience wrapper around start_workflow with wait_for_result=True.
         """
         return await self.start_workflow(
-            workflow_type, *workflow_args, wait_for_result=True, **workflow_kwargs
+            workflow_type,
+            *workflow_args,
+            wait_for_result=True,
+            workflow_id=workflow_id,
+            task_queue=task_queue,
+            **workflow_kwargs,
         )
 
     def create_human_input_request(self, request: dict) -> HumanInputRequest:

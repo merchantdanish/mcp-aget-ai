@@ -197,6 +197,9 @@ class Workflow(ABC, Generic[T], ContextDependent):
         Args:
             *args: Positional arguments to pass to the run method
             **kwargs: Keyword arguments to pass to the run method
+                Special kwargs that are extracted and not passed to run():
+                - __mcp_agent_workflow_id: Optional workflow ID to use (instead of auto-generating)
+                - __mcp_agent_task_queue: Optional task queue to use (instead of default from config)
 
         Returns:
             WorkflowExecution: The execution details including run ID and workflow ID
@@ -207,18 +210,29 @@ class Workflow(ABC, Generic[T], ContextDependent):
 
         handle: "WorkflowHandle" | None = None
 
+        # Extract special kwargs that shouldn't be passed to the run method
+        # Using __mcp_agent_ prefix to avoid conflicts with user parameters
+        provided_workflow_id = kwargs.pop("__mcp_agent_workflow_id", None)
+        provided_task_queue = kwargs.pop("__mcp_agent_task_queue", None)
+
         self.update_status("scheduled")
 
         if self.context.config.execution_engine == "asyncio":
             # Generate a unique ID for this workflow instance
             if not self._workflow_id:
-                self._workflow_id = self.name
+                self._workflow_id = provided_workflow_id or self.name
             if not self._run_id:
                 self._run_id = str(self.executor.uuid())
         elif self.context.config.execution_engine == "temporal":
             # For Temporal workflows, we'll start the workflow immediately
             executor: TemporalExecutor = self.executor
-            handle = await executor.start_workflow(self.name, *args, **kwargs)
+            handle = await executor.start_workflow(
+                self.name,
+                *args,
+                workflow_id=provided_workflow_id,
+                task_queue=provided_task_queue,
+                **kwargs,
+            )
             self._workflow_id = handle.id
             self._run_id = handle.result_run_id or handle.run_id
         else:

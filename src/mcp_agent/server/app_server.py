@@ -178,6 +178,7 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
         ctx: MCPContext,
         workflow_name: str,
         run_parameters: Dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> Dict[str, str]:
         """
         Run a workflow with the given name.
@@ -186,12 +187,13 @@ def create_mcp_server_for_app(app: MCPApp) -> FastMCP:
             workflow_name: The name of the workflow to run.
             run_parameters: Arguments to pass to the workflow run.
                 workflows/list method will return the run_parameters schema for each workflow.
+            kwargs: Ignore, for internal use only.
 
         Returns:
             A dict with workflow_id and run_id for the started workflow run, can be passed to
             workflows/get_status, workflows/resume, and workflows/cancel.
         """
-        return await _workflow_run(ctx, workflow_name, run_parameters)
+        return await _workflow_run(ctx, workflow_name, run_parameters, **kwargs)
 
     @mcp.tool(name="workflows-get_status")
     async def get_workflow_status(
@@ -406,6 +408,7 @@ async def _workflow_run(
     ctx: MCPContext,
     workflow_name: str,
     run_parameters: Dict[str, Any] | None = None,
+    **kwargs: Any,
 ) -> Dict[str, str]:
     server_context: ServerContext = ctx.request_context.lifespan_context
 
@@ -426,6 +429,7 @@ async def _workflow_run(
 
         # Note from Tomaso - sorry to edit the framework here. I ran into this issue and spent too much time trying to work around it versus just fixing this here.
         # Something is putting the workflow instance into run_parameters, duplicating self
+        # Looks like this might have been fixed later in the non-forked repository.
         if 'self' in run_parameters:
             run_parameters.pop('self')
 
