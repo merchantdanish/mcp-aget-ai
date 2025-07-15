@@ -38,37 +38,39 @@ RENTSPIDER_BASE_URL = "https://api.rentspider.com/v1"
 
 # Initialize app with human input and elicitation callbacks
 app = MCPApp(
-    name="real_estate_analyzer", 
+    name="real_estate_analyzer",
     human_input_callback=console_input_callback,
-    elicitation_callback=console_elicitation_callback
+    elicitation_callback=console_elicitation_callback,
 )
 
 
 class RentSpiderClient:
     """Client for interacting with RentSpider API"""
-    
+
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.base_url = RENTSPIDER_BASE_URL
         self.headers = {
             "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
-    
-    async def search_properties(self, location: str, property_type: str = "all") -> Optional[Dict[Any, Any]]:
+
+    async def search_properties(
+        self, location: str, property_type: str = "all"
+    ) -> Optional[Dict[Any, Any]]:
         """Search for properties in a specific location"""
         try:
             async with aiohttp.ClientSession() as session:
                 params = {
                     "location": location,
                     "property_type": property_type,
-                    "limit": 50
+                    "limit": 50,
                 }
-                
+
                 async with session.get(
                     f"{self.base_url}/properties/search",
                     headers=self.headers,
-                    params=params
+                    params=params,
                 ) as response:
                     if response.status == 200:
                         return await response.json()
@@ -78,17 +80,17 @@ class RentSpiderClient:
         except Exception as e:
             print(f"Error calling RentSpider API: {str(e)}")
             return None
-    
+
     async def get_market_data(self, location: str) -> Optional[Dict[Any, Any]]:
         """Get market statistics for a location"""
         try:
             async with aiohttp.ClientSession() as session:
                 params = {"location": location}
-                
+
                 async with session.get(
                     f"{self.base_url}/market/statistics",
                     headers=self.headers,
-                    params=params
+                    params=params,
                 ) as response:
                     if response.status == 200:
                         return await response.json()
@@ -98,17 +100,17 @@ class RentSpiderClient:
         except Exception as e:
             print(f"Error getting market data: {str(e)}")
             return None
-    
+
     async def get_rental_trends(self, location: str) -> Optional[Dict[Any, Any]]:
         """Get rental market trends for a location"""
         try:
             async with aiohttp.ClientSession() as session:
                 params = {"location": location, "period": "12months"}
-                
+
                 async with session.get(
                     f"{self.base_url}/market/trends",
                     headers=self.headers,
-                    params=params
+                    params=params,
                 ) as response:
                     if response.status == 200:
                         return await response.json()
@@ -131,9 +133,11 @@ async def main():
     rentspider_client = None
     if RENTSPIDER_API_KEY:
         rentspider_client = RentSpiderClient(RENTSPIDER_API_KEY)
-        print(f"✅ RentSpider API initialized")
+        print("✅ RentSpider API initialized")
     else:
-        print("⚠️  RentSpider API key not found. Set RENTSPIDER_API_KEY environment variable for enhanced data.")
+        print(
+            "⚠️  RentSpider API key not found. Set RENTSPIDER_API_KEY environment variable for enhanced data."
+        )
 
     async with app.run() as analyzer_app:
         context = analyzer_app.context
@@ -158,19 +162,23 @@ async def main():
         api_data = {}
         if rentspider_client:
             logger.info("Fetching data from RentSpider API...")
-            
+
             # Get property listings
-            properties = await rentspider_client.search_properties(LOCATION, PROPERTY_TYPE)
+            properties = await rentspider_client.search_properties(
+                LOCATION, PROPERTY_TYPE
+            )
             if properties:
                 api_data["properties"] = properties
-                logger.info(f"Retrieved {len(properties.get('results', []))} property listings")
-            
+                logger.info(
+                    f"Retrieved {len(properties.get('results', []))} property listings"
+                )
+
             # Get market statistics
             market_stats = await rentspider_client.get_market_data(LOCATION)
             if market_stats:
                 api_data["market_stats"] = market_stats
                 logger.info("Retrieved market statistics")
-            
+
             # Get rental trends
             rental_trends = await rentspider_client.get_rental_trends(LOCATION)
             if rental_trends:
@@ -510,10 +518,12 @@ async def main():
         # Run the orchestrator
         logger.info("Starting the interactive real estate analysis workflow")
         print("\n🎯 This analysis will be personalized to your needs.")
-        print("💬 You may be asked questions during the process to provide better recommendations.\n")
-        
+        print(
+            "💬 You may be asked questions during the process to provide better recommendations.\n"
+        )
+
         start_time = time.time()
-        
+
         try:
             await orchestrator.generate_str(
                 message=task, request_params=RequestParams(model="gpt-4o")
@@ -523,8 +533,8 @@ async def main():
             if os.path.exists(output_path):
                 end_time = time.time()
                 total_time = end_time - start_time
-                logger.info(f"Report successfully generated: {output_path}")
-                print(f"\n✅ Report generated successfully!")
+                logger.info("Report successfully generated: {output_path}")
+                print("\n✅ Report generated successfully!")
                 print(f"📁 Location: {output_path}")
                 print(f"🏠 Market analyzed: {LOCATION}")
                 print(f"⏱️  Total analysis time: {total_time:.2f}s")
@@ -545,21 +555,21 @@ if __name__ == "__main__":
         print("💡 Set environment variable: export RENTSPIDER_API_KEY='your-api-key'")
         print("🔗 Get your API key at: https://rentspider.com/api")
         print("📝 Analysis will continue with web search only...\n")
-    
+
     if len(sys.argv) > 1:
         print(f"🏡 Analyzing real estate market for: {' '.join(sys.argv[1:])}")
     else:
         print(f"🏡 Analyzing real estate market for: {LOCATION} (default)")
-    
+
     print("🤖 Interactive Real Estate Analysis with Elicitation")
     print("💬 You'll be asked questions to personalize your report")
     print("⏳ Starting analysis...\n")
-    
+
     start = time.time()
     success = asyncio.run(main())
     end = time.time()
     total_time = end - start
-    
+
     if success:
         print(f"\n🎉 Real estate analysis completed successfully in {total_time:.2f}s!")
         print("📊 Check the generated report for detailed market insights.")
