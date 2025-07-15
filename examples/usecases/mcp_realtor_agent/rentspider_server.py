@@ -5,7 +5,7 @@ MCP server that provides real estate property search via RentSpider API
 with interactive elicitation for refined search parameters.
 """
 
-import asyncio
+
 import json
 import os
 import aiohttp
