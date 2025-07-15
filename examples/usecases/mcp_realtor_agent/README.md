@@ -43,7 +43,7 @@ git clone https://github.com/lastmile-ai/mcp-agent.git
 cd mcp-agent/examples/usecases/mcp_realtor_agent
 uv init
 uv sync
-uv pip install -r requirements.txt
+uv pip install -e .
 npm install -g g-search-mcp
 ```
 
