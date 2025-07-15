@@ -1,6 +1,6 @@
 $schema: ../../schema/mcp-agent.config.schema.json
 
-# Configuration for Stock Analyzer with g-search-mcp
+# Configuration for Real Estate Analyzer with g-search-mcp
 execution_engine: asyncio
 
 # MCP server configurations
