@@ -33,7 +33,7 @@ PROPERTY_TYPE = "single family homes"  # Can be modified for apartments, condos,
 MAX_ITERATIONS = 3
 
 # RentSpider API Configuration
-RENTSPIDER_API_KEY = os.getenv("da1063a37723406eb4a776913a5c866b")  # Set this environment variable
+RENTSPIDER_API_KEY = os.getenv("RENTSPIDER_API_KEY")  # Set this environment variable
 RENTSPIDER_BASE_URL = "https://api.rentspider.com/v1"
 
 # Initialize app with human input and elicitation callbacks
