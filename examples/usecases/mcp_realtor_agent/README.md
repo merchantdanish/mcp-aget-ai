@@ -15,25 +15,25 @@ This is a universal research agent framework with pluggable expertise:
 **Adaptable to any domain**: Change the agent instructions and API integrations to create research agents for finance, healthcare, legal research, market analysis, academic research, or any other expertise area.
 
 ```plaintext
-┌──────────────┐      ┌───────────────────┐      ┌───────────┐
-│ Orchestrator │─────▶│ Research          │─────▶│ Research  │◀─────┐
-│ Workflow     │      │ Quality Controller│      │ Agent     │      │
-└──────────────┘      └───────────────────┘      └───────────┘      │
-       │                        │                      │            │
-       │                        ▼                      │            │
-       │                 ┌──────────────┐              ▼            │
-       │                 │ Domain API   │    ┌───────────────────┐  │
-       │                 │ Integration  │    │ Research Quality  ├──┘ 
-       │                 └──────────────┘    │ Evaluator         │   
-       │                                     └───────────────────┘  
-       │             ┌─────────────────┐        
-       └────────────▶│ Expert          │
-       │             │ Analysis Agent  │
-       │             └─────────────────┘
-       │             ┌─────────────────┐
-       └────────────▶│ Report Writer   │
-                     │ Agent           │
-                     └─────────────────┘
+┌──────────────┐      ┌────────────────────┐      ┌───────────┐
+│ Orchestrator │─────▶│ Research           │─────▶│ Research  │◀────┐
+│ Workflow     │      │ Quality Controller │      │ Agent     │     │
+└──────────────┘      └────────────────────┘      └───────────┘     │
+       │                        │                       │           │
+       │                        ▼                       ▼           │
+       │                 ┌─────────────┐      ┌──────────────────┐  │
+       │                 │ Domain API  │      │ Research Quality ├──┘
+       │                 │ Integration │      │ Evaluator        │
+       │                 └─────────────┘      └──────────────────┘
+       │
+       │            ┌──────────────────┐
+       └───────────▶│ Expert           │
+       │            │ Analysis Agent   │
+       │            └──────────────────┘
+       │            ┌──────────────────┐
+       └────────── ▶│ Report Writer    │
+                    │ Agent            │
+                    └──────────────────┘
 ```
 
 ## `1` App Setup
@@ -77,8 +77,9 @@ uv run main.py "Miami, FL"
 ## Interactive Experience
 
 The agent will ask domain-relevant questions like:
+
 - **Real Estate**: Property types, budget range, investment goals
-- **Finance**: Portfolio size, risk tolerance, investment timeline  
+- **Finance**: Portfolio size, risk tolerance, investment timeline
 - **Healthcare**: Patient demographics, symptoms, treatment history
 - **Legal**: Case type, jurisdiction, legal precedents needed
 
