@@ -646,7 +646,7 @@ class Agent(BaseModel):
             executor = self.context.executor
             result: ListPromptsResult = await executor.execute(
                 self._agent_tasks.list_prompts_task,
-                ListToolsRequest(agent_name=self.name, server_name=server_name),
+                ListPromptsRequest(agent_name=self.name, server_name=server_name),
             )
 
             if self.context.tracing_enabled:
