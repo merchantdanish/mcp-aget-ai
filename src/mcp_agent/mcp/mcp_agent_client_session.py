@@ -210,7 +210,8 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
                     metadata,
                     progress_callback,
                 )
-                res_data = result.model_dump()
+                # ignore warnings due to generic RequestParams causing type mismatches
+                res_data = result.model_dump(warnings=False)
                 logger.debug("send_request: response=", data=res_data)
 
                 if self.context.tracing_enabled:
