@@ -1,10 +1,8 @@
-"""
-Stock Analyzer with Orchestrator and EvaluatorOptimizerLLM Workflow
+"""Stock Analyzer with Orchestrator and EvaluatorOptimizerLLM Workflow
 ------------------------------------------------------------
 An integrated financial analysis tool using the latest orchestrator implementation
 that now supports AugmentedLLM components directly.
-"""
-
+"""""
 import asyncio
 import os
 import sys
