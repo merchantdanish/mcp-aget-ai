@@ -4,7 +4,7 @@ Adaptive Workflow - A multi-agent system based on Claude Deep Research architect
 This workflow implements an adaptive multi-agent pattern that can handle both
 research tasks and action-oriented tasks with the following key features:
 
-- Dynamic agent creation based on task requirements  
+- Dynamic agent creation based on task requirements
 - Non-cascading iteration limits (prevents explosion)
 - Comprehensive time and cost tracking with budgets
 - Memory persistence for long-running tasks
@@ -25,7 +25,7 @@ from .models import (
 
 __all__ = [
     "AdaptiveWorkflow",
-    "TaskType", 
+    "TaskType",
     "SubagentTask",
     "WorkflowMemory",
     "WorkflowResult",

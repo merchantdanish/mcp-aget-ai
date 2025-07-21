@@ -9,7 +9,7 @@ from typing import List
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp.types import ModelPreferences
-from mcp_agent.workflows.adaptive import AdaptiveWorkflow, TaskType
+from mcp_agent.workflows.adaptive import AdaptiveWorkflow
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 
 
@@ -120,7 +120,7 @@ async def main():
     # Show metrics if available
     if hasattr(workflow, "_current_memory") and workflow._current_memory:
         memory = workflow._current_memory
-        print(f"=== Workflow Metrics (Last Run) ===")
+        print("=== Workflow Metrics (Last Run) ===")
         print(f"Total iterations: {memory.iterations}")
         print(f"Subagents created: {memory.total_subagents_created}")
         print(f"Total cost: ${memory.total_cost:.2f}")
@@ -129,7 +129,7 @@ async def main():
         )
 
         # Show task distribution
-        print(f"\nTask Status Distribution:")
+        print("\nTask Status Distribution:")
         completed = sum(1 for t in memory.completed_tasks if t.status == "completed")
         failed = sum(1 for t in memory.completed_tasks if t.status == "failed")
         print(f"  Completed: {completed}")

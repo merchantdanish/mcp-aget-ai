@@ -1,6 +1,7 @@
 """
 Pytest fixtures for Adaptive Workflow tests
 """
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from datetime import timedelta
@@ -14,7 +15,7 @@ from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 
 class MockAugmentedLLM(AugmentedLLM):
     """Mock AugmentedLLM for testing"""
-    
+
     def __init__(
         self, agent: Optional[Agent] = None, context: Optional[Context] = None, **kwargs
     ):
@@ -23,13 +24,13 @@ class MockAugmentedLLM(AugmentedLLM):
         self.generate_mock = AsyncMock()
         self.generate_str_mock = AsyncMock()
         self.generate_structured_mock = AsyncMock()
-    
+
     async def generate(self, message, request_params=None):
         return await self.generate_mock(message, request_params)
-    
+
     async def generate_str(self, message, request_params=None):
         return await self.generate_str_mock(message, request_params)
-    
+
     async def generate_structured(self, message, response_model, request_params=None):
         return await self.generate_structured_mock(
             message, response_model, request_params
@@ -40,7 +41,7 @@ class MockAugmentedLLM(AugmentedLLM):
 def mock_context():
     """Return a mock context for testing"""
     context = MagicMock(spec=Context)
-    
+
     # Mock required attributes
     context.server_registry = MagicMock()
     context.executor = MagicMock()
@@ -49,20 +50,21 @@ def mock_context():
     context.model_selector.select_model = MagicMock(return_value="test-model")
     context.tracing_enabled = False
     context.servers = {"server1": MagicMock(), "server2": MagicMock()}
-    
+
     return context
 
 
 @pytest.fixture
 def mock_llm_factory():
     """Return a mock LLM factory function"""
+
     def factory(agent):
         return MockAugmentedLLM(agent=agent)
-    
+
     # Make the factory itself a mock so we can assert on it
     mock_factory = MagicMock(side_effect=factory)
     mock_factory.return_value = MockAugmentedLLM()
-    
+
     return mock_factory
 
 
@@ -79,7 +81,7 @@ def mock_workflow(mock_llm_factory, mock_context):
         max_subagents=20,
         enable_parallel=True,
         enable_learning=False,
-        context=mock_context
+        context=mock_context,
     )
-    
+
     return workflow
