@@ -1,88 +1,142 @@
-# Adaptive Workflow Example
+# Adaptive Workflow Examples
 
-This example demonstrates the Adaptive Workflow, which implements a multi-agent system based on the Claude Deep Research architecture.
+This directory contains examples for both versions of the Adaptive Workflow implementation.
 
 ## Overview
 
-The Adaptive Workflow dynamically creates and coordinates specialized agents to accomplish complex objectives. Unlike the Orchestrator workflow which uses a fixed pattern, the Adaptive Workflow:
+The Adaptive Workflow implements a multi-agent system based on the Claude Deep Research architecture, where a Lead Researcher coordinates multiple specialized subagents to complete complex tasks.
 
-- Analyzes tasks to determine the appropriate approach
-- Creates specialized subagents on-demand with focused instructions
-- Executes tasks in parallel when possible
-- Tracks costs and time budgets to prevent runaway execution
-- Learns from past executions to improve future performance
+## Files
 
-## Key Features
+- `main.py` - Examples using AdaptiveWorkflow (V1)
+- `main_v2.py` - Examples using AdaptiveWorkflowV2
 
-1. **Dynamic Agent Creation**: Instead of pre-defined agents, creates specialized subagents based on task requirements
-2. **Non-cascading Limits**: Each subagent has its own iteration limit that doesn't cascade, preventing exponential growth
-3. **Resource Budgets**: Time and cost budgets ensure controlled execution
-4. **Learning System**: Tracks successful patterns to optimize future runs
-5. **Parallel Execution**: Independent subtasks run simultaneously for efficiency
+## AdaptiveWorkflow vs AdaptiveWorkflowV2
 
-## Running the Example
+### AdaptiveWorkflow (V1)
+The original implementation with comprehensive features:
 
-1. Copy the configuration files:
-```bash
-cp mcp_agent.config.yaml config/
-cp mcp_agent.secrets.yaml.example config/mcp_agent.secrets.yaml
+**Pros:**
+- Mature and battle-tested
+- Complex task categorization system
+- Detailed metrics tracking (tokens, costs, etc.)
+- Citation tracking for research tasks
+- Strategy selection (BFS, DFS, Balanced)
+
+**Cons:**
+- More complex memory model
+- Tightly coupled to specific message formats
+- Heavier weight with more overhead
+- Strategy selection can be over-engineered for simple tasks
+
+**Best for:**
+- Complex research tasks requiring citations
+- When you need detailed metrics and cost tracking
+- Projects requiring specific search strategies
+- Long-running workflows with complex memory needs
+
+### AdaptiveWorkflowV2
+
+A cleaner, more focused implementation following Deep Research architecture:
+
+**Pros:**
+- Cleaner separation of concerns
+- Support for predefined agents (reuse existing specialists)
+- Provider-agnostic message handling
+- Simplified memory model without rigid categorization
+- More intuitive phase progression
+- Lighter weight and faster
+
+**Cons:**
+- Less detailed metrics tracking
+- No citation tracking
+- No strategy selection (always balanced)
+- Newer, less battle-tested
+
+**Best for:**
+- When you have existing specialized agents to reuse
+- Projects requiring provider-agnostic message handling
+- Simpler workflows that don't need citations
+- When you want cleaner, more maintainable code
+- Rapid prototyping and experimentation
+
+## Running the Examples
+
+1. Ensure you have the MCP Agent configuration set up:
+   ```bash
+   cp config/mcp_agent.config.yaml.example config/mcp_agent.config.yaml
+   # Edit the config file with your API keys and settings
+   ```
+
+2. Run V1 examples:
+   ```bash
+   python main.py
+   ```
+
+3. Run V2 examples:
+   ```bash
+   python main_v2.py
+   ```
+
+## Key Differences in Examples
+
+### V1 Example Features
+- Shows task type detection (RESEARCH, ACTION, HYBRID)
+- Demonstrates citation tracking
+- Complex memory persistence
+- Detailed token and cost metrics
+- Strategy-based execution
+
+### V2 Example Features
+- Predefined agent creation and reuse
+- Native message format handling
+- Simplified memory with learning
+- Clean phase progression visibility
+- Multi-agent coordination
+- Structured output examples
+
+## Choosing Which Version
+
+**Choose V1 if you need:**
+- Citation tracking for research
+- Detailed cost/token metrics
+- Complex task categorization
+- Specific search strategies
+
+**Choose V2 if you want:**
+- Cleaner, simpler implementation
+- Reusable specialized agents
+- Provider-agnostic messages
+- Faster execution
+- Better maintainability
+
+## Architecture Patterns
+
+Both versions implement the Deep Research pattern but with different approaches:
+
+### V1 Pattern
+```
+User Query → Task Analysis → Strategy Selection → Dynamic Subagents → 
+Citations → Synthesis → Result
 ```
 
-2. Edit `config/mcp_agent.secrets.yaml` with your API keys:
-```yaml
-openai:
-  api_key: "your-openai-api-key"
+### V2 Pattern
+```
+User Query → Analyze → Plan → Execute (with predefined/dynamic agents) → 
+Synthesize → Decide → Result
 ```
 
-3. Run the example:
-```bash
-python main.py
-```
+## Tips for Usage
 
-## Configuration
+1. **For V1**: Configure memory persistence carefully as it can grow large
+2. **For V2**: Create specialized agents upfront for better performance
+3. **Both**: Set appropriate time and cost budgets for your use case
+4. **Both**: Use parallel execution for independent subtasks
+5. **V2**: Leverage the simplified memory for learning patterns
 
-The workflow can be configured with:
+## Future Considerations
 
-- `time_budget`: Maximum execution time (default: 5 minutes)
-- `cost_budget`: Maximum cost in dollars (default: $2.00)
-- `max_iterations`: Maximum iterations for the lead agent (default: 10)
-- `max_subagents`: Maximum total subagents to create (default: 15)
-- `enable_parallel`: Whether to run tasks in parallel (default: true)
-- `enable_learning`: Whether to learn from executions (default: true)
-
-## Examples Included
-
-1. **Research Task**: Gathers information about multi-agent architectures
-2. **Action Task**: Creates a configuration file based on requirements
-3. **Fast Mode**: Demonstrates custom parameters for speed-optimized queries
-
-## Metrics
-
-The workflow tracks:
-- Task type (research, action, or hybrid)
-- Number of iterations
-- Subagents created
-- Token usage and costs
-- Task success/failure rates
-
-## Comparison with Orchestrator
-
-| Feature | Orchestrator | Adaptive Workflow |
-|---------|--------------|-------------------|
-| Agent Creation | Pre-defined agents | Dynamic, on-demand |
-| Iteration Limits | Cascading (can explode) | Non-cascading per agent |
-| Strategy | Fixed planning modes | Adaptive based on task |
-| Resource Control | Basic | Time & cost budgets |
-| Learning | No | Yes, tracks patterns |
-| Parallelism | Limited | Full parallel execution |
-
-## Advanced Usage
-
-You can customize the workflow behavior by:
-
-1. **Model Preferences**: Adjust the balance between speed, cost, and intelligence
-2. **Custom Strategies**: Override the default strategy selection
-3. **Memory Persistence**: Enable filesystem-based memory for long-running tasks
-4. **Server Selection**: Limit which MCP servers are available to subagents
-
-See `main.py` for examples of these customizations.
+- V2 is the recommended path forward for new projects
+- V1 will continue to be maintained for backward compatibility
+- Features like citation tracking may be added to V2 as optional modules
+- The predefined agent pattern in V2 enables better composition
