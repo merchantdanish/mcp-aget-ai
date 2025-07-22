@@ -428,7 +428,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 agent = self.agents.get(task.agent)
                 if not agent:
                     # TODO: saqadri - should we fail the entire workflow in this case?
-                    raise ValueError(f"No agent found matching {task.agent}")
+                    raise ValueError(f"The planner created a task to \"{task.description}\" but there isn't an agent suitable for the task, consider adding an agent.")
                 elif isinstance(agent, AugmentedLLM):
                     llm = agent
                 else:
