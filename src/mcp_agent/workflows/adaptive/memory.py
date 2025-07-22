@@ -3,7 +3,7 @@ Memory management for Adaptive Workflow
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from collections import defaultdict
 

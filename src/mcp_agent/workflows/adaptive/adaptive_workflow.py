@@ -28,7 +28,7 @@ from mcp_agent.tracing.semconv import (
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
 from mcp_agent.logging.logger import get_logger
-from mcp_agent.types import TextContent
+from mcp.types import TextContent
 
 from .models import (
     TaskType,

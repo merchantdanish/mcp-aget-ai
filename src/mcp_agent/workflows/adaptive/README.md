@@ -1,124 +1,124 @@
-# Adaptive Workflow
+# Adaptive Workflow V2
 
-An adaptive multi-agent workflow implementation based on the Claude Deep Research architecture.
+An adaptive multi-agent workflow implementation that properly follows the Claude Deep Research architecture.
 
 ## Design Philosophy
 
-The Adaptive Workflow follows these key principles from the Deep Research architecture:
+The Adaptive Workflow V2 implements the true Deep Research pattern:
 
-1. **Dynamic Task Decomposition**: Instead of fixed patterns, the workflow analyzes each objective and creates appropriate subtasks
-2. **Parallel Exploration**: Multiple subagents work simultaneously on different aspects
-3. **Non-cascading Limits**: Subagents have their own iteration limits that don't cascade (preventing explosion)
-4. **Learning from Experience**: The workflow tracks patterns of success and failure to improve over time
-5. **Resource Awareness**: Time and cost budgets prevent runaway execution
+1. **Lead Researcher Control**: A lead researcher maintains control throughout the investigation
+2. **Iterative Refinement**: Plan → Execute → Synthesize → Decide → Repeat
+3. **Dynamic Aspect Research**: Subagents created on-demand for specific research aspects
+4. **Synthesis-Driven Progress**: Each iteration synthesizes findings to inform next steps
+5. **Natural Completion**: Research concludes when the objective is sufficiently addressed
 
 ## Key Components
 
-### Task Analysis
-The workflow starts by analyzing the objective to determine:
-- **Task Type**: Research (information gathering), Action (making changes), or Hybrid
-- **Initial Strategy**: How to approach the task (breadth-first, depth-first, etc.)
+### Lead Researcher
+The lead researcher agent that:
+- Analyzes the initial objective
+- Plans what aspects to investigate
+- Synthesizes findings from subagents
+- Decides whether to continue or conclude
+- Generates the final report
 
-### Dynamic Subagent Creation
-Instead of using pre-defined agents, the workflow creates specialized subagents on-demand with:
-- Focused instructions for their specific subtask
-- Only the MCP servers they need
-- Appropriate resource limits
+### Research Aspects
+Instead of complex task management, we use simple research aspects:
+- Each aspect has a clear name and objective
+- Aspects can specify required MCP servers
+- Subagents are created dynamically per aspect
 
-### Memory and Learning
-The workflow maintains memory at two levels:
-- **Workflow Memory**: Tracks progress within a single execution
-- **Learning Manager**: Tracks patterns across executions to improve future runs
+### Iterative Loop
+The core workflow follows this pattern:
+1. Plan: Identify aspects to research
+2. Execute: Create subagents to investigate
+3. Synthesize: Combine findings coherently
+4. Decide: Continue or conclude based on progress
 
-## Areas for Improvement
+## Implementation Details
 
-Based on the implementation, here are key areas that could be enhanced:
+### Clean Architecture
+The V2 implementation removes over-engineering:
+- No TaskComplexity enums
+- No complex strategy objects  
+- No pre-determined resource buckets
+- Simple, clear data models
 
-### 1. Remove Over-Engineering
-- **TaskComplexity enum**: This arbitrary categorization doesn't add real value. The workflow should dynamically adapt based on what it discovers, not pre-determined buckets.
-- **Complex Strategy objects**: Could be simplified to just track the approach and let the workflow adapt dynamically.
-
-### 2. Better Strategy Selection
-Instead of complex enums and categories, use simple heuristics:
+### Dynamic Adaptation
+Resource allocation happens naturally:
 ```python
-# Current: Complex categorization
-if complexity == TaskComplexity.SIMPLE:
-    parallelism = 3
-elif complexity == TaskComplexity.MODERATE:
-    parallelism = 5
-    
-# Better: Dynamic adaptation
-parallelism = min(
-    len(aspects_to_explore),  # Based on discovered aspects
-    available_budget / estimated_cost_per_agent,  # Based on resources
-    max_parallelism  # Hard limit
-)
+# Aspects determined by what's needed
+asepcts = await self._plan_research(span)
+
+# Parallel execution when beneficial
+if self.enable_parallel and len(aspects) > 1:
+    results = await asyncio.gather(*tasks)
 ```
 
-### 3. Improved Progress Evaluation
-Current implementation uses confidence scores, but could be more sophisticated:
-- Track coverage of the original objective
-- Identify diminishing returns
-- Detect when subagents are finding redundant information
+### Synthesis and Decision Making
+The lead researcher:
+- Synthesizes findings after each research round
+- Evaluates progress toward the objective
+- Decides whether more research is needed
+- Identifies new aspects based on gaps
 
-### 4. Better Error Recovery
-Current implementation marks tasks as failed but doesn't retry intelligently:
-- Retry with different approaches
-- Adjust strategy based on failure patterns
-- Fallback to simpler methods
+### Non-Cascading Iterations
+Each subagent has limited iterations (typically 5):
+- Prevents exponential growth
+- Keeps subagents focused
+- Allows many aspects to be explored
+- Main loop controlled by lead researcher
 
-### 5. Smarter Resource Allocation
-Instead of fixed budgets per agent:
-- Allocate more resources to promising paths
-- Reduce resources for areas with diminishing returns
-- Dynamic reallocation based on discoveries
-
-### 6. Real Citation Management
-Current implementation has basic citation extraction. Could improve with:
-- Proper source verification
-- Deduplication of sources
-- Quality scoring of sources
-- Citation format standardization
-
-## Usage Patterns
+## Usage Examples
 
 ### Simple Research
 ```python
-workflow = AdaptiveWorkflow(llm_factory=factory, available_servers=["filesystem", "github"])
-result = await workflow.generate_str("What are the main features of our authentication system?")
+workflow = AdaptiveWorkflowV2(
+    llm_factory=factory, 
+    available_servers=["filesystem", "github"]
+)
+result = await workflow.generate_str(
+    "What are the main features of our authentication system?"
+)
 ```
 
 ### Complex Investigation
 ```python
+# The workflow will iteratively explore different aspects
 result = await workflow.generate_str("""
-    Analyze all customer feedback from the last quarter across all channels 
-    (support tickets, reviews, social media) and identify the top 5 issues 
-    with proposed solutions for each.
+    Analyze our codebase architecture and identify 
+    areas that could benefit from refactoring
 """)
 ```
 
-### Hybrid Task
+### Action-Oriented Task
 ```python
+# Will research then take action
 result = await workflow.generate_str("""
-    Research best practices for API rate limiting, then implement a rate 
-    limiting system for our user API endpoints with configurable limits.
+    Find all deprecated API endpoints in our codebase 
+    and update them to use the new API versions
 """)
 ```
 
-## Implementation Notes
+## How It Works
 
-1. **Non-cascading Iterations**: Each subagent has its own `expected_iterations` limit (typically 3-7) that doesn't cascade. This prevents the explosion problem seen in the original Orchestrator.
+1. **Initial Analysis**: The lead researcher analyzes your objective to understand what type of task it is
 
-2. **Parallel Execution**: When `enable_parallel=True`, independent subtasks run simultaneously using Python's async capabilities.
+2. **Iterative Research Loop**:
+   - Plans which aspects need investigation
+   - Creates specialized subagents for each aspect  
+   - Executes research (in parallel when beneficial)
+   - Synthesizes all findings
+   - Decides if more research is needed
 
-3. **Memory Compression**: The workflow automatically compresses memory to avoid context window issues in long-running tasks.
+3. **Natural Conclusion**: The workflow concludes when the lead researcher determines the objective has been sufficiently addressed
 
-4. **Learning Persistence**: Currently uses in-memory learning. Could be extended to persist learning across runs.
+4. **Final Report**: A comprehensive report is generated synthesizing all research findings
 
-## Future Enhancements
+## Advantages Over Traditional Approaches
 
-1. **Streaming Results**: Support streaming responses as subagents complete their work
-2. **Interactive Mode**: Allow users to guide the workflow mid-execution
-3. **Visualization**: Create visual representations of the task decomposition and execution
-4. **Plugin System**: Allow custom strategies and evaluators to be plugged in
-5. **Distributed Execution**: Support running subagents across multiple machines for scale
+1. **No Pre-Planning**: Research adapts based on discoveries
+2. **Focused Subagents**: Each subagent has a specific, clear objective
+3. **Synthesis-Driven**: Progress is evaluated based on synthesized understanding
+4. **Natural Flow**: Mimics how human researchers actually work
+5. **Clean Implementation**: Simple, understandable code without over-engineering
