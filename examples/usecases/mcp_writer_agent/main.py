@@ -7,7 +7,6 @@ Works with any content. Uses memory server. Asks clarifying questions.
 
 import asyncio
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 
