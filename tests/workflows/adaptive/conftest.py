@@ -9,7 +9,7 @@ from typing import Optional
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.core.context import Context
-from mcp_agent.workflows.adaptive import AdaptiveWorkflow
+from mcp_agent.workflows.adaptive.adaptive_workflow import AdaptiveWorkflow
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 
 
