@@ -352,8 +352,15 @@ async def main():
                 print(f"✅ Found relevant context ({len(context)} chars)")
             else:
                 print("ℹ️ No previous context found")
-        
-        # Ask clarifying questions if needed
+            
+            # Ask clarifying questions if needed
+            clarification = await ask_clarifying_questions(request, platform)
+            
+            # Create content
+            improved_content = await create_content(request, platform, context, clarification)
+            
+            # Save result
+            output_path = save_result(improved_content, platform)
         clarification = await ask_clarifying_questions(request, platform)
         
         if clarification.get("needs_clarification"):
