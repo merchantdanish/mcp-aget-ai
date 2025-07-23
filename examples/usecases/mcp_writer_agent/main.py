@@ -6,7 +6,6 @@ Works with any content. Uses memory server. Asks clarifying questions.
 """
 
 import asyncio
-import os
 import sys
 import time
 from datetime import datetime
@@ -70,9 +69,9 @@ async def store_content_samples_in_memory(agent_app):
                 # Try to delete existing voice samples
                 await memory_agent.call_tool("delete_entities", {"entityNames": ["voice_samples"]})
                 print("🗑️ Cleared existing voice samples")
-            except:
+            except Exception:
                 pass  # No existing samples to delete
-            
+
             # Read all content samples
             samples = []
             
@@ -84,7 +83,8 @@ async def store_content_samples_in_memory(agent_app):
                         content = f.read().strip()
                         if content:
                             samples.append({"file": file_path.name, "content": content, "type": "text"})
-                except:
+                except (IOError, UnicodeDecodeError) as e:
+                    print(f"⚠️ Could not read {file_path.name}: {str(e)}")
                     continue
             
             # PDFs using MarkItDown if available
@@ -112,8 +112,8 @@ async def store_content_samples_in_memory(agent_app):
                             except Exception as e:
                                 print(f"⚠️ Could not process {pdf_path.name}: {str(e)}")
                                 
-                except:
-                    print(f"📄 Found {len(pdf_files)} PDFs but MarkItDown not available")
+                except Exception as e:
+                    print(f"📄 Found {len(pdf_files)} PDFs but MarkItDown not available: {str(e)}")
             
             # Store samples using a simpler approach
             if samples:
@@ -162,16 +162,15 @@ async def get_content_context_from_memory(agent_app, request: str):
                 content = result.content[0].text if hasattr(result.content[0], 'text') else str(result.content[0])
                 
                 # Parse the JSON response to extract the actual content
-                import json
-                try:
+                import json  
+                try:    
                     data = json.loads(content)
                     if "entities" in data and len(data["entities"]) > 0:
                         entity = data["entities"][0]
                         if "observations" in entity and len(entity["observations"]) > 0:
-                            return entity["observations"][0]
-                except:
-                    pass
-                
+                           return entity["observations"][0]
+                except (json.JSONDecodeError, KeyError, IndexError) as e:
+                    print(f"⚠️ Failed to parse memory response: {str(e)}")
                 return content
                 
     except Exception as e:
@@ -307,7 +306,7 @@ async def main():
     """Main function."""
     print("🎯 Simple Content AI Agent")
     print("💾 Uses memory server for voice samples")
-    
+
     # Create directories
     CONTENT_SAMPLES_DIR.mkdir(exist_ok=True)
     POSTS_DIR.mkdir(exist_ok=True)
@@ -339,7 +338,6 @@ async def main():
     print(f"📝 Platform: {platform}")
     print(f"💭 Request: {request}")
     
-    start_time = time.time()
     
     try:
         async with app.run() as agent_app:
@@ -368,9 +366,8 @@ async def main():
         # Save result
         output_path = save_result(improved_content, platform)
         
-        end_time = time.time()
         
-        print(f"\n✅ Content created!")
+        print("\n✅ Content created!")
         print(f"📁 Saved to: {output_path}")
         
         return True
