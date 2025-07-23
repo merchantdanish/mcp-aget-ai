@@ -1,14 +1,24 @@
 """
 Memory management for Adaptive Workflow
+
+This module provides:
+1. Storage abstraction for different backends
+2. Pattern tracking for adaptive learning
+3. Simple, extensible design
 """
 
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from collections import defaultdict
+import json
+from pathlib import Path
 
 from mcp_agent.logging.logger import get_logger
-from .models import WorkflowMemory, WorkflowStrategy, TaskComplexity, TaskType
+from mcp_agent.workflows.adaptive.models import (
+    ExecutionMemory,
+    TaskType,
+)
 
 logger = get_logger(__name__)
 
@@ -17,23 +27,35 @@ class MemoryBackend(ABC):
     """Abstract base class for memory storage backends"""
 
     @abstractmethod
-    def save(self, workflow_id: str, memory: WorkflowMemory) -> None:
-        """Save workflow memory"""
+    async def save(self, execution_id: str, memory: ExecutionMemory) -> None:
+        """Save execution memory"""
         pass
 
     @abstractmethod
-    def load(self, workflow_id: str) -> Optional[WorkflowMemory]:
-        """Load workflow memory"""
+    async def load(self, execution_id: str) -> Optional[ExecutionMemory]:
+        """Load execution memory"""
         pass
 
     @abstractmethod
-    def delete(self, workflow_id: str) -> None:
-        """Delete workflow memory"""
+    async def delete(self, execution_id: str) -> None:
+        """Delete execution memory"""
         pass
 
     @abstractmethod
-    def list_workflows(self) -> Dict[str, Dict[str, Any]]:
-        """List all workflows with basic info"""
+    async def list_executions(self) -> Dict[str, Dict[str, Any]]:
+        """List all executions with basic info"""
+        pass
+
+    @abstractmethod
+    async def save_pattern(
+        self, pattern_key: str, pattern_data: Dict[str, Any]
+    ) -> None:
+        """Save a learned pattern"""
+        pass
+
+    @abstractmethod
+    async def load_patterns(self, pattern_type: str) -> Dict[str, Any]:
+        """Load patterns of a specific type"""
         pass
 
 
@@ -41,336 +63,299 @@ class InMemoryBackend(MemoryBackend):
     """In-memory storage backend (default)"""
 
     def __init__(self):
-        self._storage: Dict[str, WorkflowMemory] = {}
+        self._storage: Dict[str, ExecutionMemory] = {}
+        self._patterns: Dict[str, Dict[str, Any]] = defaultdict(dict)
 
-    def save(self, workflow_id: str, memory: WorkflowMemory) -> None:
-        """Save workflow memory in memory"""
-        memory.last_checkpoint = datetime.now()
-        self._storage[workflow_id] = memory.model_copy(deep=True)
-        logger.debug(f"Saved workflow {workflow_id} to in-memory storage")
+    async def save(self, execution_id: str, memory: ExecutionMemory) -> None:
+        """Save execution memory in memory"""
+        self._storage[execution_id] = memory.model_copy(deep=True)
+        logger.debug(f"Saved execution {execution_id} to memory")
 
-    def load(self, workflow_id: str) -> Optional[WorkflowMemory]:
-        """Load workflow memory from memory"""
-        if workflow_id in self._storage:
-            return self._storage[workflow_id].model_copy(deep=True)
+    async def load(self, execution_id: str) -> Optional[ExecutionMemory]:
+        """Load execution memory from memory"""
+        if execution_id in self._storage:
+            return self._storage[execution_id].model_copy(deep=True)
         return None
 
-    def delete(self, workflow_id: str) -> None:
-        """Delete workflow memory from memory"""
-        if workflow_id in self._storage:
-            del self._storage[workflow_id]
-            logger.debug(f"Deleted workflow {workflow_id} from in-memory storage")
+    async def delete(self, execution_id: str) -> None:
+        """Delete execution memory from memory"""
+        if execution_id in self._storage:
+            del self._storage[execution_id]
+            logger.debug(f"Deleted execution {execution_id} from memory")
 
-    def list_workflows(self) -> Dict[str, Dict[str, Any]]:
-        """List all workflows in memory"""
-        workflows = {}
-        for workflow_id, memory in self._storage.items():
-            workflows[workflow_id] = {
+    async def list_executions(self) -> Dict[str, Dict[str, Any]]:
+        """List all executions in memory"""
+        executions = {}
+        for execution_id, memory in self._storage.items():
+            executions[execution_id] = {
                 "objective": memory.objective,
-                "task_type": memory.task_type,
-                "phase": memory.phase,
+                "task_type": memory.task_type.value if memory.task_type else None,
                 "start_time": memory.start_time.isoformat(),
-                "last_checkpoint": memory.last_checkpoint.isoformat(),
                 "iterations": memory.iterations,
                 "total_cost": memory.total_cost,
             }
-        return workflows
+        return executions
+
+    async def save_pattern(
+        self, pattern_key: str, pattern_data: Dict[str, Any]
+    ) -> None:
+        """Save a learned pattern"""
+        pattern_type = pattern_key.split(":", 1)[0]
+        self._patterns[pattern_type][pattern_key] = pattern_data
+
+    async def load_patterns(self, pattern_type: str) -> Dict[str, Any]:
+        """Load patterns of a specific type"""
+        return dict(self._patterns.get(pattern_type, {}))
+
+
+class FileSystemBackend(MemoryBackend):
+    """File system storage backend for persistence"""
+
+    def __init__(self, base_path: str = ".adaptive_memory"):
+        self.base_path = Path(base_path)
+        self.executions_path = self.base_path / "executions"
+        self.patterns_path = self.base_path / "patterns"
+
+        # Create directories
+        self.executions_path.mkdir(parents=True, exist_ok=True)
+        self.patterns_path.mkdir(parents=True, exist_ok=True)
+
+    async def save(self, execution_id: str, memory: ExecutionMemory) -> None:
+        """Save execution memory to file"""
+        file_path = self.executions_path / f"{execution_id}.json"
+        with open(file_path, "w") as f:
+            json.dump(memory.model_dump(mode="json"), f, indent=2, default=str)
+        logger.debug(f"Saved execution {execution_id} to {file_path}")
+
+    async def load(self, execution_id: str) -> Optional[ExecutionMemory]:
+        """Load execution memory from file"""
+        file_path = self.executions_path / f"{execution_id}.json"
+        if file_path.exists():
+            try:
+                with open(file_path, "r") as f:
+                    data = json.load(f)
+                return ExecutionMemory(**data)
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"Failed to load execution {execution_id}: {e}")
+                return None
+        return None
+
+    async def delete(self, execution_id: str) -> None:
+        """Delete execution memory file"""
+        file_path = self.executions_path / f"{execution_id}.json"
+        if file_path.exists():
+            file_path.unlink()
+            logger.debug(f"Deleted execution {execution_id}")
+
+    async def list_executions(self) -> Dict[str, Dict[str, Any]]:
+        """List all executions from files"""
+        executions = {}
+        for file_path in self.executions_path.glob("*.json"):
+            execution_id = file_path.stem
+            try:
+                memory = await self.load(execution_id)
+                if memory:
+                    executions[execution_id] = {
+                        "objective": memory.objective,
+                        "task_type": memory.task_type.value
+                        if memory.task_type
+                        else None,
+                        "start_time": memory.start_time.isoformat(),
+                        "iterations": memory.iterations,
+                        "total_cost": memory.total_cost,
+                    }
+            except Exception as e:
+                logger.warning(f"Failed to load execution {execution_id}: {e}")
+        return executions
+
+    async def save_pattern(
+        self, pattern_key: str, pattern_data: Dict[str, Any]
+    ) -> None:
+        """Save a learned pattern to file"""
+        pattern_type = pattern_key.split(":", 1)[0]
+        file_path = self.patterns_path / f"{pattern_type}.json"
+
+        # Load existing patterns
+        patterns = {}
+        if file_path.exists():
+            with open(file_path, "r") as f:
+                patterns = json.load(f)
+
+        # Update with new pattern
+        patterns[pattern_key] = pattern_data
+
+        # Save back
+        with open(file_path, "w") as f:
+            json.dump(patterns, f, indent=2, default=str)
+
+    async def load_patterns(self, pattern_type: str) -> Dict[str, Any]:
+        """Load patterns from file"""
+        file_path = self.patterns_path / f"{pattern_type}.json"
+        if file_path.exists():
+            with open(file_path, "r") as f:
+                return json.load(f)
+        return {}
+
+
+class AdaptiveMemory:
+    """
+    Lightweight adaptive memory that learns from executions
+    without rigid categorization or complex strategies
+    """
+
+    def __init__(self, backend: MemoryBackend):
+        self.backend = backend
+        # Simple in-memory cache for current session
+        self.session_patterns = {
+            "successful_approaches": defaultdict(list),
+            "tool_effectiveness": defaultdict(lambda: defaultdict(float)),
+            "failure_patterns": defaultdict(list),
+        }
+
+    async def learn_from_execution(self, memory: ExecutionMemory) -> None:
+        """Learn patterns from a completed execution"""
+        if not memory.task_type:
+            return
+
+        task_type = memory.task_type.value
+
+        # Track successful approaches
+        for i, synthesis in enumerate(memory.research_history):
+            # Extract what worked from synthesis
+            approach_key = f"{task_type}:iteration_{i}"
+
+            # Find which subagent results contributed to this synthesis
+            relevant_results = [
+                r for r in memory.subagent_results if r.success and r.findings
+            ]
+
+            if relevant_results:
+                pattern = {
+                    "task_type": task_type,
+                    "objective_snippet": memory.objective[:100],
+                    "successful_aspects": [r.aspect_name for r in relevant_results],
+                    "synthesis": synthesis[:500],  # First 500 chars
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+                self.session_patterns["successful_approaches"][task_type].append(
+                    pattern
+                )
+                await self.backend.save_pattern(approach_key, pattern)
+
+        # Track tool effectiveness
+        for result in memory.subagent_results:
+            if result.success and hasattr(result, "tools_used"):
+                for tool in getattr(result, "tools_used", []):
+                    self.session_patterns["tool_effectiveness"][task_type][tool] += 1
+
+    async def suggest_approach(
+        self, objective: str, task_type: Optional[TaskType] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Suggest approach based on past successful patterns"""
+        if not task_type:
+            return None
+
+        # Look for similar objectives in successful patterns
+        task_patterns = self.session_patterns["successful_approaches"].get(
+            task_type.value, []
+        )
+
+        if not task_patterns:
+            # Try loading from backend
+            stored_patterns = await self.backend.load_patterns(task_type.value)
+            task_patterns = list(stored_patterns.values())
+
+        if not task_patterns:
+            return None
+
+        # Simple similarity: find patterns with overlapping keywords
+        objective_lower = objective.lower()
+        objective_words = set(objective_lower.split())
+
+        best_match = None
+        best_score = 0
+
+        for pattern in task_patterns:
+            pattern_words = set(pattern["objective_snippet"].lower().split())
+            overlap = len(objective_words & pattern_words)
+
+            if overlap > best_score:
+                best_score = overlap
+                best_match = pattern
+
+        if best_match and best_score > 2:  # At least 3 common words
+            return {
+                "suggested_aspects": best_match["successful_aspects"],
+                "similar_objective": best_match["objective_snippet"],
+                "confidence": min(best_score / len(objective_words), 1.0),
+            }
+
+        return None
+
+    def get_effective_tools(self, task_type: TaskType) -> List[str]:
+        """Get tools that have been effective for this task type"""
+        tool_scores = self.session_patterns["tool_effectiveness"].get(
+            task_type.value, {}
+        )
+
+        # Sort by effectiveness (usage count)
+        sorted_tools = sorted(tool_scores.items(), key=lambda x: x[1], reverse=True)
+
+        # Return top tools
+        return [tool for tool, score in sorted_tools if score > 0]
 
 
 class MemoryManager:
-    """Manages workflow memory with configurable backend"""
+    """
+    Memory manager for Adaptive Workflow V2
+    Combines storage and adaptive learning
+    """
 
-    def __init__(self, backend: Optional[MemoryBackend] = None):
+    def __init__(
+        self, backend: Optional[MemoryBackend] = None, enable_learning: bool = True
+    ):
         """
         Initialize memory manager
 
         Args:
             backend: Storage backend to use (defaults to InMemoryBackend)
+            enable_learning: Whether to enable adaptive learning
         """
         self.backend = backend or InMemoryBackend()
+        self.enable_learning = enable_learning
+        self.adaptive_memory = AdaptiveMemory(self.backend) if enable_learning else None
 
-    def save_memory(self, memory: WorkflowMemory) -> None:
-        """Save workflow memory"""
-        self.backend.save(memory.workflow_id, memory)
+    async def save_memory(self, memory: ExecutionMemory) -> None:
+        """Save execution memory and learn patterns"""
+        await self.backend.save(memory.execution_id, memory)
 
-    def load_memory(self, workflow_id: str) -> Optional[WorkflowMemory]:
-        """Load workflow memory"""
-        return self.backend.load(workflow_id)
+        # Learn from this execution if enabled
+        if self.enable_learning and self.adaptive_memory:
+            await self.adaptive_memory.learn_from_execution(memory)
 
-    def delete_memory(self, workflow_id: str) -> None:
-        """Delete workflow memory"""
-        self.backend.delete(workflow_id)
+    async def load_memory(self, execution_id: str) -> Optional[ExecutionMemory]:
+        """Load execution memory"""
+        return await self.backend.load(execution_id)
 
-    def list_workflows(self) -> Dict[str, Dict[str, Any]]:
-        """List all stored workflows with basic info"""
-        return self.backend.list_workflows()
+    async def delete_memory(self, execution_id: str) -> None:
+        """Delete execution memory"""
+        await self.backend.delete(execution_id)
 
-    def compress_memory(self, memory: WorkflowMemory, max_findings: int = 50) -> None:
-        """
-        Compress memory by keeping only the most important information
+    async def list_executions(self) -> Dict[str, Dict[str, Any]]:
+        """List all stored executions with basic info"""
+        return await self.backend.list_executions()
 
-        Args:
-            memory: The workflow memory to compress
-            max_findings: Maximum number of key findings to keep
-        """
-        # Keep only the most recent key findings
-        if len(memory.key_findings) > max_findings:
-            memory.key_findings = memory.key_findings[-max_findings:]
+    async def suggest_approach(
+        self, objective: str, task_type: Optional[TaskType] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Get suggestions based on past executions"""
+        if self.adaptive_memory:
+            return await self.adaptive_memory.suggest_approach(objective, task_type)
+        return None
 
-        # Clear completed task results if they're too old
-        for task in memory.completed_tasks:
-            if task.result and len(task.result) > 1000:
-                # Keep only a summary
-                task.result = task.result[:1000] + "... [truncated]"
-
-        # Limit citation history
-        if len(memory.all_citations) > 100:
-            # Keep only the most relevant citations
-            memory.all_citations.sort(key=lambda c: c.relevance_score, reverse=True)
-            memory.all_citations = memory.all_citations[:100]
-
-
-class LearningManager:
-    """Manages learning from past workflow executions"""
-
-    def __init__(self):
-        """Initialize learning manager with in-memory storage"""
-        self.patterns = {
-            "task_strategies": defaultdict(
-                lambda: {
-                    "successes": 0,
-                    "failures": 0,
-                    "avg_time": 0.0,
-                    "avg_cost": 0.0,
-                    "avg_iterations": 0.0,
-                }
-            ),
-            "complexity_estimates": defaultdict(list),
-            "tool_effectiveness": defaultdict(lambda: defaultdict(float)),
-            "timing_data": defaultdict(list),
-        }
-
-    def record_execution(self, memory: WorkflowMemory, success: bool = True) -> None:
-        """Record a workflow execution for learning"""
-        task_key = f"{memory.task_type}_{memory.complexity}"
-        strategy_key = f"{memory.task_type}_{memory.strategy.approach}"
-
-        # Calculate execution time
-        execution_time = (datetime.now() - memory.start_time).total_seconds()
-
-        # Update timing data
-        self.patterns["timing_data"][task_key].append(
-            {
-                "time": execution_time,
-                "iterations": memory.iterations,
-                "subagents": memory.total_subagents_created,
-                "cost": memory.total_cost,
-                "success": success,
-            }
-        )
-
-        # Keep only recent data (last 100 executions)
-        self.patterns["timing_data"][task_key] = self.patterns["timing_data"][task_key][
-            -100:
-        ]
-
-        # Update strategy effectiveness
-        stats = self.patterns["task_strategies"][strategy_key]
-        if success:
-            stats["successes"] += 1
-        else:
-            stats["failures"] += 1
-
-        # Update rolling averages
-        total = stats["successes"] + stats["failures"]
-        weight = 1.0 / total
-        stats["avg_time"] = stats["avg_time"] * (1 - weight) + execution_time * weight
-        stats["avg_cost"] = (
-            stats["avg_cost"] * (1 - weight) + memory.total_cost * weight
-        )
-        stats["avg_iterations"] = (
-            stats["avg_iterations"] * (1 - weight) + memory.iterations * weight
-        )
-
-        # Track tool effectiveness
-        for task in memory.completed_tasks:
-            if task.agent_spec.server_names:
-                for server in task.agent_spec.server_names:
-                    effectiveness = 1.0 if task.status == "completed" else 0.0
-                    current = self.patterns["tool_effectiveness"][memory.task_type][
-                        server
-                    ]
-                    self.patterns["tool_effectiveness"][memory.task_type][server] = (
-                        current * 0.9
-                        + effectiveness * 0.1  # Exponential moving average
-                    )
-
-    def suggest_strategy(
-        self, task_type: TaskType, complexity: TaskComplexity
-    ) -> Optional[WorkflowStrategy]:
-        """Suggest a strategy based on past executions"""
-        best_strategy = None
-        best_score = -1.0
-
-        # Evaluate all strategies for this task type
-        for strategy_key, stats in self.patterns["task_strategies"].items():
-            if strategy_key.startswith(str(task_type)):
-                total = stats["successes"] + stats["failures"]
-                if total >= 3:  # Need at least 3 executions
-                    success_rate = stats["successes"] / total
-                    # Score based on success rate and efficiency
-                    time_factor = 1.0 / (
-                        1.0 + stats["avg_time"] / 1800
-                    )  # 30 min baseline
-                    cost_factor = 1.0 / (1.0 + stats["avg_cost"] / 10.0)  # $10 baseline
-
-                    score = success_rate * time_factor * cost_factor
-
-                    if score > best_score:
-                        best_score = score
-                        approach = strategy_key.split("_", 1)[1]
-
-                        # Determine parallelism based on complexity
-                        parallelism = {
-                            TaskComplexity.SIMPLE: 3,
-                            TaskComplexity.MODERATE: 5,
-                            TaskComplexity.COMPLEX: 10,
-                            TaskComplexity.EXTENSIVE: 15,
-                        }.get(complexity, 5)
-
-                        best_strategy = WorkflowStrategy(
-                            approach=approach,
-                            parallelism_level=parallelism,
-                            subagent_budget=parallelism * 2,
-                        )
-
-        return best_strategy
-
-    def estimate_complexity(
-        self, objective: str, task_type: TaskType
-    ) -> TaskComplexity:
-        """Estimate task complexity based on objective and type"""
-        objective_lower = objective.lower()
-
-        # Task type specific heuristics
-        if task_type == TaskType.RESEARCH:
-            if any(
-                kw in objective_lower
-                for kw in ["comprehensive", "all", "complete", "detailed analysis"]
-            ):
-                return TaskComplexity.EXTENSIVE
-            elif any(
-                kw in objective_lower
-                for kw in ["compare", "analyze", "investigate", "multiple"]
-            ):
-                return TaskComplexity.COMPLEX
-            elif any(
-                kw in objective_lower
-                for kw in ["find", "what is", "definition", "explain"]
-            ):
-                return TaskComplexity.SIMPLE
-            else:
-                return TaskComplexity.MODERATE
-
-        elif task_type == TaskType.ACTION:
-            if any(
-                kw in objective_lower
-                for kw in ["implement", "create", "build", "develop"]
-            ):
-                return TaskComplexity.COMPLEX
-            elif any(
-                kw in objective_lower for kw in ["update", "modify", "fix", "change"]
-            ):
-                return TaskComplexity.MODERATE
-            else:
-                return TaskComplexity.SIMPLE
-
-        else:  # HYBRID or ANALYSIS
-            # Count the number of distinct tasks mentioned
-            action_words = ["create", "update", "delete", "implement", "build", "fix"]
-            research_words = ["find", "analyze", "compare", "investigate", "research"]
-
-            action_count = sum(1 for word in action_words if word in objective_lower)
-            research_count = sum(
-                1 for word in research_words if word in objective_lower
-            )
-            total_tasks = action_count + research_count
-
-            if total_tasks >= 4:
-                return TaskComplexity.EXTENSIVE
-            elif total_tasks >= 2:
-                return TaskComplexity.COMPLEX
-            else:
-                return TaskComplexity.MODERATE
-
-    def get_effective_tools(
-        self, task_type: TaskType, threshold: float = 0.7
-    ) -> List[str]:
-        """Get list of effective tools for a task type"""
-        effective_tools = []
-
-        if task_type in self.patterns["tool_effectiveness"]:
-            for tool, effectiveness in self.patterns["tool_effectiveness"][
-                task_type
-            ].items():
-                if effectiveness >= threshold:
-                    effective_tools.append(tool)
-
-        return effective_tools
-
-    def estimate_resources(
-        self, task_type: TaskType, complexity: TaskComplexity
-    ) -> Dict[str, float]:
-        """Estimate resource requirements based on historical data"""
-        task_key = f"{task_type}_{complexity}"
-        timing_data = self.patterns["timing_data"].get(task_key, [])
-
-        if not timing_data:
-            # Default estimates
-            base_times = {
-                TaskComplexity.SIMPLE: 300,  # 5 minutes
-                TaskComplexity.MODERATE: 900,  # 15 minutes
-                TaskComplexity.COMPLEX: 1800,  # 30 minutes
-                TaskComplexity.EXTENSIVE: 3600,  # 60 minutes
-            }
-            return {
-                "estimated_time": base_times.get(complexity, 900),
-                "estimated_cost": base_times.get(complexity, 900)
-                / 300,  # Rough cost estimate
-                "estimated_iterations": 5
-                + (5 * list(TaskComplexity).index(complexity)),
-                "confidence": 0.0,
-            }
-
-        # Calculate estimates from historical data
-        successful_runs = [d for d in timing_data if d["success"]]
-        if successful_runs:
-            avg_time = sum(d["time"] for d in successful_runs) / len(successful_runs)
-            avg_cost = sum(d["cost"] for d in successful_runs) / len(successful_runs)
-            avg_iterations = sum(d["iterations"] for d in successful_runs) / len(
-                successful_runs
-            )
-
-            return {
-                "estimated_time": avg_time * 1.2,  # Add 20% buffer
-                "estimated_cost": avg_cost * 1.2,
-                "estimated_iterations": int(avg_iterations * 1.2),
-                "confidence": min(
-                    len(successful_runs) / 10.0, 1.0
-                ),  # Confidence based on sample size
-            }
-        else:
-            # Use all data if no successful runs
-            avg_time = sum(d["time"] for d in timing_data) / len(timing_data)
-            avg_cost = sum(d["cost"] for d in timing_data) / len(timing_data)
-            avg_iterations = sum(d["iterations"] for d in timing_data) / len(
-                timing_data
-            )
-
-            return {
-                "estimated_time": avg_time
-                * 1.5,  # Add 50% buffer for unsuccessful patterns
-                "estimated_cost": avg_cost * 1.5,
-                "estimated_iterations": int(avg_iterations * 1.5),
-                "confidence": min(len(timing_data) / 20.0, 0.5),  # Lower confidence
-            }
+    def get_effective_tools(self, task_type: TaskType) -> List[str]:
+        """Get tools that work well for this task type"""
+        if self.adaptive_memory:
+            return self.adaptive_memory.get_effective_tools(task_type)
+        return []

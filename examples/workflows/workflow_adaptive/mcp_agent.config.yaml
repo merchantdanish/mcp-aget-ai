@@ -2,8 +2,8 @@ $schema: ../../../schema/mcp-agent.config.schema.json
 
 execution_engine: asyncio
 logger:
-  type: console
-  level: debug
+  type: file
+  level: info
   batch_size: 100
   flush_interval: 2
   max_queue_size: 2048
@@ -23,7 +23,7 @@ openai:
 
 otel:
   enabled: true
-  exporters: ["console"]
+  exporters: ["file"]
   # If running jaeger locally, uncomment the following lines and add "otlp" to the exporters list
   # otlp_settings:
   #   endpoint: "http://localhost:4318/v1/traces"
