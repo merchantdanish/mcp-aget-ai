@@ -490,7 +490,7 @@ class MarketingContentAgent:
     
     async def _create_optimized_content(self, request: str, platform: str, context: dict) -> str:
         """Create content using evaluator-optimizer with external prompts"""
-        async with app.run() as agent_app:
+        async with app.run():
             # Build variables for prompts
             prompt_vars = self._build_prompt_variables(request, platform, context['organized'])
             
@@ -640,10 +640,10 @@ async def main():
         result = await agent.create_content(request, platform)
         
         if result['success']:
-            print(f"\n✅ Content created successfully!")
+            print("\n✅ Content created successfully!")
             print(f"📁 Saved to: {result['output_path']}")
             print(f"📊 Context used: {result['context_used']} characters")
-            print(f"\n📄 Content Preview:")
+            print("\n📄 Content Preview:")
             print("-" * 50)
             preview = result['content'][:300] + "..." if len(result['content']) > 300 else result['content']
             print(preview)
