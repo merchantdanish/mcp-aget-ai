@@ -520,7 +520,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         return str(message)
 
     def _log_chat_progress(
-        self, chat_turn: Optional[int] = None, model: Optional[str] = None
+        self, chat_turn: Optional[int] = None, model: str | None = None
     ):
         """Log a chat progress event"""
         data = {
@@ -531,7 +531,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         }
         self.logger.debug("Chat in progress", data=data)
 
-    def _log_chat_finished(self, model: Optional[str] = None):
+    def _log_chat_finished(self, model: str | None = None):
         """Log a chat finished event"""
         data = {"progress_action": "Finished", "model": model, "agent_name": self.name}
         self.logger.debug("Chat finished", data=data)
