@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import src.mcp_agent.mcp.mcp_aggregator as mcp_aggregator_mod
+from mcp.types import TextContent, CallToolResult
 
 
 class DummyContext:
@@ -860,3 +861,117 @@ async def test_mcp_compound_server_call_tool_and_get_prompt(monkeypatch):
     assert (
         hasattr(result, "description") and "Error getting prompt" in result.description
     )
+
+
+@pytest.mark.asyncio
+async def test_mcp_aggregator_call_tool_empty_content_handling(monkeypatch):
+    """
+    Tests that the MCP aggregator properly handles tools that return empty content.
+    """
+    # Setup aggregator with non-persistent connection
+    aggregator = mcp_aggregator_mod.MCPAggregator(
+        server_names=["srv1"],
+        connection_persistence=False,
+        context=DummyContext(),
+        name="test_agent",
+    )
+    aggregator.initialized = True
+
+    # Mock tool map and _parse_capability_name
+    tool = SimpleNamespace()
+    tool.name = "empty_tool"
+    aggregator._namespaced_tool_map = {
+        "srv1_empty_tool": SimpleNamespace(
+            tool=tool, server_name="srv1", namespaced_tool_name="srv1_empty_tool"
+        )
+    }
+    aggregator._server_to_tool_map = {
+        "srv1": [
+            SimpleNamespace(
+                tool=tool, server_name="srv1", namespaced_tool_name="srv1_empty_tool"
+            )
+        ]
+    }
+
+    async def mock_parse_empty_tool(name, cap):
+        return ("srv1", "empty_tool")
+
+    aggregator._parse_capability_name = mock_parse_empty_tool
+
+    # Test 1: Tool returns empty content list
+    class DummyClientEmptyContent:
+        async def call_tool(self, name, arguments=None):
+            # Return a CallToolResult with empty content
+            return CallToolResult(content=[], isError=False)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    monkeypatch.setattr(
+        mcp_aggregator_mod, "gen_client", lambda *a, **kw: DummyClientEmptyContent()
+    )
+
+    result = await aggregator.call_tool("srv1_empty_tool", arguments={})
+
+    # The fix should ensure that empty content gets converted to TextContent with "[]"
+    assert result.isError is False
+    assert len(result.content) == 1
+    assert isinstance(result.content[0], TextContent)
+    assert result.content[0].text == "[]"
+    assert result.content[0].type == "text"
+
+    # Test 2: Tool returns None (which becomes empty content)
+    # This simulates the case where an MCP tool returns None
+    class DummyClientNoneContent:
+        async def call_tool(self, name, arguments=None):
+            # Return a CallToolResult with empty content (representing None return)
+            return CallToolResult(content=[], isError=False)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    monkeypatch.setattr(
+        mcp_aggregator_mod, "gen_client", lambda *a, **kw: DummyClientNoneContent()
+    )
+
+    result = await aggregator.call_tool("srv1_empty_tool", arguments={})
+
+    # Same fix should apply - empty content becomes TextContent with "[]"
+    assert result.isError is False
+    assert len(result.content) == 1
+    assert isinstance(result.content[0], TextContent)
+    assert result.content[0].text == "[]"
+    assert result.content[0].type == "text"
+
+    # Test 3: Tool returns normal content (regression test)
+    class DummyClientNormalContent:
+        async def call_tool(self, name, arguments=None):
+            # Return a CallToolResult with normal content
+            return CallToolResult(
+                content=[TextContent(type="text", text="Normal result")], isError=False
+            )
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    monkeypatch.setattr(
+        mcp_aggregator_mod, "gen_client", lambda *a, **kw: DummyClientNormalContent()
+    )
+
+    result = await aggregator.call_tool("srv1_empty_tool", arguments={})
+
+    # Normal content should pass through unchanged
+    assert result.isError is False
+    assert len(result.content) == 1
+    assert isinstance(result.content[0], TextContent)
+    assert result.content[0].text == "Normal result"
+    assert result.content[0].type == "text"
