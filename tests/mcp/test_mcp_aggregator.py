@@ -898,7 +898,7 @@ async def test_mcp_aggregator_call_tool_empty_content_handling(monkeypatch):
 
     aggregator._parse_capability_name = mock_parse_empty_tool
 
-    # Test 1: Tool returns empty content list
+    # Test 1: Tool returns empty content list or None (which becomes empty list)
     class DummyClientEmptyContent:
         async def call_tool(self, name, arguments=None):
             # Return a CallToolResult with empty content
@@ -923,33 +923,7 @@ async def test_mcp_aggregator_call_tool_empty_content_handling(monkeypatch):
     assert result.content[0].text == "[]"
     assert result.content[0].type == "text"
 
-    # Test 2: Tool returns None (which becomes empty content)
-    # This simulates the case where an MCP tool returns None
-    class DummyClientNoneContent:
-        async def call_tool(self, name, arguments=None):
-            # Return a CallToolResult with empty content (representing None return)
-            return CallToolResult(content=[], isError=False)
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc_val, exc_tb):
-            pass
-
-    monkeypatch.setattr(
-        mcp_aggregator_mod, "gen_client", lambda *a, **kw: DummyClientNoneContent()
-    )
-
-    result = await aggregator.call_tool("srv1_empty_tool", arguments={})
-
-    # Same fix should apply - empty content becomes TextContent with "[]"
-    assert result.isError is False
-    assert len(result.content) == 1
-    assert isinstance(result.content[0], TextContent)
-    assert result.content[0].text == "[]"
-    assert result.content[0].type == "text"
-
-    # Test 3: Tool returns normal content (regression test)
+    # Test 2: Tool returns normal content (regression test)
     class DummyClientNormalContent:
         async def call_tool(self, name, arguments=None):
             # Return a CallToolResult with normal content
