@@ -871,9 +871,6 @@ class MCPAggregator(ContextDependent):
                     res = await client.call_tool(
                         name=local_tool_name, arguments=arguments
                     )
-                    if len(res.content) == 0:
-                        # Treat none or empty list from tool result as tool result
-                        res.content = [TextContent(type="text", text="[]")]
                     _annotate_span_for_result(res)
                     return res
                 except Exception as e:
