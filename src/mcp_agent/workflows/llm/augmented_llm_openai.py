@@ -494,7 +494,7 @@ class OpenAIAugmentedLLM(
     ) -> ChatCompletionToolMessageParam:
         """
         Execute a single tool call and return the result message.
-        Always returns a ChatCompletionToolMessageParam object, even when there's no content to add.
+        Returns a single ChatCompletionToolMessageParam object.
         """
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
