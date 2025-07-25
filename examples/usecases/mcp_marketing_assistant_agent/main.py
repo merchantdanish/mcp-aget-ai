@@ -414,7 +414,7 @@ request: "{request}"
                 f.write(content_to_save)
 
             print(f"\n✅ Great choice! Content saved to: {output_path}")
-            print(f" Learned from your preference for future content")
+            print(" Learned from your preference for future content")
             
             logger.info(f"Content successfully created and saved to {output_path}")
             return True
