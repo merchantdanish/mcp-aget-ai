@@ -491,10 +491,10 @@ class OpenAIAugmentedLLM(
     async def execute_tool_call(
         self,
         tool_call: ChatCompletionMessageToolCall,
-    ) -> ChatCompletionToolMessageParam | None:
+    ) -> ChatCompletionToolMessageParam:
         """
         Execute a single tool call and return the result message.
-        Returns None if there's no content to add to messages.
+        Always returns a ChatCompletionToolMessageParam object, even when there's no content to add.
         """
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
@@ -533,16 +533,11 @@ class OpenAIAugmentedLLM(
 
             self._annotate_span_for_call_tool_result(span, result)
 
-            if result.content:
-                return ChatCompletionToolMessageParam(
-                    role="tool",
-                    tool_call_id=tool_call_id,
-                    content=[
-                        mcp_content_to_openai_content_part(c) for c in result.content
-                    ],
-                )
-
-            return None
+            return ChatCompletionToolMessageParam(
+                role="tool",
+                tool_call_id=tool_call_id,
+                content=[mcp_content_to_openai_content_part(c) for c in result.content],
+            )
 
     def message_param_str(self, message: ChatCompletionMessageParam) -> str:
         """Convert an input message to a string representation."""
