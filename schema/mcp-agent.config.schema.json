@@ -4,64 +4,6 @@
       "additionalProperties": true,
       "description": "Settings for using Anthropic models in the MCP Agent application.",
       "properties": {
-        "api_key": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Api Key"
-        },
-        "default_model": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Default Model"
-        },
-        "provider": {
-          "default": "anthropic",
-          "title": "Bedrock",
-          "type": "string",
-          "enum": [
-            "anthropic",
-            "bedrock",
-            "vertexai"
-          ]
-        },
-        "project": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Project"
-        },
-        "location": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Location"
-        },
         "aws_access_key_id": {
           "anyOf": [
             {
@@ -121,6 +63,64 @@
           ],
           "default": null,
           "title": "Profile"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Location"
+        },
+        "api_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
+        },
+        "default_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Model"
+        },
+        "provider": {
+          "default": "anthropic",
+          "enum": [
+            "anthropic",
+            "bedrock",
+            "vertexai"
+          ],
+          "title": "Provider",
+          "type": "string"
         }
       },
       "title": "AnthropicSettings",
@@ -236,38 +236,6 @@
         }
       },
       "title": "BedrockSettings",
-      "type": "object"
-    },
-    "VertexAISettings": {
-      "additionalProperties": true,
-      "description": "Settings for using VertexAI models in the MCP Agent application",
-      "properties": {
-        "project": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Project"
-        },
-        "location": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Location"
-        }
-      },
-      "title": "VertexAISettings",
       "type": "object"
     },
     "CohereSettings": {
@@ -883,6 +851,18 @@
           "default": null,
           "description": "OTLP settings for OpenTelemetry tracing. Required if using otlp exporter."
         },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
         "path_settings": {
           "anyOf": [
             {
@@ -1152,6 +1132,7 @@
         "service_version": null,
         "sample_rate": 1.0,
         "otlp_settings": null,
+        "path": null,
         "path_settings": null
       },
       "description": "OpenTelemetry logging settings for the MCP Agent application"
