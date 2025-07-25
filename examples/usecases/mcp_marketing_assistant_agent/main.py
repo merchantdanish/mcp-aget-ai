@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple Marketing Content Agent - Financial Analyzer Pattern
+Marketing Content Agent
 ==========================================================
 Agentic system using EvaluatorOptimizerLLM with comprehensive context.
 """
@@ -19,7 +19,7 @@ from mcp_agent.workflows.evaluator_optimizer.evaluator_optimizer import (
     QualityRating,
 )
 
-# --- Configuration constants ---
+# Configuration constants
 CONFIG_FILE = "company_config.yaml"
 OUTPUT_DIR = "posts"
 CONTENT_SAMPLES_DIR = "content_samples"
@@ -63,10 +63,10 @@ async def main():
     Main function: Orchestrates the agent workflow for content creation,
     evaluation, user feedback, and learning.
     """
-    print("🎯 Simple Marketing Content Agent")
+    print("🎯 Marketing Content Agent")
     print("🤖 EvaluatorOptimizerLLM + Comprehensive Context")
     
-    # --- Get user request ---
+    # Get user request from command line or prompt
     if len(sys.argv) > 1:
         request = " ".join(sys.argv[1:])
     else:
@@ -76,7 +76,7 @@ async def main():
         print("❌ No request provided")
         return False
     
-    # --- Setup and context loading ---
+    # Load configuration and determine platform
     platform = detect_platform(request)
     config = load_company_config()
     company_name = config['company']['name']
@@ -91,14 +91,13 @@ async def main():
     output_path = os.path.join(OUTPUT_DIR, output_file)
     
     async with app.run() as content_app:
-        context = content_app.context
         logger = content_app.logger
         
         logger.info(f"Creating {platform} content for {company_name}")
         
         # --- Define Agents ---
         
-        # Agent: Content Creator (generates two content variations)
+        # Content Creator Agent: generates two content variations
         content_creator = Agent(
             name="content_creator",
             instruction=f"""You are an expert marketing content creator for {company_name}, with 15+ years of experience in digital marketing and brand storytelling.
@@ -164,7 +163,7 @@ CRITICAL RULES:
             server_names=["memory", "fetch", "filesystem", "markitdown"],
         )
 
-        # Agent: Quality Evaluator (rates and reviews content)
+        # Quality Evaluator Agent: rates and reviews content
         quality_evaluator = Agent(
             name="quality_evaluator",
             instruction=f"""You are a highly selective Chief Marketing Officer for {company_name} with 20+ years of experience building world-class brands.
@@ -272,7 +271,7 @@ CRITICAL RULES:
             min_rating=QualityRating.EXCELLENT,
         )
 
-        # Agent: Memory Manager (stores user feedback and choices)
+        # Memory Manager Agent: stores user feedback and choices
         memory_manager = Agent(
             name="memory_manager", 
             instruction=f"""You are a simple learning system for {company_name} marketing content.
@@ -294,7 +293,7 @@ Keep it simple - one entity per learning.""",
         # Attach LLM to memory manager agent
         memory_manager_llm = OpenAIAugmentedLLM(agent=memory_manager)
 
-        # --- Main Content Creation Loop ---
+        # Main content creation and feedback loop
         logger.info("Starting content creation workflow")
         
         try:
@@ -415,7 +414,7 @@ request: "{request}"
                 f.write(content_to_save)
 
             print(f"\n✅ Great choice! Content saved to: {output_path}")
-            print(f"🧠 Learned from your preference for future content")
+            print(f" Learned from your preference for future content")
             
             logger.info(f"Content successfully created and saved to {output_path}")
             return True

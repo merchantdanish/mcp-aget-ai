@@ -1,39 +1,37 @@
 # MCP Marketing Content Agent
 
-This example demonstrates a content creation agent that adapts to your brand voice and generates content optimized for different platforms. The agent uses an evaluation-driven approach and persistent memory to ensure consistent, high-quality communication.
+This example demonstrates a marketing content creation agent that learns your brand voice and generates platform-optimized content using an evaluation-driven approach with persistent memory for continuous improvement.
 
 ## How It Works
 
-1. **PromptManager**: Manages external prompt templates with variable substitution for different content types
-2. **DocumentProcessor**: Handles document processing via markitdown MCP server for content samples and references
-3. **URLContentFetcher**: Fetches and processes content from URLs using fetch MCP server
-4. **ContextAssembler**: Gathers and organizes comprehensive context from various sources
-5. **MarketingContentAgent**: Main agent that coordinates the content creation pipeline with quality evaluation
-6. **EvaluatorOptimizer**: Ensures content meets quality standards through iterative refinement
+1. **Content Creator Agent**: Expert marketer that generates 2 distinct content variations using different strategic approaches (data-driven vs narrative)
+2. **Quality Evaluator Agent**: Selective CMO that rates content against strict brand standards and quality criteria  
+3. **Content Quality System** (EvaluatorOptimizerLLM): Manages the creation-evaluation feedback loop, ensuring content meets EXCELLENT quality standards before presenting to user
+4. **Memory Manager Agent**: Stores user feedback and choices for continuous learning and improvement
+5. **Context Assembly**: Automatically gathers brand voice, content samples, and company documentation to inform content creation
 
-The architecture focuses on maintaining brand consistency while optimizing content for different platforms through an evaluation-first approach.
+This approach ensures high-quality, on-brand content by focusing on evaluation-driven creation and learning from user preferences over time.
 
 ```plaintext
-┌──────────────┐      ┌───────────────┐      ┌───────────────┐
-│   Content    │─────▶│   Context     │─────▶│   Content     │◀─┐
-│   Request    │      │   Assembler   │      │   Creator     │  │
-└──────────────┘      └───────────────┘      └───────────────┘  │
-       │                     ▲                       │          │
-       │                     │                       ▼          │
-       │              ┌──────┴──────┐        ┌───────────────┐  │      
-       │              │  Document   │        │   Quality     ├──┘
-       │              │  Processor  │        │   Evaluator   │
-       │              └─────────────┘        └───────────────┘
-       │                     ▲                
-       │              ┌──────┴──────┐
-       └─────────────▶│   URL       │
-                      │   Fetcher   │
-                      └─────────────┘
+┌──────────────┐      ┌───────────────────┐      ┌─────────────────┐
+│ User Request │─────▶│ Content Quality   │─────▶│ Content Creator │◀─┐
+│ + Feedback   │      │ Evaluator         │      │ Agent           │  │
+└──────────────┘      └───────────────────┘      └─────────────────┘  │
+       │                                                   │          │
+       │                                                   │          │
+       │                                                   ▼          │
+       │                                        ┌─────────────────┐   │
+       │                                        │ Quality Control ├───┘
+       │                                        │ Agent           │
+       │                                        └─────────────────┘
+       │             ┌─────────────────┐
+       └────────────▶│ Memory Manager  │
+                     └─────────────────┘
 ```
 
 ## `1` App set up
 
-First, clone the repo and navigate to the marketing agent example:
+First, clone the repo and navigate to the marketing content agent example:
 
 ```bash
 git clone https://github.com/lastmile-ai/mcp-agent.git
@@ -59,7 +57,7 @@ npm install -g @modelcontextprotocol/server-memory
 pip install markitdown-mcp
 ```
 
-## `2` Set up configuration and secrets
+## `2` Set up secrets and configuration
 
 Copy and configure your secrets:
 
@@ -67,7 +65,7 @@ Copy and configure your secrets:
 cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
 ```
 
-Add your OpenAI API key to `mcp_agent.secrets.yaml`:
+Then open `mcp_agent.secrets.yaml` and add your OpenAI API key:
 
 ```yaml
 openai:
@@ -76,22 +74,6 @@ openai:
 
 Configure your brand voice in `company_config.yaml`:
 
-```yaml
-company:
-  name: "Your Company"
-  industry: "Your Industry"
-  target_audience:
-    - "Primary Audience"
-    - "Secondary Audience"
-
-platforms:
-  linkedin:
-    max_word_count: 100
-    tone: "Professional but conversational"
-  twitter:
-    max_word_count: 50
-    tone: "Sharp and witty"
-```
 
 ## `3` Add content samples
 
@@ -102,7 +84,7 @@ mkdir -p content_samples posts company_docs
 ```
 
 Add your existing content to train the agent:
-- `content_samples/`: Add social media posts, blog content
+- `content_samples/`: Add social media posts, blog content (supports .md, .txt, .pdf, .docx, .html)
 - `company_docs/`: Add brand guidelines, company info
 - `posts/`: Where generated content will be saved
 
@@ -123,12 +105,7 @@ uv run main.py "Create a twitter thread about our latest release"
 Generate an email announcement:
 
 ```bash
-uv run main.py "Draft an email about our upcoming webinar"
+uv run main.py "Draft an email about our upcoming webinar link to event page"
 ```
 
-The agent will:
-1. Load your brand configuration
-2. Process relevant content samples
-3. Generate platform-optimized content
-4. Evaluate against quality standards
-5. Save approved content to the posts directory
+The agent will present you with two content variations, learn from your choice, and continuously improve based on your feedback.
