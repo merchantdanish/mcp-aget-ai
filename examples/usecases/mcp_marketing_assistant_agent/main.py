@@ -44,6 +44,10 @@ class PromptManager:
     
     def load_prompt(self, prompt_name: str, **variables) -> str:
         """Load and format prompt template with variables"""
+        # Validate prompt_name to prevent path traversal
+        if "/" in prompt_name or "\\" in prompt_name or ".." in prompt_name:
+            raise ValueError(f"Invalid prompt name: {prompt_name}")
+        
         if prompt_name not in self.loaded_prompts:
             prompt_file = self.prompts_dir / f"{prompt_name}.md"
             if not prompt_file.exists():
@@ -147,8 +151,18 @@ class URLContentFetcher:
     
     def _extract_urls(self, text: str) -> list:
         """Extract URLs from text"""
-        url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
-        return re.findall(url_pattern, text)
+        url_pattern = r'https?://(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*)'
+        urls = re.findall(url_pattern, text)
+        
+        # Validate and deduplicate URLs
+        valid_urls = []
+        seen = set()
+        for url in urls:
+            if url not in seen:
+                seen.add(url)
+                valid_urls.append(url)
+        
+        return valid_urls
     
     async def _fetch_single_url(self, url: str) -> str:
         """Fetch content from a single URL"""
@@ -376,9 +390,14 @@ class MarketingContentAgent:
             }
         }
         
-        with open(config_file, 'w', encoding='utf-8') as f:
-            yaml.dump(default_config, f, default_flow_style=False, indent=2)
-    
+        try:
+            with open(config_file, 'w', encoding='utf-8') as f:
+                yaml.dump(default_config, f, default_flow_style=False, indent=2)
+            print(f"✅ Created default config file: {config_file}")
+        except Exception as e:
+            print(f"⚠️ Could not create config file: {e}")
+            print("⚠️ Using minimal in-memory configuration")
+
     def _get_minimal_config(self) -> dict:
         """Get minimal config as fallback"""
         return {
