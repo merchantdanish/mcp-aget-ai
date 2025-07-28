@@ -122,7 +122,7 @@ Each recommendation includes:
 The agent uses:
 
 - **Apify Instagram Scraper**: For scraping Instagram profiles professionally
-- **Google Search (g-search-mcp)**: For finding real Amazon product links
+- **Google Search (g-search)**: For finding real Amazon product links
 - **Fetch Server**: For web content retrieval
 - **OpenAI GPT-4o-mini**: For content analysis and gift recommendation generation
 - **Asyncio**: For asynchronous execution
