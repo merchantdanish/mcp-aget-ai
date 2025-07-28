@@ -106,24 +106,24 @@ class OrchestratorOverrides:
     synthesizer_instruction: str | None = None
 
     """
-    Override FULL_PLAN_PROMPT_TEMPLATE
+    Get prompt to generate the full plan of action
     """
-    full_plan_prompt_template: GetFullPlanPrompt | None = None
+    get_full_plan_prompt: GetFullPlanPrompt | None = None
 
     """
-    Override ITERATIVE_PLAN_PROMPT_TEMPLATE
+    Get prompt to generate the next step of action
     """
-    iterative_plan_prompt_template: GetIterativePlanPrompt | None = None
+    get_iterative_plan_prompt: GetIterativePlanPrompt | None = None
 
     """
-    Override TASK_PROMPT_TEMPLATE
+    Get prompt to specify as system instruction for a subtask in the plan.
     """
-    task_prompt_template: GetTaskPrompt | None = None
+    get_task_prompt: GetTaskPrompt | None = None
 
     """
-    Override SYNTHESIZE_PLAN_PROMPT_TEMPLATE
+    Get prompt to synthesize the orchestration of the workflow into a final response.
     """
-    synthesize_plan_prompt_template: GetSynthesizePlanPrompt | None = None
+    get_synthesize_plan_prompt: GetSynthesizePlanPrompt | None = None
 
 
 class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
