@@ -440,11 +440,9 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
 
                     # Synthesize final result into a single message
                     synthesis_prompt: str
-                    if self.overrides.synthesize_plan_prompt_template:
-                        synthesis_prompt = (
-                            self.overrides.synthesize_plan_prompt_template(
-                                plan_result=plan_result
-                            )
+                    if self.overrides.get_synthesize_plan_prompt:
+                        synthesis_prompt = self.overrides.get_synthesize_plan_prompt(
+                            plan_result=plan_result
                         )
                     else:
                         synthesis_prompt = SYNTHESIZE_PLAN_PROMPT_TEMPLATE.format(
@@ -539,8 +537,8 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     llm = await ctx_agent.attach_llm(self.llm_factory)
 
                 task_description: str
-                if self.overrides.task_prompt_template:
-                    task_description = self.overrides.task_prompt_template(
+                if self.overrides.get_task_prompt:
+                    task_description = self.overrides.get_task_prompt(
                         objective=previous_result.objective,
                         task=task.description,
                         context=context,
@@ -612,8 +610,8 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         )
 
         prompt: str
-        if self.overrides.full_plan_prompt_template:
-            prompt = self.overrides.full_plan_prompt_template(
+        if self.overrides.get_full_plan_prompt:
+            prompt = self.overrides.get_full_plan_prompt(
                 objective=objective, plan_result=plan_result, agents=agents
             )
         else:
@@ -647,8 +645,8 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         )
 
         prompt: str
-        if self.overrides.iterative_plan_prompt_template:
-            prompt = self.overrides.iterative_plan_prompt_template(
+        if self.overrides.get_iterative_plan_prompt:
+            prompt = self.overrides.get_iterative_plan_prompt(
                 objective=objective, plan_result=plan_result, agents=agents
             )
         else:
