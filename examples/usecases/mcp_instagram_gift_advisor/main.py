@@ -112,8 +112,8 @@ class InstagramGiftAdvisor:
     async def generate_gift_recommendations(self, profile_analysis):
         """Generate personalized gift recommendations with real Amazon links"""
         prompt = dedent(f"""
-            Based on this Instagram profile analysis, you MUST use the fetch tool to search for REAL Amazon products:
-            
+            Based on this Instagram profile analysis, you MUST use the g-search tool to search for REAL Amazon products:
+
             {profile_analysis}
             
             STOP! Before you write ANYTHING, you must:
