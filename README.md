@@ -737,7 +737,7 @@ Here's all the ways you can set up your mcp-agent application:
 
 #### MCP-Agent Server
 
-You can expose mcp-agent applications as MCP servers themselves (see [example](./examples/basic/mcp_agent_server)), allowing MCP clients to interface with sophisticated AI workflows using the standard tools API of MCP servers. This is effectively a server-of-servers.
+You can expose mcp-agent applications as MCP servers themselves (see [example](./examples/mcp_agent_server)), allowing MCP clients to interface with sophisticated AI workflows using the standard tools API of MCP servers. This is effectively a server-of-servers.
 
 #### MCP Client or Host
 
