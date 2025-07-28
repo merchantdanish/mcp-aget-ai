@@ -90,40 +90,26 @@ class GetSynthesizePlanPrompt(Protocol):
 class OrchestratorOverrides:
     """Configuration overrides for Orchestrator behavior and prompts"""
 
-    """
-    Override the main orchestrator LLM's system instruction
-    """
     orchestrator_instruction: str | None = None
+    """Override the main orchestrator LLM's system instruction"""
 
-    """
-    Override the planner agent's instruction (used to break down tasks into steps)
-    """
     planner_instruction: str | None = None
+    """Override the planner agent's instruction (used to break down tasks into steps)"""
 
-    """
-    Override the synthesizer agent's instruction (used to combine results into final output)
-    """
     synthesizer_instruction: str | None = None
+    """Override the synthesizer agent's instruction (used to combine results into final output)"""
 
-    """
-    Get prompt to generate the full plan of action
-    """
     get_full_plan_prompt: GetFullPlanPrompt | None = None
+    """Get prompt to generate the full plan of action"""
 
-    """
-    Get prompt to generate the next step of action
-    """
     get_iterative_plan_prompt: GetIterativePlanPrompt | None = None
+    """Get prompt to generate the next step of action"""
 
-    """
-    Get prompt to specify as system instruction for a subtask in the plan.
-    """
     get_task_prompt: GetTaskPrompt | None = None
+    """Get prompt to specify as system instruction for a subtask in the plan"""
 
-    """
-    Get prompt to synthesize the orchestration of the workflow into a final response.
-    """
     get_synthesize_plan_prompt: GetSynthesizePlanPrompt | None = None
+    """Get prompt to synthesize the orchestration of the workflow into a final response"""
 
 
 class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
