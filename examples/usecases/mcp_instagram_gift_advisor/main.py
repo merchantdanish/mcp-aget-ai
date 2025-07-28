@@ -161,11 +161,7 @@ class InstagramGiftAdvisor:
 async def run_gift_advisor(username):
     print(f"Analyzing Instagram profile: @{username}...\n")
 
-    advisor = InstagramGiftAdvisor()
-
-    try:
-        # Initialize the agent
-        components = await advisor.initialize_agent()
+    async with InstagramGiftAdvisor() as advisor:
 
         print("Connected! Starting profile analysis...\n")
 
