@@ -614,7 +614,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         prompt: str
         if self.overrides.full_plan_prompt_template:
             prompt = self.overrides.full_plan_prompt_template(
-                objective=objective, plan_result=plan_result, agents=self.agents
+                objective=objective, plan_result=plan_result, agents=agents
             )
         else:
             prompt = FULL_PLAN_PROMPT_TEMPLATE.format(
