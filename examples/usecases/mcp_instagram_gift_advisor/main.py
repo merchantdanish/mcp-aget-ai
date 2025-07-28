@@ -6,7 +6,6 @@ import argparse
 from textwrap import dedent
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
-from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 
@@ -15,18 +14,17 @@ class InstagramGiftAdvisor:
     def __init__(self):
         self.profile_data = {}
         self.gift_recommendations = []
+        self.agent = None
+        self.llm = None
+        self.agent_app_cm = None
 
-    async def initialize_agent(self):
+    async def __aenter__(self):
         """Initialize MCP App and create Instagram gift advisor agent"""
         self.app = MCPApp(name="instagram_gift_advisor")
         self.agent_app_cm = self.app.run()
-        self.agent_app = await self.agent_app_cm.__aenter__()
-        context = self.agent_app.context
+        await self.agent_app_cm.__aenter__()
 
-        self.manager = MCPConnectionManager(context.server_registry)
-        await self.manager.__aenter__()
-
-        gift_agent = Agent(
+        self.agent = Agent(
             name="instagram_gift_advisor",
             instruction=dedent("""
                 You are an Instagram Gift Advisor that analyzes Instagram profiles to recommend personalized gifts.
@@ -66,11 +64,17 @@ class InstagramGiftAdvisor:
             server_names=["apify", "fetch", "g-search"],
         )
 
-        llm = await gift_agent.attach_llm(OpenAIAugmentedLLM)
+        self.llm = await self.agent.attach_llm(OpenAIAugmentedLLM)
+        return self
 
-        return {"agent": gift_agent, "llm": llm}
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Clean up resources"""
+        if self.agent_app_cm:
+            await self.agent_app_cm.__aexit__(exc_type, exc_val, exc_tb)
+        if self.agent:
+            await self.agent.close()
 
-    async def scrape_instagram_profile(self, llm, username):
+    async def scrape_instagram_profile(self, username):
         """Scrape Instagram profile and analyze content using Apify"""
 
         prompt = dedent(f"""
@@ -101,11 +105,11 @@ class InstagramGiftAdvisor:
             - Gift Category Suggestions (general ideas only, no links or prices)
         """)
 
-        return await llm.generate_str(
+        return await self.llm.generate_str(
             prompt, request_params=RequestParams(use_history=True)
         )
 
-    async def generate_gift_recommendations(self, llm, profile_analysis):
+    async def generate_gift_recommendations(self, profile_analysis):
         """Generate personalized gift recommendations with real Amazon links"""
         prompt = dedent(f"""
             Based on this Instagram profile analysis, you MUST use the fetch tool to search for REAL Amazon products:
@@ -114,10 +118,11 @@ class InstagramGiftAdvisor:
             
             STOP! Before you write ANYTHING, you must:
             1. Use g-search tool to find Amazon product URLs (at least 8-10 searches)
-            2. Search for products that match the person's interests from the profile analysis
-            3. Find a variety of products across different categories and interests
-            4. Only include products with real Amazon URLs from search results
-            
+            2. Use fetch as a fallback if g-search fails
+            3. Search for products that match the person's interests from the profile analysis
+            4. Find a variety of products across different categories and interests
+            5. Only include products with real Amazon URLs from search results
+
             You are FORBIDDEN from:
             - Writing "(Please search this directly on Amazon)"
             - Providing search terms without actual results
@@ -126,7 +131,7 @@ class InstagramGiftAdvisor:
             - Making up or guessing prices that aren't clearly shown in search results
             
             MANDATORY PROCESS FOR EACH GIFT:
-            Step 1: Use g-search tool with "site:amazon.com [product related to their interests]"
+            Step 1: Use g-search tool with "site:amazon.com [product related to their interests]" (use fetch as a fallback if g-search fails)
             Step 2: Extract the actual Amazon URL from the search results
             Step 3: Include the product with the real Amazon link
             
@@ -141,51 +146,37 @@ class InstagramGiftAdvisor:
             
             Organize the recommendations by categories based on their interests (e.g., Travel, Pet Care, etc.).
             
-            DO NOT PROCEED until you have called fetch multiple times and have real URLs!
+            DO NOT PROCEED until you have called g-search OR fetch multiple times and have real URLs!
         """)
 
-        return await llm.generate_str(
+        return await self.llm.generate_str(
             prompt, request_params=RequestParams(use_history=True)
         )
-
-    async def close_session(self, components):
-        """Clean up resources"""
-        if components["agent"]:
-            await components["agent"].close()
-        if hasattr(self, "manager"):
-            await self.manager.__aexit__(None, None, None)
-        if hasattr(self, "agent_app_cm"):
-            await self.agent_app_cm.__aexit__(None, None, None)
 
 
 async def run_gift_advisor(username):
     print(f"Analyzing Instagram profile: @{username}...\n")
 
-    async with InstagramGiftAdvisor() as advisor:
+    try:
+        async with InstagramGiftAdvisor() as advisor:
+            print("Connected! Starting profile analysis...\n")
 
-        print("Connected! Starting profile analysis...\n")
+            # Scrape and analyze the Instagram profile
+            profile_analysis = await advisor.scrape_instagram_profile(username)
 
-        # Scrape and analyze the Instagram profile
-        profile_analysis = await advisor.scrape_instagram_profile(
-            components["llm"], username
-        )
+            print("=== PROFILE ANALYSIS ===")
+            print(f"{profile_analysis}\n")
 
-        print("=== PROFILE ANALYSIS ===")
-        print(f"{profile_analysis}\n")
+            # Generate gift recommendations
+            print("Generating personalized gift recommendations...\n")
+            gift_recommendations = await advisor.generate_gift_recommendations(
+                profile_analysis
+            )
 
-        # Generate gift recommendations
-        print("Generating personalized gift recommendations...\n")
-        gift_recommendations = await advisor.generate_gift_recommendations(
-            components["llm"], profile_analysis
-        )
+            print("=== GIFT RECOMMENDATIONS ===")
+            print(f"{gift_recommendations}\n")
 
-        print("=== GIFT RECOMMENDATIONS ===")
-        print(f"{gift_recommendations}\n")
-
-        # Clean up
-        await advisor.close_session(components)
-
-        print("Analysis complete! Gift recommendations generated.")
+            print("Analysis complete! Gift recommendations generated.")
 
     except Exception as e:
         print(f"Error: {str(e)}")

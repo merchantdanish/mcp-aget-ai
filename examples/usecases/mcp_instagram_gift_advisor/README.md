@@ -18,11 +18,10 @@ This agent uses Apify's Instagram scraper to analyze profiles and understand a p
 ## Prerequisites
 
 - Node.js (for MCP servers)
-- Python 3.8+
+- Python 3.10+
 - OpenAI API key
 - Anthropic API key
 - Apify API token
-- Playwright browsers
 
 ## Installation
 
@@ -152,9 +151,8 @@ The agent uses:
 
 ### Common Issues
 
-1. **Playwright Error**: Run `npx playwright install` to install browsers
-2. **Apify Connection**: Ensure your API token is valid in secrets file
-3. **Search Results**: G-search and fetch servers install automatically via npx
+1. **Apify Connection**: Ensure your API token is valid in secrets file
+2. **Search Results**: G-search and fetch servers install automatically via npx
 
 ### Logging
 
