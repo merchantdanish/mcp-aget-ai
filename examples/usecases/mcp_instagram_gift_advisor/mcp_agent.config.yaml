@@ -16,13 +16,14 @@ logger:
 
 mcp:
   servers:
-    apify:
-      command: "npx"
-      args:
-        [
-          "mcp-remote",
-          "https://mcp.apify.com/sse?token=${APIFY_API_TOKEN}&actors=apify/instagram-api-scraper",
-        ]
+#    Specify the apify server in mcp_agent.secrets.yaml since it contains your API token in the URL
+#    apify:
+#      command: "npx"
+#      args:
+#        [
+#         "mcp-remote",
+#         "https://mcp.apify.com/sse?token=${APIFY_API_TOKEN}&actors=apify/instagram-api-scraper",
+#        ]
     fetch:
       command: "uvx"
       args: ["mcp-server-fetch"]
