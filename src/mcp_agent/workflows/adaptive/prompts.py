@@ -5,29 +5,49 @@ Prompts for Adaptive Workflow - Deep Research Architecture
 LEAD_RESEARCHER_ANALYZE_PROMPT = """
 You are analyzing a user's objective to determine the appropriate approach.
 
-Consider:
-1. Is this primarily about gathering information (RESEARCH)?
-2. Is this primarily about making changes or taking actions (ACTION)?
-3. Does this require both research and action (HYBRID)?
+<adaptive:analysis-criteria>
+    <adaptive:task-type>
+        - Is this primarily about gathering information (RESEARCH)?
+        - Is this primarily about making changes or taking actions (ACTION)?
+        - Does this require both research and action (HYBRID)?
+    </adaptive:task-type>
+    
+    <adaptive:key-aspects>
+        Identify the key aspects that will need investigation to achieve the objective.
+    </adaptive:key-aspects>
+</adaptive:analysis-criteria>
 
-Also identify the key aspects that will need investigation."""
+Analyze the objective and determine the most appropriate task type and initial aspects to investigate."""
 
 
 LEAD_RESEARCHER_PLAN_PROMPT = """
 You are the lead researcher planning the next phase of investigation.
 
-Based on what we've learned so far, identify 1-5 specific aspects that need research.
-Each aspect should:
-- Have a clear, focused objective
-- Be independently researchable
-- Contribute to answering the overall objective
-- Specify which MCP servers might be needed
-- Optionally specify a predefined agent to use (if one is suitable)
+<adaptive:planning-context>
+    <adaptive:objective>
+        The overall objective we are working towards.
+    </adaptive:objective>
+    
+    <adaptive:learned-so-far>
+        What we have discovered and understood from previous research iterations.
+    </adaptive:learned-so-far>
+</adaptive:planning-context>
 
-When predefined agents are available, consider:
-- Use them when their capabilities match the task
-- Create new specialized agents when you need specific combinations of servers
-- Balance between reusing existing agents and creating focused ones
+<adaptive:planning-requirements>
+    Identify 1-5 specific aspects that need research. Each aspect should:
+    - Have a clear, focused objective
+    - Be independently researchable
+    - Contribute to answering the overall objective
+    - Specify which MCP servers might be needed
+    - Optionally specify a predefined agent to use (if one is suitable)
+</adaptive:planning-requirements>
+
+<adaptive:agent-selection>
+    When predefined agents are available:
+    - Use them when their capabilities match the task
+    - Create new specialized agents when you need specific combinations of servers
+    - Balance between reusing existing agents and creating focused ones
+</adaptive:agent-selection>
 
 Consider what gaps remain in our understanding and what would be most valuable to investigate next."""
 
@@ -35,68 +55,103 @@ Consider what gaps remain in our understanding and what would be most valuable t
 LEAD_RESEARCHER_SYNTHESIZE_PROMPT = """
 You are synthesizing research findings from multiple subagents.
 
-Your goal is to:
-1. Identify key insights and patterns
-2. Highlight important discoveries
-3. Note any contradictions or uncertainties
-4. Summarize what we've learned
-5. Identify what questions remain unanswered
+<adaptive:synthesis-goals>
+    <adaptive:goal priority="1">Identify key insights and patterns</adaptive:goal>
+    <adaptive:goal priority="2">Highlight important discoveries</adaptive:goal>
+    <adaptive:goal priority="3">Note any contradictions or uncertainties</adaptive:goal>
+    <adaptive:goal priority="4">Summarize what we've learned</adaptive:goal>
+    <adaptive:goal priority="5">Identify what questions remain unanswered</adaptive:goal>
+</adaptive:synthesis-goals>
 
-Create a coherent synthesis that advances our understanding of the objective."""
+<adaptive:synthesis-output>
+    Create a coherent synthesis that advances our understanding of the objective.
+</adaptive:synthesis-output>"""
 
 
 LEAD_RESEARCHER_DECIDE_PROMPT = """
 Based on our research so far, decide whether we have sufficiently addressed the objective.
 
-Consider:
-1. Have we answered all key aspects of the objective?
-2. Is our understanding comprehensive enough?
-3. Are there critical gaps that need filling?
-4. Would additional research add significant value?
+<adaptive:decision-criteria>
+    <adaptive:criterion id="completeness">
+        Have we answered all key aspects of the objective?
+    </adaptive:criterion>
+    <adaptive:criterion id="comprehensiveness">
+        Is our understanding comprehensive enough?
+    </adaptive:criterion>
+    <adaptive:criterion id="gaps">
+        Are there critical gaps that need filling?
+    </adaptive:criterion>
+    <adaptive:criterion id="value">
+        Would additional research add significant value?
+    </adaptive:criterion>
+</adaptive:decision-criteria>
 
-If the objective is not complete, identify specific new aspects that need investigation."""
+<adaptive:next-steps>
+    If the objective is not complete, identify specific new aspects that need investigation.
+</adaptive:next-steps>"""
 
 
 RESEARCH_SUBAGENT_TEMPLATE = """
-You are a research specialist investigating: {aspect}
+You are a research specialist working on a specific aspect of a larger investigation.
 
-Your specific objective: {objective}
+<adaptive:research-context>
+    <adaptive:aspect>{aspect}</adaptive:aspect>
+    <adaptive:objective>{objective}</adaptive:objective>
+    <adaptive:available-tools>{tools}</adaptive:available-tools>
+</adaptive:research-context>
 
-You have access to: {tools}
+<adaptive:research-focus>
+    <adaptive:focus-area>Finding authoritative sources</adaptive:focus-area>
+    <adaptive:focus-area>Gathering specific facts and details</adaptive:focus-area>
+    <adaptive:focus-area>Identifying patterns or insights</adaptive:focus-area>
+    <adaptive:focus-area>Noting any limitations or uncertainties</adaptive:focus-area>
+</adaptive:research-focus>
 
-Conduct thorough research to gather relevant information. Focus on:
-- Finding authoritative sources
-- Gathering specific facts and details
-- Identifying patterns or insights
-- Noting any limitations or uncertainties
-
-Be thorough but focused on your specific objective."""
+Conduct thorough research to gather relevant information. Be thorough but focused on your specific objective."""
 
 
 ACTION_SUBAGENT_TEMPLATE = """
-You are an action specialist working on: {aspect}
+You are an action specialist executing specific tasks.
 
-Your specific objective: {objective}
+<adaptive:action-context>
+    <adaptive:aspect>{aspect}</adaptive:aspect>
+    <adaptive:objective>{objective}</adaptive:objective>
+    <adaptive:available-tools>{tools}</adaptive:available-tools>
+</adaptive:action-context>
 
-You have access to: {tools}
+<adaptive:execution-focus>
+    <adaptive:focus-area>Making the required changes or operations</adaptive:focus-area>
+    <adaptive:focus-area>Verifying your actions were successful</adaptive:focus-area>
+    <adaptive:focus-area>Documenting what was done</adaptive:focus-area>
+    <adaptive:focus-area>Reporting any issues or limitations</adaptive:focus-area>
+</adaptive:execution-focus>
 
-Execute the necessary actions to achieve your objective. Focus on:
-- Making the required changes or operations
-- Verifying your actions were successful
-- Documenting what was done
-- Reporting any issues or limitations
-
-Be precise and careful in your execution."""
+Execute the necessary actions to achieve your objective. Be precise and careful in your execution."""
 
 
 FINAL_REPORT_PROMPT = """
 You are preparing the final research report.
 
-Based on all the research conducted, create a comprehensive report that:
-1. Directly addresses the original objective
-2. Synthesizes findings from all research iterations
-3. Presents information in a clear, logical structure
-4. Highlights key insights and conclusions
-5. Notes any limitations or areas for future investigation
+<adaptive:report-requirements>
+    <adaptive:requirement priority="1">
+        Directly address the original objective
+    </adaptive:requirement>
+    <adaptive:requirement priority="2">
+        Synthesize findings from all research iterations
+    </adaptive:requirement>
+    <adaptive:requirement priority="3">
+        Present information in a clear, logical structure
+    </adaptive:requirement>
+    <adaptive:requirement priority="4">
+        Highlight key insights and conclusions
+    </adaptive:requirement>
+    <adaptive:requirement priority="5">
+        Note any limitations or areas for future investigation
+    </adaptive:requirement>
+</adaptive:report-requirements>
 
-Make the report professional and actionable."""
+<adaptive:report-style>
+    Make the report professional and actionable, suitable for the intended audience.
+</adaptive:report-style>
+
+Based on all the research conducted, create a comprehensive report."""

@@ -430,16 +430,21 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
         llm = self.llm_factory(synthesizer)
 
         # Format results
-        results_text = "\n\n".join(
-            [
-                f"**{r.aspect_name}**:\n{r.findings}"
-                for r in results
-                if r.success and r.findings
-            ]
-        )
+        results_list = [
+            f"    <adaptive:result aspect=\"{r.aspect_name}\">\n{r.findings}\n    </adaptive:result>"
+            for r in results
+            if r.success and r.findings
+        ]
+        results_text = "\n".join(results_list)
 
         synthesis_messages = await llm.generate(
-            message=f"Synthesize these research findings:\n\n{results_text}",
+            message=f"""<adaptive:synthesis-request>
+    <adaptive:research-findings>
+{results_text}
+    </adaptive:research-findings>
+</adaptive:synthesis-request>
+
+Synthesize these research findings.""",
         )
 
         span.add_event("results_synthesized")
@@ -464,15 +469,18 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
             synthesis_str = llm.message_str(synthesis_messages[-1], content_only=True)
 
         context = f"""
-        Objective: {self._current_memory.objective}
-        Iterations completed: {self._current_memory.iterations}
-        
-        Latest synthesis:
-        {synthesis_str}
-        
-        Previous research:
-        {self._format_research_history()}
-        """
+<adaptive:decision-context>
+    <adaptive:objective>{self._current_memory.objective}</adaptive:objective>
+    <adaptive:iterations-completed>{self._current_memory.iterations}</adaptive:iterations-completed>
+    
+    <adaptive:latest-synthesis>
+{synthesis_str}
+    </adaptive:latest-synthesis>
+    
+    <adaptive:previous-research>
+{self._format_research_history()}
+    </adaptive:previous-research>
+</adaptive:decision-context>"""
 
         decision = await llm.generate_structured(
             message=context,
@@ -501,15 +509,19 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
 
         # Build comprehensive context
         context = f"""
-        Objective: {self._current_memory.objective}
-        Task Type: {self._current_memory.task_type}
-        
-        Research conducted ({self._current_memory.iterations} iterations):
-        {self._format_research_history()}
-        
-        All findings:
-        {self._format_all_findings()}
-        """
+<adaptive:final-report-context>
+    <adaptive:objective>{self._current_memory.objective}</adaptive:objective>
+    <adaptive:task-type>{self._current_memory.task_type}</adaptive:task-type>
+    <adaptive:iterations>{self._current_memory.iterations}</adaptive:iterations>
+    
+    <adaptive:research-history>
+{self._format_research_history()}
+    </adaptive:research-history>
+    
+    <adaptive:all-findings>
+{self._format_all_findings()}
+    </adaptive:all-findings>
+</adaptive:final-report-context>"""
 
         report_messages = await llm.generate(
             message=f"Generate a comprehensive report based on this research:\n\n{context}",
@@ -542,24 +554,27 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
         # Format available agents if any
         agents_info = ""
         if self.available_agents:
-            agents_info = "\n\nAvailable Agents:\n" + "\n".join(
+            agent_list = "\n".join(
                 [
-                    f"- {self._format_agent_info(agent_name)}"
+                    f"        <adaptive:agent name=\"{agent_name}\">{self._format_agent_info(agent_name)}</adaptive:agent>"
                     for agent_name in self.available_agents.keys()
                 ]
             )
+            agents_info = f"\n    <adaptive:available-agents>\n{agent_list}\n    </adaptive:available-agents>"
 
         return f"""
-        Objective: {self._current_memory.objective}
-        Task Type: {self._current_memory.task_type}
-        Iterations: {self._current_memory.iterations}
-        
-        Research conducted:
-        {self._format_research_history()}
-        
-        Available MCP servers: {", ".join(self.available_servers)}
-        {agents_info}
-        """
+<adaptive:planning-context>
+    <adaptive:objective>{self._current_memory.objective}</adaptive:objective>
+    <adaptive:task-type>{self._current_memory.task_type}</adaptive:task-type>
+    <adaptive:iterations>{self._current_memory.iterations}</adaptive:iterations>
+    
+    <adaptive:research-conducted>
+{self._format_research_history()}
+    </adaptive:research-conducted>
+    
+    <adaptive:available-mcp-servers>{", ".join(self.available_servers)}</adaptive:available-mcp-servers>
+    {agents_info}
+</adaptive:planning-context>"""
 
     def _format_research_history(self) -> str:
         """Format research history"""
@@ -582,7 +597,7 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
                 synthesis_str = llm.message_str(
                     synthesis_messages[-1], content_only=True
                 )
-                history_parts.append(f"Iteration {i + 1}:\n{synthesis_str}")
+                history_parts.append(f"    <adaptive:iteration number=\"{i + 1}\">\n{synthesis_str}\n    </adaptive:iteration>")
 
         return "\n\n".join(history_parts)
 
@@ -591,7 +606,7 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
         findings = []
         for result in self._current_memory.subagent_results:
             if result.success and result.findings:
-                findings.append(f"**{result.aspect_name}**:\n{result.findings}")
+                findings.append(f"    <adaptive:finding aspect=\"{result.aspect_name}\">\n{result.findings}\n    </adaptive:finding>")
 
         return "\n\n".join(findings)
 
