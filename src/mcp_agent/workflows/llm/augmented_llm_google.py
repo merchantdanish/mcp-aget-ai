@@ -30,6 +30,7 @@ from mcp_agent.workflows.llm.augmented_llm import (
     CallToolResult,
 )
 from mcp_agent.workflows.llm.multipart_converter_google import GoogleConverter
+from mcp_agent.tracing.token_tracking_decorator import track_tokens
 
 
 class GoogleAugmentedLLM(
@@ -72,6 +73,7 @@ class GoogleAugmentedLLM(
             use_history=True,
         )
 
+    @track_tokens()
     async def generate(self, message, request_params: RequestParams | None = None):
         """
         Process a query using an LLM and available tools.

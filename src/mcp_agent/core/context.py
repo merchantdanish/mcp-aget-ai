@@ -30,6 +30,7 @@ from mcp_agent.mcp.mcp_server_registry import ServerRegistry
 from mcp_agent.tracing.tracer import TracingConfig
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.tracing.token_counter import TokenCounter
 
 
 if TYPE_CHECKING:
@@ -77,6 +78,9 @@ class Context(BaseModel):
     tracing_enabled: bool = False
     # Store the TracingConfig instance for this context
     tracing_config: Optional[TracingConfig] = None
+
+    # Token counting and cost tracking
+    token_counter: Optional[TokenCounter] = None
 
     model_config = ConfigDict(
         extra="allow",
@@ -213,6 +217,9 @@ async def initialize_context(
         else:
             # Use the global tracer if TracingConfig is not set
             context.tracer = trace.get_tracer(config.otel.service_name)
+
+    # Initialize token counter
+    context.token_counter = TokenCounter()
 
     if store_globally:
         global _global_context
