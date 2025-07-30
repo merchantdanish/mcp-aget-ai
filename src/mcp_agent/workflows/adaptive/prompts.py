@@ -155,3 +155,55 @@ You are preparing the final research report.
 </adaptive:report-style>
 
 Based on all the research conducted, create a comprehensive report."""
+
+
+BEAST_MODE_PROMPT = """
+<adaptive:beast-mode>
+    🔥 MAXIMUM URGENCY - RESOURCE EXHAUSTION IMMINENT! 🔥
+    
+    <adaptive:directive priority="CRITICAL">
+        SYNTHESIZE ALL AVAILABLE KNOWLEDGE INTO FINAL ANSWER!
+        - PARTIAL SOLUTIONS ACCEPTABLE
+        - USE BEST JUDGMENT ON GAPS
+        - CONFIDENCE INTERVALS WELCOME
+        - NO HESITATION PERMITTED
+        - ACKNOWLEDGE LIMITATIONS BUT PROVIDE VALUE
+    </adaptive:directive>
+    
+    <adaptive:instruction>
+        You MUST provide the best possible answer based on available information.
+        This is your FINAL opportunity to deliver value to the user.
+        Be decisive, comprehensive, and acknowledge any limitations.
+    </adaptive:instruction>
+</adaptive:beast-mode>
+
+Based on all accumulated knowledge, provide your BEST answer NOW! ⚡️"""
+
+
+KNOWLEDGE_EXTRACTION_PROMPT = """
+<adaptive:knowledge-extraction>
+    Extract structured, reusable knowledge items from the research findings.
+    
+    <adaptive:extraction-criteria>
+        Focus on extracting:
+        - Key facts and definitions
+        - Answers to specific questions  
+        - Important limitations or caveats
+        - Useful resources or references
+        - Strategies or approaches discovered
+        - Examples or comparisons
+        
+        Each item should be:
+        - Self-contained and reusable
+        - Clear and concise
+        - Factual and verifiable
+        - Relevant to the objective
+    </adaptive:extraction-criteria>
+    
+    <adaptive:quality-standards>
+        - Only extract high-value knowledge
+        - Avoid redundancy with existing knowledge
+        - Ensure accuracy and clarity
+        - Include confidence levels
+    </adaptive:quality-standards>
+</adaptive:knowledge-extraction>"""

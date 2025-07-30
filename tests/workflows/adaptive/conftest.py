@@ -45,11 +45,27 @@ def mock_context():
     # Mock required attributes
     context.server_registry = MagicMock()
     context.executor = MagicMock()
-    context.executor.execute = AsyncMock()
+
+    # Mock the agent initialization task response
+    async def mock_init_aggregator(*args, **kwargs):
+        from mcp_agent.agents.agent import InitAggregatorResponse
+
+        return InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={},
+            server_to_tool_map={},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+            namespaced_resource_map={},
+            server_to_resource_map={},
+        )
+
+    context.executor.execute = AsyncMock(side_effect=mock_init_aggregator)
     context.model_selector = MagicMock()
     context.model_selector.select_model = MagicMock(return_value="test-model")
     context.tracing_enabled = False
     context.servers = {"server1": MagicMock(), "server2": MagicMock()}
+    context.token_counter = None  # Most tests don't need token counting
 
     return context
 

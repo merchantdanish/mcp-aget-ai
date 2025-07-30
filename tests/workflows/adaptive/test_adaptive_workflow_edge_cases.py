@@ -14,8 +14,8 @@ from mcp_agent.workflows.adaptive.models import (
     ResearchAspect,
     SubagentResult,
     SynthesisDecision,
-    ExecutionMemory,
 )
+from mcp_agent.workflows.adaptive.knowledge_manager import EnhancedExecutionMemory
 from mcp_agent.workflows.adaptive.memory import MemoryManager
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
@@ -55,7 +55,7 @@ class TestErrorHandling:
         workflow = AdaptiveWorkflow(llm_factory=mock_llm_factory, context=mock_context)
 
         # Set up workflow state
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test",
             objective="Test failure handling",
             task_type=TaskType.RESEARCH,
@@ -107,7 +107,7 @@ class TestErrorHandling:
 
         # The workflow should handle memory save failures gracefully
         # and continue execution
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test", objective="Test", task_type=TaskType.RESEARCH
         )
 
@@ -124,7 +124,7 @@ class TestErrorHandling:
         workflow = AdaptiveWorkflow(llm_factory=mock_llm_factory, context=mock_context)
 
         # Set up workflow state
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test", objective="Test exception", task_type=TaskType.RESEARCH
         )
 
@@ -134,8 +134,6 @@ class TestErrorHandling:
         )
 
         # Mock the execute_single_aspect to raise an exception
-        original_execute = workflow._execute_single_aspect
-
         async def failing_execute(*args, **kwargs):
             raise RuntimeError("Simulated LLM failure")
 
@@ -143,7 +141,7 @@ class TestErrorHandling:
 
         # Execute should handle the exception gracefully
         try:
-            result = await workflow._execute_single_aspect(aspect, None, MagicMock())
+            await workflow._execute_single_aspect(aspect, None, MagicMock())
             # If we get here, the exception was caught and handled
             assert False, "Expected RuntimeError to be raised"
         except RuntimeError as e:
@@ -197,7 +195,7 @@ class TestBoundaryConditions:
         workflow = AdaptiveWorkflow(llm_factory=mock_llm_factory, context=mock_context)
 
         # Set up workflow state
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test",
             objective="Test empty aspects",
             task_type=TaskType.RESEARCH,
@@ -266,7 +264,7 @@ class TestConcurrencyAndRaceConditions:
             )
 
         workflow._execute_single_aspect = mock_execute
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test", objective="Test parallel", task_type=TaskType.RESEARCH
         )
 
@@ -305,7 +303,7 @@ class TestConcurrencyAndRaceConditions:
             )
 
         workflow._execute_single_aspect = mock_execute
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test",
             objective="Test sequential",
             task_type=TaskType.RESEARCH,
@@ -344,7 +342,7 @@ class TestResourceManagement:
         )
 
         # Set up memory with high cost
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test",
             objective="Test cost limit",
             total_cost=1.9,  # Almost at budget
@@ -362,7 +360,7 @@ class TestResourceManagement:
         workflow._current_memory.total_cost = 2.4
 
         # Check should_continue
-        assert workflow._should_continue(0) is False
+        assert await workflow._should_continue(0) is False
 
     @pytest.mark.asyncio
     async def test_memory_cleanup_on_exception(self, mock_llm_factory, mock_context):
@@ -423,7 +421,7 @@ class TestComplexScenarios:
             ),
         ]
 
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test",
             objective="Mixed agents test",
             task_type=TaskType.RESEARCH,
@@ -449,28 +447,34 @@ class TestComplexScenarios:
         # Track planning calls
         plan_calls = []
 
-        async def mock_plan(span):
-            iteration = len(plan_calls)
-            plan_calls.append(iteration)
-
-            if iteration == 0:
-                # First plan
-                return [ResearchAspect(name="Initial", objective="Start research")]
-            elif iteration == 1:
-                # Adaptive replan based on findings
-                return [ResearchAspect(name="Followup", objective="Dig deeper")]
-            else:
-                # No more aspects
-                return []
-
-        workflow._plan_research = mock_plan
+        # Define the plans that should be returned
+        plan_results = [
+            [ResearchAspect(name="Initial", objective="Start research")],
+            [ResearchAspect(name="Followup", objective="Dig deeper")],
+            [],
+        ]
 
         # Mock analyze_objective to return a proper TaskType
         workflow._analyze_objective = AsyncMock(return_value=TaskType.RESEARCH)
 
         # Mock other components
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test", objective="Adaptive test", task_type=TaskType.RESEARCH
+        )
+
+        # Initialize components that the workflow expects
+        from mcp_agent.workflows.adaptive.knowledge_manager import KnowledgeExtractor
+        from mcp_agent.workflows.adaptive.action_controller import ActionController
+        from mcp_agent.workflows.adaptive.budget_manager import BudgetManager
+        from mcp_agent.workflows.adaptive.subtask_queue import AdaptiveSubtaskQueue
+
+        workflow.knowledge_extractor = KnowledgeExtractor(
+            workflow.llm_factory, workflow.context
+        )
+        workflow.action_controller = ActionController()
+        workflow.budget_manager = BudgetManager()
+        workflow.subtask_queue = AdaptiveSubtaskQueue(
+            "Adaptive test", TaskType.RESEARCH
         )
 
         # Configure mock LLM instance properly
@@ -486,8 +490,64 @@ class TestComplexScenarios:
         ]
         mock_llm_instance.generate_structured_mock.side_effect = decisions
 
-        # Make factory return our configured mock
-        mock_llm_factory.side_effect = lambda agent: mock_llm_instance
+        # Make factory return appropriate mocks
+        def enhanced_factory(agent):
+            if agent and hasattr(agent, "name"):
+                if agent.name == "ObjectiveExtractor":
+                    obj_mock = MockAugmentedLLM()
+                    obj_mock.generate_str_mock.return_value = "Adaptive test"
+                    return obj_mock
+                elif agent.name == "ComplexityAssessor":
+                    # Add ComplexityAssessor to trigger decomposition
+                    assess_mock = MockAugmentedLLM()
+                    complexity = MagicMock()
+                    complexity.needs_decomposition = True
+                    complexity.reason = "Complex task requiring decomposition"
+                    complexity.estimated_subtasks = 2
+                    assess_mock.generate_structured_mock.return_value = complexity
+                    return assess_mock
+                elif agent.name == "SubtaskPlanner":
+                    # Add SubtaskPlanner to handle planning
+                    planner_mock = MockAugmentedLLM()
+
+                    # Track calls and return different plans
+                    def plan_side_effect(*args, **kwargs):
+                        call_idx = len(plan_calls)
+                        plan_calls.append(call_idx)
+                        result = (
+                            plan_results[call_idx]
+                            if call_idx < len(plan_results)
+                            else []
+                        )
+                        plan = MagicMock()
+                        plan.aspects = result
+                        return plan
+
+                    planner_mock.generate_structured_mock.side_effect = plan_side_effect
+                    return planner_mock
+                elif agent.name == "KnowledgeExtractor":
+                    extract_mock = MockAugmentedLLM()
+                    extraction = MagicMock()
+                    extraction.items = []
+                    extraction.summary = "No knowledge"
+                    extract_mock.generate_structured_mock.return_value = extraction
+                    return extract_mock
+                elif agent.name == "KnowledgeSynthesizer":
+                    synth_mock = MockAugmentedLLM()
+                    synth_mock.generate_mock.return_value = ["Synthesis"]
+                    synth_mock.message_str_mock.return_value = "Synthesis string"
+                    return synth_mock
+                elif agent.name == "DecisionMaker":
+                    decision_mock = MockAugmentedLLM()
+                    decision_mock.generate_structured_mock.side_effect = decisions
+                    return decision_mock
+                elif agent.name == "ReportWriter":
+                    report_mock = MockAugmentedLLM()
+                    report_mock.generate_mock.return_value = ["Final report"]
+                    return report_mock
+            return mock_llm_instance
+
+        mock_llm_factory.side_effect = enhanced_factory
 
         # Mock the subagent execution to avoid the keys() error
         async def mock_execute_single(aspect, params, span):
@@ -518,12 +578,28 @@ def mock_context():
     context = MagicMock(spec=Context)
     context.server_registry = MagicMock()
     context.executor = MagicMock()
-    context.executor.execute = AsyncMock()
+
+    # Mock the agent initialization task response
+    async def mock_init_aggregator(*args, **kwargs):
+        from mcp_agent.agents.agent import InitAggregatorResponse
+
+        return InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={},
+            server_to_tool_map={},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+            namespaced_resource_map={},
+            server_to_resource_map={},
+        )
+
+    context.executor.execute = AsyncMock(side_effect=mock_init_aggregator)
     context.model_selector = MagicMock()
     context.model_selector.select_model = MagicMock(return_value="test-model")
     context.tracing_enabled = False
     context.servers = {}
     context.config = MagicMock()
+    context.token_counter = None
     return context
 
 

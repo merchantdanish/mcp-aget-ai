@@ -208,7 +208,7 @@ async def main():
         print("Testing memory and learning capabilities...\n")
 
         # First execution - workflow learns
-        first_result = await workflow.generate_str(
+        _ = await workflow.generate_str(
             message="What are the key components of the MCP protocol implementation in this codebase?"
         )
 

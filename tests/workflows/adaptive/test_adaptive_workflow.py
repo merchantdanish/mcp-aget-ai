@@ -14,9 +14,10 @@ from mcp_agent.workflows.adaptive.models import (
     ResearchAspect,
     SubagentResult,
     SynthesisDecision,
-    ExecutionMemory,
     ExecutionResult,
 )
+from mcp_agent.workflows.adaptive.knowledge_manager import EnhancedExecutionMemory
+from mcp_agent.workflows.adaptive.action_controller import ActionController
 from mcp_agent.workflows.adaptive.memory import (
     MemoryManager,
     InMemoryBackend,
@@ -124,7 +125,7 @@ class TestMemoryManagement:
         memory_manager = MemoryManager(backend=backend)
 
         # Create test memory
-        memory = ExecutionMemory(
+        memory = EnhancedExecutionMemory(
             execution_id="test-123",
             objective="Test objective",
             task_type=TaskType.RESEARCH,
@@ -150,7 +151,7 @@ class TestMemoryManagement:
         memory_manager = MemoryManager(backend=backend, enable_learning=True)
 
         # Create memory with successful results
-        memory = ExecutionMemory(
+        memory = EnhancedExecutionMemory(
             execution_id="test-456",
             objective="Find information about AI",
             task_type=TaskType.RESEARCH,
@@ -185,7 +186,7 @@ class TestMemoryManagement:
         memory_manager = MemoryManager(backend=backend)
 
         # Create and save memory
-        memory = ExecutionMemory(
+        memory = EnhancedExecutionMemory(
             execution_id="test-789",
             objective="Test filesystem",
             task_type=TaskType.ACTION,
@@ -320,7 +321,7 @@ class TestWorkflowExecution:
         workflow = AdaptiveWorkflow(llm_factory=mock_llm_factory, context=mock_context)
 
         # Set up workflow state
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test", objective="Test objective", task_type=TaskType.RESEARCH
         )
 
@@ -341,7 +342,7 @@ class TestWorkflowExecution:
         )
 
         # Set up workflow state
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test", objective="Test objective", task_type=TaskType.RESEARCH
         )
 
@@ -402,9 +403,11 @@ class TestPredefinedAgents:
         )
 
         # Set up workflow state
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test", objective="Test", task_type=TaskType.RESEARCH
         )
+        # Initialize action controller since we're calling _execute_single_aspect directly
+        workflow.action_controller = ActionController()
 
         # Create aspect that uses predefined agent
         aspect = ResearchAspect(
@@ -438,9 +441,11 @@ class TestPredefinedAgents:
         )
 
         # Set up workflow state
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test", objective="Test", task_type=TaskType.RESEARCH
         )
+        # Initialize action controller since we're calling _execute_single_aspect directly
+        workflow.action_controller = ActionController()
 
         # Create aspect that uses predefined agent
         aspect = ResearchAspect(
@@ -544,7 +549,7 @@ class TestSynthesisAndDecision:
         workflow = AdaptiveWorkflow(llm_factory=mock_llm_factory, context=mock_context)
 
         # Set up workflow state
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test", objective="Test objective", iterations=2
         )
 
@@ -578,7 +583,7 @@ class TestMessageHandling:
         workflow = AdaptiveWorkflow(llm_factory=mock_llm_factory, context=mock_context)
 
         # Set up workflow state with message history
-        workflow._current_memory = ExecutionMemory(
+        workflow._current_memory = EnhancedExecutionMemory(
             execution_id="test",
             objective="Test",
             research_history=[["Message 1"], ["Message 2"]],
@@ -586,9 +591,9 @@ class TestMessageHandling:
 
         history = workflow._format_research_history()
 
-        assert "Iteration 1" in history
+        assert '<adaptive:iteration number="1">' in history
         assert "Synthesis 1" in history
-        assert "Iteration 2" in history
+        assert '<adaptive:iteration number="2">' in history
         assert "Synthesis 2" in history
 
     def test_format_result_as_messages(self, mock_llm_factory, mock_context):
@@ -664,7 +669,56 @@ class TestWorkflowIntegration:
         mock_llm_instance.message_str_mock.return_value = "Synthesis"
 
         # Make factory always return the same mock instance
-        mock_llm_factory.side_effect = lambda agent: mock_llm_instance
+        def llm_factory(agent):
+            if agent and hasattr(agent, "name"):
+                if agent.name == "ObjectiveExtractor":
+                    # For ObjectiveExtractor, return a mock that gives back the objective
+                    obj_mock = MockAugmentedLLM()
+                    obj_mock.generate_str_mock.return_value = "Test objective"
+                    return obj_mock
+                elif agent.name == "ComplexityAssessor":
+                    # Return a mock that triggers decomposition for full workflow
+                    assess_mock = MockAugmentedLLM()
+                    complexity = MagicMock()
+                    complexity.needs_decomposition = (
+                        True  # Changed to trigger full workflow
+                    )
+                    complexity.reason = "Complex task requiring decomposition"
+                    complexity.estimated_subtasks = 1
+                    assess_mock.generate_structured_mock.return_value = complexity
+                    return assess_mock
+                elif agent.name == "KnowledgeExtractor":
+                    # Return a mock that provides empty knowledge extraction
+                    extract_mock = MockAugmentedLLM()
+                    extraction = MagicMock()
+                    extraction.items = []
+                    extraction.summary = "No knowledge extracted"
+                    extract_mock.generate_structured_mock.return_value = extraction
+                    return extract_mock
+                elif agent.name == "SubtaskPlanner":
+                    # Add SubtaskPlanner mock
+                    planner_mock = MockAugmentedLLM()
+                    planner_mock.generate_structured_mock.return_value = mock_plan
+                    return planner_mock
+                elif agent.name == "DecisionMaker":
+                    # Add DecisionMaker mock
+                    decision_mock = MockAugmentedLLM()
+                    decision_mock.generate_structured_mock.return_value = mock_decision
+                    return decision_mock
+                elif agent.name == "KnowledgeSynthesizer":
+                    # Add KnowledgeSynthesizer mock
+                    synth_mock = MockAugmentedLLM()
+                    synth_mock.generate_mock.return_value = ["Synthesis"]
+                    synth_mock.message_str_mock.return_value = "Synthesis"
+                    return synth_mock
+                elif agent.name == "ReportWriter":
+                    # Add ReportWriter mock for final report
+                    report_mock = MockAugmentedLLM()
+                    report_mock.generate_mock.return_value = mock_final_report
+                    return report_mock
+            return mock_llm_instance
+
+        mock_llm_factory.side_effect = llm_factory
 
         workflow = AdaptiveWorkflow(
             llm_factory=mock_llm_factory, context=mock_context, max_iterations=2
@@ -741,12 +795,28 @@ def mock_context():
     context = MagicMock(spec=Context)
     context.server_registry = MagicMock()
     context.executor = MagicMock()
-    context.executor.execute = AsyncMock()
+
+    # Mock the agent initialization task response
+    async def mock_init_aggregator(*args, **kwargs):
+        from mcp_agent.agents.agent import InitAggregatorResponse
+
+        return InitAggregatorResponse(
+            initialized=True,
+            namespaced_tool_map={},
+            server_to_tool_map={},
+            namespaced_prompt_map={},
+            server_to_prompt_map={},
+            namespaced_resource_map={},
+            server_to_resource_map={},
+        )
+
+    context.executor.execute = AsyncMock(side_effect=mock_init_aggregator)
     context.model_selector = MagicMock()
     context.model_selector.select_model = MagicMock(return_value="test-model")
     context.tracing_enabled = False
     context.servers = {}
     context.config = MagicMock()
+    context.token_counter = None
     return context
 
 

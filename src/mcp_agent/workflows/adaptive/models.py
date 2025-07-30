@@ -39,7 +39,18 @@ class SubagentResult(BaseModel):
     error: Optional[str] = None
     start_time: datetime
     end_time: Optional[datetime] = None
+
+    # Token tracking - populated from TokenCounter
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+
+    # Cost tracking - calculated from token usage
     cost: float = 0.0
+
+    # Model info for cost calculation
+    model_name: Optional[str] = None
+    provider: Optional[str] = None
 
 
 class SynthesisDecision(BaseModel):
@@ -96,6 +107,11 @@ class ExecutionResult(BaseModel):
     subagents_used: int
     total_time_seconds: float
     total_cost: float
+
+    # Token usage metrics
+    total_tokens: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
 
     # Status
     success: bool = True

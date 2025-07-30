@@ -8,7 +8,26 @@ Usage:
     python assignment_grader_demo.py --no-predefined    # Creates agents dynamically
 """
 
+import asyncio
+import argparse
+import io
 import logging
+import os
+import time
+import warnings
+from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime, timedelta
+from typing import List
+
+from mcp_agent.app import MCPApp
+from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm import RequestParams
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+from mcp_agent.workflows.adaptive.adaptive_workflow import AdaptiveWorkflow
+from mcp_agent.workflows.adaptive.memory import MemoryManager
+from mcp.types import ModelPreferences
+from rich.console import Console
+from rich.panel import Panel
 
 # Configure Python's root logger to disable console output
 logging.getLogger().handlers = []
@@ -30,32 +49,10 @@ otel_logger.propagate = False
 logging.getLogger().setLevel(logging.WARNING)
 
 # Suppress Pydantic serialization warnings
-import warnings
-
 warnings.filterwarnings("ignore", category=UserWarning)
 
 # Suppress uvloop warnings if present
 warnings.filterwarnings("ignore", message=".*uvloop.*")
-
-import asyncio
-import os
-import time
-import argparse
-from datetime import datetime, timedelta
-from typing import List
-from contextlib import redirect_stderr, redirect_stdout
-import io
-
-from mcp_agent.app import MCPApp
-from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows.llm.augmented_llm import RequestParams
-from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-from mcp_agent.workflows.adaptive.adaptive_workflow import AdaptiveWorkflow
-from mcp_agent.workflows.adaptive.memory import MemoryManager
-from mcp.types import ModelPreferences
-
-from rich.console import Console
-from rich.panel import Panel
 
 console = Console()
 
