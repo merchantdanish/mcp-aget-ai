@@ -9,8 +9,8 @@ from datetime import datetime
 import json
 from pydantic import BaseModel, Field
 
-from .models import SubagentResult, ExecutionMemory
 from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.adaptive.models import SubagentResult, ExecutionMemory
 from mcp_agent.logging.logger import get_logger
 
 logger = get_logger(__name__)

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import numpy as np
 
-from .models import ResearchAspect, TaskType
+from mcp_agent.workflows.adaptive.models import ResearchAspect, TaskType
 
 
 @dataclass
