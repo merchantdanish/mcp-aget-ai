@@ -44,6 +44,7 @@ from mcp_agent.tracing.semconv import (
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
 from mcp_agent.tracing.telemetry import get_tracer, is_otel_serializable, telemetry
+from mcp_agent.tracing.token_tracking_decorator import track_tokens
 from mcp_agent.utils.common import ensure_serializable, typed_dict_extras, to_string
 from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
@@ -136,6 +137,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         default_model = "claude-sonnet-4-20250514"
 
         if self.context.config.anthropic:
+            self.provider = self.context.config.anthropic.provider
             if self.context.config.anthropic.provider == "bedrock":
                 default_model = "anthropic.claude-sonnet-4-20250514-v1:0"
             elif self.context.config.anthropic.provider == "vertexai":
@@ -154,6 +156,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
             use_history=True,
         )
 
+    @track_tokens()
     async def generate(
         self,
         message,
@@ -351,6 +354,15 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                         )
                     )
                     span.set_attributes(response_data)
+
+            # Record token usage in context token counter
+            if self.context.token_counter:
+                self.context.token_counter.record_usage(
+                    input_tokens=total_input_tokens,
+                    output_tokens=total_output_tokens,
+                    model_name=model,
+                    provider=self.provider,
+                )
 
             return responses
 

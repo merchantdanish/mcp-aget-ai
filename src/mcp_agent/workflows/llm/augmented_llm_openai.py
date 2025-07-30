@@ -38,6 +38,7 @@ from mcp.types import (
 from mcp_agent.config import OpenAISettings
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.tracing.telemetry import get_tracer, telemetry
+from mcp_agent.tracing.token_tracking_decorator import track_tokens
 from mcp_agent.tracing.semconv import (
     GEN_AI_AGENT_NAME,
     GEN_AI_REQUEST_MODEL,
@@ -148,6 +149,7 @@ class OpenAIAugmentedLLM(
 
         return ChatCompletionAssistantMessageParam(**assistant_message_params)
 
+    @track_tokens()
     async def generate(
         self,
         message,
@@ -368,6 +370,15 @@ class OpenAIAugmentedLLM(
                         )
                     )
                     span.set_attributes(response_data)
+
+            # Record token usage in context token counter
+            if self.context.token_counter:
+                self.context.token_counter.record_usage(
+                    input_tokens=total_input_tokens,
+                    output_tokens=total_output_tokens,
+                    model_name=model,
+                    provider=self.provider,
+                )
 
             return responses
 
