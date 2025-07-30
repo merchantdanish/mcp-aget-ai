@@ -47,6 +47,7 @@ from mcp_agent.tracing.semconv import (
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
 from mcp_agent.tracing.telemetry import get_tracer
+from mcp_agent.tracing.token_tracking_decorator import track_tokens
 from mcp_agent.utils.common import typed_dict_extras
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
@@ -124,6 +125,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
             use_history=True,
         )
 
+    @track_tokens()
     async def generate(self, message, request_params: RequestParams | None = None):
         """
         Process a query using an LLM and available tools.
@@ -279,6 +281,15 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                         )
                     )
                     span.set_attributes(response_data)
+
+            # Record token usage in context token counter
+            if self.context.token_counter:
+                self.context.token_counter.record_usage(
+                    input_tokens=total_input_tokens,
+                    output_tokens=total_output_tokens,
+                    model_name=model,
+                    provider=self.provider,
+                )
 
             return responses
 

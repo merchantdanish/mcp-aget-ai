@@ -15,6 +15,7 @@ from typing import (
 from mcp_agent.agents.agent import Agent
 from mcp_agent.tracing.semconv import GEN_AI_AGENT_NAME
 from mcp_agent.tracing.telemetry import get_tracer
+from mcp_agent.tracing.token_tracking_decorator import track_tokens
 from mcp_agent.workflows.llm.augmented_llm import (
     AugmentedLLM,
     MessageParamT,
@@ -209,6 +210,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             maxTokens=16384,
         )
 
+    @track_tokens(node_type="workflow")
     async def generate(
         self,
         message: str | MessageParamT | List[MessageParamT],

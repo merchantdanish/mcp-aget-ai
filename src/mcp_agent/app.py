@@ -258,11 +258,18 @@ class MCPApp:
         """
         await self.initialize()
 
+        # Push token tracking context for the app
+        if self.context.token_counter:
+            self.context.token_counter.push(name=self.name, node_type="app")
+
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(self.name):
             try:
                 yield self
             finally:
+                # Pop token tracking context
+                if self.context.token_counter:
+                    self.context.token_counter.pop()
                 await self.cleanup()
 
     def workflow(
