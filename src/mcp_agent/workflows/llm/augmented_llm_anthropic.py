@@ -226,10 +226,12 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                     "model": model,
                     "max_tokens": params.maxTokens,
                     "messages": messages,
-                    "system": self.instruction or params.systemPrompt,
                     "stop_sequences": params.stopSequences or [],
                     "tools": available_tools,
                 }
+
+                if system := (self.instruction or params.systemPrompt):
+                    arguments["system"] = system
 
                 if params.metadata:
                     arguments = {**arguments, **params.metadata}

@@ -502,10 +502,10 @@ class OpenAIAugmentedLLM(
     async def execute_tool_call(
         self,
         tool_call: ChatCompletionMessageToolCall,
-    ) -> ChatCompletionToolMessageParam | None:
+    ) -> ChatCompletionToolMessageParam:
         """
         Execute a single tool call and return the result message.
-        Returns None if there's no content to add to messages.
+        Returns a single ChatCompletionToolMessageParam object.
         """
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
@@ -544,16 +544,11 @@ class OpenAIAugmentedLLM(
 
             self._annotate_span_for_call_tool_result(span, result)
 
-            if result.content:
-                return ChatCompletionToolMessageParam(
-                    role="tool",
-                    tool_call_id=tool_call_id,
-                    content=[
-                        mcp_content_to_openai_content_part(c) for c in result.content
-                    ],
-                )
-
-            return None
+            return ChatCompletionToolMessageParam(
+                role="tool",
+                tool_call_id=tool_call_id,
+                content=[mcp_content_to_openai_content_part(c) for c in result.content],
+            )
 
     def message_param_str(self, message: ChatCompletionMessageParam) -> str:
         """Convert an input message to a string representation."""
@@ -1074,7 +1069,8 @@ def mcp_content_to_openai_content_part(
         return ChatCompletionContentPartTextParam(type="text", text=content.text)
     elif isinstance(content, ImageContent):
         return ChatCompletionContentPartImageParam(
-            type="image_url", image_url=f"data:{content.mimeType};base64,{content.data}"
+            type="image_url",
+            image_url={"url": f"data:{content.mimeType};base64,{content.data}"},
         )
     elif isinstance(content, EmbeddedResource):
         if isinstance(content.resource, TextResourceContents):
@@ -1087,7 +1083,9 @@ def mcp_content_to_openai_content_part(
             ):
                 return ChatCompletionContentPartImageParam(
                     type="image_url",
-                    image_url=f"data:{content.resource.mimeType};base64,{content.resource.blob}",
+                    image_url={
+                        "url": f"data:{content.resource.mimeType};base64,{content.resource.blob}"
+                    },
                 )
             else:
                 # Best effort if mime type is unknown

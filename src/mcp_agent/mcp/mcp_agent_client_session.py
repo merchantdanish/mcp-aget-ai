@@ -47,6 +47,7 @@ from mcp.types import (
     Root,
     ElicitRequestParams as MCPElicitRequestParams,
     ElicitResult,
+    PaginatedRequestParams,
 )
 
 from mcp_agent.config import MCPServerSettings
@@ -183,14 +184,20 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
                 inject(trace_headers)
                 if "traceparent" in trace_headers or "tracestate" in trace_headers:
                     if params is None:
-                        params = RequestParams()
-                    if params.meta is None:
-                        params.meta = RequestParams.Meta()
-                    if "traceparent" in trace_headers:
-                        params.meta.traceparent = trace_headers["traceparent"]
-                    if "tracestate" in trace_headers:
-                        params.meta.tracestate = trace_headers["tracestate"]
-                    request.root.params = params
+                        params = PaginatedRequestParams(
+                            cursor=None,
+                            meta=RequestParams.Meta(
+                                traceparent=trace_headers.get("traceparent"),
+                                tracestate=trace_headers.get("tracestate"),
+                            ),
+                        )
+                    else:
+                        if params.meta is None:
+                            params.meta = RequestParams.Meta(
+                                traceparent=trace_headers.get("traceparent"),
+                                tracestate=trace_headers.get("tracestate"),
+                            )
+                    request.root = request.root.model_copy(update={"params": params})
 
                 if metadata and metadata.resumption_token:
                     span.set_attribute(
