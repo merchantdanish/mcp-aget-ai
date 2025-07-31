@@ -7,6 +7,8 @@ from mcp_agent.config import MCPServerSettings
 from mcp_agent.executor.workflow import WorkflowExecution
 from mcp_agent.mcp.gen_client import gen_client
 
+from rich import print
+
 
 async def main():
     # Create MCPApp to get the server registry
@@ -122,6 +124,24 @@ async def main():
                 #     "workflows-cancel",
                 #     arguments={"workflow_id": "BasicAgentWorkflow", "run_id": run_id},
                 # )
+
+            # Get the token usage summary
+            logger.info("Fetching token usage summary...")
+            token_usage_result = await server.call_tool(
+                "get_token_usage",
+                arguments={
+                    "run_id": run_id,
+                    "workflow_id": execution.workflow_id,
+                },
+            )
+
+            logger.info(
+                "Token usage summary:",
+                data=_tool_result_to_json(token_usage_result) or token_usage_result,
+            )
+
+            # Display the token usage summary
+            print(token_usage_result.structuredContent)
 
 
 def _tool_result_to_json(tool_result: CallToolResult):
