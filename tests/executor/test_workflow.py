@@ -189,9 +189,19 @@ class TestWorkflowAsyncMethods:
             assert wf._run_id == unique_ids[i]
             assert wf.run_id == unique_ids[i]
 
-        # Clean up - wait for all workflows to complete
+        # Clean up - cancel all running tasks
+        for wf in workflows:
+            if hasattr(wf, "_run_task") and wf._run_task and not wf._run_task.done():
+                wf._run_task.cancel()
+
+        # Wait for all tasks to finish cancellation
         await asyncio.gather(
-            *[wf._run_task for wf in workflows], return_exceptions=True
+            *[
+                wf._run_task
+                for wf in workflows
+                if hasattr(wf, "_run_task") and wf._run_task
+            ],
+            return_exceptions=True,
         )
 
     @pytest.mark.asyncio
@@ -253,9 +263,19 @@ class TestWorkflowAsyncMethods:
         all_run_ids = [reg["run_id"] for reg in registered_workflows]
         assert len(set(all_run_ids)) == 3, "All registered run_ids should be unique"
 
-        # Clean up
+        # Clean up - cancel all running tasks
+        for wf in workflows:
+            if hasattr(wf, "_run_task") and wf._run_task and not wf._run_task.done():
+                wf._run_task.cancel()
+
+        # Wait for all tasks to finish cancellation
         await asyncio.gather(
-            *[wf._run_task for wf in workflows], return_exceptions=True
+            *[
+                wf._run_task
+                for wf in workflows
+                if hasattr(wf, "_run_task") and wf._run_task
+            ],
+            return_exceptions=True,
         )
 
     @pytest.mark.asyncio

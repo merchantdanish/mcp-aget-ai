@@ -177,7 +177,15 @@ class ModelSelector(ContextDependent):
 
             models: List[ModelInfo] = []
             if provider:
-                models = self.models_by_provider[provider]
+                # Try exact match first, then case-insensitive match
+                models = self.models_by_provider.get(provider, [])
+                if not models:
+                    # Case-insensitive lookup
+                    for key, provider_models in self.models_by_provider.items():
+                        if key.lower() == provider.lower():
+                            models = provider_models
+                            break
+
                 span.set_attribute("provider", provider)
             else:
                 models = self.models

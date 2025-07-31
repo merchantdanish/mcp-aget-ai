@@ -29,6 +29,7 @@ class TestMCPApp:
         mock_context.tracing_enabled = False
         mock_context.upstream_session = None
         mock_context.tracing_config = None
+        mock_context.token_counter = None  # Add token_counter attribute
         return mock_context
 
     @pytest.fixture
