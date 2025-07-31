@@ -809,3 +809,57 @@ class TestAnthropicAugmentedLLM:
         assert isinstance(result, TestResponseModel)
         assert result.name == "MixedTypes"
         assert result.value == 123
+
+    # Test 25: System Prompt Not None in API Call
+    @pytest.mark.asyncio
+    async def test_system_prompt_not_none_in_api_call(self, mock_llm, default_usage):
+        """
+        Tests that system prompt is not None when passed to anthropic.messages.create.
+        This verifies the fix for the system prompt handling bug.
+        """
+        # Setup mock executor to capture the arguments passed
+        captured_payload = None
+
+        async def capture_execute(*args, **kwargs):
+            nonlocal captured_payload
+            captured_payload = args[1].payload
+            return self.create_text_message("Test response", default_usage)
+
+        mock_llm.executor.execute = AsyncMock(side_effect=capture_execute)
+
+        # Test 1: With systemPrompt in RequestParams
+        system_prompt = "You are a helpful assistant."
+        request_params = RequestParams(systemPrompt=system_prompt)
+        await mock_llm.generate("Test query", request_params)
+
+        # Verify system prompt is included and not None
+        assert "system" in captured_payload
+        assert captured_payload["system"] == system_prompt
+        assert captured_payload["system"] is not None
+
+        # Test 2: With instruction set on LLM instance
+        mock_llm.instruction = "You are a pirate assistant."
+        await mock_llm.generate("Test query")
+
+        # Verify instruction is used as system prompt
+        assert "system" in captured_payload
+        assert captured_payload["system"] == "You are a pirate assistant."
+        assert captured_payload["system"] is not None
+
+        # Test 3: Both instruction and systemPrompt provided
+        mock_llm.instruction = "Default instruction"
+        request_params = RequestParams(systemPrompt="Override system prompt")
+        await mock_llm.generate("Test query", request_params)
+
+        # Verify instruction takes precedence
+        assert "system" in captured_payload
+        assert captured_payload["system"] == "Default instruction"
+        assert captured_payload["system"] is not None
+
+        # Test 4: Neither instruction nor systemPrompt provided
+        mock_llm.instruction = None
+        request_params = RequestParams()
+        await mock_llm.generate("Test query", request_params)
+
+        # Verify system is not included when neither is provided
+        assert "system" not in captured_payload
