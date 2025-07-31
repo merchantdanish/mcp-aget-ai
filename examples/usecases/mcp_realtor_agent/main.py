@@ -54,11 +54,11 @@ async def main():
         # Check for required servers
         required_servers = ["rentspider_api", "g-search", "filesystem"]
         missing_servers = []
-        
+
         for server in required_servers:
             if server not in context.config.mcp.servers:
                 missing_servers.append(server)
-        
+
         if missing_servers:
             logger.error(f"Missing required servers: {missing_servers}")
             logger.info("Required servers:")
@@ -71,7 +71,7 @@ async def main():
 
         # RentSpider Market Research Agent
         rentspider_market_agent = Agent(
-            name="rentspider_market_researcher", 
+            name="rentspider_market_researcher",
             instruction=f"""You are a world-class real estate market researcher specializing in {LOCATION}.
 
             You have access to the RentSpider API through MCP tools that include automatic elicitation.
@@ -177,7 +177,7 @@ async def main():
             min_rating=QualityRating.FAIR,  # More lenient to avoid loops
         )
 
-        # Neighborhood Analysis Agent  
+        # Neighborhood Analysis Agent
         neighborhood_agent = Agent(
             name="neighborhood_researcher",
             instruction=f"""            You research neighborhood factors for {LOCATION}.
@@ -298,7 +298,9 @@ async def main():
         )
 
         # --- CREATE THE ORCHESTRATOR ---
-        logger.info(f"Initializing RentSpider-powered real estate analysis for {LOCATION}")
+        logger.info(
+            f"Initializing RentSpider-powered real estate analysis for {LOCATION}"
+        )
 
         orchestrator = Orchestrator(
             llm_factory=OpenAIAugmentedLLM,

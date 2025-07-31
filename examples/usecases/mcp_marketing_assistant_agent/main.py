@@ -48,13 +48,13 @@ def load_company_config() -> dict:
     Returns a default config if the file is not found.
     """
     try:
-        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
     except FileNotFoundError:
         print(f"⚠️ {CONFIG_FILE} not found. Using default config...")
         return {
-            'company': {'name': 'Your Company'},
-            'platforms': {'linkedin': {'max_word_count': 150}}
+            "company": {"name": "Your Company"},
+            "platforms": {"linkedin": {"max_word_count": 150}},
         }
 
 
@@ -65,38 +65,38 @@ async def main():
     """
     print("🎯 Marketing Content Agent")
     print("🤖 EvaluatorOptimizerLLM + Comprehensive Context")
-    
+
     # Get user request from command line or prompt
     if len(sys.argv) > 1:
         request = " ".join(sys.argv[1:])
     else:
         request = input("\nWhat content would you like me to create? ").strip()
-    
+
     if not request:
         print("❌ No request provided")
         return False
-    
+
     # Load configuration and determine platform
     platform = detect_platform(request)
     config = load_company_config()
-    company_name = config['company']['name']
-    
+    company_name = config["company"]["name"]
+
     # Ensure required directories exist
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    os.makedirs(CONTENT_SAMPLES_DIR, exist_ok=True) 
+    os.makedirs(CONTENT_SAMPLES_DIR, exist_ok=True)
     os.makedirs(COMPANY_DOCS_DIR, exist_ok=True)
-    
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_file = f"{platform}_content_{timestamp}.md"
     output_path = os.path.join(OUTPUT_DIR, output_file)
-    
+
     async with app.run() as content_app:
         logger = content_app.logger
-        
+
         logger.info(f"Creating {platform} content for {company_name}")
-        
+
         # --- Define Agents ---
-        
+
         # Content Creator Agent: generates two content variations
         content_creator = Agent(
             name="content_creator",
@@ -273,7 +273,7 @@ CRITICAL RULES:
 
         # Memory Manager Agent: stores user feedback and choices
         memory_manager = Agent(
-            name="memory_manager", 
+            name="memory_manager",
             instruction=f"""You are a simple learning system for {company_name} marketing content.
 
 When given feedback or user choices, store them as simple entities.
@@ -289,16 +289,16 @@ Use create_entities tool with simple structure:
 Keep it simple - one entity per learning.""",
             server_names=["memory"],
         )
-        
+
         # Attach LLM to memory manager agent
         memory_manager_llm = OpenAIAugmentedLLM(agent=memory_manager)
 
         # Main content creation and feedback loop
         logger.info("Starting content creation workflow")
-        
+
         try:
             feedback_context = ""  # Holds the latest user feedback for context
-            
+
             while True:
                 # Build the content creation task, including any user feedback
                 task = f"""Create 2 excellent content variations for: "{request}"
@@ -323,38 +323,43 @@ Both versions should be complete, ready-to-post content."""
 
                 # Generate content using the optimizer/evaluator system
                 result = await content_quality_system.generate_str(
-                    message=task,
-                    request_params=RequestParams(model="gpt-4o")
+                    message=task, request_params=RequestParams(model="gpt-4o")
                 )
 
                 # Display content options to the user
-                print(f"\n{'='*60}")
+                print(f"\n{'=' * 60}")
                 if feedback_context:
                     print("🎯 IMPROVED CONTENT OPTIONS (Based on your feedback):")
                 else:
                     print("🎯 EXCELLENT CONTENT OPTIONS:")
-                print(f"{'='*60}")
+                print(f"{'=' * 60}")
                 print(result)
-                print(f"{'='*60}")
+                print(f"{'=' * 60}")
 
                 # Prompt user for their choice or feedback
                 while True:
-                    choice = input("\nWhich version do you prefer? (A/B/feedback/quit): ").strip().upper()
-                    if choice in ['A', 'B', 'FEEDBACK', 'QUIT']:
+                    choice = (
+                        input("\nWhich version do you prefer? (A/B/feedback/quit): ")
+                        .strip()
+                        .upper()
+                    )
+                    if choice in ["A", "B", "FEEDBACK", "QUIT"]:
                         break
                     print("Please enter A, B, feedback, or quit")
 
-                if choice == 'QUIT':
+                if choice == "QUIT":
                     logger.info("User cancelled")
                     return False
 
                 # Handle user feedback and regenerate content if needed
-                if choice == 'FEEDBACK':
-                    feedback = input("\nWhat feedback do you have? What would you like me to improve? ").strip()
+                if choice == "FEEDBACK":
+                    feedback = input(
+                        "\nWhat feedback do you have? What would you like me to improve? "
+                    ).strip()
                     if not feedback:
                         print("No feedback provided, continuing...")
                         continue
-                    
+
                     # Store feedback in memory for future learning
                     feedback_task = f"""Store this user feedback as a simple learning:
 
@@ -366,9 +371,9 @@ Create one simple entity to remember this feedback."""
 
                     await memory_manager_llm.generate_str(
                         message=feedback_task,
-                        request_params=RequestParams(model="gpt-4o-mini")
+                        request_params=RequestParams(model="gpt-4o-mini"),
                     )
-                    
+
                     # Update feedback context for the next content generation
                     feedback_context = f"""CRITICAL USER FEEDBACK TO ADDRESS: "{feedback}"
 
@@ -377,8 +382,10 @@ The user was not satisfied with the previous attempt. You must completely change
 Previous content failed because: {feedback}
 
 Create entirely new content that directly addresses and fixes these issues."""
-                    
-                    print("🧠 Feedback stored! Creating completely new content based on your input...")
+
+                    print(
+                        "🧠 Feedback stored! Creating completely new content based on your input..."
+                    )
                     continue  # Regenerate content with new feedback
 
                 # If user chose A or B, exit loop to save and learn
@@ -394,8 +401,7 @@ Request: "{request}"
 Create one simple entity to remember this choice."""
 
             await memory_manager_llm.generate_str(
-                message=learning_task,
-                request_params=RequestParams(model="gpt-4o-mini")
+                message=learning_task, request_params=RequestParams(model="gpt-4o-mini")
             )
 
             # Save the selected content to file
@@ -410,12 +416,12 @@ request: "{request}"
 {result}
 """
 
-            with open(output_path, 'w', encoding='utf-8') as f:
+            with open(output_path, "w", encoding="utf-8") as f:
                 f.write(content_to_save)
 
             print(f"\n✅ Great choice! Content saved to: {output_path}")
             print(" Learned from your preference for future content")
-            
+
             logger.info(f"Content successfully created and saved to {output_path}")
             return True
 
