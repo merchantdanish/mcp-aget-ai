@@ -76,19 +76,26 @@ class TokenNode:
 
     def aggregate_usage(self) -> TokenUsage:
         """Recursively aggregate usage from this node and all children"""
-        total = TokenUsage(
-            input_tokens=self.usage.input_tokens,
-            output_tokens=self.usage.output_tokens,
-            total_tokens=self.usage.total_tokens,
-        )
+        try:
+            total = TokenUsage(
+                input_tokens=self.usage.input_tokens,
+                output_tokens=self.usage.output_tokens,
+                total_tokens=self.usage.total_tokens,
+            )
 
-        for child in self.children:
-            child_usage = child.aggregate_usage()
-            total.input_tokens += child_usage.input_tokens
-            total.output_tokens += child_usage.output_tokens
-            total.total_tokens += child_usage.total_tokens
+            for child in self.children:
+                try:
+                    child_usage = child.aggregate_usage()
+                    total.input_tokens += child_usage.input_tokens
+                    total.output_tokens += child_usage.output_tokens
+                    total.total_tokens += child_usage.total_tokens
+                except Exception as e:
+                    logger.error(f"Error aggregating usage for child {child.name}: {e}")
 
-        return total
+            return total
+        except Exception as e:
+            logger.error(f"Error in aggregate_usage: {e}")
+            return TokenUsage()
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization"""
@@ -402,42 +409,55 @@ class TokenCounter:
         Push a new context onto the stack.
         This is called when entering a new scope (app, workflow, agent, etc).
         """
-        with self._lock:
-            node = TokenNode(name=name, node_type=node_type, metadata=metadata or {})
+        try:
+            with self._lock:
+                node = TokenNode(
+                    name=name, node_type=node_type, metadata=metadata or {}
+                )
 
-            if self._current:
-                self._current.add_child(node)
-            else:
-                # This is the root
-                self._root = node
+                if self._current:
+                    self._current.add_child(node)
+                else:
+                    # This is the root
+                    self._root = node
 
-            self._stack.append(node)
-            self._current = node
+                self._stack.append(node)
+                self._current = node
 
-            logger.debug(f"Pushed token context: {name} ({node_type})")
+                logger.debug(f"Pushed token context: {name} ({node_type})")
+        except Exception as e:
+            logger.error(f"Error in TokenCounter.push: {e}", exc_info=True)
+            # Continue execution - don't break the program
 
     def pop(self) -> Optional[TokenNode]:
         """
         Pop the current context from the stack.
         Returns the popped node with aggregated usage.
         """
-        with self._lock:
-            if not self._stack:
-                logger.warning("Attempted to pop from empty token stack")
-                return None
+        try:
+            with self._lock:
+                if not self._stack:
+                    logger.warning("Attempted to pop from empty token stack")
+                    return None
 
-            node = self._stack.pop()
-            self._current = self._stack[-1] if self._stack else None
+                node = self._stack.pop()
+                self._current = self._stack[-1] if self._stack else None
 
-            # Log aggregated usage for this node
-            usage = node.aggregate_usage()
-            logger.debug(
-                f"Popped token context: {node.name} ({node.node_type}) - "
-                f"Total: {usage.total_tokens} tokens "
-                f"(input: {usage.input_tokens}, output: {usage.output_tokens})"
-            )
+                try:
+                    # Log aggregated usage for this node
+                    usage = node.aggregate_usage()
+                    logger.debug(
+                        f"Popped token context: {node.name} ({node.node_type}) - "
+                        f"Total: {usage.total_tokens} tokens "
+                        f"(input: {usage.input_tokens}, output: {usage.output_tokens})"
+                    )
+                except Exception as e:
+                    logger.error(f"Error aggregating usage during pop: {e}")
 
-            return node
+                return node
+        except Exception as e:
+            logger.error(f"Error in TokenCounter.pop: {e}", exc_info=True)
+            return None
 
     def record_usage(
         self,
@@ -458,45 +478,68 @@ class TokenCounter:
             provider: Optional provider name to help disambiguate models
             model_info: Optional full ModelInfo object with metadata
         """
-        with self._lock:
-            if not self._current:
-                logger.warning("No current token context, creating root")
-                self.push("root", "app")
+        try:
+            # Validate inputs
+            input_tokens = int(input_tokens) if input_tokens is not None else 0
+            output_tokens = int(output_tokens) if output_tokens is not None else 0
 
-            # If we have model_name but no model_info, try to look it up
-            if model_name and not model_info:
-                model_info = self.find_model_info(model_name, provider)
+            with self._lock:
+                if not self._current:
+                    logger.warning("No current token context, creating root")
+                    try:
+                        self.push("root", "app")
+                    except Exception as e:
+                        logger.error(f"Failed to create root context: {e}")
+                        return
 
-            # Update current node's usage
-            self._current.usage.input_tokens += input_tokens
-            self._current.usage.output_tokens += output_tokens
-            self._current.usage.total_tokens += input_tokens + output_tokens
+                # If we have model_name but no model_info, try to look it up
+                if model_name and not model_info:
+                    try:
+                        model_info = self.find_model_info(model_name, provider)
+                    except Exception as e:
+                        logger.debug(f"Failed to find model info for {model_name}: {e}")
 
-            # Store model information
-            if model_name and not self._current.usage.model_name:
-                self._current.usage.model_name = model_name
-            if model_info and not self._current.usage.model_info:
-                self._current.usage.model_info = model_info
+                # Update current node's usage
+                if self._current and hasattr(self._current, "usage"):
+                    self._current.usage.input_tokens += input_tokens
+                    self._current.usage.output_tokens += output_tokens
+                    self._current.usage.total_tokens += input_tokens + output_tokens
 
-            # Track global usage by model and provider
-            if model_name:
-                # Use provider from model_info if available, otherwise use the passed provider
-                provider_key = model_info.provider if model_info else provider
-                usage_key = (model_name, provider_key)
+                    # Store model information
+                    if model_name and not self._current.usage.model_name:
+                        self._current.usage.model_name = model_name
+                    if model_info and not self._current.usage.model_info:
+                        self._current.usage.model_info = model_info
 
-                model_usage = self._usage_by_model[usage_key]
-                model_usage.input_tokens += input_tokens
-                model_usage.output_tokens += output_tokens
-                model_usage.total_tokens += input_tokens + output_tokens
-                model_usage.model_name = model_name
-                if model_info and not model_usage.model_info:
-                    model_usage.model_info = model_info
+                # Track global usage by model and provider
+                if model_name:
+                    try:
+                        # Use provider from model_info if available, otherwise use the passed provider
+                        provider_key = (
+                            model_info.provider
+                            if model_info and hasattr(model_info, "provider")
+                            else provider
+                        )
+                        usage_key = (model_name, provider_key)
 
-            logger.debug(
-                f"Recorded {input_tokens + output_tokens} tokens "
-                f"(in: {input_tokens}, out: {output_tokens}) "
-                f"for {self._current.name} using {model_name or 'unknown model'}"
-            )
+                        model_usage = self._usage_by_model[usage_key]
+                        model_usage.input_tokens += input_tokens
+                        model_usage.output_tokens += output_tokens
+                        model_usage.total_tokens += input_tokens + output_tokens
+                        model_usage.model_name = model_name
+                        if model_info and not model_usage.model_info:
+                            model_usage.model_info = model_info
+                    except Exception as e:
+                        logger.error(f"Failed to track global usage: {e}")
+
+                logger.debug(
+                    f"Recorded {input_tokens + output_tokens} tokens "
+                    f"(in: {input_tokens}, out: {output_tokens}) "
+                    f"for {getattr(self._current, 'name', 'unknown')} using {model_name or 'unknown model'}"
+                )
+        except Exception as e:
+            logger.error(f"Error in TokenCounter.record_usage: {e}", exc_info=True)
+            # Continue execution - don't break the program
 
     def calculate_cost(
         self,
@@ -506,37 +549,52 @@ class TokenCounter:
         provider: Optional[str] = None,
     ) -> float:
         """Calculate cost for given token usage"""
-        # Look up the model to get accurate cost
-        model_info = self.find_model_info(model_name, provider)
-        if model_info:
-            model_name = model_info.name
-
-        if not model_name or model_name not in self._model_costs:
-            logger.info(
-                f"Model {model_name} not found in costs, using default estimate"
+        try:
+            # Validate inputs
+            input_tokens = max(0, int(input_tokens) if input_tokens is not None else 0)
+            output_tokens = max(
+                0, int(output_tokens) if output_tokens is not None else 0
             )
+
+            # Look up the model to get accurate cost
+            try:
+                model_info = self.find_model_info(model_name, provider)
+                if model_info:
+                    model_name = model_info.name
+            except Exception as e:
+                logger.debug(f"Failed to find model info: {e}")
+
+            if not model_name or model_name not in self._model_costs:
+                logger.info(
+                    f"Model {model_name} not found in costs, using default estimate"
+                )
+                return (input_tokens + output_tokens) * 0.5 / 1_000_000
+
+            costs = self._model_costs.get(model_name, {})
+
+            input_cost_per_1m = costs.get("input_cost_per_1m")
+            output_cost_per_1m = costs.get("output_cost_per_1m")
+
+            if input_cost_per_1m is not None and output_cost_per_1m is not None:
+                input_cost = (input_tokens / 1_000_000) * input_cost_per_1m
+                output_cost = (output_tokens / 1_000_000) * output_cost_per_1m
+                total_cost = input_cost + output_cost
+                logger.debug(
+                    f"Using input/output costs: input_cost=${input_cost:.6f}, output_cost=${output_cost:.6f}, total=${total_cost:.6f}"
+                )
+                return total_cost
+            else:
+                total_tokens = input_tokens + output_tokens
+                blended_cost_per_1m = costs.get("blended_cost_per_1m", 0.5)
+                blended_cost = (total_tokens / 1_000_000) * blended_cost_per_1m
+                logger.debug(
+                    f"Using blended cost: total_tokens={total_tokens}, blended_cost_per_1m={blended_cost_per_1m}, total=${blended_cost:.6f}"
+                )
+                return blended_cost
+        except Exception as e:
+            logger.warning(f"Error in TokenCounter.calculate_cost: {e}", exc_info=True)
+            # Return a default cost estimate
             return (input_tokens + output_tokens) * 0.5 / 1_000_000
-
-        costs = self._model_costs[model_name]
-        logger.debug(f"Calculating cost for {model_name}")
-        logger.debug(f"Costs: {costs}")
-        logger.debug(f"Input tokens: {input_tokens}, Output tokens: {output_tokens}")
-
-        if costs["input_cost_per_1m"] and costs["output_cost_per_1m"]:
-            input_cost = (input_tokens / 1_000_000) * costs["input_cost_per_1m"]
-            output_cost = (output_tokens / 1_000_000) * costs["output_cost_per_1m"]
-            total_cost = input_cost + output_cost
-            logger.debug(
-                f"Using input/output costs: input_cost=${input_cost:.6f}, output_cost=${output_cost:.6f}, total=${total_cost:.6f}"
-            )
-            return total_cost
-        else:
-            total_tokens = input_tokens + output_tokens
-            blended_cost = (total_tokens / 1_000_000) * costs["blended_cost_per_1m"]
-            logger.debug(
-                f"Using blended cost: total_tokens={total_tokens}, blended_cost_per_1m={costs['blended_cost_per_1m']}, total=${blended_cost:.6f}"
-            )
-            return blended_cost
 
     def get_current_path(self) -> List[str]:
         """Get the current stack path (e.g., ['app', 'workflow', 'agent'])"""
@@ -552,75 +610,110 @@ class TokenCounter:
 
     def get_summary(self) -> TokenSummary:
         """Get summary of token usage and costs"""
-        with self._lock:
-            total_cost = 0.0
-            model_costs: Dict[str, ModelUsageSummary] = {}
+        try:
+            with self._lock:
+                total_cost = 0.0
+                model_costs: Dict[str, ModelUsageSummary] = {}
 
-            # Calculate costs per model
-            for (model_name, provider_key), usage in self._usage_by_model.items():
-                # Use the provider from the key (which came from record_usage)
-                # Fall back to model_info.provider if key's provider is None
-                provider = provider_key
-                if provider is None and usage.model_info:
-                    provider = usage.model_info.provider
+                # Calculate costs per model
+                for (model_name, provider_key), usage in self._usage_by_model.items():
+                    try:
+                        # Use the provider from the key (which came from record_usage)
+                        # Fall back to model_info.provider if key's provider is None
+                        provider = provider_key
+                        if provider is None and usage.model_info:
+                            provider = getattr(usage.model_info, "provider", None)
 
-                logger.debug(f"Calculating cost for {model_name} from {provider}")
-                logger.debug(
-                    f"Usage - input: {usage.input_tokens}, output: {usage.output_tokens}, total: {usage.total_tokens}"
-                )
+                        logger.debug(
+                            f"Calculating cost for {model_name} from {provider}"
+                        )
+                        logger.debug(
+                            f"Usage - input: {usage.input_tokens}, output: {usage.output_tokens}, total: {usage.total_tokens}"
+                        )
 
-                cost = self.calculate_cost(
-                    model_name, usage.input_tokens, usage.output_tokens, provider
-                )
+                        cost = self.calculate_cost(
+                            model_name,
+                            usage.input_tokens,
+                            usage.output_tokens,
+                            provider,
+                        )
 
-                logger.debug(f"get_summary: Calculated cost: ${cost:.6f}")
-                total_cost += cost
+                        logger.debug(f"get_summary: Calculated cost: ${cost:.6f}")
+                        total_cost += cost
 
-                # Create model info dict if available
-                model_info_dict = None
-                if usage.model_info:
-                    model_info_dict = {
-                        "provider": usage.model_info.provider,
-                        "description": usage.model_info.description,
-                        "context_window": usage.model_info.context_window,
-                        "tool_calling": usage.model_info.tool_calling,
-                        "structured_outputs": usage.model_info.structured_outputs,
-                    }
+                        # Create model info dict if available
+                        model_info_dict = None
+                        if usage.model_info:
+                            try:
+                                model_info_dict = {
+                                    "provider": getattr(
+                                        usage.model_info, "provider", None
+                                    ),
+                                    "description": getattr(
+                                        usage.model_info, "description", None
+                                    ),
+                                    "context_window": getattr(
+                                        usage.model_info, "context_window", None
+                                    ),
+                                    "tool_calling": getattr(
+                                        usage.model_info, "tool_calling", None
+                                    ),
+                                    "structured_outputs": getattr(
+                                        usage.model_info, "structured_outputs", None
+                                    ),
+                                }
+                            except Exception as e:
+                                logger.debug(f"Failed to extract model info: {e}")
 
-                model_summary = ModelUsageSummary(
-                    model_name=model_name,
-                    provider=provider,
+                        model_summary = ModelUsageSummary(
+                            model_name=model_name,
+                            provider=provider,
+                            usage=TokenUsageBase(
+                                input_tokens=usage.input_tokens,
+                                output_tokens=usage.output_tokens,
+                                total_tokens=usage.total_tokens,
+                            ),
+                            cost=cost,
+                            model_info=model_info_dict,
+                        )
+
+                        # Create a descriptive key for the summary
+                        if provider:
+                            summary_key = f"{model_name} ({provider})"
+                        else:
+                            summary_key = model_name
+
+                        model_costs[summary_key] = model_summary
+                    except Exception as e:
+                        logger.error(f"Error processing model {model_name}: {e}")
+                        continue
+
+                # Get total usage
+                total_usage = TokenUsage()
+                if self._root:
+                    try:
+                        total_usage = self._root.aggregate_usage()
+                    except Exception as e:
+                        logger.error(f"Error aggregating total usage: {e}")
+
+                return TokenSummary(
                     usage=TokenUsageBase(
-                        input_tokens=usage.input_tokens,
-                        output_tokens=usage.output_tokens,
-                        total_tokens=usage.total_tokens,
+                        input_tokens=total_usage.input_tokens,
+                        output_tokens=total_usage.output_tokens,
+                        total_tokens=total_usage.total_tokens,
                     ),
-                    cost=cost,
-                    model_info=model_info_dict,
+                    cost=total_cost,
+                    model_usage=model_costs,
+                    usage_tree=self.get_tree() if self._root else None,
                 )
-
-                # Create a descriptive key for the summary
-                if provider:
-                    summary_key = f"{model_name} ({provider})"
-                else:
-                    summary_key = model_name
-
-                model_costs[summary_key] = model_summary
-
-            # Get total usage
-            total_usage = TokenUsage()
-            if self._root:
-                total_usage = self._root.aggregate_usage()
-
+        except Exception as e:
+            logger.error(f"Error in get_summary: {e}", exc_info=True)
+            # Return empty summary on error
             return TokenSummary(
-                usage=TokenUsageBase(
-                    input_tokens=total_usage.input_tokens,
-                    output_tokens=total_usage.output_tokens,
-                    total_tokens=total_usage.total_tokens,
-                ),
-                cost=total_cost,
-                model_usage=model_costs,
-                usage_tree=self.get_tree() if self._root else None,
+                usage=TokenUsageBase(),
+                cost=0.0,
+                model_usage={},
+                usage_tree=None,
             )
 
     def reset(self) -> None:
@@ -655,17 +748,25 @@ class TokenCounter:
         self, node: TokenNode, name: str, node_type: Optional[str] = None
     ) -> Optional[TokenNode]:
         """Recursively search for a node"""
-        # Check current node
-        if node.name == name and (node_type is None or node.node_type == node_type):
-            return node
+        try:
+            # Check current node
+            if node.name == name and (node_type is None or node.node_type == node_type):
+                return node
 
-        # Search children
-        for child in node.children:
-            result = self._find_node_recursive(child, name, node_type)
-            if result:
-                return result
+            # Search children
+            for child in node.children:
+                try:
+                    result = self._find_node_recursive(child, name, node_type)
+                    if result:
+                        return result
+                except Exception as e:
+                    logger.debug(f"Error searching child node: {e}")
+                    continue
 
-        return None
+            return None
+        except Exception as e:
+            logger.error(f"Error in _find_node_recursive: {e}")
+            return None
 
     def find_nodes_by_type(self, node_type: str) -> List[TokenNode]:
         """
@@ -734,26 +835,38 @@ class TokenCounter:
 
     def _calculate_node_cost(self, node: TokenNode) -> float:
         """Calculate cost for a node and its children"""
-        total_cost = 0.0
+        try:
+            total_cost = 0.0
 
-        # If this node has direct usage with a model, calculate its cost
-        if node.usage.model_name:
-            provider = None
-            if node.usage.model_info:
-                provider = node.usage.model_info.provider
+            # If this node has direct usage with a model, calculate its cost
+            if node.usage.model_name:
+                provider = None
+                if node.usage.model_info:
+                    provider = getattr(node.usage.model_info, "provider", None)
 
-            total_cost += self.calculate_cost(
-                node.usage.model_name,
-                node.usage.input_tokens,
-                node.usage.output_tokens,
-                provider,
-            )
+                try:
+                    cost = self.calculate_cost(
+                        node.usage.model_name,
+                        node.usage.input_tokens,
+                        node.usage.output_tokens,
+                        provider,
+                    )
+                    total_cost += cost
+                except Exception as e:
+                    logger.error(f"Error calculating cost for node {node.name}: {e}")
 
-        # Add costs from children
-        for child in node.children:
-            total_cost += self._calculate_node_cost(child)
+            # Add costs from children
+            for child in node.children:
+                try:
+                    total_cost += self._calculate_node_cost(child)
+                except Exception as e:
+                    logger.error(f"Error calculating cost for child {child.name}: {e}")
+                    continue
 
-        return total_cost
+            return total_cost
+        except Exception as e:
+            logger.error(f"Error in _calculate_node_cost: {e}")
+            return 0.0
 
     def get_app_usage(self) -> Optional[TokenUsage]:
         """Get total token usage for the entire application (root node)"""
