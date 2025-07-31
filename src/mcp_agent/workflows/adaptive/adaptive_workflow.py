@@ -229,8 +229,8 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
                 if current_path:
                     # Get summary to find total usage so far
                     summary = self.context.token_counter.get_summary()
-                    total_tokens = summary["total_usage"]["total_tokens"]
-                    total_cost = summary["total_cost"]
+                    total_tokens = summary.usage.total_tokens
+                    total_cost = summary.cost
 
                     logger.debug(
                         f"Syncing budget with token counter - tokens: {total_tokens}, cost: ${total_cost}"
@@ -352,10 +352,10 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
 
         if self.context and self.context.token_counter:
             summary = self.context.token_counter.get_summary()
-            final_cost = summary["total_cost"]
-            total_tokens = summary["total_usage"]["total_tokens"]
-            input_tokens = summary["total_usage"]["input_tokens"]
-            output_tokens = summary["total_usage"]["output_tokens"]
+            final_cost = summary.cost
+            total_tokens = summary.usage.total_tokens
+            input_tokens = summary.usage.input_tokens
+            output_tokens = summary.usage.output_tokens
 
         result = ExecutionResult(
             execution_id=execution_id,

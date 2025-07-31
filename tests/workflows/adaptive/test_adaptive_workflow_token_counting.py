@@ -322,8 +322,8 @@ class TestAdaptiveWorkflowTokenCounting:
 
         # Check global summary
         summary = mock_context_with_token_counter.token_counter.get_summary()
-        assert summary["total_usage"]["total_tokens"] == app_usage.total_tokens
-        assert "test-model (test_provider)" in summary["by_model"]
+        assert summary.usage.total_tokens == app_usage.total_tokens
+        assert "test-model (test_provider)" in summary.model_usage
 
     @pytest.mark.asyncio
     async def test_subagent_token_tracking(
@@ -640,8 +640,8 @@ class TestAdaptiveWorkflowTokenCounting:
         # Debug: Check initial token counter state
         initial_summary = mock_context_with_token_counter.token_counter.get_summary()
         print("\nInitial token counter state:")
-        print(f"  Total tokens: {initial_summary['total_usage']['total_tokens']}")
-        print(f"  Total cost: ${initial_summary['total_cost']}")
+        print(f"  Total tokens: {initial_summary.usage.total_tokens}")
+        print(f"  Total cost: ${initial_summary.cost}")
 
         # Set up proper mocks for workflow execution
         from mcp_agent.workflows.adaptive.models import (
@@ -860,8 +860,8 @@ class TestAdaptiveWorkflowTokenCounting:
 
         # Verify cost tracking in summary
         summary = mock_context_with_token_counter.token_counter.get_summary()
-        assert summary["total_cost"] > 0
-        assert summary["total_usage"]["total_tokens"] == 3200
+        assert summary.cost > 0
+        assert summary.usage.total_tokens == 3200
 
     @pytest.mark.asyncio
     async def test_knowledge_extraction_token_tracking(
