@@ -7,6 +7,8 @@ from typing import List, Optional, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 
+from typing_extensions import Annotated
+
 
 class TaskType(str, Enum):
     """Types of tasks the workflow can handle"""
@@ -76,16 +78,20 @@ class ExecutionMemory(BaseModel):
     task_type: Optional[TaskType] = None
 
     # Execution tracking
-    start_time: datetime = Field(default_factory=datetime.now)
+    start_time: Annotated[datetime, Field(default_factory=datetime.now)]
     iterations: int = 0
 
     # Research history - store as Any to handle provider-specific message types
-    research_history: List[Any] = Field(
-        default_factory=list, description="Synthesis messages from each iteration"
-    )
-    subagent_results: List[SubagentResult] = Field(
-        default_factory=list, description="All subagent results"
-    )
+    research_history: Annotated[
+        List[Any],
+        Field(
+            default_factory=list, description="Synthesis messages from each iteration"
+        ),
+    ]
+    subagent_results: Annotated[
+        List[SubagentResult],
+        Field(default_factory=list, description="All subagent results"),
+    ]
 
     # Resource tracking
     total_cost: float = 0.0
