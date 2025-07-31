@@ -55,7 +55,14 @@ class TokenNode:
     """Name of this node (e.g., agent name, workflow name)"""
 
     node_type: str
-    """Type of node: 'app', 'workflow', 'agent', 'llm_call'"""
+    """Type of node: 'app', 'workflow', 'agent', 'llm'
+    
+    Hierarchy:
+    - 'app': Root level application (MCPApp)
+    - 'workflow': Workflow class instances (e.g., BasicAgentWorkflow, ParallelWorkflow)
+    - 'agent': Higher-order AugmentedLLM instances (e.g., Orchestrator, EvaluatorOptimizer, ParallelLLM)
+    - 'llm': Base AugmentedLLM classes (e.g., OpenAIAugmentedLLM, AnthropicAugmentedLLM)
+    """
 
     parent: Optional["TokenNode"] = None
     """Parent node in the tree"""
@@ -99,6 +106,7 @@ class TokenNode:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization"""
+        # Direct usage info
         usage_dict = {
             "input_tokens": self.usage.input_tokens,
             "output_tokens": self.usage.output_tokens,
@@ -118,10 +126,20 @@ class TokenNode:
                 "structured_outputs": self.usage.model_info.structured_outputs,
             }
 
+        # Aggregated usage (including children)
+        aggregated = self.aggregate_usage()
+
+        aggregate_usage_dict = {
+            "input_tokens": aggregated.input_tokens,
+            "output_tokens": aggregated.output_tokens,
+            "total_tokens": aggregated.total_tokens,
+        }
+
         return {
             "name": self.name,
             "type": self.node_type,
             "usage": usage_dict,
+            "aggregate_usage": aggregate_usage_dict,
             "metadata": self.metadata,
             "children": [child.to_dict() for child in self.children],
         }
@@ -875,13 +893,13 @@ class TokenCounter:
                 return self._root.aggregate_usage()
             return None
 
-    def get_agent_usage(self, agent_name: str) -> Optional[TokenUsage]:
+    def get_agent_usage(self, name: str) -> Optional[TokenUsage]:
         """Get token usage for a specific agent"""
-        return self.get_node_usage(agent_name, "agent")
+        return self.get_node_usage(name, "agent")
 
-    def get_workflow_usage(self, workflow_name: str) -> Optional[TokenUsage]:
+    def get_workflow_usage(self, name: str) -> Optional[TokenUsage]:
         """Get token usage for a specific workflow"""
-        return self.get_node_usage(workflow_name, "workflow")
+        return self.get_node_usage(name, "workflow")
 
     def get_current_usage(self) -> Optional[TokenUsage]:
         """Get token usage for the current context"""
@@ -904,6 +922,157 @@ class TokenCounter:
             The node with all its children, or None if not found
         """
         return self.find_node(name, node_type)
+
+    def find_node_by_metadata(
+        self,
+        metadata_key: str,
+        metadata_value: Any,
+        node_type: Optional[str] = None,
+        return_all_matches: bool = False,
+    ) -> Optional[TokenNode] | List[TokenNode]:
+        """
+        Find a node by a specific metadata key-value pair.
+
+        Args:
+            metadata_key: The metadata key to search for
+            metadata_value: The value to match
+            node_type: Optional node type to filter by
+            return_all_matches: If True, return all matching nodes; if False, return first match
+
+        Returns:
+            If return_all_matches is False: The first matching node, or None if not found
+            If return_all_matches is True: List of all matching nodes (empty if none found)
+        """
+        with self._lock:
+            if not self._root:
+                return [] if return_all_matches else None
+
+            matches = []
+            self._find_node_by_metadata_recursive(
+                self._root, metadata_key, metadata_value, node_type, matches
+            )
+
+            if return_all_matches:
+                return matches
+            else:
+                return matches[0] if matches else None
+
+    def _find_node_by_metadata_recursive(
+        self,
+        node: TokenNode,
+        metadata_key: str,
+        metadata_value: Any,
+        node_type: Optional[str],
+        matches: List[TokenNode],
+    ) -> None:
+        """Recursively search for nodes by metadata"""
+        try:
+            # Check if this node matches
+            if node_type is None or node.node_type == node_type:
+                # Safely check metadata
+                if (
+                    hasattr(node, "metadata")
+                    and node.metadata is not None
+                    and metadata_key in node.metadata
+                    and node.metadata.get(metadata_key) == metadata_value
+                ):
+                    matches.append(node)
+
+            # Search children
+            for child in node.children:
+                try:
+                    self._find_node_by_metadata_recursive(
+                        child, metadata_key, metadata_value, node_type, matches
+                    )
+                except Exception as e:
+                    logger.debug(f"Error searching child node: {e}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"Error in _find_node_by_metadata_recursive: {e}")
+
+    def get_app_node(self) -> Optional[TokenNode]:
+        """Get the root application node"""
+        with self._lock:
+            return self._root if self._root and self._root.node_type == "app" else None
+
+    def get_workflow_node(
+        self,
+        name: Optional[str] = None,
+        workflow_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        return_all_matches: bool = False,
+    ) -> Optional[TokenNode] | List[TokenNode]:
+        """
+        Get a specific workflow node.
+
+        Args:
+            name: Name of the workflow
+            workflow_id: Optional workflow_id to find specific workflow instances
+            run_id: Optional run_id to find a specific workflow run (takes precedence)
+            return_all_matches: If True, return all matching nodes
+
+        Returns:
+            The workflow node(s) if found
+        """
+        # Priority: run_id > workflow_id > name
+        if run_id:
+            return self.find_node_by_metadata(
+                "run_id", run_id, "workflow", return_all_matches
+            )
+        elif workflow_id:
+            return self.find_node_by_metadata(
+                "workflow_id", workflow_id, "workflow", return_all_matches
+            )
+        elif name:
+            if return_all_matches:
+                return (
+                    self.find_nodes_by_type("workflow")
+                    if name == "*"
+                    else [
+                        n for n in self.find_nodes_by_type("workflow") if n.name == name
+                    ]
+                )
+            else:
+                return self.find_node(name, "workflow")
+        else:
+            return [] if return_all_matches else None
+
+    def get_agent_node(
+        self, name: str, return_all_matches: bool = False
+    ) -> Optional[TokenNode] | List[TokenNode]:
+        """
+        Get a specific agent (higher-order AugmentedLLM) node.
+
+        Args:
+            name: Name of the agent
+            return_all_matches: If True, return all matching nodes
+
+        Returns:
+            The agent node(s) if found
+        """
+        if return_all_matches:
+            return [n for n in self.find_nodes_by_type("agent") if n.name == name]
+        else:
+            return self.find_node(name, "agent")
+
+    def get_llm_node(
+        self, name: str, return_all_matches: bool = False
+    ) -> Optional[TokenNode] | List[TokenNode]:
+        """
+        Get a specific LLM (base AugmentedLLM) node.
+
+        Args:
+            name: Name of the LLM
+            return_all_matches: If True, return all matching nodes
+
+        Returns:
+            The LLM node(s) if found
+        """
+        if return_all_matches:
+            return [n for n in self.find_nodes_by_type("llm") if n.name == name]
+        else:
+            return self.find_node(name, "llm")
 
     def get_node_breakdown(
         self, name: str, node_type: Optional[str] = None

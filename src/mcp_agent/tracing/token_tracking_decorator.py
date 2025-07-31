@@ -9,15 +9,15 @@ T = TypeVar("T")
 
 
 def track_tokens(
-    node_type: str = "llm_call",
+    node_type: str = "llm",
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """
     Decorator to track token usage for AugmentedLLM methods.
     Automatically pushes/pops token context around method execution.
 
     Args:
-        node_type: The type of node for token tracking. Default is "llm_call".
-                  Higher-order workflows should use "workflow".
+        node_type: The type of node for token tracking. Default is "llm" for base AugmentedLLM classes.
+                  Higher-order AugmentedLLM classes should use "agent".
     """
 
     def decorator(method: Callable[..., T]) -> Callable[..., T]:

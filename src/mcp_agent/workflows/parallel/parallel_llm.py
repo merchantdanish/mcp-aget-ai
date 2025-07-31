@@ -99,7 +99,7 @@ class ParallelLLM(AugmentedLLM[MessageParamT, MessageT]):
             context=context,
         )
 
-    @track_tokens(node_type="workflow")
+    @track_tokens(node_type="agent")
     async def generate(
         self,
         message: str | MessageParamT | List[MessageParamT],

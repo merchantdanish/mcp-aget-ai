@@ -11,6 +11,8 @@ from mcp_agent.executor.temporal import TemporalExecutor
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
+from mcp_agent.tracing.token_counter import TokenNode, TokenSummary
+from mcp_agent.core.context import Context
 
 from main import app
 
@@ -98,17 +100,113 @@ class ParallelWorkflow(Workflow[str]):
         return WorkflowResult(value=result)
 
 
+def display_node_tree(
+    node: TokenNode, indent="", is_last=True, context: Context = None
+):
+    """Display a node and its children in a tree structure with token usage"""
+    # Connector symbols
+    connector = "└── " if is_last else "├── "
+
+    # Get node usage
+    usage = node.aggregate_usage()
+
+    # Calculate cost if context available
+    cost_str = ""
+    if context and context.token_counter and node.usage.model_name:
+        cost = context.token_counter.calculate_cost(
+            node.usage.model_name,
+            node.usage.input_tokens,
+            node.usage.output_tokens,
+            node.usage.model_info.provider if node.usage.model_info else None,
+        )
+        if cost > 0:
+            cost_str = f" (${cost:.4f})"
+
+    # Display node info
+    print(f"{indent}{connector}{node.name} [{node.node_type}]")
+    print(
+        f"{indent}{'    ' if is_last else '│   '}├─ Total: {usage.total_tokens:,} tokens{cost_str}"
+    )
+    print(f"{indent}{'    ' if is_last else '│   '}├─ Input: {usage.input_tokens:,}")
+    print(f"{indent}{'    ' if is_last else '│   '}└─ Output: {usage.output_tokens:,}")
+
+    # If node has model info, show it
+    if node.usage.model_name:
+        model_str = node.usage.model_name
+        if node.usage.model_info and node.usage.model_info.provider:
+            model_str += f" ({node.usage.model_info.provider})"
+        print(f"{indent}{'    ' if is_last else '│   '}   Model: {model_str}")
+
+    # Process children
+    if node.children:
+        print(f"{indent}{'    ' if is_last else '│   '}")
+        child_indent = indent + ("    " if is_last else "│   ")
+        for i, child in enumerate(node.children):
+            display_node_tree(child, child_indent, i == len(node.children) - 1, context)
+
+
+def display_token_summary(context: Context):
+    """Display comprehensive token usage summary"""
+    if not context.token_counter:
+        print("\nNo token counter available")
+        return
+
+    summary: TokenSummary = context.token_counter.get_summary()
+
+    print("\n" + "=" * 60)
+    print("TOKEN USAGE SUMMARY")
+    print("=" * 60)
+
+    # Display usage tree
+    if summary.usage_tree:
+        print("\nToken Usage Tree:")
+        print("-" * 40)
+        root_node = TokenNode(**summary.usage_tree)
+        display_node_tree(root_node, context=context)
+
+    # Total usage
+    print("\nTotal Usage:")
+    print(f"  Total tokens: {summary.usage.total_tokens:,}")
+    print(f"  Input tokens: {summary.usage.input_tokens:,}")
+    print(f"  Output tokens: {summary.usage.output_tokens:,}")
+    print(f"  Total cost: ${summary.cost:.4f}")
+
+    # Breakdown by model
+    if summary.model_usage:
+        print("\nBreakdown by Model:")
+        for model_key, data in summary.model_usage.items():
+            print(f"  {model_key}:")
+            print(
+                f"    Tokens: {data.usage.total_tokens:,} (input: {data.usage.input_tokens:,}, output: {data.usage.output_tokens:,})"
+            )
+            print(f"    Cost: ${data.cost:.4f}")
+
+    print("\n" + "=" * 60)
+
+
 async def main():
     async with app.run() as orchestrator_app:
+        context = orchestrator_app.context
         executor: TemporalExecutor = orchestrator_app.executor
 
         handle = await executor.start_workflow(
             "ParallelWorkflow",
             SHORT_STORY,
         )
-        a = await handle.result()
-        print(a)
+        result = await handle.result()
+        print("\n=== WORKFLOW RESULT ===")
+        print(result)
+
+        # Display token usage summary
+        display_token_summary(context)
 
 
 if __name__ == "__main__":
+    import time
+
+    start = time.time()
     asyncio.run(main())
+    end = time.time()
+    t = end - start
+
+    print(f"\nTotal run time: {t:.2f}s")

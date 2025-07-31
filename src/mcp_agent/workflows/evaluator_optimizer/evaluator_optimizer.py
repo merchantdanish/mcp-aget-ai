@@ -155,7 +155,7 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
         # Track iteration history
         self.refinement_history = []
 
-    @track_tokens(node_type="workflow")
+    @track_tokens(node_type="agent")
     async def generate(
         self,
         message: str | MessageParamT | List[MessageParamT],
