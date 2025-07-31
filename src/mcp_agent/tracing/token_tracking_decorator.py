@@ -37,7 +37,7 @@ def track_tokens(
 
                 # Push context
                 self.context.token_counter.push(
-                    name=f"{self.__class__.__name__}.{getattr(self, 'name', 'unnamed')}",
+                    name=getattr(self, "name", self.__class__.__name__),
                     node_type=node_type,
                     metadata=metadata,
                 )

@@ -207,7 +207,7 @@ class TestParallelLLMTokenCounting:
 
         # Check global summary
         summary = mock_context_with_token_counter.token_counter.get_summary()
-        assert summary["total_usage"]["total_tokens"] == 1050
+        assert summary.usage.total_tokens == 1050
 
     @pytest.mark.asyncio
     async def test_parallel_llm_token_tracking_with_functions(
@@ -456,8 +456,8 @@ class TestParallelLLMTokenCounting:
 
         # Check by model in summary
         summary = mock_context_with_token_counter.token_counter.get_summary()
-        assert summary["total_usage"]["total_tokens"] == 750
-        assert "test-model (test_provider)" in summary["by_model"]
+        assert summary.usage.total_tokens == 750
+        assert "test-model (test_provider)" in summary.model_usage
 
     @pytest.mark.asyncio
     async def test_parallel_llm_error_handling_token_tracking(
