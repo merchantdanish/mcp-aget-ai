@@ -995,13 +995,13 @@ class TestAnthropicTokenCounting:
         summary = mock_llm_with_token_counter.context.token_counter.get_summary()
 
         # Check total usage (should aggregate both calls)
-        assert summary["total_usage"]["input_tokens"] == 300  # 100 + 200
-        assert summary["total_usage"]["output_tokens"] == 150  # 50 + 100
-        assert summary["total_usage"]["total_tokens"] == 450
+        assert summary.usage.input_tokens == 300  # 100 + 200
+        assert summary.usage.output_tokens == 150  # 50 + 100
+        assert summary.usage.total_tokens == 450
 
         # Check by model (global tracking still works)
-        assert "claude-3-7-sonnet-latest (anthropic)" in summary["by_model"]
-        model_summary = summary["by_model"]["claude-3-7-sonnet-latest (anthropic)"]
-        assert model_summary["usage"]["input_tokens"] == 300
-        assert model_summary["usage"]["output_tokens"] == 150
-        assert model_summary["provider"] == "anthropic"
+        assert "claude-3-7-sonnet-latest (anthropic)" in summary.model_usage
+        model_summary = summary.model_usage["claude-3-7-sonnet-latest (anthropic)"]
+        assert model_summary.usage.input_tokens == 300
+        assert model_summary.usage.output_tokens == 150
+        assert model_summary.provider == "anthropic"

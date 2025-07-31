@@ -173,8 +173,8 @@ class TestRouterTokenCounting:
 
         # Check global summary
         summary = mock_context_with_token_counter.token_counter.get_summary()
-        assert summary["total_usage"]["total_tokens"] == 300
-        assert "test-model (test_provider)" in summary["by_model"]
+        assert summary.usage.total_tokens == 300
+        assert "test-model (test_provider)" in summary.model_usage
 
     @pytest.mark.asyncio
     async def test_router_multiple_routes_token_tracking(
@@ -421,7 +421,7 @@ class TestRouterTokenCounting:
 
         # Check global summary
         summary = mock_context_with_token_counter.token_counter.get_summary()
-        assert summary["total_usage"]["total_tokens"] == 600
+        assert summary.usage.total_tokens == 600
 
     @pytest.mark.asyncio
     async def test_router_error_handling_token_tracking(

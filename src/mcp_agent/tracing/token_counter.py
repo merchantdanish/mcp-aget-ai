@@ -5,7 +5,7 @@ Provides hierarchical tracking of token usage across agents and subagents.
 
 import threading
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from collections import defaultdict
 
@@ -16,15 +16,17 @@ logger = get_logger(__name__)
 
 
 @dataclass
-class TokenUsage:
-    """Token usage for a single LLM call"""
+class TokenUsageBase:
+    """Base class for token usage information"""
 
     input_tokens: int = 0
+    """Number of tokens in the input/prompt"""
+
     output_tokens: int = 0
+    """Number of tokens in the output/completion"""
+
     total_tokens: int = 0
-    model_name: Optional[str] = None
-    model_info: Optional[ModelInfo] = None  # Full model metadata
-    timestamp: datetime = field(default_factory=datetime.now)
+    """Total number of tokens (input + output)"""
 
     def __post_init__(self):
         if self.total_tokens == 0:
@@ -32,15 +34,40 @@ class TokenUsage:
 
 
 @dataclass
+class TokenUsage(TokenUsageBase):
+    """Token usage for a single LLM call with metadata"""
+
+    model_name: Optional[str] = None
+    """Name of the model used (e.g., 'gpt-4o', 'claude-3-opus')"""
+
+    model_info: Optional[ModelInfo] = None
+    """Full model metadata including provider, costs, capabilities"""
+
+    timestamp: datetime = field(default_factory=datetime.now)
+    """When this usage was recorded"""
+
+
+@dataclass
 class TokenNode:
     """Node in the token usage tree"""
 
     name: str
-    node_type: str  # 'app', 'workflow', 'agent', 'llm_call'
+    """Name of this node (e.g., agent name, workflow name)"""
+
+    node_type: str
+    """Type of node: 'app', 'workflow', 'agent', 'llm_call'"""
+
     parent: Optional["TokenNode"] = None
+    """Parent node in the tree"""
+
     children: List["TokenNode"] = field(default_factory=list)
+    """Child nodes"""
+
     usage: TokenUsage = field(default_factory=TokenUsage)
+    """Direct token usage by this node (not including children)"""
+
     metadata: Dict[str, Any] = field(default_factory=dict)
+    """Additional metadata for this node"""
 
     def add_child(self, child: "TokenNode") -> None:
         """Add a child node"""
@@ -93,6 +120,117 @@ class TokenNode:
         }
 
 
+@dataclass
+class ModelUsageSummary:
+    """Summary of usage for a specific model"""
+
+    model_name: str
+    """Name of the model"""
+
+    usage: TokenUsageBase
+    """Token usage for this model"""
+
+    cost: float
+    """Total cost in USD for this model's usage"""
+
+    provider: Optional[str] = None
+    """Provider of the model (e.g., 'openai', 'anthropic')"""
+
+    model_info: Optional[Dict[str, Any]] = None
+    """Serialized ModelInfo metadata (capabilities, context window, etc.)"""
+
+
+@dataclass
+class ModelUsageDetail(ModelUsageSummary):
+    """Detailed usage for a specific model including which nodes used it"""
+
+    nodes: List[TokenNode] = field(default_factory=list)
+    """List of nodes that directly used this model"""
+
+    @property
+    def total_tokens(self) -> int:
+        """Total tokens used by this model"""
+        return self.usage.total_tokens
+
+    @property
+    def input_tokens(self) -> int:
+        """Input tokens used by this model"""
+        return self.usage.input_tokens
+
+    @property
+    def output_tokens(self) -> int:
+        """Output tokens used by this model"""
+        return self.usage.output_tokens
+
+
+@dataclass
+class TokenSummary:
+    """Complete summary of token usage across all models and nodes"""
+
+    usage: TokenUsageBase
+    """Total token usage across all models"""
+
+    cost: float
+    """Total cost in USD across all models"""
+
+    model_usage: Dict[str, ModelUsageSummary]
+    """Usage breakdown by model. Key is 'model_name (provider)' or just 'model_name'"""
+
+    usage_tree: Optional[Dict[str, Any]] = None
+    """Hierarchical view of usage by node (serialized TokenNode tree)"""
+
+
+@dataclass
+class NodeSummary:
+    """Summary of a node's token usage"""
+
+    name: str
+    """Name of the node"""
+
+    node_type: str
+    """Type of node: 'agent', 'workflow', etc."""
+
+    usage: TokenUsageBase
+    """Total token usage for this node (including children)"""
+
+
+@dataclass
+class NodeTypeUsage:
+    """Token usage aggregated by node type (e.g., all agents, all workflows, etc.)"""
+
+    node_type: str
+    """Type of node: 'agent', 'workflow', etc."""
+
+    node_count: int
+    """Number of nodes of this type"""
+
+    usage: TokenUsageBase
+    """Combined token usage for all nodes of this type"""
+
+
+@dataclass
+class NodeUsageDetail:
+    """Detailed breakdown of a node's token usage"""
+
+    name: str
+    """Name of the node"""
+
+    node_type: str
+    """Type of node: 'agent', 'workflow', etc."""
+
+    direct_usage: TokenUsageBase
+    """Token usage directly by this node (not including children)"""
+
+    usage: TokenUsageBase
+    """Total token usage including all descendants"""
+
+    usage_by_node_type: Dict[str, NodeTypeUsage]
+    """Usage breakdown by child node type (e.g., {'agent': NodeTypeUsage(...), 'workflow': NodeTypeUsage(...)})"""
+
+    child_usage: List[NodeSummary]
+    """Usage summary for each direct child node"""
+
+
 class TokenCounter:
     """
     Hierarchical token counter with cost calculation.
@@ -137,10 +275,8 @@ class TokenCounter:
 
             cost_lookup[model.name] = {
                 "blended_cost_per_1m": blended_cost,
-                "input_cost_per_1m": model.metrics.cost.input_cost_per_1m
-                or blended_cost,
-                "output_cost_per_1m": model.metrics.cost.output_cost_per_1m
-                or blended_cost,
+                "input_cost_per_1m": model.metrics.cost.input_cost_per_1m,  # Keep None if not set
+                "output_cost_per_1m": model.metrics.cost.output_cost_per_1m,  # Keep None if not set
             }
 
         return cost_lookup
@@ -167,36 +303,95 @@ class TokenCounter:
         Returns:
             ModelInfo if found, None otherwise
         """
+
         # Try exact match first
         model_info = self._model_lookup.get(model_name)
         if model_info:
             # If provider specified, check if it matches
-            if provider is None or provider == model_info.provider:
+            if (
+                provider is None
+                or provider == model_info.provider
+                or provider.lower() == model_info.provider.lower()
+            ):
                 return model_info
 
         # If provider is specified, search within that provider's models
-        if provider and provider in self._models_by_provider:
-            provider_models = self._models_by_provider[provider]
+        provider_models: Dict[str, ModelInfo] = (
+            self._models_by_provider.get(provider, None) if provider else None
+        )
+        if provider and not provider_models:
+            # If no provider models, try case-insensitive match
+            for key, models in self._models_by_provider.items():
+                if key.lower() == provider.lower():
+                    provider_models = models
+                    break
+
+        if provider_models:
             # Try exact match within provider
             if model_name in provider_models:
                 return provider_models[model_name]
 
-            # Try fuzzy match within provider
+            # Try fuzzy match within provider - prefer longer matches
+            best_match = None
+            best_match_score = 0
+
             for known_name, known_model in provider_models.items():
-                if model_name in known_name or known_name in model_name:
-                    return known_model
+                score = 0
 
-        # Try fuzzy match across all models
-        for known_name, known_model in self._model_lookup.items():
-            if model_name in known_name or known_name in model_name:
-                # If provider specified, prefer models from that provider
-                if provider and provider.lower() in known_model.provider.lower():
-                    return known_model
+                # Calculate match score
+                if model_name == known_name:
+                    score = 1000  # Exact match
+                elif known_name.startswith(model_name):
+                    # Prefer matches where search term is a prefix (e.g., gpt-4o-mini matches gpt-4o-mini-2024-07-18)
+                    score = 500 + (len(model_name) / len(known_name) * 100)
+                elif model_name in known_name:
+                    score = len(model_name) / len(known_name) * 100
+                elif known_name in model_name:
+                    score = (
+                        len(known_name) / len(model_name) * 50
+                    )  # Lower score for partial matches
 
-        # Last resort: fuzzy match without provider preference
+                if score > best_match_score:
+                    best_match = known_model
+                    best_match_score = score
+
+            if best_match:
+                return best_match
+
+        # Try fuzzy match across all models - prefer longer matches
+        best_match = None
+        best_match_score = 0
+
         for known_name, known_model in self._model_lookup.items():
-            if model_name in known_name or known_name in model_name:
-                return known_model
+            score = 0
+
+            # Calculate match score
+            if model_name == known_name:
+                score = 1000  # Exact match
+            elif known_name.startswith(model_name):
+                # Prefer matches where search term is a prefix (e.g., gpt-4o-mini matches gpt-4o-mini-2024-07-18)
+                score = 500 + (len(model_name) / len(known_name) * 100)
+            elif model_name in known_name:
+                score = len(model_name) / len(known_name) * 100
+            elif known_name in model_name:
+                score = (
+                    len(known_name) / len(model_name) * 50
+                )  # Lower score for partial matches
+
+            # Boost score if provider matches
+            if (
+                score > 0
+                and provider
+                and provider.lower() in known_model.provider.lower()
+            ):
+                score += 50
+
+            if score > best_match_score:
+                best_match = known_model
+                best_match_score = score
+
+        if best_match:
+            return best_match
 
         return None
 
@@ -317,18 +512,31 @@ class TokenCounter:
             model_name = model_info.name
 
         if not model_name or model_name not in self._model_costs:
-            # Default estimate
+            logger.info(
+                f"Model {model_name} not found in costs, using default estimate"
+            )
             return (input_tokens + output_tokens) * 0.5 / 1_000_000
 
         costs = self._model_costs[model_name]
+        logger.debug(f"Calculating cost for {model_name}")
+        logger.debug(f"Costs: {costs}")
+        logger.debug(f"Input tokens: {input_tokens}, Output tokens: {output_tokens}")
 
         if costs["input_cost_per_1m"] and costs["output_cost_per_1m"]:
             input_cost = (input_tokens / 1_000_000) * costs["input_cost_per_1m"]
             output_cost = (output_tokens / 1_000_000) * costs["output_cost_per_1m"]
-            return input_cost + output_cost
+            total_cost = input_cost + output_cost
+            logger.debug(
+                f"Using input/output costs: input_cost=${input_cost:.6f}, output_cost=${output_cost:.6f}, total=${total_cost:.6f}"
+            )
+            return total_cost
         else:
             total_tokens = input_tokens + output_tokens
-            return (total_tokens / 1_000_000) * costs["blended_cost_per_1m"]
+            blended_cost = (total_tokens / 1_000_000) * costs["blended_cost_per_1m"]
+            logger.debug(
+                f"Using blended cost: total_tokens={total_tokens}, blended_cost_per_1m={costs['blended_cost_per_1m']}, total=${blended_cost:.6f}"
+            )
+            return blended_cost
 
     def get_current_path(self) -> List[str]:
         """Get the current stack path (e.g., ['app', 'workflow', 'agent'])"""
@@ -342,11 +550,11 @@ class TokenCounter:
                 return self._root.to_dict()
             return None
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> TokenSummary:
         """Get summary of token usage and costs"""
         with self._lock:
             total_cost = 0.0
-            model_costs = {}
+            model_costs: Dict[str, ModelUsageSummary] = {}
 
             # Calculate costs per model
             for (model_name, provider_key), usage in self._usage_by_model.items():
@@ -356,24 +564,22 @@ class TokenCounter:
                 if provider is None and usage.model_info:
                     provider = usage.model_info.provider
 
+                logger.debug(f"Calculating cost for {model_name} from {provider}")
+                logger.debug(
+                    f"Usage - input: {usage.input_tokens}, output: {usage.output_tokens}, total: {usage.total_tokens}"
+                )
+
                 cost = self.calculate_cost(
                     model_name, usage.input_tokens, usage.output_tokens, provider
                 )
+
+                logger.debug(f"get_summary: Calculated cost: ${cost:.6f}")
                 total_cost += cost
 
-                model_dict = {
-                    "usage": {
-                        "input_tokens": usage.input_tokens,
-                        "output_tokens": usage.output_tokens,
-                        "total_tokens": usage.total_tokens,
-                    },
-                    "cost": cost,
-                    "provider": provider,
-                }
-
-                # Include model info if available
+                # Create model info dict if available
+                model_info_dict = None
                 if usage.model_info:
-                    model_dict["model_info"] = {
+                    model_info_dict = {
                         "provider": usage.model_info.provider,
                         "description": usage.model_info.description,
                         "context_window": usage.model_info.context_window,
@@ -381,29 +587,41 @@ class TokenCounter:
                         "structured_outputs": usage.model_info.structured_outputs,
                     }
 
+                model_summary = ModelUsageSummary(
+                    model_name=model_name,
+                    provider=provider,
+                    usage=TokenUsageBase(
+                        input_tokens=usage.input_tokens,
+                        output_tokens=usage.output_tokens,
+                        total_tokens=usage.total_tokens,
+                    ),
+                    cost=cost,
+                    model_info=model_info_dict,
+                )
+
                 # Create a descriptive key for the summary
                 if provider:
                     summary_key = f"{model_name} ({provider})"
                 else:
                     summary_key = model_name
 
-                model_costs[summary_key] = model_dict
+                model_costs[summary_key] = model_summary
 
             # Get total usage
             total_usage = TokenUsage()
             if self._root:
                 total_usage = self._root.aggregate_usage()
 
-            return {
-                "total_usage": {
-                    "input_tokens": total_usage.input_tokens,
-                    "output_tokens": total_usage.output_tokens,
-                    "total_tokens": total_usage.total_tokens,
-                },
-                "total_cost": total_cost,
-                "by_model": model_costs,
-                "tree": self.get_tree() if self._root else None,
-            }
+            return TokenSummary(
+                usage=TokenUsageBase(
+                    input_tokens=total_usage.input_tokens,
+                    output_tokens=total_usage.output_tokens,
+                    total_tokens=total_usage.total_tokens,
+                ),
+                cost=total_cost,
+                model_usage=model_costs,
+                usage_tree=self.get_tree() if self._root else None,
+            )
 
     def reset(self) -> None:
         """Reset all token tracking"""
@@ -413,3 +631,333 @@ class TokenCounter:
             self._current = None
             self._usage_by_model.clear()
             logger.debug("Token counter reset")
+
+    def find_node(
+        self, name: str, node_type: Optional[str] = None
+    ) -> Optional[TokenNode]:
+        """
+        Find a node by name and optionally type.
+
+        Args:
+            name: The name of the node to find
+            node_type: Optional node type to filter by
+
+        Returns:
+            The first matching node, or None if not found
+        """
+        with self._lock:
+            if not self._root:
+                return None
+
+            return self._find_node_recursive(self._root, name, node_type)
+
+    def _find_node_recursive(
+        self, node: TokenNode, name: str, node_type: Optional[str] = None
+    ) -> Optional[TokenNode]:
+        """Recursively search for a node"""
+        # Check current node
+        if node.name == name and (node_type is None or node.node_type == node_type):
+            return node
+
+        # Search children
+        for child in node.children:
+            result = self._find_node_recursive(child, name, node_type)
+            if result:
+                return result
+
+        return None
+
+    def find_nodes_by_type(self, node_type: str) -> List[TokenNode]:
+        """
+        Find all nodes of a specific type.
+
+        Args:
+            node_type: The type of nodes to find (e.g., 'agent', 'workflow', 'llm_call')
+
+        Returns:
+            List of matching nodes
+        """
+        with self._lock:
+            if not self._root:
+                return []
+
+            nodes = []
+            self._find_nodes_by_type_recursive(self._root, node_type, nodes)
+            return nodes
+
+    def _find_nodes_by_type_recursive(
+        self, node: TokenNode, node_type: str, nodes: List[TokenNode]
+    ) -> None:
+        """Recursively collect nodes by type"""
+        if node.node_type == node_type:
+            nodes.append(node)
+
+        for child in node.children:
+            self._find_nodes_by_type_recursive(child, node_type, nodes)
+
+    def get_node_usage(
+        self, name: str, node_type: Optional[str] = None
+    ) -> Optional[TokenUsage]:
+        """
+        Get aggregated token usage for a specific node (including its children).
+
+        Args:
+            name: The name of the node
+            node_type: Optional node type to filter by
+
+        Returns:
+            Aggregated TokenUsage for the node and its children, or None if not found
+        """
+        with self._lock:
+            node = self.find_node(name, node_type)
+            if node:
+                return node.aggregate_usage()
+            return None
+
+    def get_node_cost(self, name: str, node_type: Optional[str] = None) -> float:
+        """
+        Calculate the total cost for a specific node (including its children).
+
+        Args:
+            name: The name of the node
+            node_type: Optional node type to filter by
+
+        Returns:
+            Total cost for the node and its children
+        """
+        with self._lock:
+            node = self.find_node(name, node_type)
+            if not node:
+                return 0.0
+
+            return self._calculate_node_cost(node)
+
+    def _calculate_node_cost(self, node: TokenNode) -> float:
+        """Calculate cost for a node and its children"""
+        total_cost = 0.0
+
+        # If this node has direct usage with a model, calculate its cost
+        if node.usage.model_name:
+            provider = None
+            if node.usage.model_info:
+                provider = node.usage.model_info.provider
+
+            total_cost += self.calculate_cost(
+                node.usage.model_name,
+                node.usage.input_tokens,
+                node.usage.output_tokens,
+                provider,
+            )
+
+        # Add costs from children
+        for child in node.children:
+            total_cost += self._calculate_node_cost(child)
+
+        return total_cost
+
+    def get_app_usage(self) -> Optional[TokenUsage]:
+        """Get total token usage for the entire application (root node)"""
+        with self._lock:
+            if self._root:
+                return self._root.aggregate_usage()
+            return None
+
+    def get_agent_usage(self, agent_name: str) -> Optional[TokenUsage]:
+        """Get token usage for a specific agent"""
+        return self.get_node_usage(agent_name, "agent")
+
+    def get_workflow_usage(self, workflow_name: str) -> Optional[TokenUsage]:
+        """Get token usage for a specific workflow"""
+        return self.get_node_usage(workflow_name, "workflow")
+
+    def get_current_usage(self) -> Optional[TokenUsage]:
+        """Get token usage for the current context"""
+        with self._lock:
+            if self._current:
+                return self._current.aggregate_usage()
+            return None
+
+    def get_node_subtree(
+        self, name: str, node_type: Optional[str] = None
+    ) -> Optional[TokenNode]:
+        """
+        Get a node and its entire subtree.
+
+        Args:
+            name: The name of the node
+            node_type: Optional node type to filter by
+
+        Returns:
+            The node with all its children, or None if not found
+        """
+        return self.find_node(name, node_type)
+
+    def get_node_breakdown(
+        self, name: str, node_type: Optional[str] = None
+    ) -> Optional[NodeUsageDetail]:
+        """
+        Get a detailed breakdown of token usage for a node and its children.
+
+        Args:
+            name: The name of the node
+            node_type: Optional node type to filter by
+
+        Returns:
+            NodeUsageDetail with breakdown by child type and direct children, or None if not found
+        """
+        with self._lock:
+            node = self.find_node(name, node_type)
+            if not node:
+                return None
+
+            # Group children by type
+            children_by_type: Dict[str, List[TokenNode]] = defaultdict(list)
+            for child in node.children:
+                children_by_type[child.node_type].append(child)
+
+            # Calculate usage by child type
+            usage_by_node_type: Dict[str, NodeTypeUsage] = {}
+            for child_type, children in children_by_type.items():
+                type_usage = TokenUsage()
+                for child in children:
+                    child_usage = child.aggregate_usage()
+                    type_usage.input_tokens += child_usage.input_tokens
+                    type_usage.output_tokens += child_usage.output_tokens
+                    type_usage.total_tokens += child_usage.total_tokens
+
+                usage_by_node_type[child_type] = NodeTypeUsage(
+                    node_type=child_type,
+                    node_count=len(children),
+                    usage=TokenUsageBase(
+                        input_tokens=type_usage.input_tokens,
+                        output_tokens=type_usage.output_tokens,
+                        total_tokens=type_usage.total_tokens,
+                    ),
+                )
+
+            # Add individual children info
+            child_usage: List[NodeSummary] = []
+            for child in node.children:
+                child_aggregated = child.aggregate_usage()
+                child_usage.append(
+                    NodeSummary(
+                        name=child.name,
+                        node_type=child.node_type,
+                        usage=TokenUsageBase(
+                            input_tokens=child_aggregated.input_tokens,
+                            output_tokens=child_aggregated.output_tokens,
+                            total_tokens=child_aggregated.total_tokens,
+                        ),
+                    )
+                )
+
+            # Get aggregated usage for the node
+            aggregated = node.aggregate_usage()
+
+            return NodeUsageDetail(
+                name=node.name,
+                node_type=node.node_type,
+                direct_usage=TokenUsageBase(
+                    input_tokens=node.usage.input_tokens,
+                    output_tokens=node.usage.output_tokens,
+                    total_tokens=node.usage.total_tokens,
+                ),
+                usage=TokenUsageBase(
+                    input_tokens=aggregated.input_tokens,
+                    output_tokens=aggregated.output_tokens,
+                    total_tokens=aggregated.total_tokens,
+                ),
+                usage_by_node_type=usage_by_node_type,
+                child_usage=child_usage,
+            )
+
+    def get_agents_breakdown(self) -> Dict[str, TokenUsage]:
+        """Get token usage breakdown by agent"""
+        agents = self.find_nodes_by_type("agent")
+        breakdown = {}
+        for agent in agents:
+            usage = agent.aggregate_usage()
+            breakdown[agent.name] = usage
+        return breakdown
+
+    def get_workflows_breakdown(self) -> Dict[str, TokenUsage]:
+        """Get token usage breakdown by workflow"""
+        workflows = self.find_nodes_by_type("workflow")
+        breakdown = {}
+        for workflow in workflows:
+            usage = workflow.aggregate_usage()
+            breakdown[workflow.name] = usage
+        return breakdown
+
+    def get_models_breakdown(self) -> List[ModelUsageDetail]:
+        """
+        Get detailed breakdown of usage by model.
+
+        Returns:
+            List of ModelUsageDetail containing usage details and nodes for each model
+        """
+        with self._lock:
+            if not self._root:
+                return []
+
+            # Collect all nodes that have model usage
+            model_nodes: Dict[tuple[str, Optional[str]], List[TokenNode]] = defaultdict(
+                list
+            )
+            self._collect_model_nodes(self._root, model_nodes)
+
+            # Build ModelUsageDetail for each model
+            breakdown: List[ModelUsageDetail] = []
+
+            for (model_name, provider), nodes in model_nodes.items():
+                # Calculate total usage for this model
+                total_input = 0
+                total_output = 0
+
+                for node in nodes:
+                    total_input += node.usage.input_tokens
+                    total_output += node.usage.output_tokens
+
+                total_tokens = total_input + total_output
+                total_cost = self.calculate_cost(
+                    model_name, total_input, total_output, provider
+                )
+
+                breakdown.append(
+                    ModelUsageDetail(
+                        model_name=model_name,
+                        provider=provider,
+                        usage=TokenUsageBase(
+                            input_tokens=total_input,
+                            output_tokens=total_output,
+                            total_tokens=total_tokens,
+                        ),
+                        cost=total_cost,
+                        model_info=None,
+                        nodes=nodes,
+                    )
+                )
+
+            # Sort by total tokens descending
+            breakdown.sort(key=lambda x: x.total_tokens, reverse=True)
+
+            return breakdown
+
+    def _collect_model_nodes(
+        self,
+        node: TokenNode,
+        model_nodes: Dict[tuple[str, Optional[str]], List[TokenNode]],
+    ) -> None:
+        """Recursively collect nodes that have model usage"""
+        # If this node has model usage, add it
+        if node.usage.model_name:
+            provider = None
+            if node.usage.model_info:
+                provider = node.usage.model_info.provider
+
+            key = (node.usage.model_name, provider)
+            model_nodes[key].append(node)
+
+        # Recurse to children
+        for child in node.children:
+            self._collect_model_nodes(child, model_nodes)
