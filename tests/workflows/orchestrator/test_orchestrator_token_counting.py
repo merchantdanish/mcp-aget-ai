@@ -260,9 +260,9 @@ class TestOrchestratorTokenCounting:
         # 3. Second planner call (generate_structured) - 180 tokens (120 input + 60 output)
         # 4. Synthesizer call (generate_str) - 120 tokens (80 input + 40 output)
         # Total: 720 tokens
-        assert summary["total_usage"]["total_tokens"] == 720
-        assert summary["total_usage"]["input_tokens"] == 480  # 120*2 + 80*3
-        assert summary["total_usage"]["output_tokens"] == 240  # 60*2 + 40*3
+        assert summary.usage.total_tokens == 720
+        assert summary.usage.input_tokens == 480  # 120*2 + 80*3
+        assert summary.usage.output_tokens == 240  # 60*2 + 40*3
 
         # Check app node aggregation
         app_usage = app_node.aggregate_usage()
@@ -349,9 +349,9 @@ class TestOrchestratorTokenCounting:
         # 2. Synthesizer call (generate_str) - 120 tokens
         # Total: 480 tokens (no step execution in this test)
         summary = mock_context_with_token_counter.token_counter.get_summary()
-        assert summary["total_usage"]["total_tokens"] == 480
-        assert summary["total_usage"]["input_tokens"] == 320  # 120*2 + 80
-        assert summary["total_usage"]["output_tokens"] == 160  # 60*2 + 40
+        assert summary.usage.total_tokens == 480
+        assert summary.usage.input_tokens == 320  # 120*2 + 80
+        assert summary.usage.output_tokens == 160  # 60*2 + 40
 
         # Check app node aggregation
         app_usage = app_node.aggregate_usage()
@@ -447,8 +447,8 @@ class TestOrchestratorTokenCounting:
 
         # Check global summary
         summary = mock_context_with_token_counter.token_counter.get_summary()
-        assert summary["total_usage"]["total_tokens"] == 600
-        assert "test-model (test_provider)" in summary["by_model"]
+        assert summary.usage.total_tokens == 600
+        assert "test-model (test_provider)" in summary.model_usage
 
     @pytest.mark.asyncio
     async def test_orchestrator_task_execution_token_tracking(
@@ -566,4 +566,4 @@ class TestOrchestratorTokenCounting:
 
         # Check global summary
         summary = mock_context_with_token_counter.token_counter.get_summary()
-        assert summary["total_usage"]["total_tokens"] == 150
+        assert summary.usage.total_tokens == 150

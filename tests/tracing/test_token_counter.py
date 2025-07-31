@@ -4,7 +4,11 @@ import pytest
 from datetime import datetime
 from unittest.mock import patch, MagicMock
 
-from mcp_agent.tracing.token_counter import TokenCounter, TokenUsage, TokenNode
+from mcp_agent.tracing.token_counter import (
+    TokenCounter,
+    TokenUsage,
+    TokenNode,
+)
 from mcp_agent.workflows.llm.llm_selector import (
     ModelInfo,
     ModelCost,
@@ -347,18 +351,18 @@ class TestTokenCounter:
         summary = token_counter.get_summary()
 
         # Check total usage
-        assert summary["total_usage"]["input_tokens"] == 450
-        assert summary["total_usage"]["output_tokens"] == 225
-        assert summary["total_usage"]["total_tokens"] == 675
+        assert summary.usage.input_tokens == 450
+        assert summary.usage.output_tokens == 225
+        assert summary.usage.total_tokens == 675
 
         # Check by model
-        assert "gpt-4 (OpenAI)" in summary["by_model"]
-        assert "claude-3-opus (Anthropic)" in summary["by_model"]
-        assert "claude-3-opus (AWS Bedrock)" in summary["by_model"]
+        assert "gpt-4 (OpenAI)" in summary.model_usage
+        assert "claude-3-opus (Anthropic)" in summary.model_usage
+        assert "claude-3-opus (AWS Bedrock)" in summary.model_usage
 
         # Check costs are calculated
-        assert summary["total_cost"] > 0
-        assert summary["by_model"]["gpt-4 (OpenAI)"]["cost"] > 0
+        assert summary.cost > 0
+        assert summary.model_usage["gpt-4 (OpenAI)"].cost > 0
 
     def test_get_tree(self, token_counter):
         """Test getting token usage tree"""
@@ -418,3 +422,199 @@ class TestTokenCounter:
         # Each result should have correct token count
         for _, tokens in results:
             assert tokens == 15  # 10 + 5
+
+    def test_fuzzy_match_prefers_prefix(self, token_counter):
+        """Test fuzzy matching prefers models where search term is a prefix"""
+        # Add models that could cause fuzzy match confusion
+        models = [
+            ModelInfo(
+                name="gpt-4o",
+                provider="OpenAI",
+                description="GPT-4o",
+                context_window=128000,
+                tool_calling=True,
+                structured_outputs=True,
+                metrics=ModelMetrics(
+                    cost=ModelCost(blended_cost_per_1m=7.5),
+                    speed=ModelLatency(
+                        time_to_first_token_ms=50.0, tokens_per_second=100.0
+                    ),
+                    intelligence=ModelBenchmarks(quality_score=0.8),
+                ),
+            ),
+            ModelInfo(
+                name="gpt-4o-mini-2024-07-18",
+                provider="OpenAI",
+                description="GPT-4o mini",
+                context_window=128000,
+                tool_calling=True,
+                structured_outputs=True,
+                metrics=ModelMetrics(
+                    cost=ModelCost(blended_cost_per_1m=0.26),
+                    speed=ModelLatency(
+                        time_to_first_token_ms=50.0, tokens_per_second=100.0
+                    ),
+                    intelligence=ModelBenchmarks(quality_score=0.6),
+                ),
+            ),
+        ]
+
+        with patch(
+            "mcp_agent.tracing.token_counter.load_default_models",
+            return_value=models,
+        ):
+            tc = TokenCounter()
+
+            # Should match gpt-4o-mini-2024-07-18, not gpt-4o
+            model = tc.find_model_info("gpt-4o-mini", "OpenAI")
+            assert model is not None
+            assert model.name == "gpt-4o-mini-2024-07-18"
+
+            # Should match gpt-4o exactly
+            model = tc.find_model_info("gpt-4o", "OpenAI")
+            assert model is not None
+            assert model.name == "gpt-4o"
+
+    def test_case_insensitive_provider_lookup(self, token_counter):
+        """Test that provider lookup is case-insensitive"""
+        # Should find model even with different case
+        model = token_counter.find_model_info("gpt-4", "openai")
+        assert model is not None
+        assert model.provider == "OpenAI"
+
+        model = token_counter.find_model_info("claude-3-opus", "aws bedrock")
+        assert model is not None
+        assert model.provider == "AWS Bedrock"
+
+    def test_blended_cost_calculation(self, token_counter):
+        """Test cost calculation when only blended cost is available"""
+        # Add a model with only blended cost
+        models = [
+            ModelInfo(
+                name="test-model",
+                provider="TestProvider",
+                description="Test Model",
+                context_window=128000,
+                tool_calling=True,
+                structured_outputs=True,
+                metrics=ModelMetrics(
+                    cost=ModelCost(
+                        blended_cost_per_1m=5.0,
+                        input_cost_per_1m=None,
+                        output_cost_per_1m=None,
+                    ),
+                    speed=ModelLatency(
+                        time_to_first_token_ms=50.0, tokens_per_second=100.0
+                    ),
+                    intelligence=ModelBenchmarks(quality_score=0.7),
+                ),
+            ),
+        ]
+
+        with patch(
+            "mcp_agent.tracing.token_counter.load_default_models",
+            return_value=models,
+        ):
+            tc = TokenCounter()
+
+            # Should use blended cost when input/output costs are not available
+            cost = tc.calculate_cost("test-model", 1000, 500, "TestProvider")
+            expected = (1500 / 1_000_000) * 5.0
+            assert cost == pytest.approx(expected)
+
+    def test_get_node_breakdown(self, token_counter):
+        """Test getting detailed breakdown for a specific node"""
+        token_counter.push("app", "app")
+        token_counter.push("workflow", "workflow")
+        token_counter.push("agent1", "agent")
+        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        token_counter.pop()  # agent1
+
+        token_counter.push("agent2", "agent")
+        token_counter.record_usage(200, 100, "claude-3-opus", "Anthropic")
+        token_counter.pop()  # agent2
+
+        # Get breakdown for workflow
+        breakdown = token_counter.get_node_breakdown("workflow", "workflow")
+
+        assert breakdown is not None
+        assert breakdown.name == "workflow"
+        assert breakdown.node_type == "workflow"
+        assert breakdown.direct_usage.total_tokens == 0  # workflow itself has no usage
+        assert breakdown.usage.total_tokens == 450  # 150 + 300
+
+        # Check children by type
+        assert "agent" in breakdown.usage_by_node_type
+        assert breakdown.usage_by_node_type["agent"].node_count == 2
+        assert breakdown.usage_by_node_type["agent"].usage.total_tokens == 450
+
+        # Check individual children
+        assert len(breakdown.child_usage) == 2
+        child_names = [child.name for child in breakdown.child_usage]
+        assert "agent1" in child_names
+        assert "agent2" in child_names
+
+    def test_get_models_breakdown(self, token_counter):
+        """Test getting breakdown by model"""
+        token_counter.push("app", "app")
+        token_counter.push("agent1", "agent")
+        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        token_counter.pop()
+
+        token_counter.push("agent2", "agent")
+        token_counter.record_usage(200, 100, "gpt-4", "OpenAI")
+        token_counter.pop()
+
+        token_counter.push("agent3", "agent")
+        token_counter.record_usage(150, 75, "claude-3-opus", "Anthropic")
+        token_counter.pop()
+
+        breakdown = token_counter.get_models_breakdown()
+
+        assert len(breakdown) == 2  # Two different models
+
+        # Find GPT-4 breakdown
+        gpt4_breakdown = next(b for b in breakdown if b.model_name == "gpt-4")
+        assert gpt4_breakdown.total_tokens == 450  # 150 + 300
+        assert gpt4_breakdown.input_tokens == 300  # 100 + 200
+        assert gpt4_breakdown.output_tokens == 150  # 50 + 100
+        assert len(gpt4_breakdown.nodes) == 2  # Two nodes used GPT-4
+
+        # Find Claude breakdown
+        claude_breakdown = next(b for b in breakdown if b.model_name == "claude-3-opus")
+        assert claude_breakdown.total_tokens == 225
+        assert len(claude_breakdown.nodes) == 1
+
+    def test_get_agents_workflows_breakdown(self, token_counter):
+        """Test getting breakdown by agent and workflow types"""
+        token_counter.push("app", "app")
+
+        # Add workflow 1
+        token_counter.push("workflow1", "workflow")
+        token_counter.push("agent1", "agent")
+        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        token_counter.pop()
+        token_counter.pop()
+
+        # Add workflow 2
+        token_counter.push("workflow2", "workflow")
+        token_counter.push("agent2", "agent")
+        token_counter.record_usage(200, 100, "claude-3-opus", "Anthropic")
+        token_counter.pop()
+        token_counter.pop()
+
+        # Test agents breakdown
+        agents = token_counter.get_agents_breakdown()
+        assert len(agents) == 2
+        assert "agent1" in agents
+        assert "agent2" in agents
+        assert agents["agent1"].total_tokens == 150
+        assert agents["agent2"].total_tokens == 300
+
+        # Test workflows breakdown
+        workflows = token_counter.get_workflows_breakdown()
+        assert len(workflows) == 2
+        assert "workflow1" in workflows
+        assert "workflow2" in workflows
+        assert workflows["workflow1"].total_tokens == 150
+        assert workflows["workflow2"].total_tokens == 300

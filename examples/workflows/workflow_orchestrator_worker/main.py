@@ -3,9 +3,12 @@ import os
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
+from mcp_agent.core.context import Context
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.orchestrator.orchestrator import Orchestrator
+from mcp_agent.tracing.token_counter import TokenNode
+
 from rich import print
 
 # The orchestrator is a high-level abstraction that allows you to generate dynamic plans
@@ -157,12 +160,87 @@ async def example_usage():
             ],
             # We will let the orchestrator iteratively plan the task at every step
             plan_type="full",
+            name="assignment_grader",
         )
 
         result = await orchestrator.generate_str(
             message=task, request_params=RequestParams(model="gpt-4o")
         )
         logger.info(f"{result}")
+
+        # Display token usage tree for the orchestrator workflow
+        display_run_tree(context, orchestrator.name)
+
+        # Show summary at the bottom
+        summary = context.token_counter.get_summary()
+        print(f"\nTotal Cost: ${summary.cost:.4f}")
+        print("=" * 60)
+
+
+def display_node_tree(
+    node: TokenNode, indent="", is_last=True, context: Context = None
+):
+    """Display a node and its children in a tree structure with token usage"""
+    # Connector symbols
+    connector = "└── " if is_last else "├── "
+
+    # Get node usage
+    usage = node.aggregate_usage()
+
+    # Calculate cost if context available
+    cost_str = ""
+    if context and context.token_counter and node.usage.model_name:
+        cost = context.token_counter.calculate_cost(
+            node.usage.model_name,
+            node.usage.input_tokens,
+            node.usage.output_tokens,
+            node.usage.model_info.provider if node.usage.model_info else None,
+        )
+        if cost > 0:
+            cost_str = f" (${cost:.4f})"
+
+    # Display node info
+    print(f"{indent}{connector}{node.name} [{node.node_type}]")
+    print(
+        f"{indent}{'    ' if is_last else '│   '}├─ Total: {usage.total_tokens:,} tokens{cost_str}"
+    )
+    print(f"{indent}{'    ' if is_last else '│   '}├─ Input: {usage.input_tokens:,}")
+    print(f"{indent}{'    ' if is_last else '│   '}└─ Output: {usage.output_tokens:,}")
+
+    # If node has model info, show it
+    if node.usage.model_name:
+        model_str = node.usage.model_name
+        if node.usage.model_info and node.usage.model_info.provider:
+            model_str += f" ({node.usage.model_info.provider})"
+        print(f"{indent}{'    ' if is_last else '│   '}   Model: {model_str}")
+
+    # Process children
+    if node.children:
+        print(f"{indent}{'    ' if is_last else '│   '}")
+        child_indent = indent + ("    " if is_last else "│   ")
+        for i, child in enumerate(node.children):
+            display_node_tree(child, child_indent, i == len(node.children) - 1, context)
+
+
+def display_run_tree(context: Context, name: str):
+    """Display the agent workflow tree with token usage"""
+    if not context.token_counter:
+        print("\nNo token counter available")
+        return
+
+    # Find the agent workflow node by name
+    node = context.token_counter.find_node(name)
+
+    if not node:
+        print(f"\nAgent workflow '{name}' not found in token tree")
+        return
+
+    print("\n" + "=" * 60)
+    print(f"{name} USAGE TREE")
+    print("=" * 60)
+    print()
+
+    display_node_tree(node, context=context)
 
 
 if __name__ == "__main__":
