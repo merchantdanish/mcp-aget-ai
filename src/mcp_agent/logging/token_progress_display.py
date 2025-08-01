@@ -94,7 +94,7 @@ class TokenProgressDisplay:
 
     async def _on_token_update(self, node: TokenNode, usage: TokenUsage):
         """Handle token usage updates."""
-        # Update total
+        # Only update the total summary
         summary = self.token_counter.get_summary()
         self._progress.update(
             self._total_task_id,
@@ -102,31 +102,6 @@ class TokenProgressDisplay:
             tokens=self._format_tokens(summary.usage.total_tokens),
             cost=self._format_cost(summary.cost),
         )
-
-        # Get app-level cost
-        cost = self.token_counter.get_node_cost(node.name, node.node_type)
-
-        # Create task key
-        task_key = f"{node.name}_{node.node_type}"
-
-        # Update or create task for this node
-        if task_key not in self._taskmap:
-            task_id = self._progress.add_task(
-                "",
-                total=None,
-                node_info=f"{node.name} ({node.node_type})",
-                tokens=self._format_tokens(usage.total_tokens),
-                cost=self._format_cost(cost),
-            )
-            self._taskmap[task_key] = task_id
-        else:
-            task_id = self._taskmap[task_key]
-            self._progress.update(
-                task_id,
-                node_info=f"{node.name} ({node.node_type})",
-                tokens=self._format_tokens(usage.total_tokens),
-                cost=self._format_cost(cost),
-            )
 
     def __enter__(self):
         """Context manager entry."""
