@@ -210,7 +210,7 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             maxTokens=16384,
         )
 
-    @track_tokens(node_type="workflow")
+    @track_tokens(node_type="agent")
     async def generate(
         self,
         message: str | MessageParamT | List[MessageParamT],

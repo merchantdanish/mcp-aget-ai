@@ -67,7 +67,12 @@ def _create_panel(request: HumanInputRequest) -> Panel:
 
 async def console_input_callback(request: HumanInputRequest) -> HumanInputResponse:
     """Entry point: handle both simple and schema-based input."""
-    with progress_display.paused():
+    # Use context manager if progress_display exists, otherwise just run the code
+    if progress_display and hasattr(progress_display, "paused"):
+        with progress_display.paused():
+            console.print(_create_panel(request))
+            response = await _handle_simple_input(request)
+    else:
         console.print(_create_panel(request))
         response = await _handle_simple_input(request)
     return HumanInputResponse(request_id=request.request_id, response=response)

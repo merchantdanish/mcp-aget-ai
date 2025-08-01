@@ -268,21 +268,21 @@ class TestOrchestratorTokenCounting:
         app_usage = app_node.aggregate_usage()
         assert app_usage.total_tokens == 720
 
-        # Verify token hierarchy - the app node should have a workflow child
+        # Verify token hierarchy - the app node should have a agent child
         assert len(app_node.children) >= 1
 
-        # Find the Orchestrator workflow node
+        # Find the Orchestrator agent node
         orchestrator_node = None
         for child in app_node.children:
-            if child.node_type == "workflow" and "Orchestrator" in child.name:
+            if child.node_type == "agent" and "Orchestrator" in child.name:
                 orchestrator_node = child
                 break
 
         assert (
             orchestrator_node is not None
-        ), "Orchestrator workflow node not found in hierarchy"
+        ), "Orchestrator agent node not found in hierarchy"
 
-        # The Orchestrator workflow node should have the same token count as the app
+        # The Orchestrator agent node should have the same token count as the app
         orchestrator_usage = orchestrator_node.aggregate_usage()
         assert orchestrator_usage.total_tokens == 720
         assert orchestrator_usage.input_tokens == 480
@@ -360,18 +360,18 @@ class TestOrchestratorTokenCounting:
         # Verify token hierarchy
         assert len(app_node.children) >= 1
 
-        # Find the Orchestrator workflow node
+        # Find the Orchestrator agent node
         orchestrator_node = None
         for child in app_node.children:
-            if child.node_type == "workflow" and "Orchestrator" in child.name:
+            if child.node_type == "agent" and "Orchestrator" in child.name:
                 orchestrator_node = child
                 break
 
         assert (
             orchestrator_node is not None
-        ), "Orchestrator workflow node not found in hierarchy"
+        ), "Orchestrator agent node not found in hierarchy"
 
-        # The Orchestrator workflow node should have the same token count
+        # The Orchestrator agent node should have the same token count
         orchestrator_usage = orchestrator_node.aggregate_usage()
         assert orchestrator_usage.total_tokens == 480
         assert orchestrator_usage.input_tokens == 320
@@ -400,7 +400,7 @@ class TestOrchestratorTokenCounting:
         orchestrator1.synthesizer.generate_str_mock.return_value = "Result 1"
 
         # Push orchestrator 1 context
-        mock_context_with_token_counter.token_counter.push("orchestrator_1", "workflow")
+        mock_context_with_token_counter.token_counter.push("orchestrator_1", "agent")
 
         # Execute first orchestrator
         await orchestrator1.execute(objective="Objective 1")
@@ -423,7 +423,7 @@ class TestOrchestratorTokenCounting:
         orchestrator2.synthesizer.generate_str_mock.return_value = "Result 2"
 
         # Push orchestrator 2 context
-        mock_context_with_token_counter.token_counter.push("orchestrator_2", "workflow")
+        mock_context_with_token_counter.token_counter.push("orchestrator_2", "agent")
 
         # Execute second orchestrator
         await orchestrator2.execute(objective="Objective 2")
@@ -492,7 +492,7 @@ class TestOrchestratorTokenCounting:
         orchestrator.executor.execute_many = AsyncMock(side_effect=mock_execute_many)
 
         # Push orchestrator context
-        mock_context_with_token_counter.token_counter.push("orchestrator", "workflow")
+        mock_context_with_token_counter.token_counter.push("orchestrator", "agent")
 
         # Execute the step
         plan_result = PlanResult(objective="Test objective", step_results=[])
@@ -549,7 +549,7 @@ class TestOrchestratorTokenCounting:
         )
 
         # Push orchestrator context
-        mock_context_with_token_counter.token_counter.push("orchestrator", "workflow")
+        mock_context_with_token_counter.token_counter.push("orchestrator", "agent")
 
         # Execute orchestration (should raise error)
         with pytest.raises(Exception, match="Planner error"):

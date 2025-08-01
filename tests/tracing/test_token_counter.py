@@ -1,6 +1,7 @@
 """Tests for TokenCounter implementation"""
 
 import pytest
+import time
 from datetime import datetime
 from unittest.mock import patch, MagicMock
 
@@ -584,6 +585,272 @@ class TestTokenCounter:
         claude_breakdown = next(b for b in breakdown if b.model_name == "claude-3-opus")
         assert claude_breakdown.total_tokens == 225
         assert len(claude_breakdown.nodes) == 1
+
+    def test_watch_basic(self, token_counter):
+        """Test basic watch functionality"""
+        token_counter.push("app", "app")
+        token_counter.push("agent", "agent")
+
+        # Track callback calls
+        callback_calls = []
+
+        def callback(node, usage):
+            callback_calls.append((node.name, usage.total_tokens))
+
+        # Set up watch
+        watch_id = token_counter.watch(callback=callback, node_type="agent")
+
+        # Record usage - should trigger callback
+        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+
+        # Wait for async callback execution
+        time.sleep(0.1)
+
+        assert len(callback_calls) == 1
+        assert callback_calls[0] == ("agent", 150)
+
+        # Clean up
+        assert token_counter.unwatch(watch_id) is True
+
+    def test_watch_specific_node(self, token_counter):
+        """Test watching a specific node"""
+        token_counter.push("app", "app")
+        token_counter.push("agent1", "agent")
+
+        # Get the agent node
+        agent_node = token_counter._current
+
+        callback_calls = []
+
+        def callback(node, usage):
+            callback_calls.append((node.name, usage.total_tokens))
+
+        # Watch specific node
+        watch_id = token_counter.watch(callback=callback, node=agent_node)
+
+        # Record usage on this node
+        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+
+        # Pop and add another agent
+        token_counter.pop()
+        token_counter.push("agent2", "agent")
+
+        # Record usage on different node - should NOT trigger
+        token_counter.record_usage(200, 100, "gpt-4", "OpenAI")
+
+        # Wait for async execution
+        time.sleep(0.1)
+
+        # Should only have one callback from agent1
+        assert len(callback_calls) == 1
+        assert callback_calls[0] == ("agent1", 150)
+
+        token_counter.unwatch(watch_id)
+
+    def test_watch_threshold(self, token_counter):
+        """Test watch with threshold"""
+        token_counter.push("app", "app")
+
+        callback_calls = []
+
+        def callback(node, usage):
+            callback_calls.append(usage.total_tokens)
+
+        # Watch with threshold of 100 tokens
+        watch_id = token_counter.watch(
+            callback=callback, node_type="app", threshold=100
+        )
+
+        # Record small usage - should NOT trigger
+        token_counter.record_usage(30, 20, "gpt-4", "OpenAI")
+        time.sleep(0.1)
+        assert len(callback_calls) == 0
+
+        # Record more usage to exceed threshold - should trigger
+        token_counter.record_usage(40, 30, "gpt-4", "OpenAI")
+        time.sleep(0.1)
+        assert len(callback_calls) == 1
+        assert callback_calls[0] == 120  # 50 + 70
+
+        token_counter.unwatch(watch_id)
+
+    def test_watch_throttling(self, token_counter):
+        """Test watch with throttling"""
+        token_counter.push("app", "app")
+
+        callback_calls = []
+
+        def callback(node, usage):
+            callback_calls.append(time.time())
+
+        # Watch with 100ms throttle
+        watch_id = token_counter.watch(
+            callback=callback, node_type="app", throttle_ms=100
+        )
+
+        # Rapid updates
+        for i in range(5):
+            token_counter.record_usage(10, 5, "gpt-4", "OpenAI")
+            time.sleep(0.01)  # 10ms between updates
+
+        # Wait for callbacks
+        time.sleep(0.2)
+
+        # Should have fewer callbacks than updates due to throttling
+        assert len(callback_calls) < 5
+
+        # Check that callbacks are at least 100ms apart
+        if len(callback_calls) > 1:
+            for i in range(1, len(callback_calls)):
+                time_diff = (callback_calls[i] - callback_calls[i - 1]) * 1000
+                assert time_diff >= 90  # Allow small timing variance
+
+        token_counter.unwatch(watch_id)
+
+    def test_watch_include_subtree(self, token_counter):
+        """Test watch with include_subtree setting"""
+        token_counter.push("app", "app")
+        token_counter.push("workflow", "workflow")
+        token_counter.push("agent", "agent")
+
+        app_node = token_counter.find_node("app", "app")
+
+        callback_calls = []
+
+        def callback(node, usage):
+            callback_calls.append((node.name, usage.total_tokens))
+
+        # Watch app node with include_subtree=True (default)
+        watch_id = token_counter.watch(callback=callback, node=app_node)
+
+        # Record usage in agent - should trigger on app due to subtree
+        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        time.sleep(0.1)
+
+        assert len(callback_calls) == 1
+        assert callback_calls[0][0] == "app"
+        assert callback_calls[0][1] == 150
+
+        # Now watch with include_subtree=False
+        token_counter.unwatch(watch_id)
+        callback_calls.clear()
+
+        watch_id = token_counter.watch(
+            callback=callback, node=app_node, include_subtree=False
+        )
+
+        # Record more usage in agent - should NOT trigger
+        token_counter.record_usage(50, 25, "gpt-4", "OpenAI")
+        time.sleep(0.1)
+
+        assert len(callback_calls) == 0
+
+        token_counter.unwatch(watch_id)
+
+    def test_watch_cache_invalidation(self, token_counter):
+        """Test that cache invalidation works with watches"""
+        token_counter.push("app", "app")
+        token_counter.push("agent", "agent")
+
+        # Get nodes
+        app_node = token_counter.find_node("app", "app")
+
+        # Initial aggregation to populate cache
+        initial_usage = app_node.aggregate_usage()
+        assert app_node._cache_valid is True
+        assert initial_usage.total_tokens == 0
+
+        callback_calls = []
+
+        def callback(node, usage):
+            # Check if cache was rebuilt (it should have been invalid before aggregate_usage)
+            # The fact that we get correct usage means cache was properly invalidated and rebuilt
+            callback_calls.append((node.name, usage.total_tokens))
+
+        # Watch app node
+        watch_id = token_counter.watch(callback=callback, node=app_node)
+
+        # Record usage - should invalidate cache and trigger watch
+        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+
+        # Wait for callback
+        time.sleep(0.1)
+
+        # Callback should have correct aggregated value
+        assert len(callback_calls) == 1
+        assert callback_calls[0] == ("app", 150)
+
+        # After the watch triggers, cache is re-validated by aggregate_usage()
+        assert app_node._cache_valid is True
+        assert app_node._cached_aggregate.total_tokens == 150
+
+        # Record more usage
+        token_counter.record_usage(50, 25, "gpt-4", "OpenAI")
+        time.sleep(0.1)
+
+        # Should trigger again with updated value
+        assert len(callback_calls) == 2
+        assert callback_calls[1] == ("app", 225)
+
+        token_counter.unwatch(watch_id)
+
+    def test_multiple_watches(self, token_counter):
+        """Test multiple watches on same node"""
+        token_counter.push("app", "app")
+
+        callback1_calls = []
+        callback2_calls = []
+
+        def callback1(_node, usage):
+            callback1_calls.append(usage.total_tokens)
+
+        def callback2(_node, usage):
+            callback2_calls.append(usage.total_tokens * 2)
+
+        # Set up two watches
+        watch_id1 = token_counter.watch(callback=callback1, node_type="app")
+        watch_id2 = token_counter.watch(callback=callback2, node_type="app")
+
+        # Record usage - should trigger both
+        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        time.sleep(0.1)
+
+        assert len(callback1_calls) == 1
+        assert callback1_calls[0] == 150
+        assert len(callback2_calls) == 1
+        assert callback2_calls[0] == 300
+
+        # Remove one watch
+        token_counter.unwatch(watch_id1)
+
+        # Record more usage
+        token_counter.record_usage(50, 25, "gpt-4", "OpenAI")
+        time.sleep(0.1)
+
+        # Only callback2 should be called
+        assert len(callback1_calls) == 1  # No new calls
+        assert len(callback2_calls) == 2
+        assert callback2_calls[1] == 450  # (150 + 75) * 2
+
+        token_counter.unwatch(watch_id2)
+
+    def test_watch_cleanup_on_reset(self, token_counter):
+        """Test that watches are cleaned up on reset"""
+        token_counter.push("app", "app")
+
+        # Set up watch
+        watch_id = token_counter.watch(callback=lambda n, u: None, node_type="app")
+
+        assert len(token_counter._watches) == 1
+
+        # Reset should clear watches
+        token_counter.reset()
+
+        assert len(token_counter._watches) == 0
+        assert len(token_counter._node_watches) == 0
+
+        # Unwatch should return False for cleared watch
+        assert token_counter.unwatch(watch_id) is False
 
     def test_get_agents_workflows_breakdown(self, token_counter):
         """Test getting breakdown by agent and workflow types"""

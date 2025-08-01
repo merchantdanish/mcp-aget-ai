@@ -247,6 +247,23 @@ class Workflow(ABC, Generic[T], ContextDependent):
         # Define the workflow execution function
         async def _execute_workflow():
             try:
+                # Push token tracking context if available
+                pushed_token_context = False
+                if self.context and self.context.token_counter:
+                    try:
+                        self.context.token_counter.push(
+                            name=self.name,
+                            node_type="workflow",
+                            metadata={
+                                "workflow_id": self._workflow_id,
+                                "run_id": self._run_id,
+                                "class": self.__class__.__name__,
+                            },
+                        )
+                        pushed_token_context = True
+                    except Exception as e:
+                        self._logger.error(f"Error pushing token context: {e}")
+
                 # Run the workflow through the executor with pause/cancel monitoring
                 self.update_status("running")
 
@@ -305,6 +322,17 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 raise
             finally:
                 try:
+                    # Pop token context if we pushed it
+                    if (
+                        pushed_token_context
+                        and self.context
+                        and self.context.token_counter
+                    ):
+                        try:
+                            self.context.token_counter.pop()
+                        except Exception as e:
+                            self._logger.error(f"Error popping token context: {e}")
+
                     # Always attempt to clean up the workflow
                     await self.cleanup()
                 except Exception as cleanup_error:

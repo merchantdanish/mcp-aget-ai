@@ -13,7 +13,7 @@ class AnthropicSwarm(Swarm, AnthropicAugmentedLLM):
     using Anthropic's API as the LLM.
     """
 
-    @track_tokens(node_type="workflow")
+    @track_tokens(node_type="agent")
     async def generate(self, message, request_params: RequestParams | None = None):
         params = self.get_request_params(
             request_params,

@@ -12,7 +12,7 @@ class OpenAISwarm(Swarm, OpenAIAugmentedLLM):
     MCP version of the OpenAI Swarm class (https://github.com/openai/swarm.), using OpenAI's ChatCompletion as the LLM.
     """
 
-    @track_tokens(node_type="workflow")
+    @track_tokens(node_type="agent")
     async def generate(self, message, request_params: RequestParams | None = None):
         params = self.get_request_params(
             request_params,
