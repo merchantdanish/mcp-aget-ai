@@ -105,7 +105,11 @@ async def configure_otel(
     return tracing_config
 
 
-async def configure_logger(config: "Settings", session_id: str | None = None):
+async def configure_logger(
+    config: "Settings",
+    session_id: str | None = None,
+    token_counter: TokenCounter | None = None,
+):
     """
     Configure logging and tracing based on the application config.
     """
@@ -120,6 +124,7 @@ async def configure_logger(config: "Settings", session_id: str | None = None):
         batch_size=config.logger.batch_size,
         flush_interval=config.logger.flush_interval,
         progress_display=config.logger.progress_display,
+        token_counter=token_counter,
     )
 
 
@@ -191,9 +196,12 @@ async def initialize_context(
 
     context.session_id = str(context.executor.uuid())
 
+    # Initialize token counter
+    context.token_counter = TokenCounter()
+
     # Configure logging and telemetry
     context.tracing_config = await configure_otel(config, context.session_id)
-    await configure_logger(config, context.session_id)
+    await configure_logger(config, context.session_id, context.token_counter)
     await configure_usage_telemetry(config)
 
     context.task_registry = task_registry or ActivityRegistry()
@@ -217,9 +225,6 @@ async def initialize_context(
         else:
             # Use the global tracer if TracingConfig is not set
             context.tracer = trace.get_tracer(config.otel.service_name)
-
-    # Initialize token counter
-    context.token_counter = TokenCounter()
 
     if store_globally:
         global _global_context
