@@ -137,7 +137,22 @@ async def _handle_elicitation_requested_schema(request: ElicitRequestParams) -> 
 
 async def console_elicitation_callback(request: ElicitRequestParams):
     """Handle elicitation request in console."""
-    with progress_display.paused():
+    # Use context manager if progress_display exists, otherwise just run the code
+    if progress_display and hasattr(progress_display, "paused"):
+        with progress_display.paused():
+            console.print(_create_panel(request))
+            response = await _handle_elicitation_requested_schema(request)
+            try:
+                content = json.loads(response)
+                logger.info("User accepted elicitation", data=content)
+                return ElicitResult(action="accept", content=content)
+            except json.JSONDecodeError:
+                logger.debug(
+                    "Error parsing elicitation response. Cancelling elicitation...",
+                    data=response,
+                )
+                return ElicitResult(action="cancel")
+    else:
         console.print(_create_panel(request))
         response = await _handle_elicitation_requested_schema(request)
         try:

@@ -5,9 +5,14 @@ Provides hierarchical tracking of token usage across agents and subagents.
 
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable, Set, Union, Tuple, Awaitable
 from datetime import datetime
 from collections import defaultdict
+import uuid
+import time
+from concurrent.futures import ThreadPoolExecutor
+import atexit
+import asyncio
 
 from mcp_agent.workflows.llm.llm_selector import load_default_models, ModelInfo
 from mcp_agent.logging.logger import get_logger
@@ -48,6 +53,44 @@ class TokenUsage(TokenUsageBase):
 
 
 @dataclass
+class WatchConfig:
+    """Configuration for watching a node"""
+
+    watch_id: str
+    """Unique identifier for this watch"""
+
+    callback: Union[
+        Callable[["TokenNode", TokenUsage], None],
+        Callable[["TokenNode", TokenUsage], Awaitable[None]],
+    ]
+    """Callback function: (node, aggregated_usage) -> None or async version"""
+
+    node: Optional["TokenNode"] = None
+    """Specific node instance to watch"""
+
+    node_name: Optional[str] = None
+    """Node name to watch (used if node not provided)"""
+
+    node_type: Optional[str] = None
+    """Node type to watch (used if node not provided)"""
+
+    threshold: Optional[int] = None
+    """Only trigger callback when total tokens exceed this threshold"""
+
+    throttle_ms: Optional[int] = None
+    """Minimum milliseconds between callbacks for the same node"""
+
+    include_subtree: bool = True
+    """Whether to trigger on changes in subtree or just direct usage"""
+
+    is_async: bool = False
+    """Whether the callback is async"""
+
+    _last_triggered: Dict[str, float] = field(default_factory=dict)
+    """Track last trigger time per node for throttling"""
+
+
+@dataclass
 class TokenNode:
     """Node in the token usage tree"""
 
@@ -76,14 +119,34 @@ class TokenNode:
     metadata: Dict[str, Any] = field(default_factory=dict)
     """Additional metadata for this node"""
 
+    _cached_aggregate: Optional[TokenUsage] = field(default=None, init=False)
+    """Cached aggregate usage to avoid deep recursion"""
+
+    _cache_valid: bool = field(default=False, init=False)
+    """Whether the cached aggregate is valid"""
+
     def add_child(self, child: "TokenNode") -> None:
         """Add a child node"""
         child.parent = self
         self.children.append(child)
+        # Invalidate cache when structure changes
+        self.invalidate_cache()
+
+    def invalidate_cache(self) -> None:
+        """Invalidate cache for this node and all ancestors"""
+        self._cache_valid = False
+        self._cached_aggregate = None
+        if self.parent:
+            self.parent.invalidate_cache()
 
     def aggregate_usage(self) -> TokenUsage:
-        """Recursively aggregate usage from this node and all children"""
+        """Recursively aggregate usage from this node and all children (with caching)"""
         try:
+            # Return cached value if valid
+            if self._cache_valid and self._cached_aggregate is not None:
+                return self._cached_aggregate
+
+            # Compute aggregated usage
             total = TokenUsage(
                 input_tokens=self.usage.input_tokens,
                 output_tokens=self.usage.output_tokens,
@@ -98,6 +161,10 @@ class TokenNode:
                     total.total_tokens += child_usage.total_tokens
                 except Exception as e:
                     logger.error(f"Error aggregating usage for child {child.name}: {e}")
+
+            # Cache the result
+            self._cached_aggregate = total
+            self._cache_valid = True
 
             return total
         except Exception as e:
@@ -278,6 +345,22 @@ class TokenCounter:
         self._usage_by_model: Dict[tuple[str, Optional[str]], TokenUsage] = defaultdict(
             TokenUsage
         )
+
+        # Watch configurations
+        self._watches: Dict[str, WatchConfig] = {}
+        self._node_watches: Dict[int, Set[str]] = defaultdict(
+            set
+        )  # node_id -> watch_ids
+
+        # Thread pool for sync callback execution
+        self._callback_executor = ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix="token-watch"
+        )
+        # Track if we're running in an event loop
+        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
+
+        # Register cleanup on shutdown
+        atexit.register(self._cleanup_executor)
 
     def _build_cost_lookup(self) -> Dict[str, Dict[str, float]]:
         """Build lookup table for model costs"""
@@ -529,6 +612,23 @@ class TokenCounter:
                     if model_info and not self._current.usage.model_info:
                         self._current.usage.model_info = model_info
 
+                    logger.debug(
+                        f"Recording {input_tokens + output_tokens} tokens for node {self._current.name} "
+                        f"({self._current.node_type}), total before: {self._current.usage.total_tokens - input_tokens - output_tokens}"
+                    )
+
+                    # Only invalidate the current node's cache (not ancestors)
+                    # This prevents cascade invalidation up the tree
+                    self._current._cache_valid = False
+                    self._current._cached_aggregate = None
+                    logger.debug(
+                        f"Invalidated cache for {self._current.name} (targeted)"
+                    )
+
+                    # Trigger watches which will handle ancestor updates
+                    self._trigger_watches(self._current)
+                    logger.debug(f"Triggered watches for {self._current.name}")
+
                 # Track global usage by model and provider
                 if model_name:
                     try:
@@ -741,6 +841,8 @@ class TokenCounter:
             self._root = None
             self._current = None
             self._usage_by_model.clear()
+            self._watches.clear()
+            self._node_watches.clear()
             logger.debug("Token counter reset")
 
     def find_node(
@@ -1243,3 +1345,293 @@ class TokenCounter:
         # Recurse to children
         for child in node.children:
             self._collect_model_nodes(child, model_nodes)
+
+    def watch(
+        self,
+        callback: Union[
+            Callable[[TokenNode, TokenUsage], None],
+            Callable[[TokenNode, TokenUsage], Awaitable[None]],
+        ],
+        node: Optional[TokenNode] = None,
+        node_name: Optional[str] = None,
+        node_type: Optional[str] = None,
+        threshold: Optional[int] = None,
+        throttle_ms: Optional[int] = None,
+        include_subtree: bool = True,
+    ) -> str:
+        """
+        Watch a node or nodes for token usage changes.
+
+        Args:
+            callback: Function called when usage changes: (node, aggregated_usage) -> None
+            node: Specific node instance to watch (highest priority)
+            node_name: Node name pattern to watch (used if node not provided)
+            node_type: Node type to watch (used if node not provided)
+            threshold: Only trigger when total tokens exceed this value
+            throttle_ms: Minimum milliseconds between callbacks for the same node
+            include_subtree: Whether to trigger on subtree changes or just direct usage
+
+        Returns:
+            watch_id: Unique identifier for this watch (use to unwatch)
+
+        Examples:
+            # Watch a specific node
+            watch_id = counter.watch(callback, node=my_node)
+
+            # Watch all workflow nodes
+            watch_id = counter.watch(callback, node_type="workflow")
+
+            # Watch with threshold
+            watch_id = counter.watch(callback, node_name="my_agent", threshold=1000)
+        """
+        with self._lock:
+            watch_id = str(uuid.uuid4())
+
+            # Detect if callback is async by checking if it's a coroutine function
+            is_async = asyncio.iscoroutinefunction(callback)
+
+            config = WatchConfig(
+                watch_id=watch_id,
+                callback=callback,
+                node=node,
+                node_name=node_name,
+                node_type=node_type,
+                threshold=threshold,
+                throttle_ms=throttle_ms,
+                include_subtree=include_subtree,
+                is_async=is_async,
+            )
+
+            self._watches[watch_id] = config
+
+            # If watching a specific node, track it
+            if node:
+                self._node_watches[id(node)].add(watch_id)
+
+            # Try to get the current event loop if we're in async context
+            try:
+                self._event_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # No event loop running, will use thread pool for sync callbacks
+                pass
+
+            logger.debug(
+                f"Added watch {watch_id} for node={node_name}, type={node_type}, async={is_async}"
+            )
+            return watch_id
+
+    def unwatch(self, watch_id: str) -> bool:
+        """
+        Remove a watch.
+
+        Args:
+            watch_id: The watch identifier returned by watch()
+
+        Returns:
+            True if watch was removed, False if not found
+        """
+        with self._lock:
+            config = self._watches.pop(watch_id, None)
+            if not config:
+                return False
+
+            # Remove from node-specific tracking
+            if config.node:
+                node_id = id(config.node)
+                if node_id in self._node_watches:
+                    self._node_watches[node_id].discard(watch_id)
+                    if not self._node_watches[node_id]:
+                        del self._node_watches[node_id]
+
+            logger.debug(f"Removed watch {watch_id}")
+            return True
+
+    def _cleanup_executor(self) -> None:
+        """Clean up thread pool executor on shutdown"""
+        try:
+            self._callback_executor.shutdown(wait=True, cancel_futures=False)
+        except Exception as e:
+            logger.error(f"Error shutting down callback executor: {e}")
+
+    def _trigger_watches(self, node: TokenNode) -> None:
+        """Trigger watches for a node and its ancestors"""
+        try:
+            callbacks_to_execute: List[Tuple[WatchConfig, TokenNode, TokenUsage]] = []
+            logger.debug(f"_trigger_watches called for {node.name} ({node.node_type})")
+
+            with self._lock:
+                current = node
+                triggered_nodes = set()
+                is_original_node = True
+
+                # Walk up the tree to collect watches that need triggering
+                while current:
+                    if id(current) in triggered_nodes:
+                        break
+                    triggered_nodes.add(id(current))
+
+                    # Invalidate this node's cache to ensure fresh aggregation
+                    # This is more targeted than cascade invalidation
+                    current._cache_valid = False
+                    current._cached_aggregate = None
+
+                    # Get aggregated usage with fresh data
+                    usage = current.aggregate_usage()
+
+                    # Check all watches
+                    for watch_id, config in self._watches.items():
+                        try:
+                            # Check if this watch applies to the current node
+                            if not self._watch_matches_node(config, current):
+                                continue
+
+                            # For ancestor nodes, only trigger if include_subtree is True
+                            if not is_original_node and not config.include_subtree:
+                                continue
+
+                            # Check threshold
+                            if (
+                                config.threshold
+                                and usage.total_tokens < config.threshold
+                            ):
+                                continue
+
+                            # Check throttling
+                            node_key = f"{id(current)}"
+                            if config.throttle_ms:
+                                last_triggered = config._last_triggered.get(node_key, 0)
+                                now = time.time() * 1000  # milliseconds
+                                if now - last_triggered < config.throttle_ms:
+                                    continue
+                                config._last_triggered[node_key] = now
+
+                            # Clone the usage data to avoid issues with cache updates
+                            usage_copy = TokenUsage(
+                                input_tokens=usage.input_tokens,
+                                output_tokens=usage.output_tokens,
+                                total_tokens=usage.total_tokens,
+                                model_name=usage.model_name,
+                                model_info=usage.model_info,
+                            )
+
+                            # Queue callback for execution outside lock
+                            callbacks_to_execute.append((config, current, usage_copy))
+                            logger.debug(
+                                f"Queued watch {config.watch_id} for {current.name} ({current.node_type}) "
+                                f"with {usage_copy.total_tokens} tokens"
+                            )
+
+                        except Exception as e:
+                            logger.error(f"Error processing watch {watch_id}: {e}")
+
+                    # Move to parent to check watches on ancestors
+                    current = current.parent
+                    is_original_node = False
+
+            # Execute callbacks outside the lock
+            for config, callback_node, callback_usage in callbacks_to_execute:
+                self._execute_callback(config, callback_node, callback_usage)
+
+        except Exception as e:
+            logger.error(f"Error in _trigger_watches: {e}", exc_info=True)
+
+    def _execute_callback(
+        self, config: WatchConfig, node: TokenNode, usage: TokenUsage
+    ) -> None:
+        """Execute a callback, detecting async context at runtime"""
+        try:
+            loop = None
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                pass
+
+            if loop and not loop.is_closed():
+                if config.is_async:
+                    # Use the captured loop explicitly
+                    task = loop.create_task(
+                        self._execute_async_callback_safely(
+                            config.callback, node, usage
+                        )
+                    )
+                    # Add error handling to the task
+                    task.add_done_callback(self._handle_task_exception)
+                else:
+                    # Run sync callback in executor to avoid blocking
+                    loop.run_in_executor(
+                        self._callback_executor,
+                        self._execute_callback_safely,
+                        config.callback,
+                        node,
+                        usage,
+                    )
+            else:
+                # No event loop or closed loop
+                if config.is_async:
+                    logger.debug(
+                        f"Async callback {config.watch_id} called outside event loop context. "
+                        "Executing with asyncio.run in thread pool."
+                    )
+                    # Execute in thread pool with asyncio.run
+                    self._callback_executor.submit(
+                        lambda: asyncio.run(
+                            self._execute_async_callback_safely(
+                                config.callback, node, usage
+                            )
+                        )
+                    )
+                else:
+                    # Execute sync callback in thread pool
+                    self._callback_executor.submit(
+                        self._execute_callback_safely, config.callback, node, usage
+                    )
+        except Exception as e:
+            logger.error(f"Error executing callback: {e}", exc_info=True)
+
+    def _handle_task_exception(self, task: asyncio.Task) -> None:
+        """Handle exceptions from async tasks"""
+        try:
+            task.result()
+        except Exception as e:
+            logger.error(f"Async task error: {e}", exc_info=True)
+
+    def _execute_callback_safely(
+        self,
+        callback: Callable[[TokenNode, TokenUsage], None],
+        node: TokenNode,
+        usage: TokenUsage,
+    ) -> None:
+        """Execute a sync watch callback safely in thread pool"""
+        try:
+            callback(node, usage)
+        except Exception as e:
+            logger.error(f"Watch callback error: {e}", exc_info=True)
+
+    async def _execute_async_callback_safely(
+        self,
+        callback: Callable[[TokenNode, TokenUsage], Awaitable[None]],
+        node: TokenNode,
+        usage: TokenUsage,
+    ) -> None:
+        """Execute an async watch callback safely"""
+        try:
+            await callback(node, usage)
+        except Exception as e:
+            logger.error(f"Async watch callback error: {e}", exc_info=True)
+
+    def _watch_matches_node(self, config: WatchConfig, node: TokenNode) -> bool:
+        """Check if a watch configuration matches a specific node"""
+        # Specific node instance match
+        if config.node:
+            return config.node is node
+
+        # Node type match
+        if config.node_type and node.node_type != config.node_type:
+            return False
+
+        # Node name match
+        if config.node_name and node.name != config.node_name:
+            return False
+
+        # If no specific criteria, it matches all nodes
+        return True
