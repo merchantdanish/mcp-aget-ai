@@ -3,7 +3,7 @@ Tests for Knowledge Management System
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 from mcp_agent.workflows.adaptive.knowledge_manager import (
@@ -98,7 +98,8 @@ class TestEnhancedExecutionMemory:
         assert len(memory.failed_attempts) == 0
         assert memory.context_tokens == 0
 
-    def test_add_knowledge_items(self):
+    @pytest.mark.asyncio
+    async def test_add_knowledge_items(self):
         """Test adding knowledge items"""
         memory = EnhancedExecutionMemory(execution_id="test", objective="Test")
 
@@ -112,18 +113,21 @@ class TestEnhancedExecutionMemory:
             for i in range(3)
         ]
 
-        memory.add_knowledge_items(items)
+        await memory.add_knowledge_items(items)
         assert len(memory.knowledge_items) == 3
         assert memory.knowledge_items[0].question == "Q0"
 
-    def test_add_action_diary(self):
+    @pytest.mark.asyncio
+    async def test_add_action_diary(self):
         """Test recording actions"""
         memory = EnhancedExecutionMemory(
             execution_id="test", objective="Test", iterations=2
         )
 
-        memory.add_action("search", {"query": "test query"}, success=True, duration=1.5)
-        memory.add_action("synthesize", {"items": 3}, success=False)
+        await memory.add_action(
+            "search", {"query": "test query"}, success=True, duration=1.5
+        )
+        await memory.add_action("synthesize", {"items": 3}, success=False)
 
         assert len(memory.action_diary) == 2
         assert memory.action_diary[0].action == "search"
@@ -134,13 +138,14 @@ class TestEnhancedExecutionMemory:
         assert memory.action_diary[1].action == "synthesize"
         assert not memory.action_diary[1].success
 
-    def test_add_failed_attempt(self):
+    @pytest.mark.asyncio
+    async def test_add_failed_attempt(self):
         """Test recording failed attempts"""
         memory = EnhancedExecutionMemory(
             execution_id="test", objective="Test", iterations=1
         )
 
-        memory.add_failed_attempt(
+        await memory.add_failed_attempt(
             "execute_subtask", "Connection timeout", {"subtask": "Research APIs"}
         )
 
@@ -149,7 +154,8 @@ class TestEnhancedExecutionMemory:
         assert memory.failed_attempts[0]["error"] == "Connection timeout"
         assert memory.failed_attempts[0]["iteration"] == 1
 
-    def test_get_relevant_knowledge(self):
+    @pytest.mark.asyncio
+    async def test_get_relevant_knowledge(self):
         """Test retrieving relevant knowledge"""
         memory = EnhancedExecutionMemory(execution_id="test", objective="Test")
 
@@ -184,10 +190,10 @@ class TestEnhancedExecutionMemory:
                 relevance_score=1.0,
             ),
         ]
-        memory.add_knowledge_items(items)
+        await memory.add_knowledge_items(items)
 
         # Get all relevant knowledge
-        relevant = memory.get_relevant_knowledge("query", limit=2)
+        relevant = await memory.get_relevant_knowledge("query", limit=2)
         assert len(relevant) == 2
         assert relevant[0].question == "Q3"  # Highest relevance
         assert relevant[1].question == "Q1"  # Second highest
@@ -197,13 +203,14 @@ class TestEnhancedExecutionMemory:
         assert relevant[1].used_count == 1
 
         # Get only specific types
-        facts = memory.get_relevant_knowledge(
+        facts = await memory.get_relevant_knowledge(
             "query", limit=10, knowledge_types=[KnowledgeType.FACT]
         )
         assert len(facts) == 2
         assert all(item.knowledge_type == KnowledgeType.FACT for item in facts)
 
-    def test_context_size_estimation(self):
+    @pytest.mark.asyncio
+    async def test_context_size_estimation(self):
         """Test estimating context size"""
         memory = EnhancedExecutionMemory(
             execution_id="test", objective="Test objective with some length"
@@ -211,7 +218,7 @@ class TestEnhancedExecutionMemory:
 
         # Add knowledge
         for i in range(5):
-            memory.add_knowledge_items(
+            await memory.add_knowledge_items(
                 [
                     KnowledgeItem(
                         question="What is X?" * 10,  # ~40 chars
@@ -224,7 +231,9 @@ class TestEnhancedExecutionMemory:
 
         # Add actions
         for i in range(3):
-            memory.add_action("test_action", {"detail": "Some action details here"})
+            await memory.add_action(
+                "test_action", {"detail": "Some action details here"}
+            )
 
         # Estimate size
         tokens = memory.estimate_context_size()
@@ -234,7 +243,8 @@ class TestEnhancedExecutionMemory:
         # Should be roughly (5 * 180 chars + action data) / 4
         assert tokens > 200  # At minimum
 
-    def test_memory_trimming(self):
+    @pytest.mark.asyncio
+    async def test_memory_trimming(self):
         """Test trimming memory to fit token limit"""
         memory = EnhancedExecutionMemory(execution_id="test", objective="Test")
 
@@ -251,16 +261,16 @@ class TestEnhancedExecutionMemory:
             item.used_count = i % 5  # Vary usage
             items.append(item)
 
-        memory.add_knowledge_items(items)
+        await memory.add_knowledge_items(items)
 
         # Add many actions
         for i in range(15):
-            memory.add_action(f"action_{i}", {"data": f"data_{i}" * 10})
+            await memory.add_action(f"action_{i}", {"data": f"data_{i}" * 10})
 
         initial_knowledge_count = len(memory.knowledge_items)
 
         # Trim to small limit
-        items_removed, tokens_saved = memory.trim_to_token_limit(500)
+        items_removed, tokens_saved = await memory.trim_to_token_limit(500)
 
         assert items_removed > 0
         assert tokens_saved > 0
@@ -281,7 +291,8 @@ class TestEnhancedExecutionMemory:
         # Should maintain minimum action diary
         assert len(memory.action_diary) >= 10
 
-    def test_failed_attempts_summary(self):
+    @pytest.mark.asyncio
+    async def test_failed_attempts_summary(self):
         """Test getting failed attempts summary"""
         memory = EnhancedExecutionMemory(execution_id="test", objective="Test")
 
@@ -290,8 +301,8 @@ class TestEnhancedExecutionMemory:
         assert summary == "No failed attempts recorded."
 
         # Add failures
-        memory.add_failed_attempt("search", "API error", {"query": "test"})
-        memory.add_failed_attempt("execute", "Timeout", {"task": "task1"})
+        await memory.add_failed_attempt("search", "API error", {"query": "test"})
+        await memory.add_failed_attempt("execute", "Timeout", {"task": "task1"})
 
         summary = memory.get_failed_attempts_summary()
         assert "Previous failed attempts:" in summary
@@ -323,7 +334,7 @@ class TestKnowledgeExtractor:
             aspect_name="Transformer Architecture",
             findings="Transformers use self-attention mechanisms. They were introduced in 2017. The key innovation is parallel processing.",
             success=True,
-            start_time=datetime.now(),
+            start_time=datetime.now(timezone.utc),
         )
 
         # Mock the LLM response with proper structure
@@ -394,7 +405,7 @@ class TestKnowledgeExtractor:
             aspect_name="Empty Research",
             findings=None,
             success=False,
-            start_time=datetime.now(),
+            start_time=datetime.now(timezone.utc),
         )
 
         items = await extractor.extract_knowledge(result, {})
@@ -409,7 +420,7 @@ class TestKnowledgeExtractor:
             aspect_name="Test",
             findings="Some findings",
             success=True,
-            start_time=datetime.now(),
+            start_time=datetime.now(timezone.utc),
         )
 
         # Make LLM throw an error
@@ -480,7 +491,8 @@ class TestKnowledgeExtractor:
 class TestKnowledgeIntegration:
     """Test knowledge management integration with workflow concepts"""
 
-    def test_knowledge_accumulation_pattern(self):
+    @pytest.mark.asyncio
+    async def test_knowledge_accumulation_pattern(self):
         """Test that knowledge accumulates properly over iterations"""
         memory = EnhancedExecutionMemory(
             execution_id="test", objective="Understand deep learning"
@@ -500,10 +512,10 @@ class TestKnowledgeIntegration:
                 )
                 for i in range(2)
             ]
-            memory.add_knowledge_items(new_knowledge)
+            await memory.add_knowledge_items(new_knowledge)
 
             # Record the research action
-            memory.add_action(
+            await memory.add_action(
                 "research",
                 {"iteration": iteration, "items_found": len(new_knowledge)},
                 success=True,
@@ -514,21 +526,22 @@ class TestKnowledgeIntegration:
         assert len(memory.action_diary) == 3
 
         # Verify we can retrieve recent knowledge
-        recent = memory.get_relevant_knowledge("concept", limit=3)
+        recent = await memory.get_relevant_knowledge("concept", limit=3)
         assert len(recent) == 3
 
         # Later iterations should have slightly higher confidence
         confidences = [item.confidence for item in memory.knowledge_items]
         assert max(confidences) > min(confidences)
 
-    def test_knowledge_vs_action_separation(self):
+    @pytest.mark.asyncio
+    async def test_knowledge_vs_action_separation(self):
         """Test that knowledge and actions are properly separated"""
         memory = EnhancedExecutionMemory(
             execution_id="test", objective="Test separation"
         )
 
         # Add a mix of knowledge and actions
-        memory.add_knowledge_items(
+        await memory.add_knowledge_items(
             [
                 KnowledgeItem(
                     question="Q1",
@@ -538,8 +551,8 @@ class TestKnowledgeIntegration:
                 )
             ]
         )
-        memory.add_action("search", {"query": "test"})
-        memory.add_knowledge_items(
+        await memory.add_action("search", {"query": "test"})
+        await memory.add_knowledge_items(
             [
                 KnowledgeItem(
                     question="Q2",
@@ -549,7 +562,7 @@ class TestKnowledgeIntegration:
                 )
             ]
         )
-        memory.add_action("synthesize", {"count": 2})
+        await memory.add_action("synthesize", {"count": 2})
 
         # Knowledge and actions should be in separate structures
         assert len(memory.knowledge_items) == 2

@@ -3,8 +3,7 @@ Tests for Budget Management System and Beast Mode
 """
 
 import pytest
-from datetime import datetime, timedelta
-import time
+from datetime import datetime, timedelta, timezone
 import asyncio
 from unittest.mock import patch, MagicMock
 
@@ -277,9 +276,9 @@ class TestBudgetManager:
 
         # Test cooldown
         manager.disabled_actions.clear()
-        manager.action_cooldowns[ActionType.PLAN] = datetime.now() + timedelta(
-            minutes=5
-        )
+        manager.action_cooldowns[ActionType.PLAN] = datetime.now(
+            timezone.utc
+        ) + timedelta(minutes=5)
         allowed, reason = await manager.is_action_allowed(ActionType.PLAN)
         assert not allowed
         assert "cooldown" in reason
@@ -331,7 +330,7 @@ class TestBudgetManager:
             await manager.increment_iteration()
             await manager.update_tokens(1000)  # 1000 tokens per iteration
             await manager.update_cost(1.0)  # $1 per iteration
-            time.sleep(0.01)  # Small delay for time calculation
+            await asyncio.sleep(0.01)  # Small delay for time calculation
 
         estimate = await manager.estimate_remaining_capacity()
 
@@ -536,3 +535,136 @@ class TestBudgetIntegration:
             len(successful_starts) <= manager.max_concurrent_subagents * 2
         )  # Allow for some completed
         assert manager.active_subagents >= 0  # Should never go negative
+
+    @pytest.mark.asyncio
+    async def test_concurrent_budget_updates(self):
+        """Test that concurrent updates are handled safely with locks"""
+        manager = BudgetManager(
+            token_budget=100000, cost_budget=100.0, iteration_budget=100
+        )
+
+        # Create many concurrent update tasks
+        async def update_tokens_many_times():
+            for i in range(100):
+                await manager.update_tokens(10)
+
+        async def update_cost_many_times():
+            for i in range(100):
+                await manager.update_cost(0.1)
+
+        async def increment_iterations_many_times():
+            for i in range(100):
+                await manager.increment_iteration()
+
+        # Run all concurrently
+        await asyncio.gather(
+            update_tokens_many_times(),
+            update_cost_many_times(),
+            increment_iterations_many_times(),
+            update_tokens_many_times(),  # Double up for more contention
+            update_cost_many_times(),
+        )
+
+        # Verify final state is consistent
+        assert manager.tokens_used == 2000  # 200 updates of 10 tokens
+        assert abs(manager.cost_incurred - 20.0) < 0.01  # 200 updates of 0.1
+        assert manager.iterations_done == 100
+
+    @pytest.mark.asyncio
+    async def test_concurrent_budget_checks_with_locked_methods(self):
+        """Test that new locked methods maintain consistency"""
+        manager = BudgetManager(
+            token_budget=1000, cost_budget=10.0, iteration_budget=10
+        )
+
+        results = []
+
+        async def check_and_update():
+            # Simulate checking budget while updating
+            for i in range(50):
+                # Use both old and new methods
+                statuses = await manager.check_budgets()
+                await manager.update_tokens(10)
+                should_continue, _ = await manager.should_continue()
+                is_conservative = await manager.should_be_conservative()
+                results.append((statuses, should_continue, is_conservative))
+
+        # Run multiple checkers concurrently
+        await asyncio.gather(check_and_update(), check_and_update(), check_and_update())
+
+        # Verify we got consistent results
+        assert len(results) == 150
+        # Should have stopped when tokens exceeded 1000
+        assert manager.tokens_used >= 1000
+
+        # Check that we properly detected when to stop
+        stop_count = sum(1 for _, should_continue, _ in results if not should_continue)
+        assert stop_count > 0  # At least some detected the limit
+
+    @pytest.mark.asyncio
+    async def test_beast_mode_race_condition(self):
+        """Test beast mode detection doesn't have race conditions"""
+        manager = BudgetManager(token_budget=1000, cost_budget=10.0)
+
+        # Set up near-critical state
+        await manager.update_tokens(850)  # 85%
+
+        beast_mode_results = []
+
+        async def check_beast_mode_repeatedly():
+            for i in range(20):
+                # Gradually increase usage
+                await manager.update_tokens(5)
+                is_beast = await manager.should_enter_beast_mode()
+                beast_mode_results.append((manager.tokens_used, is_beast))
+
+        # Run concurrent beast mode checks
+        await asyncio.gather(
+            check_beast_mode_repeatedly(), check_beast_mode_repeatedly()
+        )
+
+        # Verify beast mode was triggered consistently
+        # Should trigger around 900 tokens (90%)
+        beast_triggered = [
+            (tokens, is_beast) for tokens, is_beast in beast_mode_results if is_beast
+        ]
+        assert len(beast_triggered) > 0
+
+        # All triggers should be above 90% threshold
+        for tokens, _ in beast_triggered:
+            assert tokens >= 900
+
+    @pytest.mark.asyncio
+    async def test_estimate_remaining_capacity_consistency(self):
+        """Test that remaining capacity estimates are consistent under concurrent access"""
+        manager = BudgetManager(
+            token_budget=10000, cost_budget=10.0, iteration_budget=20
+        )
+
+        # Do some work
+        await manager.update_tokens(2000)
+        await manager.update_cost(2.0)
+        for _ in range(5):
+            await manager.increment_iteration()
+
+        capacity_results = []
+
+        async def check_capacity_while_updating():
+            for i in range(10):
+                capacity = await manager.estimate_remaining_capacity()
+                await manager.update_tokens(100)
+                await manager.update_cost(0.1)
+                capacity_results.append(capacity)
+
+        # Run concurrent capacity checks
+        await asyncio.gather(
+            check_capacity_while_updating(), check_capacity_while_updating()
+        )
+
+        # Verify capacity estimates are reasonable
+        assert len(capacity_results) == 20
+
+        # Capacity should generally decrease
+        first_capacity = capacity_results[0]["estimated_total"]
+        last_capacity = capacity_results[-1]["estimated_total"]
+        assert last_capacity < first_capacity

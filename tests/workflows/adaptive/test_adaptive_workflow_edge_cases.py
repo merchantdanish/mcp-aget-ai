@@ -5,7 +5,7 @@ Edge case and error handling tests for Adaptive Workflow V2
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from mcp_agent.workflows.adaptive.adaptive_workflow import AdaptiveWorkflow
@@ -223,13 +223,13 @@ class TestBoundaryConditions:
                 aspect_name="Fail 1",
                 success=False,
                 error="Error 1",
-                start_time=datetime.now(),
+                start_time=datetime.now(timezone.utc),
             ),
             SubagentResult(
                 aspect_name="Fail 2",
                 success=False,
                 error="Error 2",
-                start_time=datetime.now(),
+                start_time=datetime.now(timezone.utc),
             ),
         ]
 
@@ -260,7 +260,7 @@ class TestConcurrencyAndRaceConditions:
                 aspect_name=aspect.name,
                 success=True,
                 findings=f"Result for {aspect.name}",
-                start_time=datetime.now(),
+                start_time=datetime.now(timezone.utc),
             )
 
         workflow._execute_single_aspect = mock_execute
@@ -299,7 +299,9 @@ class TestConcurrencyAndRaceConditions:
             await asyncio.sleep(0.05)
             execution_order.append(f"end_{aspect.name}")
             return SubagentResult(
-                aspect_name=aspect.name, success=True, start_time=datetime.now()
+                aspect_name=aspect.name,
+                success=True,
+                start_time=datetime.now(timezone.utc),
             )
 
         workflow._execute_single_aspect = mock_execute
@@ -354,7 +356,7 @@ class TestResourceManagement:
                 aspect_name="Expensive",
                 success=True,
                 cost=0.5,  # This will exceed budget
-                start_time=datetime.now(),
+                start_time=datetime.now(timezone.utc),
             )
         )
         workflow._current_memory.total_cost = 2.4
@@ -555,8 +557,8 @@ class TestComplexScenarios:
                 aspect_name=aspect.name,
                 success=True,
                 findings=f"Findings for {aspect.name}",
-                start_time=datetime.now(),
-                end_time=datetime.now(),
+                start_time=datetime.now(timezone.utc),
+                end_time=datetime.now(timezone.utc),
                 cost=0.1,
             )
 

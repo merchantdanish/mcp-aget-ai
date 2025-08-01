@@ -5,7 +5,7 @@ Tests the complete workflow with subtask queue, knowledge management, budget con
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from mcp_agent.workflows.adaptive.adaptive_workflow import AdaptiveWorkflow
@@ -608,12 +608,14 @@ class TestAdaptiveWorkflowIntegration:
 
         # Add many actions
         for i in range(30):
-            memory.add_action(f"action_{i}", {"data": "x" * 100})
+            await memory.add_action(f"action_{i}", {"data": "x" * 100})
 
         initial_items = len(memory.knowledge_items)
 
         # Trigger trimming
-        items_removed, tokens_saved = memory.trim_to_token_limit(5000)  # Small limit
+        items_removed, tokens_saved = await memory.trim_to_token_limit(
+            5000
+        )  # Small limit
 
         assert items_removed > 0
         assert len(memory.knowledge_items) < initial_items
@@ -645,8 +647,8 @@ class TestAdaptiveWorkflowIntegration:
                 aspect_name=subtask.aspect.name,
                 findings=f"Success after {subtask.attempt_count} attempts",
                 success=True,
-                start_time=datetime.now(),
-                end_time=datetime.now(),
+                start_time=datetime.now(timezone.utc),
+                end_time=datetime.now(timezone.utc),
                 cost=0.1,
             )
 

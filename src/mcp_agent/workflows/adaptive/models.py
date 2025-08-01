@@ -54,6 +54,10 @@ class SubagentResult(BaseModel):
     model_name: Optional[str] = None
     provider: Optional[str] = None
 
+    # Validation results
+    confidence: float = 0.7  # Default medium confidence
+    validation_notes: Optional[str] = None
+
 
 class SynthesisDecision(BaseModel):
     """Decision after synthesizing research results"""

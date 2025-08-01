@@ -5,7 +5,7 @@ Comprehensive tests for Adaptive Workflow V2
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from mcp_agent.workflows.adaptive.adaptive_workflow import AdaptiveWorkflow
@@ -162,8 +162,8 @@ class TestMemoryManagement:
                     aspect_name="AI History",
                     findings="Found historical information",
                     success=True,
-                    start_time=datetime.now(),
-                    end_time=datetime.now(),
+                    start_time=datetime.now(timezone.utc),
+                    end_time=datetime.now(timezone.utc),
                 )
             ],
         )
@@ -358,8 +358,8 @@ class TestWorkflowExecution:
                 aspect_name=aspect.name,
                 findings=f"Findings for {aspect.name}",
                 success=True,
-                start_time=datetime.now(),
-                end_time=datetime.now(),
+                start_time=datetime.now(timezone.utc),
+                end_time=datetime.now(timezone.utc),
             )
 
         workflow._execute_single_aspect = mock_execute_single
@@ -512,13 +512,13 @@ class TestSynthesisAndDecision:
                 aspect_name="Aspect 1",
                 findings="Finding 1",
                 success=True,
-                start_time=datetime.now(),
+                start_time=datetime.now(timezone.utc),
             ),
             SubagentResult(
                 aspect_name="Aspect 2",
                 findings="Finding 2",
                 success=True,
-                start_time=datetime.now(),
+                start_time=datetime.now(timezone.utc),
             ),
         ]
 

@@ -3,7 +3,7 @@ Tests for Adaptive Workflow V2 Models
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 
 from mcp_agent.workflows.adaptive.models import (
     TaskType,
@@ -72,8 +72,8 @@ class TestSubagentResult:
 
     def test_subagent_result_success(self):
         """Test creating successful SubagentResult"""
-        start = datetime.now()
-        end = datetime.now()
+        start = datetime.now(timezone.utc)
+        end = datetime.now(timezone.utc)
 
         result = SubagentResult(
             aspect_name="Test Aspect",
@@ -96,7 +96,7 @@ class TestSubagentResult:
             aspect_name="Failed Aspect",
             success=False,
             error="Connection timeout",
-            start_time=datetime.now(),
+            start_time=datetime.now(timezone.utc),
         )
 
         assert result.success is False
@@ -106,7 +106,9 @@ class TestSubagentResult:
 
     def test_subagent_result_defaults(self):
         """Test SubagentResult default values"""
-        result = SubagentResult(aspect_name="Default Test", start_time=datetime.now())
+        result = SubagentResult(
+            aspect_name="Default Test", start_time=datetime.now(timezone.utc)
+        )
 
         assert result.success is False
         assert result.cost == 0.0
@@ -211,13 +213,13 @@ class TestExecutionMemory:
             SubagentResult(
                 aspect_name="Result 1",
                 success=True,
-                start_time=datetime.now(),
+                start_time=datetime.now(timezone.utc),
                 cost=1.0,
             ),
             SubagentResult(
                 aspect_name="Result 2",
                 success=False,
-                start_time=datetime.now(),
+                start_time=datetime.now(timezone.utc),
                 cost=0.5,
             ),
         ]
@@ -321,7 +323,9 @@ class TestModelSerialization:
         # Add some data
         memory.research_history.append(["Synthesis 1"])
         memory.subagent_results.append(
-            SubagentResult(aspect_name="Test", success=True, start_time=datetime.now())
+            SubagentResult(
+                aspect_name="Test", success=True, start_time=datetime.now(timezone.utc)
+            )
         )
 
         # Serialize

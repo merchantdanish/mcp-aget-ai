@@ -3,8 +3,9 @@ Action Control System for AdaptiveWorkflow
 Manages action availability based on system state and history
 """
 
+import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Set, List, Optional, Any, Tuple
 from enum import Enum
 
@@ -75,6 +76,9 @@ class ActionController:
         self.success_recovery_threshold = success_recovery_threshold
         self.min_confidence_for_conclusion = min_confidence_for_conclusion
 
+        # Create lock immediately - safe to create outside async context
+        self._lock = asyncio.Lock()
+
         # Define action constraints (use provided or defaults)
         self.constraints: Dict[WorkflowAction, ActionConstraints] = constraints or {
             WorkflowAction.ANALYZE: ActionConstraints(
@@ -105,70 +109,77 @@ class ActionController:
             WorkflowAction.DECOMPOSE: ActionConstraints(max_attempts_per_iteration=2),
         }
 
-    def update_iteration(self, iteration: int) -> None:
+    async def update_iteration(self, iteration: int) -> None:
         """Update current iteration number"""
-        self.current_iteration = iteration
+        async with self._lock:
+            self.current_iteration = iteration
 
-    def is_action_available(
+    async def is_action_available(
         self, action: WorkflowAction, context: Dict[str, Any]
     ) -> Tuple[bool, Optional[str]]:
         """
         Check if an action can be performed.
         Returns (is_available, reason_if_not).
         """
-        # Check if explicitly disabled
-        if action in self.disabled_actions:
-            return False, "Action is currently disabled"
+        async with self._lock:
+            # Check if explicitly disabled
+            if action in self.disabled_actions:
+                return False, "Action is currently disabled"
 
-        # Check cooldown
-        if action in self.action_cooldowns:
-            if datetime.now() < self.action_cooldowns[action]:
-                remaining = (
-                    self.action_cooldowns[action] - datetime.now()
-                ).total_seconds()
-                return False, f"Action on cooldown for {remaining:.0f} more seconds"
+            # Check cooldown
+            if action in self.action_cooldowns:
+                if datetime.now(timezone.utc) < self.action_cooldowns[action]:
+                    remaining = (
+                        self.action_cooldowns[action] - datetime.now(timezone.utc)
+                    ).total_seconds()
+                    return False, f"Action on cooldown for {remaining:.0f} more seconds"
 
-        # Get constraints for this action
-        constraints = self.constraints.get(action, ActionConstraints())
+            # Get constraints for this action
+            constraints = self.constraints.get(action, ActionConstraints())
 
-        # Check iteration-based constraints
-        if self.current_iteration < constraints.min_iterations:
-            return False, f"Requires at least {constraints.min_iterations} iterations"
-
-        # Check attempts in current iteration
-        recent_attempts = self._get_recent_attempts(action, self.current_iteration)
-        if len(recent_attempts) >= constraints.max_attempts_per_iteration:
-            return (
-                False,
-                f"Maximum attempts ({constraints.max_attempts_per_iteration}) reached for this iteration",
-            )
-
-        # Check knowledge requirements
-        knowledge_count = len(context.get("knowledge_items", []))
-        if knowledge_count < constraints.min_knowledge_items:
-            return (
-                False,
-                f"Requires at least {constraints.min_knowledge_items} knowledge items (have {knowledge_count})",
-            )
-
-        # Check specific requirements
-        if constraints.requires_findings and not context.get("has_findings", False):
-            return False, "Requires research findings"
-
-        if constraints.requires_synthesis and not context.get("has_synthesis", False):
-            return False, "Requires synthesis to be completed"
-
-        # Check concurrent execution limits
-        if constraints.max_concurrent > 1:
-            active_count = context.get(f"active_{action.value}_count", 0)
-            if active_count >= constraints.max_concurrent:
+            # Check iteration-based constraints
+            if self.current_iteration < constraints.min_iterations:
                 return (
                     False,
-                    f"Maximum concurrent {action.value} ({constraints.max_concurrent}) reached",
+                    f"Requires at least {constraints.min_iterations} iterations",
                 )
 
-        # Action-specific checks
-        return self._check_action_specific_constraints(action, context)
+            # Check attempts in current iteration
+            recent_attempts = self._get_recent_attempts(action, self.current_iteration)
+            if len(recent_attempts) >= constraints.max_attempts_per_iteration:
+                return (
+                    False,
+                    f"Maximum attempts ({constraints.max_attempts_per_iteration}) reached for this iteration",
+                )
+
+            # Check knowledge requirements
+            knowledge_count = len(context.get("knowledge_items", []))
+            if knowledge_count < constraints.min_knowledge_items:
+                return (
+                    False,
+                    f"Requires at least {constraints.min_knowledge_items} knowledge items (have {knowledge_count})",
+                )
+
+            # Check specific requirements
+            if constraints.requires_findings and not context.get("has_findings", False):
+                return False, "Requires research findings"
+
+            if constraints.requires_synthesis and not context.get(
+                "has_synthesis", False
+            ):
+                return False, "Requires synthesis to be completed"
+
+            # Check concurrent execution limits
+            if constraints.max_concurrent > 1:
+                active_count = context.get(f"active_{action.value}_count", 0)
+                if active_count >= constraints.max_concurrent:
+                    return (
+                        False,
+                        f"Maximum concurrent {action.value} ({constraints.max_concurrent}) reached",
+                    )
+
+            # Action-specific checks
+            return self._check_action_specific_constraints(action, context)
 
     def _check_action_specific_constraints(
         self, action: WorkflowAction, context: Dict[str, Any]
@@ -199,7 +210,7 @@ class ActionController:
 
         return True, None
 
-    def record_action(
+    async def record_action(
         self,
         action: WorkflowAction,
         success: bool,
@@ -208,27 +219,30 @@ class ActionController:
         context: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Record action execution and update constraints"""
-        entry = ActionHistoryEntry(
-            action=action,
-            success=success,
-            timestamp=datetime.now(),
-            duration_seconds=duration,
-            error=error,
-            context=context or {},
-        )
-        self.action_history.append(entry)
+        async with self._lock:
+            entry = ActionHistoryEntry(
+                action=action,
+                success=success,
+                timestamp=datetime.now(timezone.utc),
+                duration_seconds=duration,
+                error=error,
+                context=context or {},
+            )
+            self.action_history.append(entry)
 
-        if not success:
-            self._handle_failure(action, error)
-        else:
-            self._handle_success(action)
+            if not success:
+                await self._handle_failure_locked(action, error)
+            else:
+                await self._handle_success_locked(action)
 
         logger.debug(
             f"Recorded action {action.value}: {'success' if success else 'failure'}"
         )
 
-    def _handle_failure(self, action: WorkflowAction, error: Optional[str]) -> None:
-        """Handle action failure"""
+    async def _handle_failure_locked(
+        self, action: WorkflowAction, error: Optional[str]
+    ) -> None:
+        """Handle action failure - assumes lock is held"""
         # Count recent failures (including the one just recorded)
         recent_failures = [
             h for h in self.action_history[-10:] if h.action == action and not h.success
@@ -238,7 +252,7 @@ class ActionController:
 
         # Apply cooldown
         if constraints.cooldown_minutes > 0:
-            self.action_cooldowns[action] = datetime.now() + timedelta(
+            self.action_cooldowns[action] = datetime.now(timezone.utc) + timedelta(
                 minutes=constraints.cooldown_minutes
             )
 
@@ -249,8 +263,8 @@ class ActionController:
                 f"Disabled action {action.value} due to {len(recent_failures)} repeated failures"
             )
 
-    def _handle_success(self, action: WorkflowAction) -> None:
-        """Handle action success"""
+    async def _handle_success_locked(self, action: WorkflowAction) -> None:
+        """Handle action success - assumes lock is held"""
         # Remove from disabled if it was there
         if action in self.disabled_actions:
             # Check if we should re-enable
@@ -266,27 +280,32 @@ class ActionController:
     def _get_recent_attempts(
         self, action: WorkflowAction, iteration: int
     ) -> List[ActionHistoryEntry]:
-        """Get attempts for an action in the current iteration"""
+        """Get attempts for an action in the current iteration
+
+        NOTE: This method assumes the caller holds self._lock
+        """
         return [
             h
             for h in self.action_history
             if h.action == action and h.context.get("iteration", 0) == iteration
         ]
 
-    def get_available_actions(self, context: Dict[str, Any]) -> List[WorkflowAction]:
+    async def get_available_actions(
+        self, context: Dict[str, Any]
+    ) -> List[WorkflowAction]:
         """Get list of currently available actions"""
         available = []
         for action in WorkflowAction:
-            is_available, _ = self.is_action_available(action, context)
+            is_available, _ = await self.is_action_available(action, context)
             if is_available:
                 available.append(action)
         return available
 
-    def get_recommended_action(
+    async def get_recommended_action(
         self, context: Dict[str, Any]
     ) -> Optional[WorkflowAction]:
         """Get recommended next action based on state"""
-        available = self.get_available_actions(context)
+        available = await self.get_available_actions(context)
         if not available:
             return None
 
@@ -311,38 +330,38 @@ class ActionController:
         # Fallback to first available
         return available[0] if available else None
 
-    def get_action_stats(self) -> Dict[str, Dict[str, Any]]:
+    async def get_action_stats(self) -> Dict[str, Dict[str, Any]]:
         """Get statistics about action usage"""
-        stats = {}
+        async with self._lock:
+            # Create a copy of the data while holding lock
+            stats = {}
+            for action in WorkflowAction:
+                action_entries = [h for h in self.action_history if h.action == action]
+                successful = [h for h in action_entries if h.success]
+                failed = [h for h in action_entries if not h.success]
 
-        for action in WorkflowAction:
-            action_entries = [h for h in self.action_history if h.action == action]
-            successful = [h for h in action_entries if h.success]
-            failed = [h for h in action_entries if not h.success]
+                avg_duration = None
+                if successful:
+                    durations = [
+                        h.duration_seconds for h in successful if h.duration_seconds
+                    ]
+                    if durations:
+                        avg_duration = sum(durations) / len(durations)
 
-            avg_duration = None
-            if successful:
-                durations = [
-                    h.duration_seconds for h in successful if h.duration_seconds
-                ]
-                if durations:
-                    avg_duration = sum(durations) / len(durations)
+                stats[action.value] = {
+                    "total_attempts": len(action_entries),
+                    "successful": len(successful),
+                    "failed": len(failed),
+                    "success_rate": len(successful) / len(action_entries)
+                    if action_entries
+                    else 0,
+                    "average_duration": avg_duration,
+                    "is_disabled": action in self.disabled_actions,
+                    "on_cooldown": action in self.action_cooldowns,
+                }
+            return stats
 
-            stats[action.value] = {
-                "total_attempts": len(action_entries),
-                "successful": len(successful),
-                "failed": len(failed),
-                "success_rate": len(successful) / len(action_entries)
-                if action_entries
-                else 0,
-                "average_duration": avg_duration,
-                "is_disabled": action in self.disabled_actions,
-                "on_cooldown": action in self.action_cooldowns,
-            }
-
-        return stats
-
-    def suggest_recovery_action(
+    async def suggest_recovery_action(
         self, failed_action: WorkflowAction, error: str, context: Dict[str, Any]
     ) -> Optional[WorkflowAction]:
         """Suggest a recovery action after failure"""
@@ -356,12 +375,15 @@ class ActionController:
 
         recovery_action = recovery_map.get(failed_action)
         if recovery_action:
-            is_available, _ = self.is_action_available(recovery_action, context)
+            is_available, _ = await self.is_action_available(recovery_action, context)
             if is_available:
                 return recovery_action
 
         # Default to reflection if available
-        if self.is_action_available(WorkflowAction.REFLECT, context)[0]:
+        is_available, _ = await self.is_action_available(
+            WorkflowAction.REFLECT, context
+        )
+        if is_available:
             return WorkflowAction.REFLECT
 
         return None

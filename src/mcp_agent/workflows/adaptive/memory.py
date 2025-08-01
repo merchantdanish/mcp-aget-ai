@@ -9,7 +9,7 @@ This module provides:
 
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import defaultdict
 import json
 from pathlib import Path
@@ -235,7 +235,7 @@ class AdaptiveMemory:
                     "objective_snippet": memory.objective[:100],
                     "successful_aspects": [r.aspect_name for r in relevant_results],
                     "synthesis": synthesis[:500],  # First 500 chars
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
 
                 self.session_patterns["successful_approaches"][task_type].append(

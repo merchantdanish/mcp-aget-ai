@@ -4,7 +4,7 @@ Implements progressive budget enforcement with multiple dimensions
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Set, Optional, Tuple
 from enum import Enum
 import asyncio
@@ -65,7 +65,7 @@ class BudgetManager:
 
     # Current usage
     tokens_used: int = 0
-    start_time: datetime = field(default_factory=datetime.now)
+    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     cost_incurred: float = 0.0
     iterations_done: int = 0
     active_subagents: int = 0
@@ -147,116 +147,140 @@ class BudgetManager:
 
     def get_time_elapsed(self) -> timedelta:
         """Get time elapsed since start"""
-        return datetime.now() - self.start_time
+        return datetime.now(timezone.utc) - self.start_time
 
     async def check_budgets(self) -> Dict[BudgetDimension, BudgetStatus]:
         """Check all budgets and return status for each dimension"""
         async with self._lock:
-            time_elapsed = self.get_time_elapsed()
+            return await self.check_budgets_locked()
 
-            statuses = {}
+    async def check_budgets_locked(self) -> Dict[BudgetDimension, BudgetStatus]:
+        """Internal helper that assumes lock is already held"""
+        time_elapsed = self.get_time_elapsed()
 
-            # Token budget
-            token_pct = (
-                self.tokens_used / self.token_budget if self.token_budget > 0 else 0
-            )
-            statuses[BudgetDimension.TOKENS] = BudgetStatus(
-                dimension=BudgetDimension.TOKENS,
-                used=self.tokens_used,
-                limit=self.token_budget,
-                percentage=token_pct,
-                is_exceeded=self.tokens_used >= self.token_budget,
-                is_critical=token_pct >= self.critical_threshold,
-            )
+        statuses = {}
 
-            # Time budget
-            time_pct = time_elapsed.total_seconds() / self.time_budget.total_seconds()
-            statuses[BudgetDimension.TIME] = BudgetStatus(
-                dimension=BudgetDimension.TIME,
-                used=time_elapsed.total_seconds(),
-                limit=self.time_budget.total_seconds(),
-                percentage=time_pct,
-                is_exceeded=time_elapsed >= self.time_budget,
-                is_critical=time_pct >= self.critical_threshold,
-            )
+        # Token budget
+        token_pct = self.tokens_used / self.token_budget if self.token_budget > 0 else 0
+        statuses[BudgetDimension.TOKENS] = BudgetStatus(
+            dimension=BudgetDimension.TOKENS,
+            used=self.tokens_used,
+            limit=self.token_budget,
+            percentage=token_pct,
+            is_exceeded=self.tokens_used >= self.token_budget,
+            is_critical=token_pct >= self.critical_threshold,
+        )
 
-            # Cost budget
-            cost_pct = (
-                self.cost_incurred / self.cost_budget if self.cost_budget > 0 else 0
-            )
-            statuses[BudgetDimension.COST] = BudgetStatus(
-                dimension=BudgetDimension.COST,
-                used=self.cost_incurred,
-                limit=self.cost_budget,
-                percentage=cost_pct,
-                is_exceeded=self.cost_incurred >= self.cost_budget,
-                is_critical=cost_pct >= self.critical_threshold,
-            )
+        # Time budget
+        time_budget_seconds = self.time_budget.total_seconds()
+        time_pct = (
+            time_elapsed.total_seconds() / time_budget_seconds
+            if time_budget_seconds > 0
+            else 0
+        )
+        statuses[BudgetDimension.TIME] = BudgetStatus(
+            dimension=BudgetDimension.TIME,
+            used=time_elapsed.total_seconds(),
+            limit=time_budget_seconds,
+            percentage=time_pct,
+            is_exceeded=time_elapsed >= self.time_budget
+            if time_budget_seconds > 0
+            else False,
+            is_critical=time_pct >= self.critical_threshold,
+        )
 
-            # Iteration budget
-            iter_pct = (
-                self.iterations_done / self.iteration_budget
-                if self.iteration_budget > 0
-                else 0
-            )
-            statuses[BudgetDimension.ITERATIONS] = BudgetStatus(
-                dimension=BudgetDimension.ITERATIONS,
-                used=self.iterations_done,
-                limit=self.iteration_budget,
-                percentage=iter_pct,
-                is_exceeded=self.iterations_done >= self.iteration_budget,
-                is_critical=iter_pct >= self.critical_threshold,
-            )
+        # Cost budget
+        cost_pct = self.cost_incurred / self.cost_budget if self.cost_budget > 0 else 0
+        statuses[BudgetDimension.COST] = BudgetStatus(
+            dimension=BudgetDimension.COST,
+            used=self.cost_incurred,
+            limit=self.cost_budget,
+            percentage=cost_pct,
+            is_exceeded=self.cost_incurred >= self.cost_budget,
+            is_critical=cost_pct >= self.critical_threshold,
+        )
 
-            return statuses
+        # Iteration budget
+        iter_pct = (
+            self.iterations_done / self.iteration_budget
+            if self.iteration_budget > 0
+            else 0
+        )
+        statuses[BudgetDimension.ITERATIONS] = BudgetStatus(
+            dimension=BudgetDimension.ITERATIONS,
+            used=self.iterations_done,
+            limit=self.iteration_budget,
+            percentage=iter_pct,
+            is_exceeded=self.iterations_done >= self.iteration_budget,
+            is_critical=iter_pct >= self.critical_threshold,
+        )
+
+        return statuses
 
     async def should_continue(self) -> Tuple[bool, Optional[str]]:
         """
         Determine if execution should continue.
         Returns (should_continue, reason_if_not).
         """
-        statuses = await self.check_budgets()
+        async with self._lock:
+            statuses = await self.check_budgets_locked()
 
-        # Check hard limits
-        for status in statuses.values():
-            if status.is_exceeded:
-                return False, f"{status.dimension.value} budget exceeded"
+            # Check hard limits
+            for status in statuses.values():
+                if status.is_exceeded:
+                    return False, f"{status.dimension.value} budget exceeded"
 
-        # Check failure limit
-        if self.consecutive_failures >= self.max_consecutive_failures:
-            return False, f"Too many consecutive failures ({self.consecutive_failures})"
+            # Check failure limit
+            if self.consecutive_failures >= self.max_consecutive_failures:
+                return (
+                    False,
+                    f"Too many consecutive failures ({self.consecutive_failures})",
+                )
 
         return True, None
 
     async def should_enter_beast_mode(self) -> bool:
         """Check if we should force completion (beast mode)"""
-        statuses = await self.check_budgets()
+        async with self._lock:
+            statuses = await self.check_budgets_locked()
 
-        # Enter beast mode if any budget is critical
-        critical_statuses = [
-            status for status in statuses.values() if status.is_critical
-        ]
-        if critical_statuses:
-            for status in critical_statuses:
-                logger.info(f"Critical budget: {status}")
-            logger.info("Entering beast mode due to critical budget status")
-            return True
+            # Enter beast mode if any budget is exceeded
+            exceeded_statuses = [
+                status for status in statuses.values() if status.is_exceeded
+            ]
+            if exceeded_statuses:
+                for status in exceeded_statuses:
+                    logger.info(f"Exceeded budget: {status}")
+                logger.info("Entering beast mode due to exceeded budget")
+                return True
 
-        # Or if we're about to hit failure limit
-        if self.consecutive_failures >= self.max_consecutive_failures - 1:
-            logger.info("Entering beast mode due to imminent failure limit")
-            return True
+            # Enter beast mode if any budget is critical
+            critical_statuses = [
+                status for status in statuses.values() if status.is_critical
+            ]
+            if critical_statuses:
+                for status in critical_statuses:
+                    logger.info(f"Critical budget: {status}")
+                logger.info("Entering beast mode due to critical budget status")
+                return True
+
+            # Or if we're about to hit failure limit
+            if self.consecutive_failures >= self.max_consecutive_failures - 1:
+                logger.info("Entering beast mode due to imminent failure limit")
+                return True
 
         return False
 
     async def should_be_conservative(self) -> bool:
         """Check if we should be conservative with resources"""
-        statuses = await self.check_budgets()
+        async with self._lock:
+            statuses = await self.check_budgets_locked()
 
-        # Be conservative if any budget is above warning threshold
-        return any(
-            status.percentage >= self.warning_threshold for status in statuses.values()
-        )
+            # Be conservative if any budget is above warning threshold
+            return any(
+                status.percentage >= self.warning_threshold
+                for status in statuses.values()
+            )
 
     async def record_action_failure(self, action: ActionType, error: str) -> None:
         """Record a failed action and update constraints"""
@@ -277,12 +301,12 @@ class BudgetManager:
         failure_count = self.failure_by_action[action.value]
         if failure_count >= self.failure_threshold_for_long_cooldown:
             # Long cooldown for repeated failures
-            self.action_cooldowns[action] = datetime.now() + timedelta(
+            self.action_cooldowns[action] = datetime.now(timezone.utc) + timedelta(
                 minutes=self.long_cooldown_minutes
             )
         else:
             # Short cooldown for occasional failures
-            self.action_cooldowns[action] = datetime.now() + timedelta(
+            self.action_cooldowns[action] = datetime.now(timezone.utc) + timedelta(
                 minutes=self.short_cooldown_minutes
             )
 
@@ -305,16 +329,20 @@ class BudgetManager:
         Check if an action is currently allowed.
         Returns (is_allowed, reason_if_not).
         """
+        # Take a snapshot under lock to avoid race conditions
+        async with self._lock:
+            is_disabled = action in self.disabled_actions
+            cooldown_time = self.action_cooldowns.get(action)
+            active_subagents_count = self.active_subagents
+
         # Check if explicitly disabled
-        if action in self.disabled_actions:
+        if is_disabled:
             return False, "Action temporarily disabled due to failures"
 
         # Check cooldown
-        if action in self.action_cooldowns:
-            if datetime.now() < self.action_cooldowns[action]:
-                remaining = (
-                    self.action_cooldowns[action] - datetime.now()
-                ).total_seconds()
+        if cooldown_time:
+            if datetime.now(timezone.utc) < cooldown_time:
+                remaining = (cooldown_time - datetime.now(timezone.utc)).total_seconds()
                 return False, f"Action on cooldown for {remaining:.0f} more seconds"
 
         # Check resource constraints
@@ -325,7 +353,7 @@ class BudgetManager:
 
         # Check specific action constraints
         if action == ActionType.CREATE_SUBAGENT:
-            if self.active_subagents >= self.max_concurrent_subagents:
+            if active_subagents_count >= self.max_concurrent_subagents:
                 return (
                     False,
                     f"Maximum concurrent subagents ({self.max_concurrent_subagents}) reached",
@@ -354,8 +382,8 @@ class BudgetManager:
 
         return "\n".join(lines)
 
-    async def estimate_remaining_capacity(self) -> Dict[str, int]:
-        """Estimate how many more operations we can do"""
+    async def estimate_remaining_capacity_locked(self) -> Dict[str, int]:
+        """Internal version that assumes lock is held"""
         # Calculate remaining capacity for each dimension
         remaining = {}
 
@@ -400,3 +428,8 @@ class BudgetManager:
         )
 
         return remaining
+
+    async def estimate_remaining_capacity(self) -> Dict[str, int]:
+        """Estimate how many more operations we can do"""
+        async with self._lock:
+            return await self.estimate_remaining_capacity_locked()

@@ -3,9 +3,10 @@ Knowledge Management System for AdaptiveWorkflow
 Extracts, stores, and retrieves structured knowledge from research
 """
 
+import asyncio
 from enum import Enum
 from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from pydantic import BaseModel, Field
 
@@ -37,7 +38,7 @@ class KnowledgeItem(BaseModel):
     confidence: float
     knowledge_type: KnowledgeType
     sources: List[str] = Field(default_factory=list)
-    extracted_at: datetime = Field(default_factory=datetime.now)
+    extracted_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     used_count: int = 0
     relevance_score: float = 1.0
     metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -69,7 +70,7 @@ class ActionDiaryEntry(BaseModel):
     action: str
     details: Dict[str, Any]
     success: bool
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     duration_seconds: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -102,16 +103,24 @@ class EnhancedExecutionMemory(ExecutionMemory):
     # Knowledge index for fast retrieval - not serialized
     _knowledge_index: Optional[Dict[str, List[int]]] = None
 
+    # Lock for thread-safe access - not serialized
+    _lock: Optional[asyncio.Lock] = None
+
     class Config:
         arbitrary_types_allowed = True
-        exclude = {"_knowledge_index"}
+        exclude = {"_knowledge_index", "_lock"}
 
-    def add_knowledge_items(self, items: List[KnowledgeItem]) -> None:
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._lock = asyncio.Lock()
+
+    async def add_knowledge_items(self, items: List[KnowledgeItem]) -> None:
         """Add multiple knowledge items"""
-        self.knowledge_items.extend(items)
-        self._knowledge_index = None  # Reset index
+        async with self._lock:
+            self.knowledge_items.extend(items)
+            self._knowledge_index = None  # Reset index
 
-    def add_action(
+    async def add_action(
         self,
         action: str,
         details: Dict[str, Any],
@@ -119,30 +128,32 @@ class EnhancedExecutionMemory(ExecutionMemory):
         duration: Optional[float] = None,
     ) -> None:
         """Record an action taken"""
-        entry = ActionDiaryEntry(
-            iteration=self.iterations,
-            action=action,
-            details=details,
-            success=success,
-            duration_seconds=duration,
-        )
-        self.action_diary.append(entry)
+        async with self._lock:
+            entry = ActionDiaryEntry(
+                iteration=self.iterations,
+                action=action,
+                details=details,
+                success=success,
+                duration_seconds=duration,
+            )
+            self.action_diary.append(entry)
 
-    def add_failed_attempt(
+    async def add_failed_attempt(
         self, action: str, error: str, context: Dict[str, Any]
     ) -> None:
         """Record a failed attempt for learning"""
-        self.failed_attempts.append(
-            {
-                "iteration": self.iterations,
-                "action": action,
-                "error": error,
-                "context": context,
-                "timestamp": datetime.now().isoformat(),
-            }
-        )
+        async with self._lock:
+            self.failed_attempts.append(
+                {
+                    "iteration": self.iterations,
+                    "action": action,
+                    "error": error,
+                    "context": context,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
 
-    def get_relevant_knowledge(
+    async def get_relevant_knowledge(
         self,
         query: str,
         limit: int = 10,
@@ -152,31 +163,32 @@ class EnhancedExecutionMemory(ExecutionMemory):
         Get most relevant knowledge for a query.
         Simple implementation - could be enhanced with embeddings.
         """
-        filtered_items = self.knowledge_items
+        async with self._lock:
+            filtered_items = list(self.knowledge_items)  # Create copy to work with
 
-        # Filter by type if specified
-        if knowledge_types:
-            filtered_items = [
-                item
-                for item in filtered_items
-                if item.knowledge_type in knowledge_types
-            ]
+            # Filter by type if specified
+            if knowledge_types:
+                filtered_items = [
+                    item
+                    for item in filtered_items
+                    if item.knowledge_type in knowledge_types
+                ]
 
-        # Sort by relevance score and recency
-        sorted_items = sorted(
-            filtered_items,
-            key=lambda x: (x.relevance_score, x.confidence, -x.used_count),
-            reverse=True,
-        )
+            # Sort by relevance score and recency
+            sorted_items = sorted(
+                filtered_items,
+                key=lambda x: (x.relevance_score, x.confidence, -x.used_count),
+                reverse=True,
+            )
 
-        # Return top items
-        results = sorted_items[:limit]
+            # Return top items
+            results = sorted_items[:limit]
 
-        # Increment usage count
-        for item in results:
-            item.increment_usage()
+            # Increment usage count
+            for item in results:
+                item.increment_usage()
 
-        return results
+            return results
 
     def get_failed_attempts_summary(self) -> str:
         """Get summary of failed attempts for context"""
@@ -214,41 +226,42 @@ class EnhancedExecutionMemory(ExecutionMemory):
         self.context_tokens = total_chars // 4
         return self.context_tokens
 
-    def trim_to_token_limit(self, max_tokens: int) -> Tuple[int, int]:
+    async def trim_to_token_limit(self, max_tokens: int) -> Tuple[int, int]:
         """
         Trim memory to fit within token limit.
         Returns (items_removed, tokens_saved).
         """
-        current_tokens = self.estimate_context_size()
-        if current_tokens <= max_tokens:
-            return 0, 0
+        async with self._lock:
+            current_tokens = self.estimate_context_size()
+            if current_tokens <= max_tokens:
+                return 0, 0
 
-        tokens_to_save = current_tokens - max_tokens
-        items_removed = 0
-        tokens_saved = 0
+            tokens_to_save = current_tokens - max_tokens
+            items_removed = 0
+            tokens_saved = 0
 
-        # Remove oldest, least-used knowledge items first
-        if self.knowledge_items:
-            sorted_knowledge = sorted(
-                self.knowledge_items,
-                key=lambda x: (x.used_count, x.relevance_score, x.confidence),
-            )
+            # Remove oldest, least-used knowledge items first
+            if self.knowledge_items:
+                sorted_knowledge = sorted(
+                    self.knowledge_items,
+                    key=lambda x: (x.used_count, x.relevance_score, x.confidence),
+                )
 
-            while tokens_saved < tokens_to_save and sorted_knowledge:
-                item = sorted_knowledge.pop(0)
-                self.knowledge_items.remove(item)
-                items_removed += 1
-                # Rough estimate of tokens saved
-                tokens_saved += (len(item.question) + len(item.answer)) // 4
+                while tokens_saved < tokens_to_save and sorted_knowledge:
+                    item = sorted_knowledge.pop(0)
+                    self.knowledge_items.remove(item)
+                    items_removed += 1
+                    # Rough estimate of tokens saved
+                    tokens_saved += (len(item.question) + len(item.answer)) // 4
 
-        # Trim old action diary entries if needed
-        if tokens_saved < tokens_to_save and len(self.action_diary) > 10:
-            entries_to_remove = min(len(self.action_diary) - 10, 10)
-            self.action_diary = self.action_diary[entries_to_remove:]
-            items_removed += entries_to_remove
-            tokens_saved += entries_to_remove * 50  # Rough estimate
+            # Trim old action diary entries if needed
+            if tokens_saved < tokens_to_save and len(self.action_diary) > 10:
+                entries_to_remove = min(len(self.action_diary) - 10, 10)
+                self.action_diary = self.action_diary[entries_to_remove:]
+                items_removed += entries_to_remove
+                tokens_saved += entries_to_remove * 50  # Rough estimate
 
-        return items_removed, tokens_saved
+            return items_removed, tokens_saved
 
 
 class KnowledgeExtractor:
@@ -372,13 +385,18 @@ class KnowledgeExtractor:
             # Format each type
             sections = []
             for k_type, items in by_type.items():
-                section_lines = [f"<adaptive:{k_type.value}s>"]
+                # Properly pluralize the tag name
+                tag_name = k_type.value
+                if not tag_name.endswith("s"):
+                    tag_name += "s"
+
+                section_lines = [f"<adaptive:{tag_name}>"]
                 for item in items:
                     section_lines.append(
                         f"  • Q: {item.question}\n    A: {item.answer} "
                         f"(confidence: {item.confidence:.2f}, used: {item.used_count}x)"
                     )
-                section_lines.append(f"</adaptive:{k_type.value}s>")
+                section_lines.append(f"</adaptive:{tag_name}>")
                 sections.append("\n".join(section_lines))
 
             return "\n\n".join(sections)

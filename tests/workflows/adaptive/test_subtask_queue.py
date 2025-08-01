@@ -2,6 +2,7 @@
 Tests for AdaptiveSubtaskQueue - FIFO queue with rotation
 """
 
+import pytest
 from unittest.mock import MagicMock
 import numpy as np
 
@@ -33,13 +34,14 @@ class TestSubtaskQueue:
         assert initial.depth == 0
         assert initial.priority == 1.0
 
-    def test_add_subtasks_with_rotation(self):
+    @pytest.mark.asyncio
+    async def test_add_subtasks_with_rotation(self):
         """Test adding subtasks and rotation of original objective"""
         objective = "Research quantum computing"
         queue = AdaptiveSubtaskQueue(objective, TaskType.RESEARCH)
 
         # Get initial item
-        initial = queue.get_next()
+        initial = await queue.get_next()
         assert initial is not None
 
         # Add new subtasks
@@ -56,81 +58,84 @@ class TestSubtaskQueue:
             ),
         ]
 
-        added = queue.add_subtasks(new_aspects, objective, 0)
+        added = await queue.add_subtasks(new_aspects, objective, 0)
         assert added == 2
         assert queue.has_next()
         assert len(queue.queue) == 3  # 2 new + rotated original
 
         # Check order: new subtasks first
-        next_item = queue.get_next()
+        next_item = await queue.get_next()
         assert next_item.aspect.name == "Quantum Algorithms"  # Last added is first out
         assert next_item.depth == 1
 
-        next_item = queue.get_next()
+        next_item = await queue.get_next()
         assert next_item.aspect.name == "Quantum Gates"
         assert next_item.depth == 1
 
         # Original should be at the back
-        next_item = queue.get_next()
+        next_item = await queue.get_next()
         assert next_item.aspect.name == "Original Objective"
         assert next_item.depth == 0
 
-    def test_deduplication(self):
+    @pytest.mark.asyncio
+    async def test_deduplication(self):
         """Test that duplicate objectives are not added"""
         objective = "Test deduplication"
         queue = AdaptiveSubtaskQueue(objective, TaskType.ACTION)
 
         # Clear queue for testing
-        queue.get_next()
+        await queue.get_next()
 
         # Add same subtask multiple times
         aspect = ResearchAspect(
             name="Duplicate Task", objective="This is a duplicate", required_servers=[]
         )
 
-        added1 = queue.add_subtasks([aspect], objective, 0)
-        added2 = queue.add_subtasks([aspect], objective, 0)
+        added1 = await queue.add_subtasks([aspect], objective, 0)
+        added2 = await queue.add_subtasks([aspect], objective, 0)
 
         assert added1 == 1
         assert added2 == 0  # Should not add duplicate
         assert len(queue.queue) == 2  # 1 new + rotated original
 
-    def test_failed_subtask_requeuing(self):
+    @pytest.mark.asyncio
+    async def test_failed_subtask_requeuing(self):
         """Test requeuing failed subtasks"""
         queue = AdaptiveSubtaskQueue("Test failures", TaskType.HYBRID)
 
         # Get initial task
-        task = queue.get_next()
+        task = await queue.get_next()
         task.last_error = "Connection timeout"
 
         # First retry should succeed
-        assert queue.requeue_failed(task)
+        assert await queue.requeue_failed(task)
         assert task.attempt_count == 1
         assert task.priority == 0.5  # Reduced priority
         assert len(queue.queue) == 1
         assert len(queue.failed_subtasks) == 0
 
         # Get it again and fail
-        task = queue.get_next()
+        task = await queue.get_next()
         task.last_error = "Connection timeout again"
-        assert queue.requeue_failed(task)
+        assert await queue.requeue_failed(task)
         assert task.attempt_count == 2
 
         # Third failure should move to failed list
-        task = queue.get_next()
+        task = await queue.get_next()
         task.last_error = "Connection timeout third time"
-        assert not queue.requeue_failed(task)
+        assert not await queue.requeue_failed(task)
         assert task.attempt_count == 3
         assert len(queue.failed_subtasks) == 1
         assert not queue.has_next()
 
-    def test_completed_subtask_tracking(self):
+    @pytest.mark.asyncio
+    async def test_completed_subtask_tracking(self):
         """Test marking subtasks as completed"""
         queue = AdaptiveSubtaskQueue("Track completions", TaskType.RESEARCH)
 
         # Complete some tasks
-        task1 = queue.get_next()
-        queue.mark_completed(task1)
+        task1 = await queue.get_next()
+        await queue.mark_completed(task1)
 
         # Add and complete more
         aspects = [
@@ -139,16 +144,17 @@ class TestSubtaskQueue:
             )
             for i in range(3)
         ]
-        queue.add_subtasks(aspects, "parent", 0)
+        await queue.add_subtasks(aspects, "parent", 0)
 
-        task2 = queue.get_next()
-        queue.mark_completed(task2)
+        task2 = await queue.get_next()
+        await queue.mark_completed(task2)
 
         assert len(queue.completed_subtasks) == 2
         assert queue.completed_subtasks[0] == task1
         assert queue.completed_subtasks[1] == task2
 
-    def test_queue_status(self):
+    @pytest.mark.asyncio
+    async def test_queue_status(self):
         """Test getting queue status"""
         queue = AdaptiveSubtaskQueue("Test status", TaskType.ACTION)
 
@@ -159,20 +165,20 @@ class TestSubtaskQueue:
             )
             for i in range(5)
         ]
-        queue.add_subtasks(aspects, "parent", 0)
+        await queue.add_subtasks(aspects, "parent", 0)
 
         # Complete one, fail one
-        task1 = queue.get_next()
-        queue.mark_completed(task1)
+        task1 = await queue.get_next()
+        await queue.mark_completed(task1)
 
-        task2 = queue.get_next()
+        task2 = await queue.get_next()
         task2.last_error = "Test error"
         # First requeue (attempt 1)
-        assert queue.requeue_failed(task2)
+        assert await queue.requeue_failed(task2)
         # Second requeue (attempt 2)
-        assert queue.requeue_failed(task2)
+        assert await queue.requeue_failed(task2)
         # Third failure moves to failed list
-        assert not queue.requeue_failed(task2)
+        assert not await queue.requeue_failed(task2)
 
         status = queue.get_queue_status()
 
@@ -200,12 +206,13 @@ class TestSubtaskQueue:
         assert 0 in status["depth_distribution"] or 1 in status["depth_distribution"]
         assert sum(status["depth_distribution"].values()) == status["queue_length"]
 
-    def test_depth_tracking(self):
+    @pytest.mark.asyncio
+    async def test_depth_tracking(self):
         """Test that depth is properly tracked through decomposition"""
         queue = AdaptiveSubtaskQueue("Test depth", TaskType.RESEARCH)
 
         # Level 0: Original
-        original = queue.get_next()
+        original = await queue.get_next()
         assert original.depth == 0
 
         # Level 1: First decomposition
@@ -217,9 +224,11 @@ class TestSubtaskQueue:
                 name="L1-B", objective="Level 1 task B", required_servers=[]
             ),
         ]
-        queue.add_subtasks(level1_aspects, original.aspect.objective, original.depth)
+        await queue.add_subtasks(
+            level1_aspects, original.aspect.objective, original.depth
+        )
 
-        l1_task = queue.get_next()
+        l1_task = await queue.get_next()
         assert l1_task.depth == 1
 
         # Level 2: Second decomposition
@@ -228,16 +237,19 @@ class TestSubtaskQueue:
                 name="L2-A1", objective="Level 2 task A1", required_servers=[]
             )
         ]
-        queue.add_subtasks(level2_aspects, l1_task.aspect.objective, l1_task.depth)
+        await queue.add_subtasks(
+            level2_aspects, l1_task.aspect.objective, l1_task.depth
+        )
 
-        l2_task = queue.get_next()
+        l2_task = await queue.get_next()
         assert l2_task.depth == 2
         assert l2_task.priority < l1_task.priority  # Deeper = lower priority
 
-    def test_embedding_deduplication(self):
+    @pytest.mark.asyncio
+    async def test_embedding_deduplication(self):
         """Test deduplication using embeddings"""
         queue = AdaptiveSubtaskQueue("Test embeddings", TaskType.RESEARCH)
-        queue.get_next()  # Clear original
+        await queue.get_next()  # Clear original
 
         # Add similar subtasks
         aspects = [
@@ -258,7 +270,7 @@ class TestSubtaskQueue:
                 required_servers=[],
             ),
         ]
-        queue.add_subtasks(aspects, "parent", 0)
+        await queue.add_subtasks(aspects, "parent", 0)
 
         # Mock embedding model
         mock_model = MagicMock()
@@ -291,7 +303,8 @@ class TestSubtaskQueue:
         assert len(queue.queue) < initial_count
         assert removed >= 0  # May have already been deduplicated during add
 
-    def test_failed_summary(self):
+    @pytest.mark.asyncio
+    async def test_failed_summary(self):
         """Test getting summary of failed subtasks"""
         queue = AdaptiveSubtaskQueue("Test failures", TaskType.ACTION)
 
@@ -302,14 +315,14 @@ class TestSubtaskQueue:
                 objective=f"This task failed {i}",
                 required_servers=[],
             )
-            queue.add_subtasks([aspect], "parent", 0)
+            await queue.add_subtasks([aspect], "parent", 0)
 
-            task = queue.get_next()
+            task = await queue.get_next()
             task.last_error = f"Error {i}: Something went wrong"
             # Fail 3 times to move to failed list
-            queue.requeue_failed(task)
-            queue.requeue_failed(task)
-            queue.requeue_failed(task)  # Third failure moves to failed list
+            await queue.requeue_failed(task)
+            await queue.requeue_failed(task)
+            await queue.requeue_failed(task)  # Third failure moves to failed list
 
         summary = queue.get_failed_summary()
         assert "Failed subtasks:" in summary
@@ -317,16 +330,17 @@ class TestSubtaskQueue:
         assert "Error 0: Something went wrong" in summary
         assert len(queue.failed_subtasks) == 3
 
-    def test_estimate_remaining_work(self):
+    @pytest.mark.asyncio
+    async def test_estimate_remaining_work(self):
         """Test estimation of remaining work"""
         queue = AdaptiveSubtaskQueue("Estimate work", TaskType.RESEARCH)
 
         # Complete original
-        original = queue.get_next()
-        queue.mark_completed(original)
+        original = await queue.get_next()
+        await queue.mark_completed(original)
 
         # Add tasks at various depths
-        queue.add_subtasks(
+        await queue.add_subtasks(
             [
                 ResearchAspect(
                     name="D1-1", objective="Depth 1 task 1", required_servers=[]
@@ -340,8 +354,8 @@ class TestSubtaskQueue:
         )
 
         # Get one and decompose it
-        task = queue.get_next()
-        queue.add_subtasks(
+        task = await queue.get_next()
+        await queue.add_subtasks(
             [
                 ResearchAspect(
                     name="D2-1", objective="Depth 2 task 1", required_servers=[]
@@ -352,8 +366,8 @@ class TestSubtaskQueue:
         )
 
         # Complete one more
-        task2 = queue.get_next()
-        queue.mark_completed(task2)
+        task2 = await queue.get_next()
+        await queue.mark_completed(task2)
 
         estimate = queue.estimate_remaining_work()
         assert estimate["remaining_subtasks"] >= 1  # At least depth 2 task remains
@@ -366,7 +380,8 @@ class TestSubtaskQueue:
 class TestSubtaskQueueIntegration:
     """Test subtask queue integration with workflow concepts"""
 
-    def test_deep_research_pattern(self):
+    @pytest.mark.asyncio
+    async def test_deep_research_pattern(self):
         """Test that queue follows deep research pattern of revisiting original"""
         objective = "Understand transformer architecture"
         queue = AdaptiveSubtaskQueue(objective, TaskType.RESEARCH)
@@ -375,7 +390,7 @@ class TestSubtaskQueueIntegration:
         visited_objectives = []
 
         for iteration in range(3):
-            current = queue.get_next()
+            current = await queue.get_next()
             visited_objectives.append(current.aspect.objective)
 
             if current.depth == 0:  # Original objective
@@ -388,10 +403,12 @@ class TestSubtaskQueueIntegration:
                     )
                     for i in range(2)
                 ]
-                queue.add_subtasks(new_aspects, current.aspect.objective, current.depth)
+                await queue.add_subtasks(
+                    new_aspects, current.aspect.objective, current.depth
+                )
             else:
                 # Just mark as completed
-                queue.mark_completed(current)
+                await queue.mark_completed(current)
 
         # Verify that we processed the original objective
         assert objective in visited_objectives
@@ -404,7 +421,8 @@ class TestSubtaskQueueIntegration:
         # Verify we accumulate knowledge (completed subtasks)
         assert len(queue.completed_subtasks) > 0
 
-    def test_prevents_infinite_recursion(self):
+    @pytest.mark.asyncio
+    async def test_prevents_infinite_recursion(self):
         """Test that depth limits prevent infinite recursion"""
         queue = AdaptiveSubtaskQueue("Test recursion", TaskType.HYBRID)
 
@@ -413,7 +431,7 @@ class TestSubtaskQueueIntegration:
 
         for _ in range(10):  # Try to go 10 levels deep
             if queue.has_next():
-                task = queue.get_next()
+                task = await queue.get_next()
                 max_depth_reached = max(max_depth_reached, task.depth)
 
                 # Always try to decompose
@@ -422,7 +440,9 @@ class TestSubtaskQueueIntegration:
                     objective=f"Task at depth {task.depth + 1}",
                     required_servers=[],
                 )
-                queue.add_subtasks([new_aspect], task.aspect.objective, task.depth)
+                await queue.add_subtasks(
+                    [new_aspect], task.aspect.objective, task.depth
+                )
 
                 # In practice, workflow would limit decomposition depth
                 if task.depth >= 3:

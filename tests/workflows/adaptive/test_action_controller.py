@@ -3,8 +3,8 @@ Tests for Action Control System
 """
 
 import pytest
-from datetime import datetime
-import time
+import asyncio
+from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 
 from mcp_agent.workflows.adaptive.action_controller import (
@@ -42,29 +42,31 @@ class TestActionController:
         assert WorkflowAction.SYNTHESIZE in controller.constraints
         assert WorkflowAction.CONCLUDE in controller.constraints
 
-    def test_update_iteration(self):
+    @pytest.mark.asyncio
+    async def test_update_iteration(self):
         """Test iteration tracking"""
         controller = ActionController()
 
-        controller.update_iteration(1)
+        await controller.update_iteration(1)
         assert controller.current_iteration == 1
 
-        controller.update_iteration(5)
+        await controller.update_iteration(5)
         assert controller.current_iteration == 5
 
-    def test_basic_action_availability(self):
+    @pytest.mark.asyncio
+    async def test_basic_action_availability(self):
         """Test basic action availability checking"""
         controller = ActionController()
         context = {"knowledge_items": [], "has_findings": False}
 
         # ANALYZE should be available initially
-        available, reason = controller.is_action_available(
+        available, reason = await controller.is_action_available(
             WorkflowAction.ANALYZE, context
         )
         assert available
 
         # SYNTHESIZE should not be available without findings
-        available, reason = controller.is_action_available(
+        available, reason = await controller.is_action_available(
             WorkflowAction.SYNTHESIZE, context
         )
         assert not available
@@ -75,12 +77,13 @@ class TestActionController:
         context["knowledge_items"] = ["item1", "item2"]
 
         # Now SYNTHESIZE should be available
-        available, reason = controller.is_action_available(
+        available, reason = await controller.is_action_available(
             WorkflowAction.SYNTHESIZE, context
         )
         assert available
 
-    def test_action_constraints(self):
+    @pytest.mark.asyncio
+    async def test_action_constraints(self):
         """Test constraint-based availability"""
         controller = ActionController()
 
@@ -88,17 +91,17 @@ class TestActionController:
         context = {"knowledge_items": ["k1", "k2", "k3", "k4"], "has_synthesis": True}
 
         # CONCLUDE requires min 1 iteration
-        available, reason = controller.is_action_available(
+        available, reason = await controller.is_action_available(
             WorkflowAction.CONCLUDE, context
         )
         assert not available
         assert "Requires at least 1 iterations" in reason
 
-        controller.update_iteration(1)
+        await controller.update_iteration(1)
 
         # Also needs high confidence
         context["confidence"] = 0.5
-        available, reason = controller.is_action_available(
+        available, reason = await controller.is_action_available(
             WorkflowAction.CONCLUDE, context
         )
         assert not available
@@ -106,17 +109,18 @@ class TestActionController:
 
         # With high confidence, should work
         context["confidence"] = 0.8
-        available, reason = controller.is_action_available(
+        available, reason = await controller.is_action_available(
             WorkflowAction.CONCLUDE, context
         )
         assert available
 
-    def test_action_recording(self):
+    @pytest.mark.asyncio
+    async def test_action_recording(self):
         """Test recording action execution"""
         controller = ActionController()
 
         # Record successful action
-        controller.record_action(
+        await controller.record_action(
             WorkflowAction.PLAN, success=True, duration=1.5, context={"iteration": 1}
         )
 
@@ -126,7 +130,7 @@ class TestActionController:
         assert controller.action_history[0].duration_seconds == 1.5
 
         # Record failed action
-        controller.record_action(
+        await controller.record_action(
             WorkflowAction.EXECUTE_SUBTASK,
             success=False,
             error="Connection timeout",
@@ -137,50 +141,61 @@ class TestActionController:
         assert not controller.action_history[1].success
         assert controller.action_history[1].error == "Connection timeout"
 
-    def test_failure_handling(self):
+    @pytest.mark.asyncio
+    async def test_failure_handling(self):
         """Test handling of action failures"""
         controller = ActionController()
 
         # Single failure - should add cooldown
-        controller.record_action(WorkflowAction.PLAN, success=False, error="Error 1")
+        await controller.record_action(
+            WorkflowAction.PLAN, success=False, error="Error 1"
+        )
 
         assert WorkflowAction.PLAN in controller.action_cooldowns
         cooldown_end = controller.action_cooldowns[WorkflowAction.PLAN]
-        assert cooldown_end > datetime.now()
+        assert cooldown_end > datetime.now(timezone.utc)
 
         # Multiple failures - should disable
-        controller.record_action(WorkflowAction.PLAN, success=False, error="Error 2")
-        controller.record_action(WorkflowAction.PLAN, success=False, error="Error 3")
+        await controller.record_action(
+            WorkflowAction.PLAN, success=False, error="Error 2"
+        )
+        await controller.record_action(
+            WorkflowAction.PLAN, success=False, error="Error 3"
+        )
 
         assert WorkflowAction.PLAN in controller.disabled_actions
 
         # Check it's not available
-        available, reason = controller.is_action_available(WorkflowAction.PLAN, {})
+        available, reason = await controller.is_action_available(
+            WorkflowAction.PLAN, {}
+        )
         assert not available
         assert "currently disabled" in reason
 
-    def test_success_recovery(self):
+    @pytest.mark.asyncio
+    async def test_success_recovery(self):
         """Test re-enabling actions after success"""
         controller = ActionController()
 
         # Disable an action through failures
         for i in range(3):
-            controller.record_action(WorkflowAction.SYNTHESIZE, success=False)
+            await controller.record_action(WorkflowAction.SYNTHESIZE, success=False)
 
         assert WorkflowAction.SYNTHESIZE in controller.disabled_actions
 
         # Record some successes
-        controller.record_action(WorkflowAction.SYNTHESIZE, success=True)
+        await controller.record_action(WorkflowAction.SYNTHESIZE, success=True)
         assert (
             WorkflowAction.SYNTHESIZE in controller.disabled_actions
         )  # Still disabled
 
-        controller.record_action(WorkflowAction.SYNTHESIZE, success=True)
+        await controller.record_action(WorkflowAction.SYNTHESIZE, success=True)
         assert (
             WorkflowAction.SYNTHESIZE not in controller.disabled_actions
         )  # Re-enabled
 
-    def test_cooldown_mechanism(self):
+    @pytest.mark.asyncio
+    async def test_cooldown_mechanism(self):
         """Test action cooldowns"""
         controller = ActionController()
 
@@ -190,93 +205,115 @@ class TestActionController:
         )  # 0.6 seconds
 
         # Fail an action
-        controller.record_action(WorkflowAction.PLAN, success=False)
+        await controller.record_action(WorkflowAction.PLAN, success=False)
 
         # Should be on cooldown
-        available, reason = controller.is_action_available(WorkflowAction.PLAN, {})
+        available, reason = await controller.is_action_available(
+            WorkflowAction.PLAN, {}
+        )
         assert not available
         assert "cooldown" in reason
 
         # Wait for cooldown
-        time.sleep(0.7)
+        await asyncio.sleep(0.7)
 
         # Should be available again
-        available, reason = controller.is_action_available(WorkflowAction.PLAN, {})
+        available, reason = await controller.is_action_available(
+            WorkflowAction.PLAN, {}
+        )
         assert available
 
-    def test_attempts_per_iteration(self):
+    @pytest.mark.asyncio
+    async def test_attempts_per_iteration(self):
         """Test limiting attempts per iteration"""
         controller = ActionController()
-        controller.update_iteration(1)
+        await controller.update_iteration(1)
 
         context = {"iteration": 1}
 
         # ANALYZE allows only 1 attempt per workflow
-        controller.record_action(WorkflowAction.ANALYZE, success=True, context=context)
+        await controller.record_action(
+            WorkflowAction.ANALYZE, success=True, context=context
+        )
 
         # Second attempt should fail
-        available, reason = controller.is_action_available(WorkflowAction.ANALYZE, {})
+        available, reason = await controller.is_action_available(
+            WorkflowAction.ANALYZE, {}
+        )
         assert not available
         assert "Maximum attempts" in reason
 
         # PLAN allows 2 attempts per iteration
-        controller.record_action(WorkflowAction.PLAN, success=True, context=context)
-        available, _ = controller.is_action_available(WorkflowAction.PLAN, {})
+        await controller.record_action(
+            WorkflowAction.PLAN, success=True, context=context
+        )
+        available, _ = await controller.is_action_available(WorkflowAction.PLAN, {})
         assert available
 
-        controller.record_action(WorkflowAction.PLAN, success=True, context=context)
-        available, reason = controller.is_action_available(WorkflowAction.PLAN, {})
+        await controller.record_action(
+            WorkflowAction.PLAN, success=True, context=context
+        )
+        available, reason = await controller.is_action_available(
+            WorkflowAction.PLAN, {}
+        )
         assert not available
         assert "Maximum attempts" in reason
 
-    def test_concurrent_execution_limits(self):
+    @pytest.mark.asyncio
+    async def test_concurrent_execution_limits(self):
         """Test limiting concurrent executions"""
         controller = ActionController()
 
         # CREATE_SUBAGENT has max concurrent limit
         context = {"active_create_subagent_count": 4}
-        available, _ = controller.is_action_available(
+        available, _ = await controller.is_action_available(
             WorkflowAction.CREATE_SUBAGENT, context
         )
         assert available
 
         context["active_create_subagent_count"] = 5
-        available, reason = controller.is_action_available(
+        available, reason = await controller.is_action_available(
             WorkflowAction.CREATE_SUBAGENT, context
         )
         assert not available
         assert "Maximum concurrent" in reason
 
-    def test_complex_constraints(self):
+    @pytest.mark.asyncio
+    async def test_complex_constraints(self):
         """Test complex action-specific constraints"""
         controller = ActionController()
-        controller.update_iteration(2)
+        await controller.update_iteration(2)
 
         # DECOMPOSE requires high complexity
         context = {"subtask_complexity": 1}
-        available, reason = controller.is_action_available(
+        available, reason = await controller.is_action_available(
             WorkflowAction.DECOMPOSE, context
         )
         assert not available
         assert "not complex enough" in reason
 
         context["subtask_complexity"] = 3
-        available, _ = controller.is_action_available(WorkflowAction.DECOMPOSE, context)
+        available, _ = await controller.is_action_available(
+            WorkflowAction.DECOMPOSE, context
+        )
         assert available
 
         # REFLECT requires at least 1 iteration
-        controller.update_iteration(0)
-        available, reason = controller.is_action_available(WorkflowAction.REFLECT, {})
+        await controller.update_iteration(0)
+        available, reason = await controller.is_action_available(
+            WorkflowAction.REFLECT, {}
+        )
         assert not available
 
-        controller.update_iteration(1)
-        available, _ = controller.is_action_available(WorkflowAction.REFLECT, {})
+        await controller.update_iteration(1)
+        available, _ = await controller.is_action_available(WorkflowAction.REFLECT, {})
         assert available
 
-    def test_get_available_actions(self):
+    @pytest.mark.asyncio
+    async def test_get_available_actions(self):
         """Test getting all available actions"""
         controller = ActionController()
-        controller.update_iteration(1)
+        await controller.update_iteration(1)
 
         context = {
             "knowledge_items": ["k1", "k2"],
@@ -285,7 +322,7 @@ class TestActionController:
             "confidence": 0.5,
         }
 
-        available = controller.get_available_actions(context)
+        available = await controller.get_available_actions(context)
 
         # Should have some actions available
         assert len(available) > 0
@@ -296,23 +333,24 @@ class TestActionController:
         assert WorkflowAction.DECIDE not in available  # No synthesis
         assert WorkflowAction.CONCLUDE not in available  # Low confidence
 
-    def test_recommended_action(self):
+    @pytest.mark.asyncio
+    async def test_recommended_action(self):
         """Test action recommendation"""
         controller = ActionController()
 
         # Initial state - should recommend ANALYZE
         context = {}
-        recommended = controller.get_recommended_action(context)
+        recommended = await controller.get_recommended_action(context)
         assert recommended == WorkflowAction.ANALYZE
 
         # After analysis, should recommend PLAN
-        controller.record_action(WorkflowAction.ANALYZE, success=True)
-        recommended = controller.get_recommended_action(context)
+        await controller.record_action(WorkflowAction.ANALYZE, success=True)
+        recommended = await controller.get_recommended_action(context)
         assert recommended == WorkflowAction.PLAN
 
         # With findings, should recommend synthesis or knowledge extraction
         context = {"has_findings": True, "knowledge_items": ["k1", "k2"]}
-        recommended = controller.get_recommended_action(context)
+        recommended = await controller.get_recommended_action(context)
         # PLAN is still available and may be recommended
         assert recommended in [
             WorkflowAction.PLAN,
@@ -321,23 +359,26 @@ class TestActionController:
             WorkflowAction.SYNTHESIZE,
         ]
 
-    def test_action_stats(self):
+    @pytest.mark.asyncio
+    async def test_action_stats(self):
         """Test getting action statistics"""
         controller = ActionController()
 
         # Record various actions
-        controller.record_action(WorkflowAction.PLAN, success=True, duration=1.0)
-        controller.record_action(WorkflowAction.PLAN, success=True, duration=2.0)
-        controller.record_action(WorkflowAction.PLAN, success=False, error="Failed")
+        await controller.record_action(WorkflowAction.PLAN, success=True, duration=1.0)
+        await controller.record_action(WorkflowAction.PLAN, success=True, duration=2.0)
+        await controller.record_action(
+            WorkflowAction.PLAN, success=False, error="Failed"
+        )
 
-        controller.record_action(
+        await controller.record_action(
             WorkflowAction.EXECUTE_SUBTASK, success=True, duration=5.0
         )
-        controller.record_action(
+        await controller.record_action(
             WorkflowAction.EXECUTE_SUBTASK, success=True, duration=3.0
         )
 
-        stats = controller.get_action_stats()
+        stats = await controller.get_action_stats()
 
         # Check PLAN stats
         plan_stats = stats[WorkflowAction.PLAN.value]
@@ -354,15 +395,16 @@ class TestActionController:
         assert exec_stats["success_rate"] == 1.0
         assert exec_stats["average_duration"] == 4.0  # (5.0 + 3.0) / 2
 
-    def test_recovery_suggestions(self):
+    @pytest.mark.asyncio
+    async def test_recovery_suggestions(self):
         """Test recovery action suggestions after failures"""
         controller = ActionController()
-        controller.update_iteration(1)
+        await controller.update_iteration(1)
 
         context = {"has_findings": True, "knowledge_items": ["k1"]}
 
         # Failed execution should suggest decomposition
-        recovery = controller.suggest_recovery_action(
+        recovery = await controller.suggest_recovery_action(
             WorkflowAction.EXECUTE_SUBTASK,
             "Task too complex",
             {"subtask_complexity": 3},
@@ -370,20 +412,20 @@ class TestActionController:
         assert recovery == WorkflowAction.DECOMPOSE
 
         # Failed synthesis should suggest more execution
-        recovery = controller.suggest_recovery_action(
+        recovery = await controller.suggest_recovery_action(
             WorkflowAction.SYNTHESIZE, "Not enough data", context
         )
         assert recovery == WorkflowAction.EXECUTE_SUBTASK
 
         # Failed conclusion should suggest reflection
-        recovery = controller.suggest_recovery_action(
+        recovery = await controller.suggest_recovery_action(
             WorkflowAction.CONCLUDE, "Confidence too low", context
         )
         assert recovery == WorkflowAction.REFLECT
 
         # If suggested recovery not available, default to REFLECT
         controller.disabled_actions.add(WorkflowAction.DECOMPOSE)
-        recovery = controller.suggest_recovery_action(
+        recovery = await controller.suggest_recovery_action(
             WorkflowAction.EXECUTE_SUBTASK, "Failed", context
         )
         assert recovery == WorkflowAction.REFLECT
@@ -392,7 +434,8 @@ class TestActionController:
 class TestActionControllerIntegration:
     """Test action controller integration with workflow concepts"""
 
-    def test_workflow_progression(self):
+    @pytest.mark.asyncio
+    async def test_workflow_progression(self):
         """Test natural workflow action progression"""
         controller = ActionController()
         context = {}
@@ -401,10 +444,10 @@ class TestActionControllerIntegration:
         actions_taken = []
 
         for i in range(10):
-            controller.update_iteration(i)
+            await controller.update_iteration(i)
 
             # Get recommended action
-            action = controller.get_recommended_action(context)
+            action = await controller.get_recommended_action(context)
             if action:
                 actions_taken.append(action)
 
@@ -412,7 +455,7 @@ class TestActionControllerIntegration:
                 success = (
                     action != WorkflowAction.EXECUTE_SUBTASK or i % 3 != 2
                 )  # Fail every 3rd execution
-                controller.record_action(
+                await controller.record_action(
                     action, success=success, context={"iteration": i}
                 )
 
@@ -441,14 +484,15 @@ class TestActionControllerIntegration:
             first_synth = actions_taken.index(WorkflowAction.SYNTHESIZE)
             assert first_synth > first_exec  # Synthesis after execution
 
-    def test_failure_adaptation(self):
+    @pytest.mark.asyncio
+    async def test_failure_adaptation(self):
         """Test that controller adapts to failures"""
         controller = ActionController()
         context = {"has_findings": True, "knowledge_items": ["k1"]}
 
         # Record 3 failures directly - this should disable the action
         for i in range(3):
-            controller.record_action(
+            await controller.record_action(
                 WorkflowAction.PLAN, success=False, error=f"Planning failed {i + 1}"
             )
 
@@ -456,25 +500,26 @@ class TestActionControllerIntegration:
         assert WorkflowAction.PLAN in controller.disabled_actions
 
         # Should recommend alternative actions
-        recommended = controller.get_recommended_action(context)
+        recommended = await controller.get_recommended_action(context)
         assert recommended != WorkflowAction.PLAN
         assert recommended is not None  # Should have alternatives
 
         # After some successes in other actions, PLAN might be re-enabled
         for i in range(3):
-            controller.record_action(WorkflowAction.EXECUTE_SUBTASK, success=True)
+            await controller.record_action(WorkflowAction.EXECUTE_SUBTASK, success=True)
 
         # Not immediately re-enabled, but cooldown might expire
-        time.sleep(0.1)
+        await asyncio.sleep(0.1)
 
         # Recovery suggestion should adapt
-        recovery = controller.suggest_recovery_action(
+        recovery = await controller.suggest_recovery_action(
             WorkflowAction.PLAN, "Still failing", context
         )
         # Recovery may be None if REFLECT is not available, or REFLECT if it is
         assert recovery is None or recovery == WorkflowAction.REFLECT
 
-    def test_prevents_premature_conclusion(self):
+    @pytest.mark.asyncio
+    async def test_prevents_premature_conclusion(self):
         """Test that controller prevents premature workflow conclusion"""
         controller = ActionController()
 
@@ -486,20 +531,22 @@ class TestActionControllerIntegration:
         }
 
         # Should not allow conclusion at iteration 0
-        available, reason = controller.is_action_available(
+        available, reason = await controller.is_action_available(
             WorkflowAction.CONCLUDE, context
         )
         assert not available
         assert "Requires at least 1 iterations" in reason
 
         # Even with perfect context, need iterations
-        controller.update_iteration(1)
-        available, _ = controller.is_action_available(WorkflowAction.CONCLUDE, context)
+        await controller.update_iteration(1)
+        available, _ = await controller.is_action_available(
+            WorkflowAction.CONCLUDE, context
+        )
         assert available  # Now allowed
 
         # But low confidence should still block
         context["confidence"] = 0.5
-        available, reason = controller.is_action_available(
+        available, reason = await controller.is_action_available(
             WorkflowAction.CONCLUDE, context
         )
         assert not available

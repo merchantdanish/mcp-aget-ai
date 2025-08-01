@@ -3,7 +3,7 @@ Tests for Adaptive Workflow V2 Memory Management
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 
 from mcp_agent.workflows.adaptive.memory import (
     MemoryManager,
@@ -116,7 +116,7 @@ class TestFileSystemBackend:
             execution_id="fs-test-123",
             objective="Filesystem test",
             task_type=TaskType.HYBRID,
-            start_time=datetime.now(),
+            start_time=datetime.now(timezone.utc),
         )
 
         # Save
@@ -214,13 +214,13 @@ class TestAdaptiveMemory:
                     aspect_name="Medical Imaging",
                     findings="AI used for diagnosis",
                     success=True,
-                    start_time=datetime.now(),
+                    start_time=datetime.now(timezone.utc),
                 ),
                 SubagentResult(
                     aspect_name="Drug Discovery",
                     findings="AI accelerates research",
                     success=True,
-                    start_time=datetime.now(),
+                    start_time=datetime.now(timezone.utc),
                 ),
             ],
         )
@@ -247,14 +247,14 @@ class TestAdaptiveMemory:
                 "objective_snippet": "Research quantum computing applications",
                 "successful_aspects": ["Quantum algorithms", "Hardware"],
                 "synthesis": "Found key applications",
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             },
             {
                 "task_type": "research",
                 "objective_snippet": "Analyze machine learning frameworks",
                 "successful_aspects": ["TensorFlow", "PyTorch"],
                 "synthesis": "Compared frameworks",
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         ]
 
@@ -313,7 +313,7 @@ class TestMemoryManager:
                     aspect_name="File Edit",
                     findings="Successfully edited",
                     success=True,
-                    start_time=datetime.now(),
+                    start_time=datetime.now(timezone.utc),
                 )
             ],
         )

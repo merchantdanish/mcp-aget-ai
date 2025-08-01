@@ -820,12 +820,12 @@ class TestAdaptiveWorkflowTokenCounting:
         print("\nExpected token breakdown:")
         print("  analyze_objective: 300 tokens")
         print("  Iteration 1: decompose original (600 tokens)")
-        print("  Iteration 2: execute Research B + extract (750 tokens)")
+        print("  Iteration 2: execute Research B + validate + extract (1000 tokens)")
         print(
-            "  Iteration 3: execute Research A + extract + synthesize + decide (1300 tokens)"
+            "  Iteration 3: execute Research A + validate + extract + synthesize + decide (1550 tokens)"
         )
         print("  final_report: 250 tokens")
-        print("  Total expected: 3200 tokens")
+        print("  Total expected: 3700 tokens")
         print(f"  Total actual: {app_node.aggregate_usage().total_tokens} tokens")
 
         # Check token usage - based on actual workflow execution:
@@ -835,18 +835,20 @@ class TestAdaptiveWorkflowTokenCounting:
         #    - _needs_decomposition for original (ComplexityAssessor): 1 x generate_structured = 300 tokens
         #    - _plan_research_for_subtask (SubtaskPlanner): 1 x generate_structured = 300 tokens
         # 3. Iteration 2:
-        #    - _needs_decomposition for Research A (ComplexityAssessor): 1 x generate_structured = 300 tokens
-        #    - _execute_single_subtask for Research A: 1 x generate_str = 150 tokens
-        #    - Extract knowledge (KnowledgeExtractor): 1 x generate_structured = 300 tokens
-        # 4. Iteration 3:
         #    - _needs_decomposition for Research B (ComplexityAssessor): 1 x generate_structured = 300 tokens
         #    - _execute_single_subtask for Research B: 1 x generate_str = 150 tokens
+        #    - Validate result (ResultPassthrough): 1 x generate = 250 tokens
+        #    - Extract knowledge (KnowledgeExtractor): 1 x generate_structured = 300 tokens
+        # 4. Iteration 3:
+        #    - _needs_decomposition for Research A (ComplexityAssessor): 1 x generate_structured = 300 tokens
+        #    - _execute_single_subtask for Research A: 1 x generate_str = 150 tokens
+        #    - Validate result (ResultPassthrough): 1 x generate = 250 tokens
         #    - Extract knowledge (KnowledgeExtractor): 1 x generate_structured = 300 tokens
         #    - _synthesize_accumulated_knowledge (SynthesisAgent): 1 x generate = 250 tokens
         #    - _decide_next_steps (DecisionMaker): 1 x generate_structured = 300 tokens
         # 5. _generate_final_report: 1 x generate = 250 tokens
         #
-        # Total: 300 + 300 + 300 + 300 + 150 + 300 + 300 + 150 + 300 + 250 + 300 + 250 = 3200 tokens
+        # Total: 300 + 300 + 300 + 300 + 150 + 250 + 300 + 300 + 150 + 250 + 300 + 250 + 300 + 250 = 3700 tokens
         #   - decide: 1 x generate_structured = 300
         # - Iteration 2:
         #   - plan_research: 1 x generate_structured = 300
@@ -856,12 +858,12 @@ class TestAdaptiveWorkflowTokenCounting:
         # - final_report: 1 x generate = 250
         # Total: 300 + 1150 + 1000 + 250 = 2700 tokens
         app_usage = app_node.aggregate_usage()
-        assert app_usage.total_tokens == 3200
+        assert app_usage.total_tokens == 3700
 
         # Verify cost tracking in summary
         summary = mock_context_with_token_counter.token_counter.get_summary()
         assert summary.cost > 0
-        assert summary.usage.total_tokens == 3200
+        assert summary.usage.total_tokens == 3700
 
     @pytest.mark.asyncio
     async def test_knowledge_extraction_token_tracking(
