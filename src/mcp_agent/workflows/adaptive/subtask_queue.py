@@ -49,7 +49,11 @@ class AdaptiveSubtaskQueue:
 
         # Add original objective as first item
         original_aspect = ResearchAspect(
-            name="Original Objective", objective=original_objective, required_servers=[]
+            name="Original Objective",
+            objective=original_objective,
+            required_servers=[],
+            needs_decomposition=True,
+            decomposition_reason="Initial objective needs to be broken down into specific research aspects",
         )
         self.queue.append(
             SubtaskQueueItem(
@@ -98,6 +102,7 @@ class AdaptiveSubtaskQueue:
                     name="Original Objective",
                     objective=self.original_objective,
                     required_servers=[],
+                    needs_decomposition=False,  # Already decomposed once
                 )
                 original_item = SubtaskQueueItem(
                     aspect=original_aspect,

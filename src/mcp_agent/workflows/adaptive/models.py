@@ -30,6 +30,13 @@ class ResearchAspect(BaseModel):
         default=None,
         description="Name of predefined agent to use instead of creating new one",
     )
+    needs_decomposition: bool = Field(
+        default=False,
+        description="Whether this aspect needs to be broken down into smaller subtasks",
+    )
+    decomposition_reason: Optional[str] = Field(
+        default=None, description="Why this aspect needs decomposition (if applicable)"
+    )
 
 
 class SubagentResult(BaseModel):

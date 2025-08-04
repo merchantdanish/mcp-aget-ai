@@ -2,7 +2,6 @@
 Adaptive Workflow - Following Deep Research Architecture
 """
 
-import asyncio
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -87,9 +86,10 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
         available_servers: List[str] | None = None,
         time_budget: timedelta = timedelta(minutes=30),
         cost_budget: float = 10.0,
-        max_iterations: int = 10,
+        max_iterations: int = 20,  # Increase from 10
         enable_parallel: bool = True,
-        enable_validation: bool = True,  # Enable result validation
+        enable_subagent_validation: bool = False,  # Enable individual subagent result validation
+        enable_complexity_check: bool = True,  # Enable complexity checking for decomposition
         memory_manager: Optional[MemoryManager] = None,
         model_preferences: Optional[ModelPreferences] = None,
         context: Optional[Any] = None,
@@ -97,8 +97,11 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
         synthesis_frequency: int = 3,  # Synthesize every N iterations
         min_knowledge_for_synthesis: int = 5,  # Min knowledge items before synthesis
         max_subtask_depth: int = 3,  # Max depth for task decomposition
-        beast_mode_temperature: float = 0.9,  # Temperature for beast mode
+        beast_mode_temperature: float = 0.95,  # Temperature for beast mode
         token_budget: int = 100000,  # Token budget
+        predefined_agents: Optional[
+            dict[str, Agent]
+        ] = None,  # Additional predefined agents
         **kwargs,
     ):
         """Initialize Adaptive Workflow V2"""
@@ -119,12 +122,31 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
                 # It's an AugmentedLLM instance
                 self.available_agents[agent.name] = agent
 
-        self.available_servers = available_servers or []
+        # Add any predefined agents passed in constructor
+        if predefined_agents:
+            self.available_agents.update(predefined_agents)
+
+        # Get available servers - either from parameter or from server registry
+        if available_servers:
+            self.available_servers = available_servers
+        elif self.context and hasattr(self.context, "server_registry"):
+            # Get servers from the registry which has the actual loaded servers
+            self.available_servers = list(self.context.server_registry.registry.keys())
+            logger.info(
+                f"Detected {len(self.available_servers)} available MCP servers from registry: {self.available_servers}"
+            )
+        else:
+            self.available_servers = []
+            logger.warning(
+                "No available servers found - this may cause issues with subtask planning"
+            )
+
         self.time_budget = time_budget
         self.cost_budget = cost_budget
         self.max_iterations = max_iterations
         self.enable_parallel = enable_parallel
-        self.enable_validation = enable_validation
+        self.enable_subagent_validation = enable_subagent_validation
+        self.enable_complexity_check = enable_complexity_check
         self.memory_manager = memory_manager or MemoryManager()
 
         # Store new configurable parameters
@@ -294,8 +316,11 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
                 },
             )
 
-            # Check if this subtask needs decomposition
-            if await self._needs_decomposition(current_subtask):
+            # Check if this subtask needs decomposition (based on the flag set during planning)
+            if (
+                current_subtask.aspect.needs_decomposition
+                and self.enable_complexity_check
+            ):
                 # Phase 2: Plan Research for complex subtask
                 aspects = await self._plan_research_for_subtask(current_subtask, span)
                 if aspects:
@@ -317,7 +342,10 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
                 )
 
                 # Validate result if enabled
-                if self.enable_validation and result.success:
+                if self.enable_subagent_validation and result.success:
+                    logger.info(
+                        f"Validating result for subtask: {current_subtask.aspect.name}"
+                    )
                     await self._validate_subagent_result(result, objective)
 
                 # Extract knowledge from result
@@ -481,6 +509,12 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
             response_model=ResearchPlan,
         )
 
+        logger.info(f"Research plan identified {len(plan.aspects)} aspects:")
+        for i, aspect in enumerate(plan.aspects):
+            logger.info(
+                f"  {i + 1}. {aspect.name}: {aspect.objective[:100]}... (needs_decomposition: {aspect.needs_decomposition})"
+            )
+
         span.add_event("research_planned", {"aspects": len(plan.aspects)})
         return plan.aspects
 
@@ -494,13 +528,13 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
         span.add_event("research_execution_start", {"aspects": len(aspects)})
 
         if self.enable_parallel and len(aspects) > 1:
-            # Execute in parallel
+            # Execute in parallel using executor for proper context propagation
             tasks = []
             for aspect in aspects:
                 task = self._execute_single_aspect(aspect, request_params, span)
                 tasks.append(task)
 
-            results = await asyncio.gather(*tasks)
+            results = await self.executor.execute_many(tasks)
         else:
             # Execute sequentially
             results = []
@@ -518,6 +552,10 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
 
         # Don't decompose if it's a simple lookup or direct question
         if subtask.aspect.use_predefined_agent:
+            return False
+
+        # If complexity checking is disabled, don't decompose
+        if not self.enable_complexity_check:
             return False
 
         # Use LLM to assess complexity
@@ -550,6 +588,19 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
         self, subtask: SubtaskQueueItem, span: trace.Span
     ) -> List[ResearchAspect]:
         """Plan research specifically for a subtask"""
+        # Format available agents if any
+        agents_info = ""
+        if self.available_agents:
+            agent_descriptions = []
+            for agent_name, agent in self.available_agents.items():
+                agent_descriptions.append(
+                    f"        - {agent_name}: {self._format_agent_info(agent_name)}"
+                )
+            agents_info = f"""
+    <adaptive:available-agents>
+{chr(10).join(agent_descriptions)}
+    </adaptive:available-agents>"""
+
         # Build focused context
         context = f"""
 <adaptive:planning-context>
@@ -569,9 +620,9 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
         }
     </adaptive:accumulated-knowledge>
     
-    <adaptive:available-mcp-servers>{
-            ", ".join(self.available_servers)
-        }</adaptive:available-mcp-servers>
+    <adaptive:available-mcp-servers>
+        {self._format_available_servers()}
+    </adaptive:available-mcp-servers>{agents_info}
 </adaptive:planning-context>"""
 
         # Use lead researcher to identify aspects
@@ -610,6 +661,10 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
         """Execute a single subtask from the queue"""
         # This is essentially the old _execute_single_aspect but adapted for subtasks
         aspect = subtask.aspect
+        logger.info(
+            f"Starting execution of subtask: {aspect.name} (depth: {subtask.depth})"
+        )
+
         result = SubagentResult(
             aspect_name=aspect.name,
             start_time=datetime.now(timezone.utc),
@@ -630,16 +685,28 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
                 and aspect.use_predefined_agent in self.available_agents
             ):
                 agent = self.available_agents[aspect.use_predefined_agent]
-                logger.info(f"Using predefined agent: {aspect.use_predefined_agent}")
+                logger.info(
+                    f"Using predefined agent '{aspect.use_predefined_agent}' for subtask: {aspect.name}"
+                )
                 use_predefined = True
             else:
                 # Create new agent
+                logger.info(
+                    f"Creating new agent for subtask: {aspect.name} with servers: {aspect.required_servers}"
+                )
                 if self._current_memory.task_type == TaskType.RESEARCH:
                     template = RESEARCH_SUBAGENT_TEMPLATE
                 else:
                     template = ACTION_SUBAGENT_TEMPLATE
 
+                # Include system prompt and coordination rules
+                from .prompts import ADAPTIVE_SYSTEM_PROMPT, COORDINATION_RULES
+
                 instruction = template.format(
+                    system_prompt=ADAPTIVE_SYSTEM_PROMPT,
+                    coordination_rules=COORDINATION_RULES.format(
+                        aspect_name=aspect.name
+                    ),
                     aspect=aspect.name,
                     objective=aspect.objective,
                     tools=", ".join(aspect.required_servers)
@@ -673,7 +740,6 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
                         pushed_token_context = True
                     # Execute with limited iterations
                     params = RequestParams(
-                        max_iterations=5,
                         parallel_tool_calls=True,
                     )
                     if request_params:
@@ -681,15 +747,41 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
                             update=request_params.model_dump(exclude_unset=True)
                         )
 
-                    # Execute research
+                    # Build context from previous results
+                    context_info = ""
+                    if self._current_memory.knowledge_items:
+                        recent_knowledge = (
+                            self.knowledge_extractor.format_knowledge_for_context(
+                                self._current_memory.knowledge_items[
+                                    -5:
+                                ],  # Last 5 items
+                                group_by_type=False,
+                            )
+                        )
+                        context_info = f"\n\nRelevant context from previous research:\n{recent_knowledge}"
+
+                    # Execute research with detailed instructions
+                    task_message = f"""You are part of a larger research effort to achieve: {self._current_memory.objective}
+
+Your specific task is: {aspect.objective}
+
+You have access to these tools: {", ".join(aspect.required_servers) if aspect.required_servers else "standard tools"}
+
+IMPORTANT: You MUST use your available tools to complete this task. Do not ask for information - actively gather it using your tools.{context_info}
+
+Now complete your specific task by actively using your tools."""
+
                     response = await llm.generate_str(
-                        message=f"Research: {aspect.objective}",
+                        message=task_message,
                         request_params=params,
                     )
 
                     result.findings = response
                     result.success = True
                     result.end_time = datetime.now(timezone.utc)
+                    logger.info(
+                        f"Successfully completed subtask: {aspect.name} (response length: {len(response)})"
+                    )
 
                 finally:
                     # Pop and capture token usage for this subtask
@@ -751,15 +843,41 @@ class AdaptiveWorkflow(AugmentedLLM[MessageParamT, MessageT]):
                                 update=request_params.model_dump(exclude_unset=True)
                             )
 
-                        # Execute research
+                        # Build context from previous results
+                        context_info = ""
+                        if self._current_memory.knowledge_items:
+                            recent_knowledge = (
+                                self.knowledge_extractor.format_knowledge_for_context(
+                                    self._current_memory.knowledge_items[
+                                        -5:
+                                    ],  # Last 5 items
+                                    group_by_type=False,
+                                )
+                            )
+                            context_info = f"\n\nRelevant context from previous research:\n{recent_knowledge}"
+
+                        # Execute research with detailed instructions
+                        task_message = f"""You are part of a larger research effort to achieve: {self._current_memory.objective}
+
+Your specific task is: {aspect.objective}
+
+You have access to these tools: {", ".join(aspect.required_servers) if aspect.required_servers else "standard tools"}
+
+IMPORTANT: You MUST use your available tools to complete this task. Do not ask for information - actively gather it using your tools.{context_info}
+
+Now complete your specific task by actively using your tools."""
+
                         response = await llm.generate_str(
-                            message=f"Research: {aspect.objective}",
+                            message=task_message,
                             request_params=params,
                         )
 
                         result.findings = response
                         result.success = True
                         result.end_time = datetime.now(timezone.utc)
+                        logger.info(
+                            f"Successfully completed subtask: {aspect.name} (response length: {len(response)})"
+                        )
 
                     finally:
                         # Pop and capture token usage for this subtask
@@ -917,6 +1035,19 @@ Synthesize these research findings.""",
         if synthesis_messages:
             synthesis_str = llm.message_str(synthesis_messages[-1], content_only=True)
 
+        # Add objective completion check as recommended
+        completion_check = f"""
+    <adaptive:completion-check>
+        Original objective: {self._current_memory.objective}
+        
+        Explicitly verify:
+        1. Has the main deliverable been created?
+        2. Does it contain all requested components?
+        3. Is it in the requested format/location?
+        
+        If the objective asks for a file/report/output, confirm it exists and is complete.
+    </adaptive:completion-check>"""
+
         context = f"""
 <adaptive:decision-context>
     <adaptive:objective>{self._current_memory.objective}</adaptive:objective>
@@ -929,6 +1060,7 @@ Synthesize these research findings.""",
     <adaptive:previous-research>
 {self._format_research_history()}
     </adaptive:previous-research>
+{completion_check}
 </adaptive:decision-context>"""
 
         decision = await llm.generate_structured(
@@ -1034,7 +1166,9 @@ Synthesize these research findings.""",
 {self._format_research_history()}
     </adaptive:research-conducted>
     
-    <adaptive:available-mcp-servers>{", ".join(self.available_servers)}</adaptive:available-mcp-servers>
+    <adaptive:available-mcp-servers>
+{self._format_available_servers()}
+    </adaptive:available-mcp-servers>
     {agents_info}
 </adaptive:planning-context>"""
 
@@ -1387,6 +1521,32 @@ Findings:
         # Return the stored messages directly
         return result.result_messages
 
+    def _format_available_servers(self) -> str:
+        """Format all available servers with descriptions"""
+        if not self.available_servers:
+            return "No servers available"
+
+        server_descriptions = []
+        for server_name in self.available_servers:
+            server_info = self._format_server_info(server_name)
+            server_descriptions.append(f"- {server_info}")
+
+        return "\n        ".join(server_descriptions)
+
+    def _format_server_info(self, server_name: str) -> str:
+        """Format server information for display to planners"""
+        if not self.context or not hasattr(self.context, "server_registry"):
+            return server_name
+
+        server_config = self.context.server_registry.get_server_config(server_name)
+        if not server_config:
+            return server_name
+
+        # Include description if available
+        if server_config.description:
+            return f"{server_name} ({server_config.description})"
+        return server_name
+
     def _format_agent_info(self, agent_name: str) -> str:
         """Format agent information for display to Lead Researcher"""
         agent = self.available_agents.get(agent_name)
@@ -1405,7 +1565,7 @@ Findings:
         else:
             return f"{agent_name} (unknown type)"
 
-        # Format server list
+        # Format server list with descriptions
         servers_str = ", ".join(server_names) if server_names else "no specific servers"
 
         return f"{name}: {instruction} (servers: {servers_str})"

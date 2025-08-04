@@ -2,11 +2,12 @@ $schema: ../../../schema/mcp-agent.config.schema.json
 
 execution_engine: asyncio
 logger:
-  type: file
-  level: info
-  batch_size: 100
-  flush_interval: 2
-  max_queue_size: 2048
+  transports: [file]
+  level: debug
+  path_settings:
+    path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
+    unique_id: "timestamp" # Options: "timestamp" or "session_id"
+    timestamp_format: "%Y%m%d_%H%M%S"
 
 mcp:
   servers:
