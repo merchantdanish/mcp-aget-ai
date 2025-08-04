@@ -1,0 +1,299 @@
+"""
+Task queue management for the Deep Orchestrator workflow.
+
+This module handles task queueing with dependency management, deduplication,
+and progress tracking.
+"""
+
+from typing import Dict, List, Optional, Set, Tuple
+
+from mcp_agent.logging.logger import get_logger
+from mcp_agent.workflows.deep_orchestrator.models import Plan, Step, Task
+
+logger = get_logger(__name__)
+
+
+class TodoQueue:
+    """
+    Enhanced queue with task-level deduplication and dependency tracking.
+
+    This class manages the execution queue for tasks and steps, handling
+    dependencies, deduplication, and progress tracking.
+    """
+
+    def __init__(self):
+        """Initialize the todo queue."""
+        # Queue state
+        self.pending_steps: List[Step] = []
+        self.completed_steps: List[Step] = []
+
+        # Task tracking
+        self.all_tasks: Dict[str, Task] = {}  # task_id -> Task
+        self.completed_task_ids: Set[str] = set()
+        self.failed_task_ids: Dict[str, int] = {}  # task_id -> retry count
+
+        # Deduplication tracking
+        self.seen_step_descriptions: Set[str] = set()
+        self.seen_task_hashes: Set[Tuple[str, ...]] = set()
+
+        logger.info("Initialized TodoQueue")
+
+    def load_plan(self, plan: Plan) -> None:
+        """
+        Load a new plan into the queue.
+
+        Args:
+            plan: Plan to load
+        """
+        added_steps = 0
+        added_tasks = 0
+
+        for step in plan.steps:
+            filtered_step = self._filter_step(step)
+            if filtered_step and filtered_step.tasks:
+                self.pending_steps.append(filtered_step)
+                self.seen_step_descriptions.add(step.description)
+                added_steps += 1
+                added_tasks += len(filtered_step.tasks)
+
+        logger.info(f"Loaded plan: {added_steps} steps, {added_tasks} tasks")
+
+    def merge_plan(self, plan: Plan) -> int:
+        """
+        Merge a new plan, deduplicating existing work.
+
+        Args:
+            plan: Plan to merge
+
+        Returns:
+            Number of new steps added
+        """
+        initial_count = len(self.pending_steps)
+
+        for step in plan.steps:
+            filtered_step = self._filter_step(step)
+            if filtered_step and filtered_step.tasks:
+                self.pending_steps.append(filtered_step)
+                self.seen_step_descriptions.add(step.description)
+
+        added = len(self.pending_steps) - initial_count
+        logger.info(f"Merged plan: {added} new steps added")
+        return added
+
+    def _filter_step(self, step: Step) -> Optional[Step]:
+        """
+        Filter out duplicate steps and tasks.
+
+        Args:
+            step: Step to filter
+
+        Returns:
+            Filtered step or None if entirely duplicate
+        """
+        # Skip if step already seen
+        if step.description in self.seen_step_descriptions:
+            logger.debug(f"Skipping duplicate step: {step.description}")
+            return None
+
+        # Filter tasks
+        filtered_tasks = []
+        for task in step.tasks:
+            task_hash = task.get_hash_key()
+
+            # Skip if task already seen
+            if task_hash in self.seen_task_hashes:
+                logger.debug(f"Skipping duplicate task: {task.description}")
+                continue
+
+            # Check dependencies
+            if task.dependencies:
+                unmet = [
+                    dep
+                    for dep in task.dependencies
+                    if dep not in self.completed_task_ids
+                ]
+                if unmet:
+                    logger.warning(
+                        f"Task has unmet dependencies: {task.description} "
+                        f"depends on {unmet}"
+                    )
+                    # We'll include it but it won't be ready for execution
+
+            self.seen_task_hashes.add(task_hash)
+            self.all_tasks[task.id] = task
+            filtered_tasks.append(task)
+
+        if filtered_tasks:
+            step.tasks = filtered_tasks
+            return step
+
+        return None
+
+    def get_next_step(self) -> Optional[Step]:
+        """
+        Get the next step to execute, considering dependencies.
+
+        Returns:
+            Next step with ready tasks, or None if no tasks are ready
+        """
+        for step in self.pending_steps:
+            # Check if all tasks in step have dependencies met
+            ready_tasks = []
+            deferred_tasks = []
+
+            for task in step.tasks:
+                if self._are_dependencies_met(task):
+                    ready_tasks.append(task)
+                else:
+                    deferred_tasks.append(task)
+
+            if ready_tasks:
+                # Create a step with only ready tasks
+                if deferred_tasks:
+                    # Keep deferred tasks for later
+                    step.tasks = deferred_tasks
+                    # Return new step with ready tasks
+                    ready_step = Step(
+                        description=f"{step.description} (partial)", tasks=ready_tasks
+                    )
+                    return ready_step
+                else:
+                    # All tasks ready, return full step
+                    return step
+
+        return None
+
+    def _are_dependencies_met(self, task: Task) -> bool:
+        """
+        Check if all dependencies of a task are met.
+
+        Args:
+            task: Task to check
+
+        Returns:
+            True if all dependencies are satisfied
+        """
+        if not task.dependencies:
+            return True
+
+        for dep_id in task.dependencies:
+            if dep_id not in self.completed_task_ids:
+                return False
+
+        return True
+
+    def complete_step(self, step: Step) -> None:
+        """
+        Mark a step as completed.
+
+        Args:
+            step: Step to mark as completed
+        """
+        # Remove from pending if present
+        if step in self.pending_steps:
+            self.pending_steps.remove(step)
+
+        step.completed = True
+        self.completed_steps.append(step)
+
+        # Mark successful tasks as completed
+        completed_count = 0
+        for task in step.tasks:
+            if task.status == "completed":
+                self.completed_task_ids.add(task.id)
+                completed_count += 1
+                logger.debug(f"Task completed: {task.id[:8]} - {task.description}")
+
+        logger.info(
+            f"Step completed: {step.description} "
+            f"({completed_count}/{len(step.tasks)} tasks successful)"
+        )
+
+    def mark_task_failed(self, task_id: str) -> None:
+        """
+        Mark a task as failed.
+
+        Args:
+            task_id: ID of the failed task
+        """
+        current_count = self.failed_task_ids.get(task_id, 0)
+        self.failed_task_ids[task_id] = current_count + 1
+        logger.debug(
+            f"Task marked as failed: {task_id[:8]} (attempt {current_count + 1})"
+        )
+
+    def is_empty(self) -> bool:
+        """
+        Check if queue is empty.
+
+        Returns:
+            True if no pending steps
+        """
+        return len(self.pending_steps) == 0
+
+    def has_ready_tasks(self) -> bool:
+        """
+        Check if there are any tasks ready to execute.
+
+        Returns:
+            True if at least one task is ready
+        """
+        for step in self.pending_steps:
+            for task in step.tasks:
+                if self._are_dependencies_met(task):
+                    return True
+        return False
+
+    def get_progress_summary(self) -> str:
+        """
+        Get a detailed progress summary.
+
+        Returns:
+            Human-readable progress summary
+        """
+        total_steps = len(self.completed_steps) + len(self.pending_steps)
+        total_tasks = len(self.all_tasks)
+        completed_tasks = len(self.completed_task_ids)
+        failed_tasks = len(self.failed_task_ids)
+
+        if total_steps == 0:
+            return "No steps planned yet."
+
+        lines = [
+            f"Progress: {len(self.completed_steps)}/{total_steps} steps",
+            f"Tasks: {completed_tasks}/{total_tasks} completed, {failed_tasks} failed",
+        ]
+
+        # Add pending info
+        if self.pending_steps:
+            pending_task_count = sum(len(s.tasks) for s in self.pending_steps)
+            lines.append(
+                f"Pending: {len(self.pending_steps)} steps, {pending_task_count} tasks"
+            )
+
+        return " | ".join(lines)
+
+    def get_blocked_tasks(self) -> List[Task]:
+        """
+        Get tasks that are blocked by unmet dependencies.
+
+        Returns:
+            List of blocked tasks
+        """
+        blocked = []
+        for step in self.pending_steps:
+            for task in step.tasks:
+                if not self._are_dependencies_met(task):
+                    blocked.append(task)
+        return blocked
+
+    def clear(self) -> None:
+        """Clear the queue."""
+        self.pending_steps.clear()
+        self.completed_steps.clear()
+        self.all_tasks.clear()
+        self.completed_task_ids.clear()
+        self.failed_task_ids.clear()
+        self.seen_step_descriptions.clear()
+        self.seen_task_hashes.clear()
+        logger.info("Queue cleared")
