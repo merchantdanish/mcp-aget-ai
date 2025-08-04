@@ -92,7 +92,7 @@ class TaskResult:
 
 
 class Task(BaseModel):
-    """Enhanced task model with dependency handling."""
+    """Individual task which can be accomplished by a single subagent."""
 
     description: str = Field(
         description="Clear, specific description of what needs to be done"
@@ -101,9 +101,6 @@ class Task(BaseModel):
         default="AUTO", description="Agent name or AUTO for dynamic creation"
     )
     servers: List[str] = Field(default_factory=list, description="Required MCP servers")
-    dependencies: List[str] = Field(
-        default_factory=list, description="Task IDs this depends on"
-    )
 
     # Runtime fields
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))

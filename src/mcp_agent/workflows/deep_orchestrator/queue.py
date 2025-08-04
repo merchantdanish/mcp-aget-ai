@@ -1,8 +1,8 @@
 """
 Task queue management for the Deep Orchestrator workflow.
 
-This module handles task queueing with dependency management, deduplication,
-and progress tracking.
+This module handles task queueing with deduplication and progress tracking.
+Steps run sequentially, tasks within a step run in parallel.
 """
 
 from typing import Dict, List, Optional, Set, Tuple
@@ -15,10 +15,11 @@ logger = get_logger(__name__)
 
 class TodoQueue:
     """
-    Enhanced queue with task-level deduplication and dependency tracking.
+    Task queue with deduplication and progress tracking.
 
-    This class manages the execution queue for tasks and steps, handling
-    dependencies, deduplication, and progress tracking.
+    This class manages the execution queue for tasks and steps,
+    handling deduplication and progress tracking. Steps run sequentially,
+    tasks within a step run in parallel.
     """
 
     def __init__(self):
@@ -105,20 +106,6 @@ class TodoQueue:
                 logger.debug(f"Skipping duplicate task: {task.description}")
                 continue
 
-            # Check dependencies
-            if task.dependencies:
-                unmet = [
-                    dep
-                    for dep in task.dependencies
-                    if dep not in self.completed_task_ids
-                ]
-                if unmet:
-                    logger.warning(
-                        f"Task has unmet dependencies: {task.description} "
-                        f"depends on {unmet}"
-                    )
-                    # We'll include it but it won't be ready for execution
-
             self.seen_task_hashes.add(task_hash)
             self.all_tasks[task.id] = task
             filtered_tasks.append(task)
@@ -131,56 +118,14 @@ class TodoQueue:
 
     def get_next_step(self) -> Optional[Step]:
         """
-        Get the next step to execute, considering dependencies.
+        Get the next step to execute.
 
         Returns:
-            Next step with ready tasks, or None if no tasks are ready
+            Next step or None if queue is empty
         """
-        for step in self.pending_steps:
-            # Check if all tasks in step have dependencies met
-            ready_tasks = []
-            deferred_tasks = []
-
-            for task in step.tasks:
-                if self._are_dependencies_met(task):
-                    ready_tasks.append(task)
-                else:
-                    deferred_tasks.append(task)
-
-            if ready_tasks:
-                # Create a step with only ready tasks
-                if deferred_tasks:
-                    # Keep deferred tasks for later
-                    step.tasks = deferred_tasks
-                    # Return new step with ready tasks
-                    ready_step = Step(
-                        description=f"{step.description} (partial)", tasks=ready_tasks
-                    )
-                    return ready_step
-                else:
-                    # All tasks ready, return full step
-                    return step
-
+        if self.pending_steps:
+            return self.pending_steps[0]
         return None
-
-    def _are_dependencies_met(self, task: Task) -> bool:
-        """
-        Check if all dependencies of a task are met.
-
-        Args:
-            task: Task to check
-
-        Returns:
-            True if all dependencies are satisfied
-        """
-        if not task.dependencies:
-            return True
-
-        for dep_id in task.dependencies:
-            if dep_id not in self.completed_task_ids:
-                return False
-
-        return True
 
     def complete_step(self, step: Step) -> None:
         """
@@ -236,13 +181,9 @@ class TodoQueue:
         Check if there are any tasks ready to execute.
 
         Returns:
-            True if at least one task is ready
+            True if there are pending steps
         """
-        for step in self.pending_steps:
-            for task in step.tasks:
-                if self._are_dependencies_met(task):
-                    return True
-        return False
+        return len(self.pending_steps) > 0
 
     def get_progress_summary(self) -> str:
         """
@@ -272,20 +213,6 @@ class TodoQueue:
             )
 
         return " | ".join(lines)
-
-    def get_blocked_tasks(self) -> List[Task]:
-        """
-        Get tasks that are blocked by unmet dependencies.
-
-        Returns:
-            List of blocked tasks
-        """
-        blocked = []
-        for step in self.pending_steps:
-            for task in step.tasks:
-                if not self._are_dependencies_met(task):
-                    blocked.append(task)
-        return blocked
 
     def clear(self) -> None:
         """Clear the queue."""

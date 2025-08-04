@@ -150,6 +150,7 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         self.iteration: int = 0
         self.replan_count: int = 0
         self.start_time: float = 0.0
+        self.current_plan: Optional[Plan] = None
 
         logger.info(
             f"Initialized {name} with {len(self.available_agents)} agents, "
@@ -312,11 +313,7 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
             # Execute next step
             next_step = self.queue.get_next_step()
             if not next_step:
-                logger.info("No executable steps available")
-                if not self.queue.is_empty():
-                    logger.warning(
-                        "Steps remain but none are ready (dependency issues?)"
-                    )
+                logger.info("No more steps to execute")
                 break
 
             logger.info(
@@ -411,6 +408,9 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         logger.info(
             f"Created plan: {len(plan.steps)} steps, reasoning: {plan.reasoning[:100]}..."
         )
+
+        self.current_plan = plan
+
         return plan
 
     async def _execute_step(
