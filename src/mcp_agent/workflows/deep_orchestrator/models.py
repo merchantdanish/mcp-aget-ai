@@ -5,18 +5,13 @@ This module contains all the Pydantic models and dataclasses used by the
 Deep Orchestrator for task planning, execution, and result tracking.
 """
 
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field
-
-
-# ============================================================================
-# Enums
-# ============================================================================
+from typing_extensions import Annotated
 
 
 class TaskStatus(str, Enum):
@@ -70,7 +65,7 @@ class KnowledgeItem:
 class TaskResult:
     """Result from executing a task."""
 
-    task_id: str
+    task_name: str  # Primary identifier for the task
     status: TaskStatus
     output: Optional[str] = None
     error: Optional[str] = None
@@ -94,16 +89,33 @@ class TaskResult:
 class Task(BaseModel):
     """Individual task which can be accomplished by a single subagent."""
 
-    description: str = Field(
-        description="Clear, specific description of what needs to be done"
-    )
+    description: str = Annotated[
+        str, Field(description="Clear, specific description of what needs to be done")
+    ]
+
+    name: str = Annotated[
+        str,
+        Field(
+            description="Unique name for this task that can be referenced by other tasks"
+        ),
+    ]
+
     agent: Optional[str] = Field(
-        default="AUTO", description="Agent name or AUTO for dynamic creation"
+        default=None,
+        description="Agent name for this task, leave unset for dynamic creation",
     )
     servers: List[str] = Field(default_factory=list, description="Required MCP servers")
 
+    # Context requirements
+    requires_context_from: List[str] = Field(
+        default_factory=list,
+        description="List of previous task names whose outputs should be included in context",
+    )
+    context_window_budget: int = Field(
+        default=10000, description="Maximum tokens of context this task needs"
+    )
+
     # Runtime fields
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     status: TaskStatus = Field(default=TaskStatus.PENDING)
 
     def get_hash_key(self) -> Tuple[str, ...]:
@@ -118,7 +130,6 @@ class Step(BaseModel):
     tasks: List[Task] = Field(description="Tasks that can run in parallel")
 
     # Runtime fields
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     completed: bool = Field(default=False)
 
 
@@ -166,6 +177,75 @@ class AgentDesign(BaseModel):
     tool_usage_tips: List[str] = Field(
         description="Specific tips for using the required tools"
     )
+
+
+# ============================================================================
+# Plan Verification Models
+# ============================================================================
+
+
+class PlanVerificationError(BaseModel):
+    """Individual error found during plan verification."""
+
+    category: str = Field(
+        description="Error category (e.g., 'invalid_server', 'duplicate_name')"
+    )
+    message: str = Field(description="Human-readable error message")
+    step_index: Optional[int] = Field(
+        default=None, description="Step index where error occurred (0-based)"
+    )
+    task_name: Optional[str] = Field(
+        default=None, description="Task name where error occurred"
+    )
+    details: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional error details"
+    )
+
+
+class PlanVerificationResult(BaseModel):
+    """Result of plan verification with all collected errors."""
+
+    is_valid: bool = Field(description="Whether the plan is valid")
+    errors: List[PlanVerificationError] = []
+    warnings: List[str] = []
+
+    def add_error(self, category: str, message: str, **kwargs) -> None:
+        """Add an error to the verification result."""
+        self.errors.append(
+            PlanVerificationError(category=category, message=message, **kwargs)
+        )
+        self.is_valid = False
+
+    def get_error_summary(self) -> str:
+        """Get a formatted summary of all errors."""
+        if self.is_valid:
+            return "Plan is valid"
+
+        lines = ["Plan verification failed with the following errors:"]
+
+        # Group errors by category
+        errors_by_category = {}
+        for error in self.errors:
+            if error.category not in errors_by_category:
+                errors_by_category[error.category] = []
+            errors_by_category[error.category].append(error)
+
+        # Format each category
+        for category, errors in errors_by_category.items():
+            lines.append(f"\n{category.replace('_', ' ').title()}:")
+            for error in errors:
+                lines.append(f"  - {error.message}")
+                if error.step_index is not None:
+                    lines.append(f"    (Step {error.step_index + 1})")
+                if error.task_name:
+                    lines.append(f"    (Task: {error.task_name})")
+
+        if self.warnings:
+            lines.append("\nWarnings:")
+            for warning in self.warnings:
+                lines.append(f"  - {warning}")
+
+        return "\n".join(lines)
 
 
 # ============================================================================

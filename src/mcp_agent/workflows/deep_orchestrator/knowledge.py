@@ -63,7 +63,7 @@ class KnowledgeExtractor:
 
         if len(task_result.output) < 50:
             logger.debug(
-                f"Skipping knowledge extraction for task {task_result.task_id[:8]} "
+                f"Skipping knowledge extraction for task {task_result.task_name} "
                 f"(output too short: {len(task_result.output)} chars)"
             )
             return []
@@ -107,7 +107,7 @@ class KnowledgeExtractor:
                     KnowledgeItem(
                         key=item.get("key", "Unknown"),
                         value=item.get("value", ""),
-                        source=f"Task {task_result.task_id[:8]}",
+                        source=task_result.task_name,
                         confidence=confidence,
                         category=item.get("category", "general"),
                     )
@@ -115,7 +115,7 @@ class KnowledgeExtractor:
 
             logger.debug(
                 f"Extracted {len(knowledge_items)} knowledge items from "
-                f"task {task_result.task_id[:8]}"
+                f"task {task_result.task_name}"
             )
             return knowledge_items
 
@@ -129,7 +129,7 @@ class KnowledgeExtractor:
                     value=task_result.output[:200] + "..."
                     if len(task_result.output) > 200
                     else task_result.output,
-                    source=f"Task {task_result.task_id[:8]}",
+                    source=task_result.task_name,
                     confidence=0.6,
                     category="summary",
                 )

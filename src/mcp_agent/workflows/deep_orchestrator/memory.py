@@ -208,7 +208,7 @@ class WorkspaceMemory:
             self.add_knowledge(item)
 
         logger.info(
-            f"Recorded task result: {result.task_id[:8]} "
+            f"Recorded task result: {result.task_name} "
             f"(status: {result.status}, duration: {result.duration_seconds:.1f}s, "
             f"tokens: {result.tokens_used}, artifacts: {len(result.artifacts)}, "
             f"knowledge: {len(result.knowledge_extracted)})"

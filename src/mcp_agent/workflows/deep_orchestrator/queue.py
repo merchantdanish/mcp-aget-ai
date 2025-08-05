@@ -29,9 +29,9 @@ class TodoQueue:
         self.completed_steps: List[Step] = []
 
         # Task tracking
-        self.all_tasks: Dict[str, Task] = {}  # task_id -> Task
-        self.completed_task_ids: Set[str] = set()
-        self.failed_task_ids: Dict[str, int] = {}  # task_id -> retry count
+        self.all_tasks: Dict[str, Task] = {}  # task_name -> Task
+        self.completed_task_names: Set[str] = set()
+        self.failed_task_names: Dict[str, int] = {}  # task_name -> retry count
 
         # Deduplication tracking
         self.seen_step_descriptions: Set[str] = set()
@@ -107,7 +107,7 @@ class TodoQueue:
                 continue
 
             self.seen_task_hashes.add(task_hash)
-            self.all_tasks[task.id] = task
+            self.all_tasks[task.name] = task
             filtered_tasks.append(task)
 
         if filtered_tasks:
@@ -145,26 +145,26 @@ class TodoQueue:
         completed_count = 0
         for task in step.tasks:
             if task.status == "completed":
-                self.completed_task_ids.add(task.id)
+                self.completed_task_names.add(task.name)
                 completed_count += 1
-                logger.debug(f"Task completed: {task.id[:8]} - {task.description}")
+                logger.debug(f"Task completed: {task.name} - {task.description}")
 
         logger.info(
             f"Step completed: {step.description} "
             f"({completed_count}/{len(step.tasks)} tasks successful)"
         )
 
-    def mark_task_failed(self, task_id: str) -> None:
+    def mark_task_failed(self, task_name: str) -> None:
         """
         Mark a task as failed.
 
         Args:
-            task_id: ID of the failed task
+            task_name: Name of the failed task
         """
-        current_count = self.failed_task_ids.get(task_id, 0)
-        self.failed_task_ids[task_id] = current_count + 1
+        current_count = self.failed_task_names.get(task_name, 0)
+        self.failed_task_names[task_name] = current_count + 1
         logger.debug(
-            f"Task marked as failed: {task_id[:8]} (attempt {current_count + 1})"
+            f"Task marked as failed: {task_name} (attempt {current_count + 1})"
         )
 
     def is_empty(self) -> bool:
@@ -185,6 +185,18 @@ class TodoQueue:
         """
         return len(self.pending_steps) > 0
 
+    def get_task_by_name(self, task_name: str) -> Optional[Task]:
+        """
+        Get a task by its name.
+
+        Args:
+            task_name: Name of the task
+
+        Returns:
+            Task if found, None otherwise
+        """
+        return self.all_tasks.get(task_name)
+
     def get_progress_summary(self) -> str:
         """
         Get a detailed progress summary.
@@ -194,8 +206,8 @@ class TodoQueue:
         """
         total_steps = len(self.completed_steps) + len(self.pending_steps)
         total_tasks = len(self.all_tasks)
-        completed_tasks = len(self.completed_task_ids)
-        failed_tasks = len(self.failed_task_ids)
+        completed_tasks = len(self.completed_task_names)
+        failed_tasks = len(self.failed_task_names)
 
         if total_steps == 0:
             return "No steps planned yet."
@@ -219,8 +231,8 @@ class TodoQueue:
         self.pending_steps.clear()
         self.completed_steps.clear()
         self.all_tasks.clear()
-        self.completed_task_ids.clear()
-        self.failed_task_ids.clear()
+        self.completed_task_names.clear()
+        self.failed_task_names.clear()
         self.seen_step_descriptions.clear()
         self.seen_task_hashes.clear()
         logger.info("Queue cleared")

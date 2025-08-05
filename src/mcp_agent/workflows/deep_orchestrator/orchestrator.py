@@ -25,11 +25,15 @@ from mcp_agent.workflows.llm.augmented_llm import (
 # Import all submodules
 from mcp_agent.workflows.deep_orchestrator.budget import SimpleBudget
 from mcp_agent.workflows.deep_orchestrator.cache import AgentCache
-from mcp_agent.workflows.deep_orchestrator.knowledge import KnowledgeExtractor
+from mcp_agent.workflows.deep_orchestrator.knowledge import (
+    KnowledgeExtractor,
+    KnowledgeItem,
+)
 from mcp_agent.workflows.deep_orchestrator.memory import WorkspaceMemory
 from mcp_agent.workflows.deep_orchestrator.models import (
     AgentDesign,
     Plan,
+    PlanVerificationResult,
     PolicyAction,
     Task,
     TaskResult,
@@ -85,7 +89,7 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         self,
         llm_factory: Callable[[Agent], AugmentedLLM[MessageParamT, MessageT]],
         name: str = "AdaptiveOrchestrator",
-        available_agents: Optional[Dict[str, Agent]] = None,
+        available_agents: List[Agent | AugmentedLLM] | None = None,
         available_servers: Optional[List[str]] = None,
         max_iterations: int = 20,
         max_replans: int = 3,
@@ -93,6 +97,11 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         enable_parallel: bool = True,
         max_task_retries: int = 3,
         context: Optional["Context"] = None,
+        task_context_budget: int = 50000,
+        context_relevance_threshold: float = 0.7,
+        context_compression_ratio: float = 0.8,
+        enable_full_context_propagation: bool = True,
+        context_window_limit: int = 100000,
         **kwargs,
     ):
         """
@@ -101,7 +110,7 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         Args:
             llm_factory: Factory function to create LLMs
             name: Name of the orchestrator
-            available_agents: Pre-defined agents available for use
+            available_agents: List of pre-defined Agent or AugmentedLLM instances
             available_servers: List of available MCP servers
             max_iterations: Maximum workflow iterations
             max_replans: Maximum number of replanning attempts
@@ -109,6 +118,11 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
             enable_parallel: Enable parallel task execution
             max_task_retries: Maximum retries per task
             context: Application context
+            task_context_budget: Maximum tokens for task context (default: 50000)
+            context_relevance_threshold: Minimum relevance score to include context (default: 0.7)
+            context_compression_ratio: When to start compressing context (default: 0.8)
+            enable_full_context_propagation: Whether to propagate full context to tasks (default: True)
+            context_window_limit: Model's context window limit (default: 100000)
             **kwargs: Additional arguments for AugmentedLLM
         """
         super().__init__(
@@ -119,7 +133,7 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         )
 
         self.llm_factory = llm_factory
-        self.available_agents = available_agents or {}
+        self.agents = {agent.name: agent for agent in available_agents or []}
         self.max_iterations = max_iterations
         self.max_replans = max_replans
         self.enable_parallel = enable_parallel
@@ -145,6 +159,20 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         self.knowledge_extractor = KnowledgeExtractor(llm_factory, context)
         self.agent_cache = AgentCache()
 
+        # Context management settings
+        self.task_context_budget = task_context_budget
+        self.context_relevance_threshold = context_relevance_threshold
+        self.context_compression_ratio = context_compression_ratio
+        self.enable_full_context_propagation = enable_full_context_propagation
+        self.context_window_limit = context_window_limit
+
+        # Track context usage
+        self.context_usage_stats = {
+            "tasks_with_full_context": 0,
+            "tasks_with_compressed_context": 0,
+            "total_context_tokens": 0,
+        }
+
         # Tracking
         self.objective: str = ""
         self.iteration: int = 0
@@ -153,7 +181,7 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         self.current_plan: Optional[Plan] = None
 
         logger.info(
-            f"Initialized {name} with {len(self.available_agents)} agents, "
+            f"Initialized {name} with {len(self.agents)} agents, "
             f"{len(self.available_servers)} servers, max_iterations={max_iterations}"
         )
 
@@ -200,6 +228,14 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     f"{self.iteration} iterations, "
                     f"{self.budget.tokens_used} tokens, "
                     f"${self.budget.cost_incurred:.2f} cost"
+                )
+
+                # Log context usage statistics
+                context_stats = self.get_context_usage_stats()
+                logger.info(
+                    f"Context usage: {context_stats['tasks_with_full_context']} tasks with full context, "
+                    f"{context_stats['tasks_with_compressed_context']} compressed, "
+                    f"avg {context_stats['average_context_tokens']:.0f} tokens/task"
                 )
 
                 return result
@@ -371,17 +407,6 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
             for item in relevant_knowledge
         ]
 
-        context = get_planning_context(
-            objective=self.objective,
-            progress_summary=self.queue.get_progress_summary()
-            if self.queue.completed_steps
-            else "",
-            completed_steps=completed_steps,
-            knowledge_items=knowledge_items,
-            available_servers=self.available_servers,
-            available_agents=self.available_agents,
-        )
-
         # Create planning agent
         planner = Agent(
             name="StrategicPlanner",
@@ -391,27 +416,260 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
 
         llm = self.llm_factory(planner)
 
-        # Track tokens for budget
-        tokens_before = self._get_current_tokens()
+        # Try to create a valid plan with retries
+        max_verification_attempts = 3
+        previous_plan: Plan = None
+        previous_errors: PlanVerificationResult = None
 
-        # Get structured plan
-        prompt = get_full_plan_prompt(context)
-        plan = await retry_with_backoff(
-            lambda: llm.generate_structured(message=prompt, response_model=Plan),
-            max_attempts=2,
-        )
+        for attempt in range(max_verification_attempts):
+            # Build context (may include previous errors)
+            context = get_planning_context(
+                objective=self.objective,
+                progress_summary=self.queue.get_progress_summary()
+                if self.queue.completed_steps
+                else "",
+                completed_steps=completed_steps,
+                knowledge_items=knowledge_items,
+                available_servers=self.available_servers,
+                available_agents=self.agents,
+            )
 
-        # Update budget
-        tokens_after = self._get_current_tokens()
-        self.budget.update_tokens(tokens_after - tokens_before)
+            # Add previous plan and errors if this is a retry
+            if previous_plan and previous_errors:
+                context += "\n\n<previous_failed_plan>\n"
+                context += previous_plan.model_dump_json(indent=2)
+                context += "\n</previous_failed_plan>"
 
-        logger.info(
-            f"Created plan: {len(plan.steps)} steps, reasoning: {plan.reasoning[:100]}..."
-        )
+                context += f"\n\n<plan_errors>\n{previous_errors.get_error_summary()}\n</plan_errors>"
+                context += "\n<important>The previous plan shown above had errors. Create a new plan that fixes ALL the issues listed. Pay special attention to:"
+                context += "\n  - Only use MCP servers from the available_servers list"
+                context += "\n  - Ensure all task names are unique"
+                context += (
+                    "\n  - Dependencies can only reference tasks from previous steps"
+                )
+                context += "\n</important>"
 
-        self.current_plan = plan
+            # Track tokens for budget
+            tokens_before = self._get_current_tokens()
 
-        return plan
+            # Get structured plan
+            prompt = get_full_plan_prompt(context)
+            plan: Plan = await retry_with_backoff(
+                lambda: llm.generate_structured(message=prompt, response_model=Plan),
+                max_attempts=2,
+            )
+
+            # Update budget
+            tokens_after = self._get_current_tokens()
+            self.budget.update_tokens(tokens_after - tokens_before)
+
+            # Verify the plan
+            verification_result = self._verify_plan(plan)
+
+            if verification_result.is_valid:
+                logger.info(
+                    f"Created valid plan: {len(plan.steps)} steps, reasoning: {plan.reasoning[:100]}..."
+                )
+                if verification_result.warnings:
+                    logger.warning(
+                        f"Plan warnings: {', '.join(verification_result.warnings)}"
+                    )
+
+                self.current_plan = plan
+                return plan
+
+            else:
+                logger.warning(
+                    f"Plan verification failed (attempt {attempt + 1}/{max_verification_attempts}): "
+                    f"{len(verification_result.errors)} errors found"
+                )
+
+                # Store for next iteration
+                previous_plan = plan
+                previous_errors = verification_result
+
+                if attempt == max_verification_attempts - 1:
+                    # Final attempt failed
+                    logger.error(
+                        f"Failed to create valid plan after {max_verification_attempts} attempts"
+                    )
+                    logger.error(verification_result.get_error_summary())
+
+                    # Return the plan anyway with a warning
+                    self.current_plan = plan
+                    return plan
+
+        # Should not reach here
+        raise RuntimeError("Failed to create a valid plan")
+
+    def _verify_plan(self, plan: Plan) -> PlanVerificationResult:
+        """
+        Verify the plan for correctness, collecting all errors.
+
+        Returns a PlanVerificationResult with all errors found.
+        This method is modular - add more verification steps as needed.
+        """
+        result = PlanVerificationResult(is_valid=True)
+
+        # Verification step 1: Check MCP server validity
+        self._verify_mcp_servers(plan, result)
+
+        # Verification step 2: Check agent name validity
+        self._verify_agent_names(plan, result)
+
+        # Verification step 3: Check task name uniqueness
+        self._verify_task_names(plan, result)
+
+        # Verification step 4: Check dependency references
+        self._verify_dependencies(plan, result)
+
+        # Verification step 5: Check for basic task validity
+        self._verify_task_validity(plan, result)
+
+        # Log successful verification
+        if result.is_valid:
+            logger.info("Plan verification succeeded")
+
+        return result
+
+    def _verify_mcp_servers(self, plan: Plan, result: PlanVerificationResult) -> None:
+        """Verify all MCP servers in the plan are valid."""
+        available_set = set(self.available_servers)
+
+        for step_idx, step in enumerate(plan.steps):
+            for task in step.tasks:
+                if task.servers:
+                    for server in task.servers:
+                        if server not in available_set:
+                            result.add_error(
+                                category="invalid_server",
+                                message=f"Server '{server}' is not available (available: {', '.join(self.available_servers) if self.available_servers else 'None'})",
+                                step_index=step_idx,
+                                task_name=task.name,
+                                details={
+                                    "invalid_server": server,
+                                    "available_servers": list(self.available_servers),
+                                    "step_description": step.description,
+                                },
+                            )
+
+    def _verify_agent_names(self, plan: Plan, result: PlanVerificationResult) -> None:
+        """Verify all specified agent names are valid."""
+        available_agent_names = set(self.agents.keys())
+
+        for step_idx, step in enumerate(plan.steps):
+            for task in step.tasks:
+                # Only verify if agent is specified (not None)
+                if task.agent is not None:
+                    if task.agent not in available_agent_names:
+                        result.add_error(
+                            category="invalid_agent",
+                            message=f"Agent '{task.agent}' is not available (available: {', '.join(available_agent_names) if available_agent_names else 'None'})",
+                            step_index=step_idx,
+                            task_name=task.name,
+                            details={
+                                "invalid_agent": task.agent,
+                                "available_agents": list(available_agent_names),
+                                "step_description": step.description,
+                                "task_description": task.description,
+                            },
+                        )
+
+    def _verify_task_names(self, plan: Plan, result: PlanVerificationResult) -> None:
+        """Verify all task names are unique."""
+        seen_names = {}
+
+        for step_idx, step in enumerate(plan.steps):
+            for task in step.tasks:
+                if task.name in seen_names:
+                    first_step_idx, first_step_desc = seen_names[task.name]
+                    result.add_error(
+                        category="duplicate_name",
+                        message=f"Task name '{task.name}' is duplicated (first seen in step {first_step_idx + 1}: {first_step_desc})",
+                        step_index=step_idx,
+                        task_name=task.name,
+                        details={
+                            "first_occurrence_step": first_step_idx + 1,
+                            "duplicate_step": step_idx + 1,
+                        },
+                    )
+                else:
+                    seen_names[task.name] = (step_idx, step.description)
+
+    def _verify_dependencies(self, plan: Plan, result: PlanVerificationResult) -> None:
+        """Verify all task dependencies reference valid previous tasks."""
+        # Build a map of task names to their step index
+        task_step_map = {}
+        for step_idx, step in enumerate(plan.steps):
+            for task in step.tasks:
+                task_step_map[task.name] = step_idx
+
+        # Check each task's dependencies
+        for step_idx, step in enumerate(plan.steps):
+            for task in step.tasks:
+                if task.requires_context_from:
+                    for dep_name in task.requires_context_from:
+                        if dep_name not in task_step_map:
+                            result.add_error(
+                                category="invalid_dependency",
+                                message=f"References non-existent task '{dep_name}'",
+                                step_index=step_idx,
+                                task_name=task.name,
+                                details={
+                                    "missing_dependency": dep_name,
+                                    "available_tasks": list(task_step_map.keys()),
+                                },
+                            )
+                        elif task_step_map[dep_name] >= step_idx:
+                            dep_step = task_step_map[dep_name]
+                            result.add_error(
+                                category="invalid_dependency",
+                                message=f"References task '{dep_name}' from step {dep_step + 1} (can only reference previous steps)",
+                                step_index=step_idx,
+                                task_name=task.name,
+                                details={
+                                    "dependency_name": dep_name,
+                                    "dependency_step": dep_step + 1,
+                                    "current_step": step_idx + 1,
+                                },
+                            )
+
+    def _verify_task_validity(self, plan: Plan, result: PlanVerificationResult) -> None:
+        """Verify basic task validity."""
+        for step_idx, step in enumerate(plan.steps):
+            # Check step has tasks
+            if not step.tasks:
+                result.add_error(
+                    category="empty_step",
+                    message=f"Step '{step.description}' has no tasks",
+                    step_index=step_idx,
+                    details={"step_description": step.description},
+                )
+
+            for task in step.tasks:
+                # Check task has a name
+                if not task.name or not task.name.strip():
+                    result.add_error(
+                        category="invalid_task",
+                        message="Task has no name",
+                        step_index=step_idx,
+                        details={"task_description": task.description},
+                    )
+
+                # Check task has a description
+                if not task.description or not task.description.strip():
+                    result.add_error(
+                        category="invalid_task",
+                        message=f"Task '{task.name}' has no description",
+                        step_index=step_idx,
+                        task_name=task.name,
+                    )
+
+                # Warn about extremely high context budgets
+                if task.context_window_budget > 80000:
+                    result.warnings.append(
+                        f"Task '{task.name}' has very high context budget ({task.context_window_budget} tokens)"
+                    )
 
     async def _execute_step(
         self, step: Any, request_params: Optional[RequestParams]
@@ -492,7 +750,7 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 if attempt == self.max_task_retries - 1:
                     # Final attempt, return failure
                     return TaskResult(
-                        task_id=task.id,
+                        task_name=task.name,
                         status=TaskStatus.FAILED,
                         error=str(e),
                         retry_count=attempt + 1,
@@ -517,12 +775,12 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         """
         start_time = time.time()
         result = TaskResult(
-            task_id=task.id, status=TaskStatus.IN_PROGRESS, retry_count=attempt
+            task_name=task.name, status=TaskStatus.IN_PROGRESS, retry_count=attempt
         )
 
         try:
             # Get or create agent
-            if task.agent == "AUTO":
+            if task.agent is None:
                 # Check cache first
                 cache_key = self.agent_cache.get_key(task.description, task.servers)
                 agent = self.agent_cache.get(cache_key)
@@ -531,21 +789,31 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     agent = await self._create_dynamic_agent(task)
                     self.agent_cache.put(cache_key, agent)
 
-            elif task.agent and task.agent in self.available_agents:
-                agent = self.available_agents[task.agent]
+            elif task.agent and task.agent in self.agents:
+                agent = self.agents[task.agent]
                 logger.debug(f"Using predefined agent: {task.agent}")
 
             else:
                 # Default agent
+                logger.warning(
+                    f'Task "{task.name}" ({task.description}) requested agent "{task.agent}" which is not available. '
+                    f"Creating default agent. Available agents: {list(self.agents.keys())}"
+                )
                 agent = Agent(
-                    name=f"TaskExecutor_{task.id[:8]}",
+                    name=f"TaskExecutor_{task.name}",
                     instruction="You are a capable task executor. Complete the given task thoroughly using available tools.",
                     server_names=task.servers,
                     context=self.context,
                 )
 
             # Build task context
-            task_context = self._build_task_context(task)
+            if task.requires_context_from:
+                # Use explicit dependencies if specified
+                task_context = self._build_relevant_task_context(task)
+            elif self.enable_full_context_propagation:
+                task_context = self._build_full_task_context(task)
+            else:
+                task_context = self._build_task_context(task)
 
             # Track tokens before
             tokens_before = self._get_current_tokens()
@@ -581,7 +849,7 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 phrase in output.lower()
                 for phrase in ["created file:", "saved to:", "wrote to:"]
             ):
-                result.artifacts[f"task_{task.id[:8]}_output"] = output
+                result.artifacts[f"task_{task.name}_output"] = output
 
             # Extract knowledge
             knowledge_items = await self.knowledge_extractor.extract_knowledge(
@@ -593,7 +861,7 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
             task.status = TaskStatus.COMPLETED
 
             logger.info(
-                f"Task completed: {task.id[:8]} "
+                f"Task completed: {task.name} "
                 f"(duration: {result.duration_seconds:.1f}s, tokens: {tokens_used})"
             )
 
@@ -602,7 +870,7 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
             result.error = str(e)
             result.duration_seconds = time.time() - start_time
             task.status = TaskStatus.FAILED
-            logger.error(f"Task {task.id[:8]} failed: {e}")
+            logger.error(f"Task {task.name} failed: {e}")
 
         # Record result
         self.memory.add_task_result(result)
@@ -653,7 +921,7 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
 
     def _build_task_context(self, task: Task) -> str:
         """
-        Build comprehensive context for task execution.
+        Build context for task execution, including relevant knowledge and artifacts.
 
         Args:
             task: Task to build context for
@@ -692,6 +960,543 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
             scratchpad_path=scratchpad_path,
             required_servers=task.servers,
         )
+
+    def _build_full_task_context(self, task: Task) -> str:
+        """
+        Build comprehensive context for task execution with smart token management.
+        This includes all prior task results and relevant knowledge.
+
+        Args:
+            task: Task to build context for
+
+        Returns:
+            Task context string
+        """
+        # Start with essential context
+        essential_parts = [
+            f"<objective>{self.objective}</objective>",
+            f"<task>{task.description}</task>",
+        ]
+
+        # Estimate tokens for essential parts
+        essential_tokens = self._estimate_tokens("\n".join(essential_parts))
+        remaining_budget = self.task_context_budget - essential_tokens
+
+        # Gather all available context sources with relevance scores
+        context_sources = self._gather_context_sources(task)
+
+        # Sort by relevance and recency
+        context_sources.sort(
+            key=lambda x: (x["relevance"], x["timestamp"]), reverse=True
+        )
+
+        # Build context within budget
+        context_parts = essential_parts.copy()
+
+        if self.enable_full_context_propagation and remaining_budget > 0:
+            context_parts.append("<previous_task_results>")
+
+            added_sources = []
+            current_tokens = essential_tokens
+
+            for source in context_sources:
+                source_tokens = source["estimated_tokens"]
+
+                # Check if we can fit this source
+                if current_tokens + source_tokens <= self.task_context_budget:
+                    context_parts.append(source["content"])
+                    added_sources.append(source["id"])
+                    current_tokens += source_tokens
+                else:
+                    # Try compression if we're close to the limit
+                    if (
+                        current_tokens / self.task_context_budget
+                        >= self.context_compression_ratio
+                    ):
+                        compressed = self._compress_context_source(source)
+                        compressed_tokens = compressed["estimated_tokens"]
+
+                        if (
+                            current_tokens + compressed_tokens
+                            <= self.task_context_budget
+                        ):
+                            context_parts.append(compressed["content"])
+                            added_sources.append(f"{source['id']}_compressed")
+                            current_tokens += compressed_tokens
+                            self.context_usage_stats[
+                                "tasks_with_compressed_context"
+                            ] += 1
+
+            context_parts.append("</previous_task_results>")
+
+            # Log context usage
+            logger.debug(
+                f"Task context built: {current_tokens}/{self.task_context_budget} tokens, "
+                f"{len(added_sources)} sources included"
+            )
+            self.context_usage_stats["total_context_tokens"] += current_tokens
+
+            if len(added_sources) == len(context_sources):
+                self.context_usage_stats["tasks_with_full_context"] += 1
+
+        # Always add relevant knowledge (compact representation)
+        knowledge_budget = min(
+            5000, remaining_budget // 4
+        )  # Reserve some space for knowledge
+        relevant_knowledge = self._get_prioritized_knowledge(task, knowledge_budget)
+
+        if relevant_knowledge:
+            context_parts.append("<relevant_knowledge>")
+            for item in relevant_knowledge:
+                context_parts.append(
+                    f'  <knowledge confidence="{item.confidence:.2f}" category="{item.category}">'
+                )
+                context_parts.append(f"    <insight>{item.key}: {item.value}</insight>")
+                context_parts.append("  </knowledge>")
+            context_parts.append("</relevant_knowledge>")
+
+        # Add tool requirements
+        if task.servers:
+            context_parts.append("<required_tools>")
+            for server in task.servers:
+                context_parts.append(f"  <tool>{server}</tool>")
+            context_parts.append("</required_tools>")
+
+        # Add any existing artifacts
+        if self.memory.artifacts:
+            context_parts.append("<available_artifacts>")
+            for name in list(self.memory.artifacts.keys())[-5:]:  # Last 5 artifacts
+                context_parts.append(f"  <artifact>{name}</artifact>")
+            context_parts.append("</available_artifacts>")
+
+        return "\n".join(context_parts)
+
+    def _build_relevant_task_context(self, task: Task) -> str:
+        """
+        Build task context with explicitly requested dependencies.
+
+        This method uses the task's requires_context_from field to include
+        only the outputs from specifically requested previous tasks.
+
+        Args:
+            task: Task to build context for
+
+        Returns:
+            Task context string with requested dependencies
+        """
+        # Start with essential context
+        essential_parts = [
+            f"<objective>{self.objective}</objective>",
+            f"<task>{task.description}</task>",
+        ]
+
+        # Track tokens for budget management
+        essential_tokens = self._estimate_tokens("\n".join(essential_parts))
+        budget = task.context_window_budget
+        remaining_budget = budget - essential_tokens
+
+        # Build context parts
+        context_parts = essential_parts.copy()
+        current_tokens = essential_tokens
+
+        # Add requested task outputs
+        if task.requires_context_from and remaining_budget > 0:
+            context_parts.append("<required_context>")
+
+            # Gather requested task results as context sources
+            requested_sources = []
+            for task_name in task.requires_context_from:
+                # Find the task by name
+                referenced_task = self.queue.get_task_by_name(task_name)
+                if not referenced_task:
+                    logger.warning(
+                        f"Task '{task.name}' requested context from unknown task '{task_name}'"
+                    )
+                    continue
+
+                # Find the result for this task
+                result = self._find_task_result_by_name(referenced_task.name)
+                if not result:
+                    logger.warning(f"No result found for task '{task_name}'")
+                    continue
+
+                if not result.success or not result.output:
+                    logger.warning(f"Task '{task_name}' failed or has no output")
+                    continue
+
+                # Get the step description for this task
+                step_description = self._find_step_for_task(referenced_task.name)
+
+                # Format using existing method
+                content = self._format_task_result_for_context(
+                    step_description=step_description or "Unknown Step",
+                    task=referenced_task,
+                    result=result,
+                )
+
+                requested_sources.append(
+                    {
+                        "id": f"task_{referenced_task.name}",
+                        "name": task_name,
+                        "type": "requested_dependency",
+                        "relevance": 1.0,  # Explicitly requested, so max relevance
+                        "content": content,
+                        "estimated_tokens": self._estimate_tokens(content),
+                        "original_result": result,
+                    }
+                )
+
+            # Sort by order in requires_context_from to maintain priority
+            ordered_sources = []
+            for task_name in task.requires_context_from:
+                for source in requested_sources:
+                    if source["name"] == task_name:
+                        ordered_sources.append(source)
+                        break
+
+            # Add sources within budget
+            for source in ordered_sources:
+                source_tokens = source["estimated_tokens"]
+
+                if current_tokens + source_tokens <= budget:
+                    context_parts.append(source["content"])
+                    current_tokens += source_tokens
+                else:
+                    # Try compression
+                    compressed = self._compress_context_source(source)
+                    compressed_tokens = compressed["estimated_tokens"]
+
+                    if current_tokens + compressed_tokens <= budget:
+                        context_parts.append(compressed["content"])
+                        current_tokens += compressed_tokens
+                        logger.info(
+                            f"Compressed output for task '{source['name']}' to fit budget"
+                        )
+                    else:
+                        logger.warning(
+                            f"Cannot fit task '{source['name']}' in context even with compression "
+                            f"(needs {compressed_tokens} tokens, only {budget - current_tokens} available)"
+                        )
+
+            context_parts.append("</required_context>")
+
+        # Add relevant knowledge using existing method
+        knowledge_budget = min(5000, remaining_budget // 4)
+        relevant_knowledge = self._get_prioritized_knowledge(task, knowledge_budget)
+
+        if relevant_knowledge:
+            context_parts.append("<relevant_knowledge>")
+            for item in relevant_knowledge:
+                context_parts.append(
+                    f'  <knowledge confidence="{item.confidence:.2f}" category="{item.category}" source="{item.source}">'
+                )
+                context_parts.append(f"    <insight>{item.key}: {item.value}</insight>")
+                context_parts.append("  </knowledge>")
+            context_parts.append("</relevant_knowledge>")
+
+        # Add tool requirements
+        if task.servers:
+            context_parts.append("<required_tools>")
+            for server in task.servers:
+                context_parts.append(f"  <tool>{server}</tool>")
+            context_parts.append("</required_tools>")
+
+        # Add available artifacts (let the method decide how many based on space)
+        if self.memory.artifacts and current_tokens < budget - 1000:
+            context_parts.append("<available_artifacts>")
+            artifacts_added = 0
+            for name in reversed(list(self.memory.artifacts.keys())):
+                artifact_line = f"  <artifact>{name}</artifact>"
+                artifact_tokens = self._estimate_tokens(artifact_line)
+                if current_tokens + artifact_tokens < budget - 500:  # Leave some buffer
+                    context_parts.append(artifact_line)
+                    current_tokens += artifact_tokens
+                    artifacts_added += 1
+                    if artifacts_added >= 5:  # Reasonable limit
+                        break
+            context_parts.append("</available_artifacts>")
+
+        # Add scratchpad path if available
+        scratchpad_path = self.memory.get_scratchpad_path()
+        if scratchpad_path:
+            context_parts.append(
+                f"<scratchpad_path>{scratchpad_path}</scratchpad_path>"
+            )
+
+        final_context = "\n".join(context_parts)
+        final_tokens = self._estimate_tokens(final_context)
+
+        logger.debug(
+            f"Built relevant context for task '{task.name}': "
+            f"{len(task.requires_context_from)} dependencies requested, "
+            f"{final_tokens} tokens used (budget: {budget})"
+        )
+
+        return final_context
+
+    def _compress_task_output(self, output: str, max_tokens: int) -> str:
+        """
+        Compress task output to fit within token budget.
+
+        Args:
+            output: Original output to compress
+            max_tokens: Maximum tokens allowed
+
+        Returns:
+            Compressed output
+        """
+        # Estimate characters from tokens (rough: 1 token ≈ 4 chars)
+        max_chars = max_tokens * 4
+
+        if len(output) <= max_chars:
+            return output
+
+        # Take beginning and end to preserve context
+        chunk_size = max_chars // 2 - 50  # Leave room for ellipsis
+        compressed = (
+            output[:chunk_size]
+            + "\n... [content truncated for space] ...\n"
+            + output[-chunk_size:]
+        )
+
+        return compressed
+
+    def _gather_context_sources(self, task: Task) -> List[Dict[str, Any]]:
+        """Gather all potential context sources with relevance scoring."""
+        sources = []
+
+        # Get all completed task results
+        for step in self.queue.completed_steps:
+            for step_task in step.tasks:
+                result = self._find_task_result_by_name(step_task.name)
+                if result and result.success and result.output:
+                    # Calculate relevance score
+                    relevance = self._calculate_relevance(
+                        task_description=task.description,
+                        source_task_description=step_task.description,
+                        source_output=result.output,
+                        source_step=step.description,
+                    )
+
+                    # Format the source content
+                    content = self._format_task_result_for_context(
+                        step_description=step.description, task=step_task, result=result
+                    )
+
+                    sources.append(
+                        {
+                            "id": f"task_{step_task.name}",
+                            "type": "task_result",
+                            "relevance": relevance,
+                            "timestamp": result.duration_seconds,  # Use as proxy for recency
+                            "content": content,
+                            "estimated_tokens": self._estimate_tokens(content),
+                            "original_result": result,
+                        }
+                    )
+
+        return sources
+
+    def _find_task_result_by_name(self, task_name: str) -> Optional[TaskResult]:
+        """Find a task result by task name."""
+        for result in self.memory.task_results:
+            if result.task_name == task_name:
+                return result
+        return None
+
+    def _find_step_for_task(self, task_name: str) -> Optional[str]:
+        """Find the step description that contains a task."""
+        for step in self.queue.completed_steps:
+            for task in step.tasks:
+                if task.name == task_name:
+                    return step.description
+        return None
+
+    def _calculate_relevance(
+        self,
+        task_description: str,
+        source_task_description: str,
+        source_output: str,
+        source_step: str,
+    ) -> float:
+        """Calculate relevance score between current task and a source."""
+
+        # Simple keyword-based relevance (can be enhanced with embeddings)
+        task_words = set(task_description.lower().split())
+        source_words = set(source_task_description.lower().split())
+        output_words = set(source_output.lower().split()[:100])  # First 100 words
+        step_words = set(source_step.lower().split())
+
+        # Check for explicit references
+        if any(
+            ref in task_description.lower()
+            for ref in ["previous", "all", "comprehensive", "synthesize", "compile"]
+        ):
+            base_relevance = 0.8
+        else:
+            base_relevance = 0.5
+
+        # Calculate word overlap
+        task_overlap = (
+            len(task_words & source_words) / len(task_words) if task_words else 0
+        )
+        output_overlap = (
+            len(task_words & output_words) / len(task_words) if task_words else 0
+        )
+        step_overlap = (
+            len(task_words & step_words) / len(task_words) if task_words else 0
+        )
+
+        # Weighted relevance
+        relevance = (
+            base_relevance * 0.4
+            + task_overlap * 0.3
+            + output_overlap * 0.2
+            + step_overlap * 0.1
+        )
+
+        # Boost relevance for certain patterns
+        if (
+            "report" in task_description.lower()
+            and "analysis" in source_task_description.lower()
+        ):
+            relevance = min(1.0, relevance + 0.2)
+
+        return min(1.0, relevance)
+
+    def _format_task_result_for_context(
+        self, step_description: str, task: Task, result: TaskResult
+    ) -> str:
+        """Format a task result for inclusion in context."""
+        parts = [
+            f'  <step_result step="{step_description}">',
+            f'    <task name="{task.name}">{task.description}</task>',
+            f"    <output>{result.output}</output>",
+        ]
+
+        # Include key knowledge if available
+        if result.knowledge_extracted:
+            parts.append("    <key_findings>")
+            for item in result.knowledge_extracted[:5]:  # Top 5 findings
+                parts.append(f"      - {item.key}: {item.value}")
+            parts.append("    </key_findings>")
+
+        parts.append("  </step_result>")
+        return "\n".join(parts)
+
+    def _compress_context_source(self, source: Dict[str, Any]) -> Dict[str, Any]:
+        """Compress a context source to fit within budget."""
+        result = source["original_result"]
+
+        # Simple compression: truncate output and keep only key findings
+        compressed_output = (
+            result.output[:500] + "..." if len(result.output) > 500 else result.output
+        )
+
+        parts = [
+            f'  <step_result_compressed step="{source["id"]}">',
+            f"    <summary>{compressed_output}</summary>",
+        ]
+
+        if result.knowledge_extracted:
+            parts.append("    <key_findings>")
+            for item in result.knowledge_extracted[:3]:  # Even fewer findings
+                parts.append(f"      - {item.key}")
+            parts.append("    </key_findings>")
+
+        parts.append("  </step_result_compressed>")
+
+        content = "\n".join(parts)
+
+        return {
+            "id": source["id"],
+            "content": content,
+            "estimated_tokens": self._estimate_tokens(content),
+        }
+
+    def _get_prioritized_knowledge(
+        self, task: Task, token_budget: int
+    ) -> List[KnowledgeItem]:
+        """Get knowledge items prioritized by relevance within token budget."""
+        if not self.memory.knowledge:
+            return []
+
+        # Score all knowledge items
+        scored_items = []
+        for item in self.memory.knowledge:
+            relevance = self._calculate_knowledge_relevance(task.description, item)
+            if relevance >= self.context_relevance_threshold:
+                scored_items.append((relevance, item))
+
+        # Sort by relevance and recency
+        scored_items.sort(
+            key=lambda x: (x[0], x[1].timestamp.timestamp()), reverse=True
+        )
+
+        # Select items within budget
+        selected = []
+        current_tokens = 0
+
+        for relevance, item in scored_items:
+            item_tokens = self._estimate_tokens(f"{item.key}: {item.value}")
+            if current_tokens + item_tokens <= token_budget:
+                selected.append(item)
+                current_tokens += item_tokens
+            else:
+                break
+
+        return selected
+
+    def _calculate_knowledge_relevance(
+        self, task_description: str, item: KnowledgeItem
+    ) -> float:
+        """Calculate relevance of a knowledge item to a task."""
+        # Simple implementation - can be enhanced
+        task_words = set(task_description.lower().split())
+        item_words = set(item.key.lower().split()) | set(
+            str(item.value).lower().split()[:20]
+        )
+
+        overlap = len(task_words & item_words) / len(task_words) if task_words else 0
+
+        # Boost by confidence and category relevance
+        category_boost = (
+            0.2 if item.category in ["findings", "analysis", "errors"] else 0
+        )
+
+        return min(1.0, overlap + category_boost) * item.confidence
+
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimate token count for text."""
+        # Simple heuristic: 1 token ≈ 4 characters
+        # Can be replaced with actual tokenizer
+        return len(text) // 4
+
+    def get_context_usage_stats(self) -> Dict[str, Any]:
+        """Get statistics about context usage."""
+        total_tasks = (
+            self.context_usage_stats["tasks_with_full_context"]
+            + self.context_usage_stats["tasks_with_compressed_context"]
+        )
+
+        stats = {
+            "tasks_with_full_context": self.context_usage_stats[
+                "tasks_with_full_context"
+            ],
+            "tasks_with_compressed_context": self.context_usage_stats[
+                "tasks_with_compressed_context"
+            ],
+            "total_tasks_with_context": total_tasks,
+            "average_context_tokens": self.context_usage_stats["total_context_tokens"]
+            / total_tasks
+            if total_tasks > 0
+            else 0,
+            "total_context_tokens": self.context_usage_stats["total_context_tokens"],
+            "context_propagation_enabled": self.enable_full_context_propagation,
+            "context_budget": self.task_context_budget,
+        }
+
+        return stats
 
     async def _verify_completion(self) -> tuple[bool, float]:
         """
@@ -753,7 +1558,7 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         execution_summary = {
             "iterations": self.iteration,
             "steps_completed": len(self.queue.completed_steps),
-            "tasks_completed": len(self.queue.completed_task_ids),
+            "tasks_completed": len(self.queue.completed_task_names),
             "tokens_used": self.budget.tokens_used,
             "cost": self.budget.cost_incurred,
         }
@@ -764,14 +1569,14 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
             step_data = {"description": step.description, "task_results": []}
 
             # Get results for tasks in this step
-            step_task_ids = {t.id for t in step.tasks}
+            step_task_names = {t.name for t in step.tasks}
             step_results = [
-                r for r in self.memory.task_results if r.task_id in step_task_ids
+                r for r in self.memory.task_results if r.task_name in step_task_names
             ]
 
             for result in step_results:
                 if result.success and result.output:
-                    task = self.queue.all_tasks.get(result.task_id)
+                    task = self.queue.all_tasks.get(result.task_name)
                     task_desc = task.description if task else "Unknown task"
 
                     step_data["task_results"].append(

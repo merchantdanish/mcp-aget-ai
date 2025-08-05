@@ -91,7 +91,8 @@ class DeepOrchestratorMonitor:
             completed = tree.add("[green]✅ Completed Steps")
             for step in queue.completed_steps[-3:]:  # Last 3
                 step_node = completed.add(f"[dim]{step.description}")
-                for task in step.tasks[:2]:  # First 2 tasks
+                # Show ALL tasks in each step, not just first 2
+                for task in step.tasks:
                     status_icon = "✓" if task.status == "completed" else "✗"
                     step_node.add(f"[dim]{status_icon} {task.description[:50]}...")
 
@@ -100,13 +101,100 @@ class DeepOrchestratorMonitor:
             pending = tree.add("[yellow]⏳ Pending Steps")
             for step in queue.pending_steps[:3]:  # Next 3
                 step_node = pending.add(step.description)
-                for task in step.tasks[:2]:  # First 2 tasks
+                # Show ALL tasks in each step, not just first 2
+                for task in step.tasks:
                     step_node.add(f"• {task.description[:50]}...")
 
         # Queue summary
         tree.add(f"[blue]📊 {queue.get_progress_summary()}")
 
         return tree
+
+    def get_plan_table(self) -> Table:
+        """Get the current plan as a table"""
+        table = Table(title="📝 Current Plan", box=box.ROUNDED, show_header=True)
+        table.add_column("Step", style="cyan", width=3)
+        table.add_column("Description", style="yellow")
+        table.add_column("Tasks", style="green", width=3)
+        table.add_column("Status", style="magenta", width=10)
+
+        if (
+            not hasattr(self.orchestrator, "current_plan")
+            or not self.orchestrator.current_plan
+        ):
+            table.add_row("-", "No plan created yet", "-", "-")
+            return table
+
+        plan = self.orchestrator.current_plan
+        queue = self.orchestrator.queue
+
+        for i, step in enumerate(plan.steps, 1):
+            # Determine status
+            if step in queue.completed_steps:
+                status = "[green]✓ Done[/green]"
+            elif step == queue.get_next_step():
+                status = "[yellow]→ Active[/yellow]"
+            else:
+                status = "[dim]Pending[/dim]"
+
+            table.add_row(
+                str(i),
+                step.description[:60] + "..."
+                if len(step.description) > 60
+                else step.description,
+                str(len(step.tasks)),
+                status,
+            )
+
+        return table
+
+    def get_token_stats_panel(self) -> Panel:
+        """Get token usage statistics"""
+        lines = []
+
+        # Get token breakdown from context if available
+        if self.orchestrator.context and hasattr(
+            self.orchestrator.context, "token_counter"
+        ):
+            counter = self.orchestrator.context.token_counter
+            if counter:
+                # Get summary
+                summary = counter.get_summary()
+                if summary and hasattr(summary, "usage"):
+                    usage = summary.usage
+                    lines.append(f"[cyan]Total Tokens:[/cyan] {usage.total_tokens:,}")
+                    lines.append(f"[cyan]Input Tokens:[/cyan] {usage.input_tokens:,}")
+                    lines.append(f"[cyan]Output Tokens:[/cyan] {usage.output_tokens:,}")
+
+                    # Cost if available
+                    if hasattr(summary, "cost"):
+                        lines.append(
+                            f"[cyan]Estimated Cost:[/cyan] ${summary.cost:.4f}"
+                        )
+
+                    # Get top consumers
+                    node = counter.find_node(self.orchestrator.name)
+                    if node and node.children:
+                        lines.append("\n[yellow]Top Consumers:[/yellow]")
+                        sorted_children = sorted(
+                            node.children,
+                            key=lambda n: n.usage.total_tokens,
+                            reverse=True,
+                        )
+                        for child in sorted_children[:3]:
+                            pct = (
+                                (child.usage.total_tokens / usage.total_tokens * 100)
+                                if usage.total_tokens > 0
+                                else 0
+                            )
+                            lines.append(
+                                f"  • {child.name[:30]}: {child.usage.total_tokens:,} ({pct:.1f}%)"
+                            )
+
+        if not lines:
+            lines.append("[dim]No token usage data available yet[/dim]")
+
+        return Panel("\n".join(lines), title="📊 Token Usage", border_style="blue")
 
     def get_memory_panel(self) -> Panel:
         """Get memory status as a panel"""
@@ -174,7 +262,7 @@ class DeepOrchestratorMonitor:
         elapsed = time.time() - self.start_time
 
         lines = [
-            f"[cyan]Objective:[/cyan] {self.orchestrator.objective[:100]}...",
+            f"[cyan]Objective:[/cyan]\n        {self.orchestrator.objective[:100]}...",
             f"[cyan]Iteration:[/cyan] {self.orchestrator.iteration}/{self.orchestrator.max_iterations}",
             f"[cyan]Replans:[/cyan] {self.orchestrator.replan_count}/{self.orchestrator.max_replans}",
             f"[cyan]Elapsed:[/cyan] {elapsed:.1f}s",
@@ -187,24 +275,24 @@ def create_display_layout() -> Layout:
     """Create the display layout"""
     layout = Layout()
 
-    # Main structure
+    # Main structure - reduced total height to minimize blank space
     layout.split_column(
         Layout(name="header", size=3),
-        Layout(name="body"),
-        Layout(name="footer", size=8),
+        Layout(name="top_section", size=12),  # Reduced from 14
+        Layout(name="bottom_section", size=10),  # Reduced from 12
     )
 
-    # Body section - main monitoring
-    layout["body"].split_row(
+    # Top section - queue, plan, and memory
+    layout["top_section"].split_row(
+        Layout(name="queue", ratio=3),  # More space for queue/plan
+        Layout(name="memory", ratio=2),  # Less for memory
+    )
+
+    # Bottom section - budget, status, and agents
+    layout["bottom_section"].split_row(
         Layout(name="left", ratio=1),
         Layout(name="center", ratio=1),
         Layout(name="right", ratio=1),
-    )
-
-    # Footer section - detailed state
-    layout["footer"].split_row(
-        Layout(name="queue", ratio=2),
-        Layout(name="memory", ratio=1),
     )
 
     return layout
@@ -218,26 +306,30 @@ def update_display(layout: Layout, monitor: DeepOrchestratorMonitor):
         Panel("🚀 Deep Orchestrator - Assignment Grader", style="bold blue")
     )
 
+    # Top section - Queue and Plan side by side
+    queue_plan_content = Columns(
+        [monitor.get_queue_tree(), monitor.get_plan_table()],
+        padding=(1, 2),  # Add padding between columns
+    )
+    layout["queue"].update(queue_plan_content)
+
+    # Memory section
+    layout["memory"].update(monitor.get_memory_panel())
+
+    # Bottom section
     # Left column - Budget
     layout["left"].update(monitor.get_budget_table())
 
-    # Center column - Status and Policy
-    center_content = Columns(
-        [
-            monitor.get_status_summary(),
-            monitor.get_policy_panel(),
-        ]
+    # Center column - Status
+    layout["center"].update(monitor.get_status_summary())
+
+    # Right column - Combined Policy and Agents in a vertical layout
+    right_content = Layout()
+    right_content.split_column(
+        Layout(monitor.get_policy_panel(), size=7),
+        Layout(monitor.get_agents_table(), size=10),
     )
-    layout["center"].update(center_content)
-
-    # Right column - Agents
-    layout["right"].update(monitor.get_agents_table())
-
-    # Footer left - Queue
-    layout["queue"].update(monitor.get_queue_tree())
-
-    # Footer right - Memory
-    layout["memory"].update(monitor.get_memory_panel())
+    layout["right"].update(right_content)
 
 
 async def main():
@@ -259,50 +351,48 @@ async def main():
         )
 
         # Create some predefined agents (optional - orchestrator can create its own)
-        predefined_agents = {
-            "FileExpert": Agent(
+        _predefined_agents = [
+            Agent(
                 name="FileExpert",
                 instruction="""I specialize in file operations and content management.
                 I can read, write, and analyze files efficiently.""",
                 server_names=["filesystem"],
                 context=context,
             ),
-            "StyleChecker": Agent(
+            Agent(
                 name="StyleChecker",
                 instruction="""I am an expert in writing style and formatting standards.
                 I check for APA compliance and provide detailed feedback.""",
                 server_names=["fetch"],
                 context=context,
             ),
-            "Proofreader": Agent(
+            Agent(
                 name="Proofreader",
                 instruction="""I specialize in grammar, spelling, and clarity.
                 I provide detailed corrections and suggestions.""",
                 server_names=["filesystem"],
                 context=context,
             ),
-        }
+        ]
 
         # Create the Deep Orchestrator with all features enabled
         orchestrator = AdaptiveOrchestrator(
             llm_factory=OpenAIAugmentedLLM,
             name="DeepAssignmentGrader",
-            available_agents=predefined_agents,
-            available_servers=list(context.servers.keys())
-            if hasattr(context, "servers")
-            else ["filesystem", "fetch"],
-            max_iterations=15,
+            # available_agents=predefined_agents, # UNCOMMMENT to use predefined agents
+            available_servers=list(context.server_registry.registry.keys()),
+            max_iterations=25,
             max_replans=2,
             enable_filesystem=True,  # Enable workspace
             enable_parallel=True,  # Enable parallel execution
-            max_task_retries=2,  # Retry failed tasks
+            max_task_retries=5,  # Retry failed tasks
             context=context,
         )
 
         # Configure budget limits
-        orchestrator.budget.max_tokens = 50000
-        orchestrator.budget.max_cost = 5.0
-        orchestrator.budget.max_time_minutes = 10
+        orchestrator.budget.max_tokens = 100000
+        orchestrator.budget.max_cost = 0.80
+        orchestrator.budget.max_time_minutes = 7
 
         # Create monitor for state visibility
         monitor = DeepOrchestratorMonitor(orchestrator)
@@ -327,16 +417,19 @@ async def main():
         and finally synthesize all findings into a comprehensive report.
         """
 
+        # Store plan reference for display
+        orchestrator.current_plan = None
+
         # Run with live display
         console.print("[yellow]Starting Deep Orchestrator workflow...[/yellow]\n")
 
-        with Live(layout, console=console, refresh_per_second=2):
+        with Live(layout, console=console, refresh_per_second=4):
             # Update display in background
             async def update_loop():
                 while True:
                     try:
                         update_display(layout, monitor)
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(0.25)  # Reduced from 0.5s
                     except Exception as e:
                         logger.error(f"Display update error: {e}")
                         break
@@ -367,8 +460,8 @@ async def main():
                 except asyncio.CancelledError:
                     pass
 
-        # Display results
-        console.print("\n[bold green]✨ Grading Complete![/bold green]\n")
+        # Minimal spacing after live display ends
+        console.print("\n[bold green]✨ Grading Complete![/bold green]")
 
         # Show the grading report
         console.print(
@@ -380,7 +473,7 @@ async def main():
         )
 
         # Display final statistics
-        console.print("\n[bold cyan]📊 Final Statistics[/bold cyan]\n")
+        console.print("\n[bold cyan]📊 Final Statistics[/bold cyan]")
 
         # Create summary table
         summary_table = Table(title="Execution Summary", box=box.DOUBLE_EDGE)
@@ -391,10 +484,10 @@ async def main():
         summary_table.add_row("Iterations", str(orchestrator.iteration))
         summary_table.add_row("Replans", str(orchestrator.replan_count))
         summary_table.add_row(
-            "Tasks Completed", str(len(orchestrator.queue.completed_task_ids))
+            "Tasks Completed", str(len(orchestrator.queue.completed_task_names))
         )
         summary_table.add_row(
-            "Tasks Failed", str(len(orchestrator.queue.failed_task_ids))
+            "Tasks Failed", str(len(orchestrator.queue.failed_task_names))
         )
         summary_table.add_row(
             "Knowledge Items", str(len(orchestrator.memory.knowledge))
@@ -416,7 +509,7 @@ async def main():
 
         # Display knowledge learned
         if orchestrator.memory.knowledge:
-            console.print("\n[bold cyan]🧠 Knowledge Extracted[/bold cyan]\n")
+            console.print("\n[bold cyan]🧠 Knowledge Extracted[/bold cyan]")
 
             knowledge_table = Table(box=box.SIMPLE)
             knowledge_table.add_column("Category", style="cyan")
@@ -454,45 +547,6 @@ async def main():
 if __name__ == "__main__":
     # Change to example directory
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-
-    # Create sample story file if it doesn't exist
-    if not os.path.exists("short_story.md"):
-        with open("short_story.md", "w") as f:
-            f.write("""# The Enchanted Garden
-
-Sarah pushed through the overgrown hedge and gasped. Before her lay a garden unlike any she had ever seen. Flowers glowed with an ethereal light, their petals shifting through colors that shouldn't exist in nature.
-
-"You shouldn't be here," a voice said softly.
-
-She spun around to find a boy about her age, with eyes that seemed to hold the same impossible colors as the flowers. He wasn't threatening, just... sad.
-
-"I'm sorry, I was just exploring and—"
-
-"No, it's okay," he interrupted. "I'm just surprised anyone could find this place. The garden usually keeps people out."
-
-"The garden... keeps people out?" Sarah asked, her scientific mind immediately curious.
-
-The boy nodded. "It's been in my family for generations. My grandmother says it chooses who can enter." He gestured to a particularly vibrant cluster of roses that seemed to pulse with inner light. "These flowers, they're not exactly... normal."
-
-Sarah stepped closer to examine them. As she did, the roses seemed to lean toward her, as if greeting an old friend.
-
-"They like you," the boy said, wonder in his voice. "They never respond to anyone except—" He stopped abruptly.
-
-"Except who?"
-
-"My grandmother. And me. We're the gardeners." He looked at her intently. "What's your name?"
-
-"Sarah. Sarah Chen."
-
-The boy's eyes widened. "Chen? Your grandmother wouldn't happen to be Rose Chen, would she?"
-
-Sarah nodded, confused. "Yes, but she passed away last year. How did you—"
-
-"She was my grandmother's best friend. They founded this garden together, decades ago, before they had a falling out." He extended his hand. "I'm Alex Morrison. And I think our grandmothers have been waiting for us to meet."
-
-As their hands touched, every flower in the garden burst into brilliant bloom, filling the air with a harmony of scents and colors that spoke of old magic and new beginnings.
-""")
-        console.print("[yellow]Created sample short_story.md file[/yellow]")
 
     # Run the example
     asyncio.run(main())

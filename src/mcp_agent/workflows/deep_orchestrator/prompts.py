@@ -55,12 +55,18 @@ You are an expert strategic planner who creates comprehensive execution plans.
 
 <task_design_rules>
   <rule>Each task must have a single, clear deliverable</rule>
+  <rule>Give each task a unique, descriptive name (e.g., "analyze_code", "check_grammar", "compile_report")</rule>
   <rule>Tasks should be specific enough to execute without ambiguity</rule>
   <rule>Parallel tasks within a step must not interfere with each other</rule>
-  <rule>Use agent="AUTO" to request dynamic agent creation</rule>
-  <rule>Specify all required MCP servers for each task</rule>
-  <rule>Do NOT set task dependencies - steps are executed sequentially, tasks within steps run in parallel</rule>
-  <rule>If tasks must run in order, put them in separate sequential steps</rule>
+  <rule>Leave agent field unset (not specified) to request dynamic agent creation</rule>
+  <rule>CRITICAL: If you specify an agent name, it MUST be one of the available_agents - NEVER invent or hallucinate agent names</rule>
+  <rule>CRITICAL: Only use MCP servers from the available_servers list - NEVER invent or hallucinate server names</rule>
+  <rule>If no servers are needed for a task, use an empty list []</rule>
+  <rule>Tasks run in parallel within a step, steps run sequentially</rule>
+  <rule>Use requires_context_from to specify which previous task outputs this task needs</rule>
+  <rule>requires_context_from can ONLY reference tasks from PREVIOUS steps, not the current step</rule>
+  <rule>If a task needs output from another task in the same step, move it to a subsequent step</rule>
+  <rule>Only set context_window_budget if task needs more than default (10000 tokens)</rule>
 </task_design_rules>
 
 <important_notes>
@@ -70,6 +76,18 @@ You are an expert strategic planner who creates comprehensive execution plans.
   <note>Think step by step about the best way to achieve the objective</note>
   <note>Tasks within a step run in parallel, steps run sequentially</note>
 </important_notes>
+
+<example_task_structure>
+  Step 1: Analysis Phase
+    - Task: name="check_grammar", description="Check grammar and spelling"
+    - Task: name="analyze_style", description="Analyze writing style"
+    - Task: name="assess_structure", description="Assess story structure"
+  
+  Step 2: Synthesis Phase  
+    - Task: name="compile_report", description="Compile comprehensive grading report"
+      requires_context_from=["check_grammar", "analyze_style", "assess_structure"]
+      # Can reference tasks from Step 1, but NOT tasks from Step 2
+</example_task_structure>
 </planner_instruction>"""
 
 
@@ -208,9 +226,27 @@ def get_planning_context(
         context_parts.append(
             f"    <mcp_servers>{', '.join(available_servers)}</mcp_servers>"
         )
+        context_parts.append(
+            "    <important>You MUST only use these exact server names. Do NOT invent or guess server names.</important>"
+        )
+    else:
+        context_parts.append("    <mcp_servers>None available</mcp_servers>")
+        context_parts.append(
+            "    <important>No MCP servers are available. All tasks must have empty server lists.</important>"
+        )
     if available_agents:
         context_parts.append(
             f"    <agents>{', '.join(available_agents.keys())}</agents>"
+        )
+        context_parts.append(
+            "    <important>You MUST only use these exact agent names if specifying an agent. Do NOT invent or guess agent names. Leave agent field unset for dynamic creation.</important>"
+        )
+    else:
+        context_parts.append(
+            "    <agents>None available - all tasks must have agent field unset</agents>"
+        )
+        context_parts.append(
+            "    <important>No predefined agents are available. All tasks must leave the agent field unset for dynamic agent creation.</important>"
         )
     context_parts.append("  </resources>")
 
