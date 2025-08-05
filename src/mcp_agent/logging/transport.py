@@ -162,7 +162,8 @@ class FileTransport(FilteredEventTransport):
         if event.data:
             log_entry["data"] = self._serializer(event.data)
 
-        log_line = JSON.from_data(log_entry)
+        # Prepare the log line
+        log_line = json.dumps(log_entry, separators=(",", ":")) + "\n"
 
         # Use asyncio to run file I/O in executor to avoid blocking
         try:
