@@ -341,8 +341,12 @@ class TokenCounter:
         self._model_lookup = {model.name: model for model in self._models}
         self._models_by_provider = self._build_provider_lookup()
 
+        # Cache for model lookups to avoid repeated fuzzy matching
+        # Key: (model_name, provider), Value: ModelInfo or None
+        self._model_cache: Dict[Tuple[str, Optional[str]], Optional[ModelInfo]] = {}
+
         # Track total usage by (model_name, provider) tuple
-        self._usage_by_model: Dict[tuple[str, Optional[str]], TokenUsage] = defaultdict(
+        self._usage_by_model: Dict[Tuple[str, Optional[str]], TokenUsage] = defaultdict(
             TokenUsage
         )
 
@@ -411,6 +415,10 @@ class TokenCounter:
         Returns:
             ModelInfo if found, None otherwise
         """
+        # Check cache first
+        cache_key = (model_name, provider)
+        if cache_key in self._model_cache:
+            return self._model_cache[cache_key]
 
         # Try exact match first
         model_info = self._model_lookup.get(model_name)
@@ -421,6 +429,8 @@ class TokenCounter:
                 or provider == model_info.provider
                 or provider.lower() == model_info.provider.lower()
             ):
+                # Cache the result
+                self._model_cache[cache_key] = model_info
                 return model_info
 
         # If provider is specified, search within that provider's models
@@ -437,7 +447,9 @@ class TokenCounter:
         if provider_models:
             # Try exact match within provider
             if model_name in provider_models:
-                return provider_models[model_name]
+                result = provider_models[model_name]
+                self._model_cache[cache_key] = result
+                return result
 
             # Try fuzzy match within provider - prefer longer matches
             best_match = None
@@ -464,6 +476,7 @@ class TokenCounter:
                     best_match_score = score
 
             if best_match:
+                self._model_cache[cache_key] = best_match
                 return best_match
 
         # Try fuzzy match across all models - prefer longer matches
@@ -499,8 +512,12 @@ class TokenCounter:
                 best_match_score = score
 
         if best_match:
+            # Cache the result
+            self._model_cache[cache_key] = best_match
             return best_match
 
+        # Cache the None result too to avoid repeated searches
+        self._model_cache[cache_key] = None
         return None
 
     def push(
@@ -1285,7 +1302,7 @@ class TokenCounter:
                 return []
 
             # Collect all nodes that have model usage
-            model_nodes: Dict[tuple[str, Optional[str]], List[TokenNode]] = defaultdict(
+            model_nodes: Dict[Tuple[str, Optional[str]], List[TokenNode]] = defaultdict(
                 list
             )
             self._collect_model_nodes(self._root, model_nodes)
@@ -1330,7 +1347,7 @@ class TokenCounter:
     def _collect_model_nodes(
         self,
         node: TokenNode,
-        model_nodes: Dict[tuple[str, Optional[str]], List[TokenNode]],
+        model_nodes: Dict[Tuple[str, Optional[str]], List[TokenNode]],
     ) -> None:
         """Recursively collect nodes that have model usage"""
         # If this node has model usage, add it
