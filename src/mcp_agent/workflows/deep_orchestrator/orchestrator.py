@@ -22,7 +22,6 @@ from mcp_agent.workflows.llm.augmented_llm import (
     RequestParams,
 )
 
-# Import all submodules
 from mcp_agent.workflows.deep_orchestrator.budget import SimpleBudget
 from mcp_agent.workflows.deep_orchestrator.cache import AgentCache
 from mcp_agent.workflows.deep_orchestrator.knowledge import (
@@ -35,6 +34,7 @@ from mcp_agent.workflows.deep_orchestrator.models import (
     Plan,
     PlanVerificationResult,
     PolicyAction,
+    Step,
     Task,
     TaskResult,
     TaskStatus,
@@ -64,6 +64,7 @@ from mcp_agent.workflows.deep_orchestrator.queue import TodoQueue
 from mcp_agent.workflows.deep_orchestrator.utils import retry_with_backoff
 
 if TYPE_CHECKING:
+    from opentelemetry.trace.span import Span
     from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
@@ -249,7 +250,7 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 return await self._emergency_completion(str(e))
 
     async def _execute_workflow(
-        self, request_params: Optional[RequestParams], span: Any
+        self, request_params: Optional[RequestParams], span: "Span"
     ) -> List[MessageT]:
         """
         Core workflow execution logic with enhanced control.
@@ -672,7 +673,7 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
                     )
 
     async def _execute_step(
-        self, step: Any, request_params: Optional[RequestParams]
+        self, step: Step, request_params: Optional[RequestParams]
     ) -> bool:
         """
         Execute all tasks in a step with parallel support.
@@ -686,17 +687,14 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         """
         logger.info(f"Executing step with {len(step.tasks)} tasks")
 
-        # Get executor - with proper fallback
-        executor = getattr(self, "executor", None)
-
         # Prepare tasks for execution
-        if self.enable_parallel and executor and len(step.tasks) > 1:
-            # Parallel execution
+        if self.enable_parallel and self.executor and len(step.tasks) > 1:
+            # Parallel execution with streaming results
             logger.info("Executing tasks in parallel")
             task_coroutines = [
                 self._execute_task(task, request_params) for task in step.tasks
             ]
-            results = await executor.execute_many(task_coroutines)
+            results = await self.executor.execute_many(task_coroutines)
         else:
             # Sequential execution
             logger.info("Executing tasks sequentially")
@@ -1658,7 +1656,9 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
             llm = await emergency_agent.attach_llm(self.llm_factory)
             return await llm.generate(message=prompt)
 
-    async def _extract_objective(self, message: Any) -> str:
+    async def _extract_objective(
+        self, message: MessageParamT | List[MessageParamT]
+    ) -> str:
         """
         Extract objective from complex message types.
 
@@ -1670,14 +1670,18 @@ class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         """
         extractor = Agent(
             name="ObjectiveExtractor",
-            instruction="Extract the user's objective or request from their message. Be concise and clear.",
+            instruction="""
+            The message that will be provided to you will be a user message. 
+            Your job is to extract the user's objective or request from their message. 
+            Be concise and clear. You must be able to answer: 'What is the user asking for in this message?'
+            """,
             context=self.context,
         )
 
         llm = self.llm_factory(extractor)
 
         return await llm.generate_str(
-            message=f"What is the user asking for in this message?\n\n{message}",
+            message=message,
             request_params=RequestParams(max_iterations=1),
         )
 
