@@ -28,6 +28,11 @@ from rich import box
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.deep_orchestrator.orchestrator import DeepOrchestrator
+from mcp_agent.workflows.deep_orchestrator.config import (
+    DeepOrchestratorConfig,
+    ExecutionConfig,
+    BudgetConfig,
+)
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 
@@ -320,8 +325,8 @@ class DeepOrchestratorMonitor:
 
         lines = [
             f"[cyan]Objective:[/cyan]\n        {self.orchestrator.objective[:100]}...",
-            f"[cyan]Iteration:[/cyan] {self.orchestrator.iteration}/{self.orchestrator.max_iterations}",
-            f"[cyan]Replans:[/cyan] {self.orchestrator.replan_count}/{self.orchestrator.max_replans}",
+            f"[cyan]Iteration:[/cyan] {self.orchestrator.iteration}/{self.orchestrator.config.execution.max_iterations}",
+            f"[cyan]Replans:[/cyan] {self.orchestrator.replan_count}/{self.orchestrator.config.execution.max_replans}",
             f"[cyan]Elapsed:[/cyan] {elapsed:.1f}s",
         ]
 
@@ -435,24 +440,31 @@ async def main():
             ),
         ]
 
-        # Create the Deep Orchestrator with all features enabled
-        orchestrator = DeepOrchestrator(
-            llm_factory=OpenAIAugmentedLLM,
+        # Create configuration for the Deep Orchestrator
+        config = DeepOrchestratorConfig(
             name="DeepAssignmentGrader",
-            # available_agents=predefined_agents, # UNCOMMENT to use predefined agents
+            # available_agents=predefined_agents,  # UNCOMMENT to use predefined agents
             available_servers=list(context.server_registry.registry.keys()),
-            max_iterations=25,
-            max_replans=2,
-            enable_filesystem=True,  # Enable workspace
-            enable_parallel=True,  # Enable parallel execution
-            max_task_retries=5,  # Retry failed tasks
-            context=context,
+            execution=ExecutionConfig(
+                max_iterations=25,
+                max_replans=2,
+                max_task_retries=5,
+                enable_parallel=True,
+                enable_filesystem=True,
+            ),
+            budget=BudgetConfig(
+                max_tokens=100000,
+                max_cost=0.80,
+                max_time_minutes=7,
+            ),
         )
 
-        # Configure budget limits
-        orchestrator.budget.max_tokens = 100000
-        orchestrator.budget.max_cost = 0.80
-        orchestrator.budget.max_time_minutes = 7
+        # Create the Deep Orchestrator with configuration
+        orchestrator = DeepOrchestrator(
+            llm_factory=OpenAIAugmentedLLM,
+            config=config,
+            context=context,
+        )
 
         # Create monitor for state visibility
         monitor = DeepOrchestratorMonitor(orchestrator)
