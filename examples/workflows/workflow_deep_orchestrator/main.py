@@ -89,21 +89,78 @@ class DeepOrchestratorMonitor:
         # Completed steps
         if queue.completed_steps:
             completed = tree.add("[green]✅ Completed Steps")
-            for step in queue.completed_steps[-3:]:  # Last 3
-                step_node = completed.add(f"[dim]{step.description}")
-                # Show ALL tasks in each step, not just first 2
-                for task in step.tasks:
-                    status_icon = "✓" if task.status == "completed" else "✗"
-                    step_node.add(f"[dim]{status_icon} {task.description[:50]}...")
+            for step in queue.completed_steps[-2:]:  # Last 2 steps only
+                step_node = completed.add(f"[dim]{step.description[:60]}...")
+                # Show first 3 tasks if many, otherwise all
+                tasks_to_show = step.tasks[:3] if len(step.tasks) > 3 else step.tasks
+                for task in tasks_to_show:
+                    if task.status == "completed":
+                        icon = "[green]✓[/green]"
+                    elif task.status == "failed":
+                        icon = "[red]✗[/red]"
+                    else:
+                        icon = "•"
+                    step_node.add(f"[dim]{icon} {task.description[:40]}...")
+                if len(step.tasks) > 3:
+                    step_node.add(f"[dim italic]... +{len(step.tasks) - 3} more tasks")
 
-        # Pending steps
+        # Current/Active step - prioritize showing active and failed tasks
+        current_step = queue.get_next_step()
+        if current_step:
+            active = tree.add("[yellow]▶ Active Step")
+            active_node = active.add(f"[yellow]{current_step.description[:60]}...")
+
+            # Sort tasks to prioritize: in_progress > failed > pending > completed
+            def task_priority(task):
+                priorities = {
+                    "in_progress": 0,
+                    "failed": 1,
+                    "pending": 2,
+                    "completed": 3,
+                }
+                return priorities.get(task.status, 4)
+
+            sorted_tasks = sorted(current_step.tasks, key=task_priority)
+            tasks_to_show = sorted_tasks[:5]  # Show up to 5 for active step
+
+            for task in tasks_to_show:
+                if task.status == "in_progress":
+                    icon = "[yellow]⟳[/yellow]"
+                elif task.status == "failed":
+                    icon = "[red]✗[/red]"
+                elif task.status == "completed":
+                    icon = "[green]✓[/green]"
+                else:
+                    icon = "•"
+                active_node.add(f"{icon} {task.description[:40]}...")
+
+            # Show remaining count with status breakdown if needed
+            remaining = len(current_step.tasks) - len(tasks_to_show)
+            if remaining > 0:
+                # Count by status for the remaining tasks
+                status_counts = {}
+                for task in sorted_tasks[4:]:
+                    status_counts[task.status] = status_counts.get(task.status, 0) + 1
+
+                if status_counts:
+                    parts = []
+                    if status_counts.get("pending", 0) > 0:
+                        parts.append(f"{status_counts['pending']} pending")
+                    if status_counts.get("completed", 0) > 0:
+                        parts.append(f"{status_counts['completed']} done")
+                    active_node.add(
+                        f"[dim italic]... +{remaining} more ({', '.join(parts)})"
+                    )
+
+        # Pending steps (just count)
         if queue.pending_steps:
-            pending = tree.add("[yellow]⏳ Pending Steps")
-            for step in queue.pending_steps[:3]:  # Next 3
-                step_node = pending.add(step.description)
-                # Show ALL tasks in each step, not just first 2
-                for task in step.tasks:
-                    step_node.add(f"• {task.description[:50]}...")
+            _pending = tree.add(f"[dim]⏳ {len(queue.pending_steps)} Pending Steps")
+
+        # Failed tasks summary if any
+        if queue.failed_task_names:
+            failed = tree.add(f"[red]❌ {len(queue.failed_task_names)} Failed Tasks")
+            for task_name in list(queue.failed_task_names)[:2]:
+                failed.add(f"[red dim]{task_name}")
 
         # Queue summary
         tree.add(f"[blue]📊 {queue.get_progress_summary()}")
@@ -275,11 +332,12 @@ def create_display_layout() -> Layout:
     """Create the display layout"""
     layout = Layout()
 
-    # Main structure - reduced total height to minimize blank space
+    # Main structure
     layout.split_column(
         Layout(name="header", size=3),
-        Layout(name="top_section", size=12),  # Reduced from 14
-        Layout(name="bottom_section", size=10),  # Reduced from 12
+        Layout(name="top_section", size=12),
+        Layout(name="buffer", size=6),
+        Layout(name="bottom_section", size=10),
     )
 
     # Top section - queue, plan, and memory
@@ -305,6 +363,8 @@ def update_display(layout: Layout, monitor: DeepOrchestratorMonitor):
     layout["header"].update(
         Panel("🚀 Deep Orchestrator - Assignment Grader", style="bold blue")
     )
+
+    layout["buffer"].update("")
 
     # Top section - Queue and Plan side by side
     queue_plan_content = Columns(
@@ -379,7 +439,7 @@ async def main():
         orchestrator = AdaptiveOrchestrator(
             llm_factory=OpenAIAugmentedLLM,
             name="DeepAssignmentGrader",
-            # available_agents=predefined_agents, # UNCOMMMENT to use predefined agents
+            # available_agents=predefined_agents, # UNCOMMENT to use predefined agents
             available_servers=list(context.server_registry.registry.keys()),
             max_iterations=25,
             max_replans=2,
@@ -423,7 +483,7 @@ async def main():
         # Run with live display
         console.print("[yellow]Starting Deep Orchestrator workflow...[/yellow]\n")
 
-        with Live(layout, console=console, refresh_per_second=4):
+        with Live(layout, console=console, refresh_per_second=4) as _live:
             # Update display in background
             async def update_loop():
                 while True:
@@ -448,6 +508,28 @@ async def main():
                     ),
                 )
 
+                result_formatted = (
+                    result[:2000] + "..." if len(result) > 2000 else result
+                )
+
+                pretty_printer_agent = Agent(
+                    name="PrettyPrinter",
+                    instruction="Format the output nicely. Extract markdown content and render it in a readable format",
+                    context=context,
+                )
+
+                async with pretty_printer_agent:
+                    pretty_printer = await pretty_printer_agent.attach_llm(
+                        OpenAIAugmentedLLM
+                    )
+
+                    result_formatted = await pretty_printer.generate_str(
+                        message=result,
+                        request_params=RequestParams(
+                            model="gpt-4o", temperature=0.7, max_iterations=10
+                        ),
+                    )
+
                 execution_time = time.time() - start_time
 
                 # Final update
@@ -461,12 +543,12 @@ async def main():
                     pass
 
         # Minimal spacing after live display ends
-        console.print("\n[bold green]✨ Grading Complete![/bold green]")
+        console.print("[bold green]✨ Grading Complete![/bold green]")
 
         # Show the grading report
         console.print(
             Panel(
-                result[:2000] + "..." if len(result) > 2000 else result,
+                result_formatted,
                 title="📝 Grading Report (Preview)",
                 border_style="green",
             )
