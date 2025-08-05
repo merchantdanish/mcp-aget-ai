@@ -4,7 +4,11 @@ This example demonstrates the Deep Orchestrator workflow, an adaptive multi-agen
 
 This particular example is an advanced student assignment grader that showcases all the Deep Orchestrator's features with full state visibility through a real-time monitoring dashboard.
 
-<img width="1650" alt="Deep Orchestrator Dashboard" src="https://github.com/user-attachments/assets/placeholder-deep-orchestrator-dashboard" />
+<img width="1490" height="515" alt="image" src="https://github.com/user-attachments/assets/d69b81e0-0a04-40ef-912d-5516cf7c7ce8" />
+
+<img width="1489" height="746" alt="image" src="https://github.com/user-attachments/assets/b6cfc75a-66e1-4a60-8457-75804e0dc74d" />
+
+<img width="1489" height="814" alt="image" src="https://github.com/user-attachments/assets/bad5aa9c-e16e-4cd3-a4d4-47f8f399194a" />
 
 ## Key Features Demonstrated
 
@@ -20,6 +24,7 @@ This particular example is an advanced student assignment grader that showcases 
 ## When to Use Deep Orchestrator
 
 Use this workflow for:
+
 - Complex research or analysis tasks requiring exploration and synthesis
 - Long-running workflows that may need multiple iterations
 - Tasks where you can't predict all subtasks upfront
@@ -107,6 +112,7 @@ The assignment grader will:
 ## Understanding the Output
 
 The live dashboard shows:
+
 - Real-time task execution with status indicators (✓ completed, ⟳ in progress, ✗ failed)
 - Budget consumption across tokens, cost, and time dimensions
 - Knowledge items being extracted and categorized
@@ -114,6 +120,7 @@ The live dashboard shows:
 - Policy engine decisions and failure handling
 
 After completion, you'll see:
+
 - A preview of the grading report
 - Execution statistics (time, iterations, tasks completed)
 - Knowledge extracted during the analysis
@@ -141,14 +148,14 @@ orchestrator.budget.max_time_minutes = 7
 
 ## Comparison with Standard Orchestrator
 
-| Feature | Standard Orchestrator | Deep Orchestrator |
-|---------|---------------------|-------------------|
-| Planning | Fixed or simple iteration | Comprehensive + adaptive |
-| Memory | In-context only | Persistent + knowledge extraction |
-| Agents | Predefined only | Dynamic creation + caching |
-| Execution | Single pass | Iterative until complete |
-| Monitoring | Basic logging | Full state dashboard |
-| Budget | None | Token/cost/time tracking |
+| Feature    | Standard Orchestrator     | Deep Orchestrator                 |
+| ---------- | ------------------------- | --------------------------------- |
+| Planning   | Fixed or simple iteration | Comprehensive + adaptive          |
+| Memory     | In-context only           | Persistent + knowledge extraction |
+| Agents     | Predefined only           | Dynamic creation + caching        |
+| Execution  | Single pass               | Iterative until complete          |
+| Monitoring | Basic logging             | Full state dashboard              |
+| Budget     | None                      | Token/cost/time tracking          |
 
 ## Learn More
 
