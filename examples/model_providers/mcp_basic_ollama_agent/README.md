@@ -36,10 +36,12 @@ uv pip install -r requirements.txt
 Make sure you have [Ollama installed](https://ollama.com/download). Then pull the required models for the example:
 
 ```bash
-ollama run llama3.2:3b
+ollama pull gpt-oss:20b
 
-ollama run llama3.1:8b
+ollama run gpt-oss:20b
 ```
+
+This example uses [OpenAI's gpt-oss-20b](https://openai.com/index/introducing-gpt-oss/).
 
 ## `2` Run locally
 
