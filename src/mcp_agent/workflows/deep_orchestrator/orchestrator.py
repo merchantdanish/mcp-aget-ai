@@ -70,7 +70,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class AdaptiveOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
+class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
     """
     Production-ready adaptive orchestrator with all recommended enhancements.
 

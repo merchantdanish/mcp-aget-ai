@@ -11,7 +11,6 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field
-from typing_extensions import Annotated
 
 
 class TaskStatus(str, Enum):
@@ -89,16 +88,13 @@ class TaskResult:
 class Task(BaseModel):
     """Individual task which can be accomplished by a single subagent."""
 
-    description: str = Annotated[
-        str, Field(description="Clear, specific description of what needs to be done")
-    ]
+    description: str = Field(
+        description="Clear, specific description of what needs to be done"
+    )
 
-    name: str = Annotated[
-        str,
-        Field(
-            description="Unique name for this task that can be referenced by other tasks"
-        ),
-    ]
+    name: str = Field(
+        description="Unique name for this task that can be referenced by other tasks"
+    )
 
     agent: Optional[str] = Field(
         default=None,
@@ -120,7 +116,7 @@ class Task(BaseModel):
 
     def get_hash_key(self) -> Tuple[str, ...]:
         """Get a hash key for deduplication."""
-        return (self.description.strip().lower(), tuple(sorted(self.servers)))
+        return (self.description.strip().lower(), tuple(sorted(self.servers)))  # pylint: disable=E1101
 
 
 class Step(BaseModel):

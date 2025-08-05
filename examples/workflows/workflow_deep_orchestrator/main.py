@@ -27,7 +27,7 @@ from rich import box
 
 from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
-from mcp_agent.workflows.deep_orchestrator.orchestrator import AdaptiveOrchestrator
+from mcp_agent.workflows.deep_orchestrator.orchestrator import DeepOrchestrator
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 
@@ -37,7 +37,7 @@ console = Console()
 class DeepOrchestratorMonitor:
     """Monitor to expose all internal state of the Deep Orchestrator"""
 
-    def __init__(self, orchestrator: AdaptiveOrchestrator):
+    def __init__(self, orchestrator: DeepOrchestrator):
         self.orchestrator = orchestrator
         self.start_time = time.time()
 
@@ -436,7 +436,7 @@ async def main():
         ]
 
         # Create the Deep Orchestrator with all features enabled
-        orchestrator = AdaptiveOrchestrator(
+        orchestrator = DeepOrchestrator(
             llm_factory=OpenAIAugmentedLLM,
             name="DeepAssignmentGrader",
             # available_agents=predefined_agents, # UNCOMMENT to use predefined agents
