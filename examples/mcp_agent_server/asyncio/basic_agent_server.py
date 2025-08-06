@@ -173,7 +173,7 @@ async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--custom-fastmcp-settings",
-        type=bool,
+        action="store_true",
         help="Enable custom FastMCP settings for the server",
     )
     args = parser.parse_args()
@@ -195,11 +195,12 @@ async def main():
         # Create the MCP server that exposes both workflows and agent configurations,
         # optionally using custom FastMCP settings
         fast_mcp_settings = (
-            {"host": "localhost", "port": 8001, "debug": True, "log_level": "debug"}
+            {"host": "localhost", "port": 8001, "debug": True, "log_level": "DEBUG"}
             if use_custom_fastmcp_settings
             else None
         )
         mcp_server = create_mcp_server_for_app(agent_app, fast_mcp_settings)
+        logger.info(f"MCP Server settings: {mcp_server.settings}")
 
         # Add custom tool to get token usage for a workflow
         @mcp_server.tool(

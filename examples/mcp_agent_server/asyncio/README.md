@@ -99,8 +99,12 @@ You can also run the server and client separately:
    ```
 
 2. In another terminal, run the client:
+
    ```bash
    uv run client.py
+
+   # Optionally, run with the example custom FastMCP settings
+   uv run client.py --custom-fastmcp-settings
    ```
 
 ## MCP Clients

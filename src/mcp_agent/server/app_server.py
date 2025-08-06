@@ -122,7 +122,7 @@ def create_mcp_server_for_app(
         # or use the MCPApp's description if available.
         instructions=f"MCP server exposing {app.name} workflows and agents. Description: {app.description}",
         lifespan=app_specific_lifespan,
-        settings=settings,
+        **settings or {},
     )
 
     # region Workflow Tools
