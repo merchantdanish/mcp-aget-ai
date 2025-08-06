@@ -443,7 +443,7 @@ One LLM (the “optimizer”) refines a response, another (the “evaluator”) 
 optimizer = Agent(name="cover_letter_writer", server_names=["fetch"], instruction="Generate a cover letter ...")
 evaluator = Agent(name="critiquer", instruction="Evaluate clarity, specificity, relevance...")
 
-llm = EvaluatorOptimizerLLM(
+eo_llm = EvaluatorOptimizerLLM(
     optimizer=optimizer,
     evaluator=evaluator,
     llm_factory=OpenAIAugmentedLLM,
