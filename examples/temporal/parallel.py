@@ -145,13 +145,13 @@ def display_node_tree(
             display_node_tree(child, child_indent, i == len(node.children) - 1, context)
 
 
-def display_token_summary(context: Context):
+async def display_token_summary(context: Context):
     """Display comprehensive token usage summary"""
     if not context.token_counter:
         print("\nNo token counter available")
         return
 
-    summary: TokenSummary = context.token_counter.get_summary()
+    summary: TokenSummary = await context.token_counter.get_summary()
 
     print("\n" + "=" * 60)
     print("TOKEN USAGE SUMMARY")
@@ -198,7 +198,7 @@ async def main():
         print(result)
 
         # Display token usage summary
-        display_token_summary(context)
+        await display_token_summary(context)
 
 
 if __name__ == "__main__":

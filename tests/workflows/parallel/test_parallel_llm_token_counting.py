@@ -56,32 +56,32 @@ class TestParallelLLMTokenCounting:
             async def generate(self, message, request_params=None):
                 # Record token usage based on agent
                 if self.context and self.context.token_counter:
-                    self.context.token_counter.push(
+                    await self.context.token_counter.push(
                         name=f"llm_{self.agent.name}", node_type="llm_call"
                     )
                     # Vary tokens based on agent
-                    self.context.token_counter.record_usage(
+                    await self.context.token_counter.record_usage(
                         input_tokens=100 * self.token_multiplier,
                         output_tokens=50 * self.token_multiplier,
                         model_name="test-model",
                         provider="test_provider",
                     )
-                    self.context.token_counter.pop()
+                    await self.context.token_counter.pop()
 
                 return await self.generate_mock(message, request_params)
 
             async def generate_str(self, message, request_params=None):
                 if self.context and self.context.token_counter:
-                    self.context.token_counter.push(
+                    await self.context.token_counter.push(
                         name=f"llm_str_{self.agent.name}", node_type="llm_call"
                     )
-                    self.context.token_counter.record_usage(
+                    await self.context.token_counter.record_usage(
                         input_tokens=80 * self.token_multiplier,
                         output_tokens=40 * self.token_multiplier,
                         model_name="test-model",
                         provider="test_provider",
                     )
-                    self.context.token_counter.pop()
+                    await self.context.token_counter.pop()
 
                 return await self.generate_str_mock(message, request_params)
 
@@ -89,16 +89,16 @@ class TestParallelLLMTokenCounting:
                 self, message, response_model, request_params=None
             ):
                 if self.context and self.context.token_counter:
-                    self.context.token_counter.push(
+                    await self.context.token_counter.push(
                         name=f"llm_structured_{self.agent.name}", node_type="llm_call"
                     )
-                    self.context.token_counter.record_usage(
+                    await self.context.token_counter.record_usage(
                         input_tokens=120 * self.token_multiplier,
                         output_tokens=60 * self.token_multiplier,
                         model_name="test-model",
                         provider="test_provider",
                     )
-                    self.context.token_counter.pop()
+                    await self.context.token_counter.pop()
 
                 return await self.generate_structured_mock(
                     message, response_model, request_params
@@ -181,13 +181,13 @@ class TestParallelLLMTokenCounting:
         )
 
         # Push app context
-        mock_context_with_token_counter.token_counter.push("test_app", "app")
+        await mock_context_with_token_counter.token_counter.push("test_app", "app")
 
         # Execute parallel workflow
         result = await parallel_llm.generate("Analyze this data")
 
         # Pop app context
-        app_node = mock_context_with_token_counter.token_counter.pop()
+        app_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Check results
         assert len(result) == 1
@@ -206,7 +206,7 @@ class TestParallelLLMTokenCounting:
         assert app_usage.output_tokens == 350  # 50 + 100 + 150 + 50
 
         # Check global summary
-        summary = mock_context_with_token_counter.token_counter.get_summary()
+        summary = await mock_context_with_token_counter.token_counter.get_summary()
         assert summary.usage.total_tokens == 1050
 
     @pytest.mark.asyncio
@@ -252,7 +252,7 @@ class TestParallelLLMTokenCounting:
         )
 
         # Push workflow context
-        mock_context_with_token_counter.token_counter.push(
+        await mock_context_with_token_counter.token_counter.push(
             "parallel_workflow", "workflow"
         )
 
@@ -260,7 +260,7 @@ class TestParallelLLMTokenCounting:
         result = await parallel_llm.generate("Process this")
 
         # Pop workflow context
-        workflow_node = mock_context_with_token_counter.token_counter.pop()
+        workflow_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Check results
         assert result == ["Response from aggregator"]
@@ -302,13 +302,15 @@ class TestParallelLLMTokenCounting:
         )
 
         # Push workflow context
-        mock_context_with_token_counter.token_counter.push("str_workflow", "workflow")
+        await mock_context_with_token_counter.token_counter.push(
+            "str_workflow", "workflow"
+        )
 
         # Execute generate_str
         result_str = await parallel_llm.generate_str("Generate string output")
 
         # Pop workflow context
-        workflow_node = mock_context_with_token_counter.token_counter.pop()
+        workflow_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Check result
         assert result_str == "String response from aggregator"
@@ -363,7 +365,7 @@ class TestParallelLLMTokenCounting:
         )
 
         # Push workflow context
-        mock_context_with_token_counter.token_counter.push(
+        await mock_context_with_token_counter.token_counter.push(
             "custom_fan_in_workflow", "workflow"
         )
 
@@ -371,7 +373,7 @@ class TestParallelLLMTokenCounting:
         result = await parallel_llm.generate("Process with custom aggregation")
 
         # Pop workflow context
-        workflow_node = mock_context_with_token_counter.token_counter.pop()
+        workflow_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Check result
         assert result == "Aggregated 3 responses"
@@ -432,13 +434,13 @@ class TestParallelLLMTokenCounting:
         )
 
         # Push app context
-        mock_context_with_token_counter.token_counter.push("nested_app", "app")
+        await mock_context_with_token_counter.token_counter.push("nested_app", "app")
 
         # Execute outer workflow
         await outer_parallel.generate("Nested parallel processing")
 
         # Pop app context
-        app_node = mock_context_with_token_counter.token_counter.pop()
+        app_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Calculate expected tokens:
         # Outer fan-out:
@@ -455,7 +457,7 @@ class TestParallelLLMTokenCounting:
         assert app_usage.total_tokens == 750
 
         # Check by model in summary
-        summary = mock_context_with_token_counter.token_counter.get_summary()
+        summary = await mock_context_with_token_counter.token_counter.get_summary()
         assert summary.usage.total_tokens == 750
         assert "test-model (test_provider)" in summary.model_usage
 
@@ -494,14 +496,16 @@ class TestParallelLLMTokenCounting:
         )
 
         # Push workflow context
-        mock_context_with_token_counter.token_counter.push("error_workflow", "workflow")
+        await mock_context_with_token_counter.token_counter.push(
+            "error_workflow", "workflow"
+        )
 
         # Execute (should raise error)
         with pytest.raises(Exception, match="Fan-out execution error"):
             await parallel_llm.generate("This will fail")
 
         # Pop workflow context
-        workflow_node = mock_context_with_token_counter.token_counter.pop()
+        workflow_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Only the first agent should have recorded tokens before error
         workflow_usage = workflow_node.aggregate_usage()

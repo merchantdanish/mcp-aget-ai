@@ -71,7 +71,6 @@ class TaskResult:
     artifacts: Dict[str, str] = field(default_factory=dict)
     knowledge_extracted: List[KnowledgeItem] = field(default_factory=list)
     duration_seconds: float = 0.0
-    tokens_used: int = 0
     retry_count: int = 0
 
     @property

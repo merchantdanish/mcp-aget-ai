@@ -1,6 +1,7 @@
 """Tests for TokenCounter implementation"""
 
 import pytest
+import asyncio
 import time
 from datetime import datetime
 from unittest.mock import patch, MagicMock
@@ -202,51 +203,55 @@ class TestTokenCounter:
         assert "gpt-4" in token_counter._model_costs
         assert "claude-3-opus" in token_counter._model_costs
 
-    def test_push_pop_single(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_push_pop_single(self, token_counter):
         """Test push and pop operations"""
-        token_counter.push("app", "app")
+        await token_counter.push("app", "app")
 
         assert len(token_counter._stack) == 1
         assert token_counter._current.name == "app"
         assert token_counter._root == token_counter._current
 
-        popped = token_counter.pop()
+        popped = await token_counter.pop()
         assert popped.name == "app"
         assert len(token_counter._stack) == 0
         assert token_counter._current is None
 
-    def test_push_pop_nested(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_push_pop_nested(self, token_counter):
         """Test nested push and pop operations"""
-        token_counter.push("app", "app")
-        token_counter.push("workflow", "workflow")
-        token_counter.push("agent", "agent")
+        await token_counter.push("app", "app")
+        await token_counter.push("workflow", "workflow")
+        await token_counter.push("agent", "agent")
 
         assert len(token_counter._stack) == 3
-        assert token_counter.get_current_path() == ["app", "workflow", "agent"]
+        assert await token_counter.get_current_path() == ["app", "workflow", "agent"]
 
         # Pop agent
-        agent_node = token_counter.pop()
+        agent_node = await token_counter.pop()
         assert agent_node.name == "agent"
         assert token_counter._current.name == "workflow"
 
         # Pop workflow
-        workflow_node = token_counter.pop()
+        workflow_node = await token_counter.pop()
         assert workflow_node.name == "workflow"
         assert token_counter._current.name == "app"
 
         # Pop app
-        app_node = token_counter.pop()
+        app_node = await token_counter.pop()
         assert app_node.name == "app"
         assert token_counter._current is None
 
-    def test_pop_empty_stack(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_pop_empty_stack(self, token_counter):
         """Test popping from empty stack"""
-        result = token_counter.pop()
+        result = await token_counter.pop()
         assert result is None
 
-    def test_record_usage_no_context(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_record_usage_no_context(self, token_counter):
         """Test recording usage without context creates root"""
-        token_counter.record_usage(
+        await token_counter.record_usage(
             input_tokens=100, output_tokens=50, model_name="gpt-4", provider="OpenAI"
         )
 
@@ -255,11 +260,12 @@ class TestTokenCounter:
         assert token_counter._root.usage.input_tokens == 100
         assert token_counter._root.usage.output_tokens == 50
 
-    def test_record_usage_with_context(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_record_usage_with_context(self, token_counter):
         """Test recording usage with context"""
-        token_counter.push("test", "agent")
+        await token_counter.push("test", "agent")
 
-        token_counter.record_usage(
+        await token_counter.record_usage(
             input_tokens=100, output_tokens=50, model_name="gpt-4", provider="OpenAI"
         )
 
@@ -273,12 +279,13 @@ class TestTokenCounter:
         assert usage.input_tokens == 100
         assert usage.output_tokens == 50
 
-    def test_record_usage_multiple_providers(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_record_usage_multiple_providers(self, token_counter):
         """Test recording usage for same model from different providers"""
-        token_counter.push("test", "app")
+        await token_counter.push("test", "app")
 
         # Record usage for Anthropic's Claude
-        token_counter.record_usage(
+        await token_counter.record_usage(
             input_tokens=100,
             output_tokens=50,
             model_name="claude-3-opus",
@@ -286,7 +293,7 @@ class TestTokenCounter:
         )
 
         # Record usage for Bedrock's Claude
-        token_counter.record_usage(
+        await token_counter.record_usage(
             input_tokens=200,
             output_tokens=100,
             model_name="claude-3-opus",
@@ -340,16 +347,17 @@ class TestTokenCounter:
         expected = (1500 * 0.5) / 1_000_000
         assert cost == pytest.approx(expected)
 
-    def test_get_summary(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_get_summary(self, token_counter):
         """Test getting summary of token usage"""
-        token_counter.push("app", "app")
+        await token_counter.push("app", "app")
 
         # Record some usage
-        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
-        token_counter.record_usage(200, 100, "claude-3-opus", "Anthropic")
-        token_counter.record_usage(150, 75, "claude-3-opus", "AWS Bedrock")
+        await token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        await token_counter.record_usage(200, 100, "claude-3-opus", "Anthropic")
+        await token_counter.record_usage(150, 75, "claude-3-opus", "AWS Bedrock")
 
-        summary = token_counter.get_summary()
+        summary = await token_counter.get_summary()
 
         # Check total usage
         assert summary.usage.input_tokens == 450
@@ -365,13 +373,14 @@ class TestTokenCounter:
         assert summary.cost > 0
         assert summary.model_usage["gpt-4 (OpenAI)"].cost > 0
 
-    def test_get_tree(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_get_tree(self, token_counter):
         """Test getting token usage tree"""
-        token_counter.push("app", "app", {"version": "1.0"})
-        token_counter.push("agent", "agent")
-        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        await token_counter.push("app", "app", {"version": "1.0"})
+        await token_counter.push("agent", "agent")
+        await token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
 
-        tree = token_counter.get_tree()
+        tree = await token_counter.get_tree()
 
         assert tree is not None
         assert tree["name"] == "app"
@@ -380,42 +389,37 @@ class TestTokenCounter:
         assert len(tree["children"]) == 1
         assert tree["children"][0]["name"] == "agent"
 
-    def test_reset(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_reset(self, token_counter):
         """Test resetting token counter"""
-        token_counter.push("app", "app")
-        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        await token_counter.push("app", "app")
+        await token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
 
-        token_counter.reset()
+        await token_counter.reset()
 
         assert len(token_counter._stack) == 0
         assert token_counter._root is None
         assert token_counter._current is None
         assert len(token_counter._usage_by_model) == 0
 
-    def test_thread_safety(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_thread_safety(self, token_counter):
         """Test basic thread safety with concurrent operations"""
-        import threading
-        import time
+        import asyncio
 
         results = []
 
-        def worker(worker_id):
+        async def worker(worker_id):
             for i in range(5):
-                token_counter.push(f"worker_{worker_id}_{i}", "agent")
-                token_counter.record_usage(10, 5, "gpt-4", "OpenAI")
-                time.sleep(0.001)  # Small delay to encourage interleaving
-                node = token_counter.pop()
+                await token_counter.push(f"worker_{worker_id}_{i}", "agent")
+                await token_counter.record_usage(10, 5, "gpt-4", "OpenAI")
+                await asyncio.sleep(0.001)  # Small delay to encourage interleaving
+                node = await token_counter.pop()
                 if node:
                     results.append((worker_id, node.usage.total_tokens))
 
-        threads = []
-        for i in range(3):
-            t = threading.Thread(target=worker, args=(i,))
-            threads.append(t)
-            t.start()
-
-        for t in threads:
-            t.join()
+        # Run workers concurrently
+        await asyncio.gather(*[worker(i) for i in range(3)])
 
         # All operations should complete without error
         assert len(results) == 15  # 3 workers * 5 iterations
@@ -523,20 +527,21 @@ class TestTokenCounter:
             expected = (1500 / 1_000_000) * 5.0
             assert cost == pytest.approx(expected)
 
-    def test_get_node_breakdown(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_get_node_breakdown(self, token_counter):
         """Test getting detailed breakdown for a specific node"""
-        token_counter.push("app", "app")
-        token_counter.push("workflow", "workflow")
-        token_counter.push("agent1", "agent")
-        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
-        token_counter.pop()  # agent1
+        await token_counter.push("app", "app")
+        await token_counter.push("workflow", "workflow")
+        await token_counter.push("agent1", "agent")
+        await token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        await token_counter.pop()  # agent1
 
-        token_counter.push("agent2", "agent")
-        token_counter.record_usage(200, 100, "claude-3-opus", "Anthropic")
-        token_counter.pop()  # agent2
+        await token_counter.push("agent2", "agent")
+        await token_counter.record_usage(200, 100, "claude-3-opus", "Anthropic")
+        await token_counter.pop()  # agent2
 
         # Get breakdown for workflow
-        breakdown = token_counter.get_node_breakdown("workflow", "workflow")
+        breakdown = await token_counter.get_node_breakdown("workflow", "workflow")
 
         assert breakdown is not None
         assert breakdown.name == "workflow"
@@ -555,22 +560,23 @@ class TestTokenCounter:
         assert "agent1" in child_names
         assert "agent2" in child_names
 
-    def test_get_models_breakdown(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_get_models_breakdown(self, token_counter):
         """Test getting breakdown by model"""
-        token_counter.push("app", "app")
-        token_counter.push("agent1", "agent")
-        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
-        token_counter.pop()
+        await token_counter.push("app", "app")
+        await token_counter.push("agent1", "agent")
+        await token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        await token_counter.pop()
 
-        token_counter.push("agent2", "agent")
-        token_counter.record_usage(200, 100, "gpt-4", "OpenAI")
-        token_counter.pop()
+        await token_counter.push("agent2", "agent")
+        await token_counter.record_usage(200, 100, "gpt-4", "OpenAI")
+        await token_counter.pop()
 
-        token_counter.push("agent3", "agent")
-        token_counter.record_usage(150, 75, "claude-3-opus", "Anthropic")
-        token_counter.pop()
+        await token_counter.push("agent3", "agent")
+        await token_counter.record_usage(150, 75, "claude-3-opus", "Anthropic")
+        await token_counter.pop()
 
-        breakdown = token_counter.get_models_breakdown()
+        breakdown = await token_counter.get_models_breakdown()
 
         assert len(breakdown) == 2  # Two different models
 
@@ -586,115 +592,119 @@ class TestTokenCounter:
         assert claude_breakdown.total_tokens == 225
         assert len(claude_breakdown.nodes) == 1
 
-    def test_watch_basic(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_watch_basic(self, token_counter):
         """Test basic watch functionality"""
-        token_counter.push("app", "app")
-        token_counter.push("agent", "agent")
+        await token_counter.push("app", "app")
+        await token_counter.push("agent", "agent")
 
         # Track callback calls
         callback_calls = []
 
-        def callback(node, usage):
+        async def callback(node, usage):
             callback_calls.append((node.name, usage.total_tokens))
 
         # Set up watch
-        watch_id = token_counter.watch(callback=callback, node_type="agent")
+        watch_id = await token_counter.watch(callback=callback, node_type="agent")
 
         # Record usage - should trigger callback
-        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        await token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
 
         # Wait for async callback execution
-        time.sleep(0.1)
+        await asyncio.sleep(0.1)
 
         assert len(callback_calls) == 1
         assert callback_calls[0] == ("agent", 150)
 
         # Clean up
-        assert token_counter.unwatch(watch_id) is True
+        assert await token_counter.unwatch(watch_id) is True
 
-    def test_watch_specific_node(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_watch_specific_node(self, token_counter):
         """Test watching a specific node"""
-        token_counter.push("app", "app")
-        token_counter.push("agent1", "agent")
+        await token_counter.push("app", "app")
+        await token_counter.push("agent1", "agent")
 
         # Get the agent node
         agent_node = token_counter._current
 
         callback_calls = []
 
-        def callback(node, usage):
+        async def callback(node, usage):
             callback_calls.append((node.name, usage.total_tokens))
 
         # Watch specific node
-        watch_id = token_counter.watch(callback=callback, node=agent_node)
+        watch_id = await token_counter.watch(callback=callback, node=agent_node)
 
         # Record usage on this node
-        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        await token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
 
         # Pop and add another agent
-        token_counter.pop()
-        token_counter.push("agent2", "agent")
+        await token_counter.pop()
+        await token_counter.push("agent2", "agent")
 
         # Record usage on different node - should NOT trigger
-        token_counter.record_usage(200, 100, "gpt-4", "OpenAI")
+        await token_counter.record_usage(200, 100, "gpt-4", "OpenAI")
 
         # Wait for async execution
-        time.sleep(0.1)
+        await asyncio.sleep(0.1)
 
         # Should only have one callback from agent1
         assert len(callback_calls) == 1
         assert callback_calls[0] == ("agent1", 150)
 
-        token_counter.unwatch(watch_id)
+        await token_counter.unwatch(watch_id)
 
-    def test_watch_threshold(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_watch_threshold(self, token_counter):
         """Test watch with threshold"""
-        token_counter.push("app", "app")
+        await token_counter.push("app", "app")
 
         callback_calls = []
 
-        def callback(node, usage):
+        async def callback(node, usage):
             callback_calls.append(usage.total_tokens)
 
         # Watch with threshold of 100 tokens
-        watch_id = token_counter.watch(
+        watch_id = await token_counter.watch(
             callback=callback, node_type="app", threshold=100
         )
 
         # Record small usage - should NOT trigger
-        token_counter.record_usage(30, 20, "gpt-4", "OpenAI")
-        time.sleep(0.1)
+        await token_counter.record_usage(30, 20, "gpt-4", "OpenAI")
+        await asyncio.sleep(0.1)
         assert len(callback_calls) == 0
 
         # Record more usage to exceed threshold - should trigger
-        token_counter.record_usage(40, 30, "gpt-4", "OpenAI")
-        time.sleep(0.1)
+        await token_counter.record_usage(40, 30, "gpt-4", "OpenAI")
+        await asyncio.sleep(0.1)
         assert len(callback_calls) == 1
         assert callback_calls[0] == 120  # 50 + 70
 
-        token_counter.unwatch(watch_id)
+        await token_counter.unwatch(watch_id)
 
-    def test_watch_throttling(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_watch_throttling(self, token_counter):
         """Test watch with throttling"""
-        token_counter.push("app", "app")
+        await token_counter.push("app", "app")
 
         callback_calls = []
 
-        def callback(node, usage):
+        async def callback(node, usage):
             callback_calls.append(time.time())
 
         # Watch with 100ms throttle
-        watch_id = token_counter.watch(
+        watch_id = await token_counter.watch(
             callback=callback, node_type="app", throttle_ms=100
         )
 
         # Rapid updates
         for i in range(5):
-            token_counter.record_usage(10, 5, "gpt-4", "OpenAI")
-            time.sleep(0.01)  # 10ms between updates
+            await token_counter.record_usage(10, 5, "gpt-4", "OpenAI")
+            await asyncio.sleep(0.01)  # 10ms between updates
 
         # Wait for callbacks
-        time.sleep(0.2)
+        await asyncio.sleep(0.2)
 
         # Should have fewer callbacks than updates due to throttling
         assert len(callback_calls) < 5
@@ -705,55 +715,57 @@ class TestTokenCounter:
                 time_diff = (callback_calls[i] - callback_calls[i - 1]) * 1000
                 assert time_diff >= 90  # Allow small timing variance
 
-        token_counter.unwatch(watch_id)
+        await token_counter.unwatch(watch_id)
 
-    def test_watch_include_subtree(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_watch_include_subtree(self, token_counter):
         """Test watch with include_subtree setting"""
-        token_counter.push("app", "app")
-        token_counter.push("workflow", "workflow")
-        token_counter.push("agent", "agent")
+        await token_counter.push("app", "app")
+        await token_counter.push("workflow", "workflow")
+        await token_counter.push("agent", "agent")
 
-        app_node = token_counter.find_node("app", "app")
+        app_node = await token_counter.find_node("app", "app")
 
         callback_calls = []
 
-        def callback(node, usage):
+        async def callback(node, usage):
             callback_calls.append((node.name, usage.total_tokens))
 
         # Watch app node with include_subtree=True (default)
-        watch_id = token_counter.watch(callback=callback, node=app_node)
+        watch_id = await token_counter.watch(callback=callback, node=app_node)
 
         # Record usage in agent - should trigger on app due to subtree
-        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
-        time.sleep(0.1)
+        await token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        await asyncio.sleep(0.1)
 
         assert len(callback_calls) == 1
         assert callback_calls[0][0] == "app"
         assert callback_calls[0][1] == 150
 
         # Now watch with include_subtree=False
-        token_counter.unwatch(watch_id)
+        await token_counter.unwatch(watch_id)
         callback_calls.clear()
 
-        watch_id = token_counter.watch(
+        watch_id = await token_counter.watch(
             callback=callback, node=app_node, include_subtree=False
         )
 
         # Record more usage in agent - should NOT trigger
-        token_counter.record_usage(50, 25, "gpt-4", "OpenAI")
-        time.sleep(0.1)
+        await token_counter.record_usage(50, 25, "gpt-4", "OpenAI")
+        await asyncio.sleep(0.1)
 
         assert len(callback_calls) == 0
 
-        token_counter.unwatch(watch_id)
+        await token_counter.unwatch(watch_id)
 
-    def test_watch_cache_invalidation(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_watch_cache_invalidation(self, token_counter):
         """Test that cache invalidation works with watches"""
-        token_counter.push("app", "app")
-        token_counter.push("agent", "agent")
+        await token_counter.push("app", "app")
+        await token_counter.push("agent", "agent")
 
         # Get nodes
-        app_node = token_counter.find_node("app", "app")
+        app_node = await token_counter.find_node("app", "app")
 
         # Initial aggregation to populate cache
         initial_usage = app_node.aggregate_usage()
@@ -762,19 +774,19 @@ class TestTokenCounter:
 
         callback_calls = []
 
-        def callback(node, usage):
+        async def callback(node, usage):
             # Check if cache was rebuilt (it should have been invalid before aggregate_usage)
             # The fact that we get correct usage means cache was properly invalidated and rebuilt
             callback_calls.append((node.name, usage.total_tokens))
 
         # Watch app node
-        watch_id = token_counter.watch(callback=callback, node=app_node)
+        watch_id = await token_counter.watch(callback=callback, node=app_node)
 
         # Record usage - should invalidate cache and trigger watch
-        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        await token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
 
         # Wait for callback
-        time.sleep(0.1)
+        await asyncio.sleep(0.1)
 
         # Callback should have correct aggregated value
         assert len(callback_calls) == 1
@@ -785,35 +797,36 @@ class TestTokenCounter:
         assert app_node._cached_aggregate.total_tokens == 150
 
         # Record more usage
-        token_counter.record_usage(50, 25, "gpt-4", "OpenAI")
-        time.sleep(0.1)
+        await token_counter.record_usage(50, 25, "gpt-4", "OpenAI")
+        await asyncio.sleep(0.1)
 
         # Should trigger again with updated value
         assert len(callback_calls) == 2
         assert callback_calls[1] == ("app", 225)
 
-        token_counter.unwatch(watch_id)
+        await token_counter.unwatch(watch_id)
 
-    def test_multiple_watches(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_multiple_watches(self, token_counter):
         """Test multiple watches on same node"""
-        token_counter.push("app", "app")
+        await token_counter.push("app", "app")
 
         callback1_calls = []
         callback2_calls = []
 
-        def callback1(_node, usage):
+        async def callback1(_node, usage):
             callback1_calls.append(usage.total_tokens)
 
-        def callback2(_node, usage):
+        async def callback2(_node, usage):
             callback2_calls.append(usage.total_tokens * 2)
 
         # Set up two watches
-        watch_id1 = token_counter.watch(callback=callback1, node_type="app")
-        watch_id2 = token_counter.watch(callback=callback2, node_type="app")
+        watch_id1 = await token_counter.watch(callback=callback1, node_type="app")
+        watch_id2 = await token_counter.watch(callback=callback2, node_type="app")
 
         # Record usage - should trigger both
-        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
-        time.sleep(0.1)
+        await token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        await asyncio.sleep(0.1)
 
         assert len(callback1_calls) == 1
         assert callback1_calls[0] == 150
@@ -821,57 +834,61 @@ class TestTokenCounter:
         assert callback2_calls[0] == 300
 
         # Remove one watch
-        token_counter.unwatch(watch_id1)
+        await token_counter.unwatch(watch_id1)
 
         # Record more usage
-        token_counter.record_usage(50, 25, "gpt-4", "OpenAI")
-        time.sleep(0.1)
+        await token_counter.record_usage(50, 25, "gpt-4", "OpenAI")
+        await asyncio.sleep(0.1)
 
         # Only callback2 should be called
         assert len(callback1_calls) == 1  # No new calls
         assert len(callback2_calls) == 2
         assert callback2_calls[1] == 450  # (150 + 75) * 2
 
-        token_counter.unwatch(watch_id2)
+        await token_counter.unwatch(watch_id2)
 
-    def test_watch_cleanup_on_reset(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_watch_cleanup_on_reset(self, token_counter):
         """Test that watches are cleaned up on reset"""
-        token_counter.push("app", "app")
+        await token_counter.push("app", "app")
 
         # Set up watch
-        watch_id = token_counter.watch(callback=lambda n, u: None, node_type="app")
+        watch_id = await token_counter.watch(
+            callback=lambda n, u: None, node_type="app"
+        )
 
         assert len(token_counter._watches) == 1
 
         # Reset should clear watches
-        token_counter.reset()
+        await token_counter.reset()
 
         assert len(token_counter._watches) == 0
         assert len(token_counter._node_watches) == 0
 
         # Unwatch should return False for cleared watch
-        assert token_counter.unwatch(watch_id) is False
+        assert await token_counter.unwatch(watch_id) is False
 
-    def test_get_agents_workflows_breakdown(self, token_counter):
+    @pytest.mark.asyncio
+    async def test_get_agents_workflows_breakdown(self, token_counter):
         """Test getting breakdown by agent and workflow types"""
-        token_counter.push("app", "app")
+        await token_counter.push("app", "app")
 
         # Add workflow 1
-        token_counter.push("workflow1", "workflow")
-        token_counter.push("agent1", "agent")
-        token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
-        token_counter.pop()
-        token_counter.pop()
+        await token_counter.push("workflow1", "workflow")
+        await token_counter.push("agent1", "agent")
+        await token_counter.record_usage(100, 50, "gpt-4", "OpenAI")
+        await token_counter.pop()
+        await token_counter.pop()
 
         # Add workflow 2
-        token_counter.push("workflow2", "workflow")
-        token_counter.push("agent2", "agent")
-        token_counter.record_usage(200, 100, "claude-3-opus", "Anthropic")
-        token_counter.pop()
-        token_counter.pop()
+        await token_counter.push("workflow2", "workflow")
+        await token_counter.push("agent2", "agent")
+        await token_counter.record_usage(200, 100, "claude-3-opus", "Anthropic")
+        await token_counter.pop()
+        await token_counter.pop()
 
         # Test agents breakdown
-        agents = token_counter.get_agents_breakdown()
+        agents = await token_counter.get_agents_breakdown()
         assert len(agents) == 2
         assert "agent1" in agents
         assert "agent2" in agents
@@ -879,7 +896,7 @@ class TestTokenCounter:
         assert agents["agent2"].total_tokens == 300
 
         # Test workflows breakdown
-        workflows = token_counter.get_workflows_breakdown()
+        workflows = await token_counter.get_workflows_breakdown()
         assert len(workflows) == 2
         assert "workflow1" in workflows
         assert "workflow2" in workflows

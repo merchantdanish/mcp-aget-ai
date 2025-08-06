@@ -65,34 +65,34 @@ class TestOrchestratorTokenCounting:
                 # Simulate token recording when the mock is called
                 if self.context and self.context.token_counter:
                     # Push context for this LLM call
-                    self.context.token_counter.push(
+                    await self.context.token_counter.push(
                         name=f"llm_call_{self.agent.name}", node_type="llm_call"
                     )
                     # Record some token usage
-                    self.context.token_counter.record_usage(
+                    await self.context.token_counter.record_usage(
                         input_tokens=100,
                         output_tokens=50,
                         model_name="test-model",
                         provider="test_provider",
                     )
                     # Pop context
-                    self.context.token_counter.pop()
+                    await self.context.token_counter.pop()
 
                 return await self.generate_mock(message, request_params)
 
             async def generate_str(self, message, request_params=None):
                 # Simulate token recording
                 if self.context and self.context.token_counter:
-                    self.context.token_counter.push(
+                    await self.context.token_counter.push(
                         name=f"llm_call_str_{self.agent.name}", node_type="llm_call"
                     )
-                    self.context.token_counter.record_usage(
+                    await self.context.token_counter.record_usage(
                         input_tokens=80,
                         output_tokens=40,
                         model_name="test-model",
                         provider="test_provider",
                     )
-                    self.context.token_counter.pop()
+                    await self.context.token_counter.pop()
 
                 # Return a result based on the agent
                 if hasattr(self.agent, "name"):
@@ -104,17 +104,17 @@ class TestOrchestratorTokenCounting:
             ):
                 # Simulate token recording
                 if self.context and self.context.token_counter:
-                    self.context.token_counter.push(
+                    await self.context.token_counter.push(
                         name=f"llm_call_structured_{self.agent.name}",
                         node_type="llm_call",
                     )
-                    self.context.token_counter.record_usage(
+                    await self.context.token_counter.record_usage(
                         input_tokens=120,
                         output_tokens=60,
                         model_name="test-model",
                         provider="test_provider",
                     )
-                    self.context.token_counter.pop()
+                    await self.context.token_counter.pop()
 
                 return await self.generate_structured_mock(
                     message, response_model, request_params
@@ -239,20 +239,20 @@ class TestOrchestratorTokenCounting:
         orchestrator.executor.execute_many = AsyncMock(side_effect=mock_execute_many)
 
         # Push app context
-        mock_context_with_token_counter.token_counter.push("test_app", "app")
+        await mock_context_with_token_counter.token_counter.push("test_app", "app")
 
         # Execute orchestration via generate() to trigger the @track_tokens decorator
         messages = await orchestrator.generate("Test objective")
 
         # Pop app context
-        app_node = mock_context_with_token_counter.token_counter.pop()
+        app_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Verify results
         assert len(messages) == 1
         assert messages[0] == "Result from LLM Orchestration Synthesizer"
 
         # Check token usage
-        summary = mock_context_with_token_counter.token_counter.get_summary()
+        summary = await mock_context_with_token_counter.token_counter.get_summary()
 
         # Now that agents don't push their own contexts, we should see:
         # 1. First planner call (generate_structured) - 180 tokens (120 input + 60 output)
@@ -331,13 +331,13 @@ class TestOrchestratorTokenCounting:
         )
 
         # Push app context
-        mock_context_with_token_counter.token_counter.push("test_app", "app")
+        await mock_context_with_token_counter.token_counter.push("test_app", "app")
 
         # Execute orchestration via generate()
         messages = await orchestrator.generate("Test objective")
 
         # Pop app context
-        app_node = mock_context_with_token_counter.token_counter.pop()
+        app_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Verify results
         assert len(messages) == 1
@@ -348,7 +348,7 @@ class TestOrchestratorTokenCounting:
         # 1. Planner calls (generate_structured) - 2 calls x 180 tokens each = 360
         # 2. Synthesizer call (generate_str) - 120 tokens
         # Total: 480 tokens (no step execution in this test)
-        summary = mock_context_with_token_counter.token_counter.get_summary()
+        summary = await mock_context_with_token_counter.token_counter.get_summary()
         assert summary.usage.total_tokens == 480
         assert summary.usage.input_tokens == 320  # 120*2 + 80
         assert summary.usage.output_tokens == 160  # 60*2 + 40
@@ -383,7 +383,7 @@ class TestOrchestratorTokenCounting:
     ):
         """Test token tracking with nested orchestrator contexts"""
         # Push app context
-        mock_context_with_token_counter.token_counter.push("main_app", "app")
+        await mock_context_with_token_counter.token_counter.push("main_app", "app")
 
         # Create first orchestrator
         orchestrator1 = Orchestrator(
@@ -400,13 +400,15 @@ class TestOrchestratorTokenCounting:
         orchestrator1.synthesizer.generate_str_mock.return_value = "Result 1"
 
         # Push orchestrator 1 context
-        mock_context_with_token_counter.token_counter.push("orchestrator_1", "agent")
+        await mock_context_with_token_counter.token_counter.push(
+            "orchestrator_1", "agent"
+        )
 
         # Execute first orchestrator
         await orchestrator1.execute(objective="Objective 1")
 
         # Pop orchestrator 1 context
-        orch1_node = mock_context_with_token_counter.token_counter.pop()
+        orch1_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Create second orchestrator
         orchestrator2 = Orchestrator(
@@ -423,16 +425,18 @@ class TestOrchestratorTokenCounting:
         orchestrator2.synthesizer.generate_str_mock.return_value = "Result 2"
 
         # Push orchestrator 2 context
-        mock_context_with_token_counter.token_counter.push("orchestrator_2", "agent")
+        await mock_context_with_token_counter.token_counter.push(
+            "orchestrator_2", "agent"
+        )
 
         # Execute second orchestrator
         await orchestrator2.execute(objective="Objective 2")
 
         # Pop orchestrator 2 context
-        orch2_node = mock_context_with_token_counter.token_counter.pop()
+        orch2_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Pop app context
-        app_node = mock_context_with_token_counter.token_counter.pop()
+        app_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Verify individual orchestrator token usage
         orch1_usage = orch1_node.aggregate_usage()
@@ -446,7 +450,7 @@ class TestOrchestratorTokenCounting:
         assert app_usage.total_tokens == 600  # Total from both orchestrators
 
         # Check global summary
-        summary = mock_context_with_token_counter.token_counter.get_summary()
+        summary = await mock_context_with_token_counter.token_counter.get_summary()
         assert summary.usage.total_tokens == 600
         assert "test-model (test_provider)" in summary.model_usage
 
@@ -476,23 +480,25 @@ class TestOrchestratorTokenCounting:
             results = []
             for i, task in enumerate(tasks):
                 # Each task execution records tokens
-                mock_context_with_token_counter.token_counter.push(
+                await mock_context_with_token_counter.token_counter.push(
                     name=f"task_{i}", node_type="task"
                 )
-                mock_context_with_token_counter.token_counter.record_usage(
+                await mock_context_with_token_counter.token_counter.record_usage(
                     input_tokens=150 + i * 50,  # Vary tokens per task
                     output_tokens=75 + i * 25,
                     model_name="test-model",
                     provider="test_provider",
                 )
-                mock_context_with_token_counter.token_counter.pop()
+                await mock_context_with_token_counter.token_counter.pop()
                 results.append(f"Result from task {i}")
             return results
 
         orchestrator.executor.execute_many = AsyncMock(side_effect=mock_execute_many)
 
         # Push orchestrator context
-        mock_context_with_token_counter.token_counter.push("orchestrator", "agent")
+        await mock_context_with_token_counter.token_counter.push(
+            "orchestrator", "agent"
+        )
 
         # Execute the step
         plan_result = PlanResult(objective="Test objective", step_results=[])
@@ -501,7 +507,7 @@ class TestOrchestratorTokenCounting:
         )
 
         # Pop orchestrator context
-        orch_node = mock_context_with_token_counter.token_counter.pop()
+        orch_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Verify step result
         assert len(step_result.task_results) == 2
@@ -532,16 +538,16 @@ class TestOrchestratorTokenCounting:
         # Mock planner to record tokens then raise an error
         async def planner_with_error(*args, **kwargs):
             # Record some tokens before error
-            mock_context_with_token_counter.token_counter.push(
+            await mock_context_with_token_counter.token_counter.push(
                 name="planner_error", node_type="llm_call"
             )
-            mock_context_with_token_counter.token_counter.record_usage(
+            await mock_context_with_token_counter.token_counter.record_usage(
                 input_tokens=100,
                 output_tokens=50,
                 model_name="test-model",
                 provider="test_provider",
             )
-            mock_context_with_token_counter.token_counter.pop()
+            await mock_context_with_token_counter.token_counter.pop()
             raise Exception("Planner error")
 
         orchestrator.planner.generate_structured = AsyncMock(
@@ -549,14 +555,16 @@ class TestOrchestratorTokenCounting:
         )
 
         # Push orchestrator context
-        mock_context_with_token_counter.token_counter.push("orchestrator", "agent")
+        await mock_context_with_token_counter.token_counter.push(
+            "orchestrator", "agent"
+        )
 
         # Execute orchestration (should raise error)
         with pytest.raises(Exception, match="Planner error"):
             await orchestrator.execute(objective="Test objective")
 
         # Pop orchestrator context
-        orch_node = mock_context_with_token_counter.token_counter.pop()
+        orch_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Verify tokens were still tracked before the error
         orch_usage = orch_node.aggregate_usage()
@@ -565,5 +573,5 @@ class TestOrchestratorTokenCounting:
         assert orch_usage.output_tokens == 50
 
         # Check global summary
-        summary = mock_context_with_token_counter.token_counter.get_summary()
+        summary = await mock_context_with_token_counter.token_counter.get_summary()
         assert summary.usage.total_tokens == 150

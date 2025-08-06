@@ -93,8 +93,10 @@ class TestDeepOrchestratorInit:
         context.model_selector = MagicMock()
         context.model_selector.select_model = MagicMock(return_value="test-model")
 
-        # Add token_counter attribute - set to None like orchestrator tests
-        context.token_counter = None
+        # Create a real TokenCounter
+        from mcp_agent.tracing.token_counter import TokenCounter
+
+        context.token_counter = TokenCounter()
 
         return context
 
@@ -234,8 +236,10 @@ class TestDeepOrchestratorExecution:
         context.model_selector = MagicMock()
         context.model_selector.select_model = MagicMock(return_value="test-model")
 
-        # Add token_counter attribute - set to None like orchestrator tests
-        context.token_counter = None
+        # Create a real TokenCounter
+        from mcp_agent.tracing.token_counter import TokenCounter
+
+        context.token_counter = TokenCounter()
 
         return context
 
@@ -330,7 +334,7 @@ class TestDeepOrchestratorExecution:
         ) as MockTaskExecutor:
             mock_task_executor_instance = MagicMock()
             mock_task_executor_instance.execute_step = AsyncMock(return_value=True)
-            mock_task_executor_instance.set_token_tracking = MagicMock()
+            mock_task_executor_instance.set_budget_callback = MagicMock()
             MockTaskExecutor.return_value = mock_task_executor_instance
 
             # Mock verification - configure existing mock
@@ -418,7 +422,7 @@ class TestDeepOrchestratorExecution:
         ) as MockTaskExecutor:
             mock_task_executor_instance = MagicMock()
             mock_task_executor_instance.execute_step = AsyncMock(return_value=True)
-            mock_task_executor_instance.set_token_tracking = MagicMock()
+            mock_task_executor_instance.set_budget_callback = MagicMock()
             MockTaskExecutor.return_value = mock_task_executor_instance
 
             # Mock verification - fail first, then succeed
@@ -590,7 +594,7 @@ class TestDeepOrchestratorExecution:
             mock_task_executor_instance.execute_step = AsyncMock(
                 side_effect=track_execution
             )
-            mock_task_executor_instance.set_token_tracking = MagicMock()
+            mock_task_executor_instance.set_budget_callback = MagicMock()
             MockTaskExecutor.return_value = mock_task_executor_instance
 
             # Mock verification

@@ -373,7 +373,7 @@ class OpenAIAugmentedLLM(
 
             # Record token usage in context token counter
             if self.context.token_counter:
-                self.context.token_counter.record_usage(
+                await self.context.token_counter.record_usage(
                     input_tokens=total_input_tokens,
                     output_tokens=total_output_tokens,
                     model_name=model,

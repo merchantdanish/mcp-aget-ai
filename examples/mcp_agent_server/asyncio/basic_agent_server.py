@@ -220,7 +220,7 @@ async def main():
                 }
 
             # Find the specific workflow node
-            workflow_node = context.token_counter.get_workflow_node(
+            workflow_node = await context.token_counter.get_workflow_node(
                 name=workflow_name, workflow_id=workflow_id, run_id=run_id
             )
 
