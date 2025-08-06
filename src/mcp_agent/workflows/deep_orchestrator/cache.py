@@ -60,10 +60,8 @@ class AgentCache:
         agent = self.cache.get(key)
         if agent:
             self.hits += 1
-            logger.debug(f"Agent cache hit (total hits: {self.hits})")
         else:
             self.misses += 1
-            logger.debug(f"Agent cache miss (total misses: {self.misses})")
         return agent
 
     def put(self, key: Tuple[str, ...], agent: Agent) -> None:
@@ -78,7 +76,7 @@ class AgentCache:
             # Remove oldest (first) item
             oldest_key = next(iter(self.cache))
             del self.cache[oldest_key]
-            logger.debug(f"Evicted agent from cache: {oldest_key}")
+            # logger.debug(f"Evicted agent from cache: {oldest_key}")
 
         self.cache[key] = agent
-        logger.debug(f"Cached new agent: {key}")
+        # logger.debug(f"Cached new agent: {key}")

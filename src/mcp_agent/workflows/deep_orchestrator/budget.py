@@ -41,10 +41,10 @@ class SimpleBudget:
         self.tokens_used += tokens
         self.cost_incurred += (tokens / 1000) * self.cost_per_1k_tokens
 
-        logger.debug(
-            f"Budget updated: tokens={self.tokens_used}/{self.max_tokens}, "
-            f"cost=${self.cost_incurred:.3f}/${self.max_cost}"
-        )
+        # logger.debug(
+        #     f"Budget updated: tokens={self.tokens_used}/{self.max_tokens}, "
+        #     f"cost=${self.cost_incurred:.3f}/${self.max_cost}"
+        # )
 
     def is_exceeded(self) -> Tuple[bool, Optional[str]]:
         """
