@@ -7,6 +7,7 @@ This example demonstrates three approaches to creating agents and workflows:
 3. Declarative agent configuration using FastMCPApp decorators
 """
 
+import argparse
 import asyncio
 import os
 import logging
@@ -169,6 +170,15 @@ class ParallelWorkflow(Workflow[str]):
 
 
 async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--custom-fastmcp-settings",
+        type=bool,
+        help="Enable custom FastMCP settings for the server",
+    )
+    args = parser.parse_args()
+    use_custom_fastmcp_settings = args.custom_fastmcp_settings
+
     async with app.run() as agent_app:
         # Add the current directory to the filesystem server's args if needed
         context = agent_app.context
@@ -182,8 +192,14 @@ async def main():
         for workflow_id in agent_app.workflows:
             logger.info(f"  - {workflow_id}")
 
-        # Create the MCP server that exposes both workflows and agent configurations
-        mcp_server = create_mcp_server_for_app(agent_app)
+        # Create the MCP server that exposes both workflows and agent configurations,
+        # optionally using custom FastMCP settings
+        fast_mcp_settings = (
+            {"host": "localhost", "port": 8001, "debug": True, "log_level": "debug"}
+            if use_custom_fastmcp_settings
+            else None
+        )
+        mcp_server = create_mcp_server_for_app(agent_app, fast_mcp_settings)
 
         # Add custom tool to get token usage for a workflow
         @mcp_server.tool(
