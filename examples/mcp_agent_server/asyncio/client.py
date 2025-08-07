@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 import time
@@ -11,6 +12,15 @@ from rich import print
 
 
 async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--custom-fastmcp-settings",
+        action="store_true",
+        help="Enable custom FastMCP settings for the server",
+    )
+    args = parser.parse_args()
+    use_custom_fastmcp_settings = args.custom_fastmcp_settings
+
     # Create MCPApp to get the server registry
     app = MCPApp(name="workflow_mcp_client")
     async with app.run() as client_app:
@@ -21,11 +31,17 @@ async def main():
         logger.info("Connecting to workflow server...")
 
         # Override the server configuration to point to our local script
+        run_server_args = ["run", "basic_agent_server.py"]
+        if use_custom_fastmcp_settings:
+            logger.info("Using custom FastMCP settings for the server.")
+            run_server_args += ["--custom-fastmcp-settings"]
+        else:
+            logger.info("Using default FastMCP settings for the server.")
         context.server_registry.registry["basic_agent_server"] = MCPServerSettings(
             name="basic_agent_server",
             description="Local workflow server running the basic agent example",
             command="uv",
-            args=["run", "basic_agent_server.py"],
+            args=run_server_args,
         )
 
         # Connect to the workflow server
