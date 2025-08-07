@@ -81,15 +81,13 @@ class ServerContext(ContextDependent):
         return self.context.workflow_registry
 
 
-def create_mcp_server_for_app(
-    app: MCPApp, settings: dict[str, Any] | None = None
-) -> FastMCP:
+def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
     """
     Create an MCP server for a given MCPApp instance.
 
     Args:
         app: The MCPApp instance to create a server for
-        settings: Optional FastMCP Settings dict to configure the server.
+        kwargs: Optional FastMCP settings to configure the server.
 
     Returns:
         A configured FastMCP server instance
@@ -122,7 +120,7 @@ def create_mcp_server_for_app(
         # or use the MCPApp's description if available.
         instructions=f"MCP server exposing {app.name} workflows and agents. Description: {app.description}",
         lifespan=app_specific_lifespan,
-        **settings or {},
+        **kwargs,
     )
 
     # region Workflow Tools

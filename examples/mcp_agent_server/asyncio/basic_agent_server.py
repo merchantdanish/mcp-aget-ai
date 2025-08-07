@@ -199,7 +199,7 @@ async def main():
             if use_custom_fastmcp_settings
             else None
         )
-        mcp_server = create_mcp_server_for_app(agent_app, fast_mcp_settings)
+        mcp_server = create_mcp_server_for_app(agent_app, **(fast_mcp_settings or {}))
         logger.info(f"MCP Server settings: {mcp_server.settings}")
 
         # Add custom tool to get token usage for a workflow
