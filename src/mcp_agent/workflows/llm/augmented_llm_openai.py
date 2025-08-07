@@ -129,7 +129,6 @@ class OpenAIAugmentedLLM(
             parallel_tool_calls=False,
             max_iterations=10,
             use_history=True,
-            think=True,
         )
 
     @classmethod
@@ -252,9 +251,6 @@ class OpenAIAugmentedLLM(
 
                 if params.metadata:
                     arguments = {**arguments, **params.metadata}
-
-                if hasattr(params, "think"):
-                    arguments["think"] = params.think
 
                 self.logger.debug(f"{arguments}")
                 self._log_chat_progress(chat_turn=len(messages) // 2, model=model)

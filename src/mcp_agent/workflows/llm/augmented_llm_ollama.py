@@ -1,18 +1,28 @@
-from typing import Type
-
+from typing import Type, Any
+from pydantic import BaseModel
 from openai import OpenAI
-
+from mcp_agent.config import OllamaSettings
 from mcp_agent.executor.workflow_task import workflow_task
 from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
     ModelT,
     RequestParams,
 )
-from mcp_agent.workflows.llm.augmented_llm_openai import (
-    OpenAIAugmentedLLM,
-    RequestStructuredCompletionRequest,
-)
+from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
+# Unused
+class RequestCompletionRequest(BaseModel):
+    config: OllamaSettings
+    payload: dict
+
+
+class RequestStructuredCompletionRequest(BaseModel):
+    config: OllamaSettings
+    response_model: Any | None = None
+    serialized_response_model: str | None = None
+    response_str: str
+    model: str
+    user: str | None = None
 
 class OllamaAugmentedLLM(OpenAIAugmentedLLM):
     """
@@ -61,7 +71,7 @@ class OllamaAugmentedLLM(OpenAIAugmentedLLM):
         structured_response = await self.executor.execute(
             OllamaCompletionTasks.request_structured_completion_task,
             RequestStructuredCompletionRequest(
-                config=self.context.config.openai,
+                config=self.context.config.ollama,
                 response_model=response_model
                 if not serialized_response_model
                 else None,

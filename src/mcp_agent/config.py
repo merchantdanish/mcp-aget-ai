@@ -173,6 +173,15 @@ class OpenAISettings(BaseModel):
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
+class OllamaSettings(OpenAISettings):
+    """
+    Settings for using Ollama models in the MCP Agent application.
+    Inherits from OpenAISettings to maintain compatibility with OpenAI API.
+    """
+
+    think: bool = True
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 class AzureSettings(BaseModel):
     """
@@ -406,6 +415,9 @@ class Settings(BaseSettings):
 
     openai: OpenAISettings | None = None
     """Settings for using OpenAI models in the MCP Agent application"""
+
+    ollama: OllamaSettings | None = None
+    """Settings for using Ollama models in the MCP Agent application"""
 
     azure: AzureSettings | None = None
     """Settings for using Azure models in the MCP Agent application"""
