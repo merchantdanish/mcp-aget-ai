@@ -163,6 +163,12 @@ class RequestParams(CreateMessageRequestParams):
     This is used to stably identify the user in the LLM provider's logs.
     """
 
+    think: bool = True
+    """
+    Enable thinking/reasoning mode for models that support it (like deepseek-r1 on Ollama).
+    When enabled, the model will show its reasoning process.
+    """
+
 
 class AugmentedLLMProtocol(Protocol, Generic[MessageParamT, MessageT]):
     """Protocol defining the interface for augmented LLMs"""
@@ -552,6 +558,8 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
             span.set_attribute(GEN_AI_REQUEST_TEMPERATURE, request_params.temperature)
         if hasattr(request_params, "use_history"):
             span.set_attribute("request_params.use_history", request_params.use_history)
+        if hasattr(request_params, "think"):
+            span.set_attribute("requeste_params.think", request_params.think)
         if hasattr(request_params, "parallel_tool_calls"):
             span.set_attribute(
                 "request_params.parallel_tool_calls", request_params.parallel_tool_calls
