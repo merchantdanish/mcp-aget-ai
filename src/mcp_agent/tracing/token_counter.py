@@ -337,7 +337,11 @@ class TokenCounter:
         # Load model costs
         self._models: List[ModelInfo] = load_default_models()
         self._model_costs = self._build_cost_lookup()
-        self._model_lookup = {model.name: model for model in self._models}
+        # Composite key lookup: (provider_lower, name_lower) -> ModelInfo
+        self._model_lookup = {
+            (model.provider.lower(), model.name.lower()): model
+            for model in self._models
+        }
         self._models_by_provider = self._build_provider_lookup()
 
         # Cache for model lookups to avoid repeated fuzzy matching
@@ -365,9 +369,9 @@ class TokenCounter:
         # Register cleanup on shutdown
         atexit.register(self._cleanup_executor)
 
-    def _build_cost_lookup(self) -> Dict[str, Dict[str, float]]:
+    def _build_cost_lookup(self) -> Dict[Tuple[str, str], Dict[str, float]]:
         """Build lookup table for model costs"""
-        cost_lookup = {}
+        cost_lookup: Dict[Tuple[str, str], Dict[str, float]] = {}
 
         for model in self._models:
             if model.metrics.cost.blended_cost_per_1m is not None:
@@ -384,7 +388,7 @@ class TokenCounter:
             else:
                 blended_cost = 1.0  # Fallback
 
-            cost_lookup[model.name] = {
+            cost_lookup[(model.provider.lower(), model.name.lower())] = {
                 "blended_cost_per_1m": blended_cost,
                 "input_cost_per_1m": model.metrics.cost.input_cost_per_1m,  # Keep None if not set
                 "output_cost_per_1m": model.metrics.cost.output_cost_per_1m,  # Keep None if not set
@@ -398,7 +402,8 @@ class TokenCounter:
         for model in self._models:
             if model.provider not in provider_models:
                 provider_models[model.provider] = {}
-            provider_models[model.provider][model.name] = model
+            # Key by lowercased model name for robust lookup
+            provider_models[model.provider][model.name.lower()] = model
         return provider_models
 
     def find_model_info(
@@ -419,18 +424,29 @@ class TokenCounter:
         if cache_key in self._model_cache:
             return self._model_cache[cache_key]
 
-        # Try exact match first
-        model_info = self._model_lookup.get(model_name)
-        if model_info:
-            # If provider specified, check if it matches
-            if (
-                provider is None
-                or provider == model_info.provider
-                or provider.lower() == model_info.provider.lower()
-            ):
-                # Cache the result
-                self._model_cache[cache_key] = model_info
-                return model_info
+        def _candidates(name: str, prov: Optional[str]) -> List[str]:
+            """Generate candidate normalized name keys for lookup."""
+            vals = []
+            nl = (name or "").lower()
+            if nl:
+                vals.append(nl)
+                if "/" in nl:
+                    vals.append(nl.rsplit("/", 1)[-1])
+                if prov:
+                    pref = prov.lower() + "_"
+                    if nl.startswith(pref):
+                        vals.append(nl[len(pref) :])
+            # Deduplicate while preserving order
+            return list(dict.fromkeys(vals))
+
+        # Try exact composite match first if provider provided
+        if provider:
+            prov_key = provider.lower()
+            for cand in _candidates(model_name, provider):
+                mi = self._model_lookup.get((prov_key, cand))
+                if mi:
+                    self._model_cache[cache_key] = mi
+                    return mi
 
         # If provider is specified, search within that provider's models
         provider_models: Dict[str, ModelInfo] = (
@@ -445,10 +461,11 @@ class TokenCounter:
 
         if provider_models:
             # Try exact match within provider
-            if model_name in provider_models:
-                result = provider_models[model_name]
-                self._model_cache[cache_key] = result
-                return result
+            for cand in _candidates(model_name, provider):
+                if cand in provider_models:
+                    result = provider_models[cand]
+                    self._model_cache[cache_key] = result
+                    return result
 
             # Try fuzzy match within provider - prefer longer matches
             best_match = None
@@ -458,14 +475,14 @@ class TokenCounter:
                 score = 0
 
                 # Calculate match score
-                if model_name == known_name:
+                if model_name.lower() == known_name:
                     score = 1000  # Exact match
-                elif known_name.startswith(model_name):
+                elif known_name.startswith(model_name.lower()):
                     # Prefer matches where search term is a prefix (e.g., gpt-4o-mini matches gpt-4o-mini-2024-07-18)
                     score = 500 + (len(model_name) / len(known_name) * 100)
-                elif model_name in known_name:
+                elif model_name.lower() in known_name:
                     score = len(model_name) / len(known_name) * 100
-                elif known_name in model_name:
+                elif known_name in model_name.lower():
                     score = (
                         len(known_name) / len(model_name) * 50
                     )  # Lower score for partial matches
@@ -482,20 +499,20 @@ class TokenCounter:
         best_match = None
         best_match_score = 0
 
-        for known_name, known_model in self._model_lookup.items():
+        for (prov_key, name_key), known_model in self._model_lookup.items():
             score = 0
 
             # Calculate match score
-            if model_name == known_name:
+            if model_name.lower() == name_key:
                 score = 1000  # Exact match
-            elif known_name.startswith(model_name):
+            elif name_key.startswith(model_name.lower()):
                 # Prefer matches where search term is a prefix (e.g., gpt-4o-mini matches gpt-4o-mini-2024-07-18)
-                score = 500 + (len(model_name) / len(known_name) * 100)
-            elif model_name in known_name:
-                score = len(model_name) / len(known_name) * 100
-            elif known_name in model_name:
+                score = 500 + (len(model_name) / len(name_key) * 100)
+            elif model_name.lower() in name_key:
+                score = len(model_name) / len(name_key) * 100
+            elif name_key in model_name.lower():
                 score = (
-                    len(known_name) / len(model_name) * 50
+                    len(name_key) / len(model_name) * 50
                 )  # Lower score for partial matches
 
             # Boost score if provider matches
@@ -688,13 +705,24 @@ class TokenCounter:
             except Exception as e:
                 logger.debug(f"Failed to find model info: {e}")
 
-            if not model_name or model_name not in self._model_costs:
+            # Build composite key for cost lookup
+            cost_key: Optional[Tuple[str, str]] = None
+            if model_name and provider:
+                cost_key = (provider.lower(), model_name.lower())
+            # If we have model_info, prefer its provider/name
+            if model_info:
+                cost_key = (
+                    model_info.provider.lower(),
+                    model_info.name.lower(),
+                )
+
+            if not cost_key or cost_key not in self._model_costs:
                 logger.info(
-                    f"Model {model_name} not found in costs, using default estimate"
+                    f"Model {model_name} (provider={provider}) not found in costs, using default estimate"
                 )
                 return (input_tokens + output_tokens) * 0.5 / 1_000_000
 
-            costs = self._model_costs.get(model_name, {})
+            costs = self._model_costs.get(cost_key, {})
 
             input_cost_per_1m = costs.get("input_cost_per_1m")
             output_cost_per_1m = costs.get("output_cost_per_1m")

@@ -200,8 +200,8 @@ class TestTokenCounter:
         assert token_counter._root is None
         assert token_counter._current is None
         assert len(token_counter._models) == 3
-        assert "gpt-4" in token_counter._model_costs
-        assert "claude-3-opus" in token_counter._model_costs
+        assert ("openai", "gpt-4") in token_counter._model_costs
+        assert ("anthropic", "claude-3-opus") in token_counter._model_costs
 
     @pytest.mark.asyncio
     async def test_push_pop_single(self, token_counter):
