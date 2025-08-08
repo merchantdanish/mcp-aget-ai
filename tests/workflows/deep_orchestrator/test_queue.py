@@ -2,7 +2,6 @@
 Comprehensive tests for TodoQueue with plan merging and queue operations.
 """
 
-import pytest
 from mcp_agent.workflows.deep_orchestrator.queue import TodoQueue
 from mcp_agent.workflows.deep_orchestrator.models import Plan, Step, Task
 
