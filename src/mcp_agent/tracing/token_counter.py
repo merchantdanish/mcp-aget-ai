@@ -341,8 +341,12 @@ class TokenCounter:
         self._model_lookup = {model.name: model for model in self._models}
         self._models_by_provider = self._build_provider_lookup()
 
+        # Cache for model lookups to avoid repeated fuzzy matching
+        # Key: (model_name, provider), Value: ModelInfo or None
+        self._model_cache: Dict[Tuple[str, Optional[str]], Optional[ModelInfo]] = {}
+
         # Track total usage by (model_name, provider) tuple
-        self._usage_by_model: Dict[tuple[str, Optional[str]], TokenUsage] = defaultdict(
+        self._usage_by_model: Dict[Tuple[str, Optional[str]], TokenUsage] = defaultdict(
             TokenUsage
         )
 
@@ -411,6 +415,10 @@ class TokenCounter:
         Returns:
             ModelInfo if found, None otherwise
         """
+        # Check cache first
+        cache_key = (model_name, provider)
+        if cache_key in self._model_cache:
+            return self._model_cache[cache_key]
 
         # Try exact match first
         model_info = self._model_lookup.get(model_name)
@@ -421,6 +429,8 @@ class TokenCounter:
                 or provider == model_info.provider
                 or provider.lower() == model_info.provider.lower()
             ):
+                # Cache the result
+                self._model_cache[cache_key] = model_info
                 return model_info
 
         # If provider is specified, search within that provider's models
@@ -437,7 +447,9 @@ class TokenCounter:
         if provider_models:
             # Try exact match within provider
             if model_name in provider_models:
-                return provider_models[model_name]
+                result = provider_models[model_name]
+                self._model_cache[cache_key] = result
+                return result
 
             # Try fuzzy match within provider - prefer longer matches
             best_match = None
@@ -464,6 +476,7 @@ class TokenCounter:
                     best_match_score = score
 
             if best_match:
+                self._model_cache[cache_key] = best_match
                 return best_match
 
         # Try fuzzy match across all models - prefer longer matches
@@ -499,8 +512,12 @@ class TokenCounter:
                 best_match_score = score
 
         if best_match:
+            # Cache the result
+            self._model_cache[cache_key] = best_match
             return best_match
 
+        # Cache the None result too to avoid repeated searches
+        self._model_cache[cache_key] = None
         return None
 
     def push(
@@ -525,7 +542,7 @@ class TokenCounter:
                 self._stack.append(node)
                 self._current = node
 
-                logger.debug(f"Pushed token context: {name} ({node_type})")
+                # logger.debug(f"Pushed token context: {name} ({node_type})")
         except Exception as e:
             logger.error(f"Error in TokenCounter.push: {e}", exc_info=True)
             # Continue execution - don't break the program
@@ -543,17 +560,6 @@ class TokenCounter:
 
                 node = self._stack.pop()
                 self._current = self._stack[-1] if self._stack else None
-
-                try:
-                    # Log aggregated usage for this node
-                    usage = node.aggregate_usage()
-                    logger.debug(
-                        f"Popped token context: {node.name} ({node.node_type}) - "
-                        f"Total: {usage.total_tokens} tokens "
-                        f"(input: {usage.input_tokens}, output: {usage.output_tokens})"
-                    )
-                except Exception as e:
-                    logger.error(f"Error aggregating usage during pop: {e}")
 
                 return node
         except Exception as e:
@@ -612,22 +618,22 @@ class TokenCounter:
                     if model_info and not self._current.usage.model_info:
                         self._current.usage.model_info = model_info
 
-                    logger.debug(
-                        f"Recording {input_tokens + output_tokens} tokens for node {self._current.name} "
-                        f"({self._current.node_type}), total before: {self._current.usage.total_tokens - input_tokens - output_tokens}"
-                    )
+                    # logger.debug(
+                    #     f"Recording {input_tokens + output_tokens} tokens for node {self._current.name} "
+                    #     f"({self._current.node_type}), total before: {self._current.usage.total_tokens - input_tokens - output_tokens}"
+                    # )
 
                     # Only invalidate the current node's cache (not ancestors)
                     # This prevents cascade invalidation up the tree
                     self._current._cache_valid = False
                     self._current._cached_aggregate = None
-                    logger.debug(
-                        f"Invalidated cache for {self._current.name} (targeted)"
-                    )
+                    # logger.debug(
+                    #     f"Invalidated cache for {self._current.name} (targeted)"
+                    # )
 
                     # Trigger watches which will handle ancestor updates
                     self._trigger_watches(self._current)
-                    logger.debug(f"Triggered watches for {self._current.name}")
+                    # logger.debug(f"Triggered watches for {self._current.name}")
 
                 # Track global usage by model and provider
                 if model_name:
@@ -650,11 +656,11 @@ class TokenCounter:
                     except Exception as e:
                         logger.error(f"Failed to track global usage: {e}")
 
-                logger.debug(
-                    f"Recorded {input_tokens + output_tokens} tokens "
-                    f"(in: {input_tokens}, out: {output_tokens}) "
-                    f"for {getattr(self._current, 'name', 'unknown')} using {model_name or 'unknown model'}"
-                )
+                # logger.debug(
+                #     f"Recorded {input_tokens + output_tokens} tokens "
+                #     f"(in: {input_tokens}, out: {output_tokens}) "
+                #     f"for {getattr(self._current, 'name', 'unknown')} using {model_name or 'unknown model'}"
+                # )
         except Exception as e:
             logger.error(f"Error in TokenCounter.record_usage: {e}", exc_info=True)
             # Continue execution - don't break the program
@@ -697,17 +703,17 @@ class TokenCounter:
                 input_cost = (input_tokens / 1_000_000) * input_cost_per_1m
                 output_cost = (output_tokens / 1_000_000) * output_cost_per_1m
                 total_cost = input_cost + output_cost
-                logger.debug(
-                    f"Using input/output costs: input_cost=${input_cost:.6f}, output_cost=${output_cost:.6f}, total=${total_cost:.6f}"
-                )
+                # logger.debug(
+                #     f"Using input/output costs: input_cost=${input_cost:.6f}, output_cost=${output_cost:.6f}, total=${total_cost:.6f}"
+                # )
                 return total_cost
             else:
                 total_tokens = input_tokens + output_tokens
                 blended_cost_per_1m = costs.get("blended_cost_per_1m", 0.5)
                 blended_cost = (total_tokens / 1_000_000) * blended_cost_per_1m
-                logger.debug(
-                    f"Using blended cost: total_tokens={total_tokens}, blended_cost_per_1m={blended_cost_per_1m}, total=${blended_cost:.6f}"
-                )
+                # logger.debug(
+                #     f"Using blended cost: total_tokens={total_tokens}, blended_cost_per_1m={blended_cost_per_1m}, total=${blended_cost:.6f}"
+                # )
                 return blended_cost
         except Exception as e:
             logger.warning(f"Error in TokenCounter.calculate_cost: {e}", exc_info=True)
@@ -742,12 +748,12 @@ class TokenCounter:
                         if provider is None and usage.model_info:
                             provider = getattr(usage.model_info, "provider", None)
 
-                        logger.debug(
-                            f"Calculating cost for {model_name} from {provider}"
-                        )
-                        logger.debug(
-                            f"Usage - input: {usage.input_tokens}, output: {usage.output_tokens}, total: {usage.total_tokens}"
-                        )
+                        # logger.debug(
+                        #     f"Calculating cost for {model_name} from {provider}"
+                        # )
+                        # logger.debug(
+                        #     f"Usage - input: {usage.input_tokens}, output: {usage.output_tokens}, total: {usage.total_tokens}"
+                        # )
 
                         cost = self.calculate_cost(
                             model_name,
@@ -756,7 +762,7 @@ class TokenCounter:
                             provider,
                         )
 
-                        logger.debug(f"get_summary: Calculated cost: ${cost:.6f}")
+                        # logger.debug(f"get_summary: Calculated cost: ${cost:.6f}")
                         total_cost += cost
 
                         # Create model info dict if available
@@ -1285,7 +1291,7 @@ class TokenCounter:
                 return []
 
             # Collect all nodes that have model usage
-            model_nodes: Dict[tuple[str, Optional[str]], List[TokenNode]] = defaultdict(
+            model_nodes: Dict[Tuple[str, Optional[str]], List[TokenNode]] = defaultdict(
                 list
             )
             self._collect_model_nodes(self._root, model_nodes)
@@ -1330,7 +1336,7 @@ class TokenCounter:
     def _collect_model_nodes(
         self,
         node: TokenNode,
-        model_nodes: Dict[tuple[str, Optional[str]], List[TokenNode]],
+        model_nodes: Dict[Tuple[str, Optional[str]], List[TokenNode]],
     ) -> None:
         """Recursively collect nodes that have model usage"""
         # If this node has model usage, add it
@@ -1457,7 +1463,7 @@ class TokenCounter:
         """Trigger watches for a node and its ancestors"""
         try:
             callbacks_to_execute: List[Tuple[WatchConfig, TokenNode, TokenUsage]] = []
-            logger.debug(f"_trigger_watches called for {node.name} ({node.node_type})")
+            # logger.debug(f"_trigger_watches called for {node.name} ({node.node_type})")
 
             with self._lock:
                 current = node

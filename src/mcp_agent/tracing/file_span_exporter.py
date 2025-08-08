@@ -59,7 +59,6 @@ class FileSpanExporter(SpanExporter):
         return path_pattern.replace("{unique_id}", unique_id)
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
-        logger.info("EXPORTING SPANS TO FILE", data={"spans": spans})
         try:
             with open(self.filepath, "a", encoding="utf-8") as f:
                 for span in spans:
