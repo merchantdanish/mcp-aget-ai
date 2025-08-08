@@ -1536,6 +1536,7 @@ Example usage:
   - `max_concurrent_activities` (int | None) = None
   - `api_key` (str | None) = None
   - `timeout_seconds` (int | None) = 60
+  - `rpc_metadata` (Dict[str, str] | None) = None
 
 **Class: `UsageTelemetrySettings`**
 - **Inherits from**: BaseModel
