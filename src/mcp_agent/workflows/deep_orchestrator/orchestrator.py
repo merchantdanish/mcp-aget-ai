@@ -203,11 +203,8 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
             enable_parallel=self.config.execution.enable_parallel,
         )
 
-        # Set token tracking callbacks
-        self.task_executor.set_token_tracking(
-            get_current_tokens=self._get_current_tokens,
-            update_budget_tokens=self.budget.update_tokens,
-        )
+        # Set budget update callback
+        self.task_executor.set_budget_callback(self.budget.update_tokens)
 
     @track_tokens(node_type="workflow")
     async def generate(
@@ -479,8 +476,13 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 )
                 context += "\n</important>"
 
-            # Track tokens for budget
-            tokens_before = self._get_current_tokens()
+            # Push token counter context for this planning attempt
+            if self.context and hasattr(self.context, "token_counter"):
+                await self.context.token_counter.push(
+                    name=f"planning_attempt_{attempt}",
+                    node_type="planning",
+                    metadata={"attempt": attempt},
+                )
 
             # Get structured plan
             prompt = get_full_plan_prompt(context)
@@ -489,9 +491,12 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
                 max_attempts=2,
             )
 
-            # Update budget
-            tokens_after = self._get_current_tokens()
-            self.budget.update_tokens(tokens_after - tokens_before)
+            # Pop planning context and update budget
+            if self.context and hasattr(self.context, "token_counter"):
+                planning_node = await self.context.token_counter.pop()
+                if planning_node:
+                    planning_usage = planning_node.aggregate_usage()
+                    self.budget.update_tokens(planning_usage.total_tokens)
 
             # Verify the plan
             verification_result = self.plan_verifier.verify_plan(plan)
@@ -740,23 +745,6 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         async with simple_agent:
             llm = await simple_agent.attach_llm(self.llm_factory)
             return await llm.generate(message=content)
-
-    def _get_current_tokens(self) -> int:
-        """
-        Get current token count from context.
-
-        Returns:
-            Current token count
-        """
-        if self.context and hasattr(self.context, "token_counter"):
-            # Get the summary which contains the total tokens
-            try:
-                summary = self.context.token_counter.get_summary()
-                if summary and hasattr(summary, "usage"):
-                    return summary.usage.total_tokens
-            except Exception as e:
-                logger.debug(f"Failed to get tokens from context: {e}")
-        return self.budget.tokens_used  # Fallback to budget tracking
 
     async def generate_str(
         self,

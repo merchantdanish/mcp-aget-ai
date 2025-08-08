@@ -1,5 +1,6 @@
 """Token usage progress display using Rich Progress widget."""
 
+import asyncio
 from typing import Optional, Dict
 from rich.console import Console
 from rich.progress import Progress, TextColumn
@@ -42,7 +43,13 @@ class TokenProgressDisplay:
 
         # Register watch on app node for aggregate totals
         if hasattr(self.token_counter, "_root") and self.token_counter._root:
-            watch_id = self.token_counter.watch(
+            # Schedule async watch registration
+            asyncio.create_task(self._register_watch())
+
+    async def _register_watch(self):
+        """Register watch asynchronously."""
+        if hasattr(self.token_counter, "_root") and self.token_counter._root:
+            watch_id = await self.token_counter.watch(
                 callback=self._on_token_update,
                 node=self.token_counter._root,
                 threshold=1,
@@ -50,12 +57,17 @@ class TokenProgressDisplay:
             )
             self._watch_ids.append(watch_id)
 
+    async def _unregister_watches(self):
+        """Unregister all watches asynchronously."""
+        for watch_id in self._watch_ids:
+            await self.token_counter.unwatch(watch_id)
+        self._watch_ids.clear()
+
     def stop(self):
         """Stop the progress display and unregister watches."""
-        # Unregister watches
-        for watch_id in self._watch_ids:
-            self.token_counter.unwatch(watch_id)
-        self._watch_ids.clear()
+        # Schedule async unwatch
+        if self._watch_ids:
+            asyncio.create_task(self._unregister_watches())
 
         self._progress.stop()
 
@@ -95,7 +107,7 @@ class TokenProgressDisplay:
     async def _on_token_update(self, node: TokenNode, usage: TokenUsage):
         """Handle token usage updates."""
         # Only update the total summary
-        summary = self.token_counter.get_summary()
+        summary = await self.token_counter.get_summary()
         self._progress.update(
             self._total_task_id,
             node_info="[bold]TOTAL",

@@ -69,13 +69,13 @@ def display_token_usage(usage: TokenUsage, label: str = "Token Usage"):
     print(f"  Output tokens: {usage.output_tokens:,}")
 
 
-def display_token_summary(context: Context):
+async def display_token_summary(context: Context):
     """Display comprehensive token usage summary."""
     if not context.token_counter:
         print("\nNo token counter available")
         return
 
-    summary: TokenSummary = context.token_counter.get_summary()
+    summary: TokenSummary = await context.token_counter.get_summary()
 
     print("\n" + "=" * 60)
     print("TOKEN USAGE SUMMARY")
@@ -96,7 +96,7 @@ def display_token_summary(context: Context):
             print(f"    Cost: ${data.cost:.4f}")
 
     # Breakdown by agent
-    agents_breakdown = context.token_counter.get_agents_breakdown()
+    agents_breakdown = await context.token_counter.get_agents_breakdown()
     if agents_breakdown:
         print("\nBreakdown by Agent:")
         for agent_name, usage in agents_breakdown.items():
@@ -108,7 +108,7 @@ def display_token_summary(context: Context):
     print("\n" + "=" * 60)
 
 
-def display_node_tree(
+async def display_node_tree(
     node: TokenNode, indent: str = "", is_last: bool = True, context: Context = None
 ):
     """Display token usage tree similar to workflow_orchestrator_worker example."""
@@ -118,7 +118,7 @@ def display_node_tree(
     # Calculate cost if context is available
     cost_str = ""
     if context and context.token_counter:
-        cost = context.token_counter.get_node_cost(node.name, node.node_type)
+        cost = await context.token_counter.get_node_cost(node.name, node.node_type)
         if cost > 0:
             cost_str = f" (${cost:.4f})"
 
@@ -163,7 +163,7 @@ async def example_with_token_monitoring():
             print("Watch the token usage update in real-time!\n")
 
             # Register custom watch for monitoring
-            watch_id = token_counter.watch(
+            watch_id = await token_counter.watch(
                 callback=monitor.on_token_update,
                 threshold=1,  # Track all updates
             )
@@ -215,7 +215,7 @@ async def example_with_token_monitoring():
                 print(f"Summary: {result[:100]}...\n")
 
             # Cleanup watch
-            token_counter.unwatch(watch_id)
+            await token_counter.unwatch(watch_id)
 
             # Show custom monitoring results
             if monitor.llm_calls:
@@ -229,7 +229,7 @@ async def example_with_token_monitoring():
                 print(f"\n⚠️  High Usage Alerts: {len(monitor.high_usage_calls)} calls")
 
         # Display comprehensive summaries
-        display_token_summary(context)
+        await display_token_summary(context)
 
         # Display token tree
         print("\n" + "=" * 60)
@@ -238,7 +238,7 @@ async def example_with_token_monitoring():
         print()
 
         if hasattr(token_counter, "_root") and token_counter._root:
-            display_node_tree(token_counter._root, context=context)
+            await display_node_tree(token_counter._root, context=context)
 
 
 if __name__ == "__main__":

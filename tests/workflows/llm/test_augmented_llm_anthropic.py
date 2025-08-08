@@ -25,12 +25,11 @@ class TestAnthropicAugmentedLLM:
     """
 
     @pytest.fixture
-    def mock_llm(self):
+    def mock_llm(self, mock_context):
         """
         Creates a mock LLM instance with common mocks set up.
         """
         # Setup mock objects
-        mock_context = MagicMock()
         mock_context.config.anthropic = AnthropicSettings(api_key="test_key")
         mock_context.config.default_model = "claude-3-7-sonnet-latest"
 
@@ -976,15 +975,15 @@ class TestAnthropicTokenCounting:
 
         # Simulate app and workflow contexts
         token_counter = mock_llm_with_token_counter.context.token_counter
-        token_counter.push("test_app", "app")
-        token_counter.push("test_workflow", "workflow")
+        await token_counter.push("test_app", "app")
+        await token_counter.push("test_workflow", "workflow")
 
         # Call generate
         await mock_llm_with_token_counter.generate("Test query")
 
         # Pop workflow and app contexts
-        workflow_node = token_counter.pop()
-        app_node = token_counter.pop()
+        workflow_node = await token_counter.pop()
+        app_node = await token_counter.pop()
 
         # Check aggregated usage
         assert workflow_node.aggregate_usage().total_tokens == 300  # 200 + 100
@@ -998,7 +997,7 @@ class TestAnthropicTokenCounting:
         """
         # Push a persistent context (simulating an app or workflow)
         token_counter = mock_llm_with_token_counter.context.token_counter
-        token_counter.push("test_app", "app")
+        await token_counter.push("test_app", "app")
 
         # First call with one model
         usage1 = Usage(
@@ -1043,10 +1042,10 @@ class TestAnthropicTokenCounting:
         await mock_llm_with_token_counter.generate("Query 2")
 
         # Pop the app context
-        token_counter.pop()
+        await token_counter.pop()
 
         # Get summary
-        summary = mock_llm_with_token_counter.context.token_counter.get_summary()
+        summary = await mock_llm_with_token_counter.context.token_counter.get_summary()
 
         # Check total usage (should aggregate both calls)
         assert summary.usage.input_tokens == 300  # 100 + 200

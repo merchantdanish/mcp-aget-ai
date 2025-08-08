@@ -76,16 +76,16 @@ class TestRouterTokenCounting:
             ):
                 # Simulate token recording
                 if self.context and self.context.token_counter:
-                    self.context.token_counter.push(
+                    await self.context.token_counter.push(
                         name=f"router_llm_{self.name}", node_type="llm_call"
                     )
-                    self.context.token_counter.record_usage(
+                    await self.context.token_counter.record_usage(
                         input_tokens=200,
                         output_tokens=100,
                         model_name="test-model",
                         provider="test_provider",
                     )
-                    self.context.token_counter.pop()
+                    await self.context.token_counter.pop()
 
                 return await self.generate_structured_mock(
                     message, response_model, request_params
@@ -152,13 +152,13 @@ class TestRouterTokenCounting:
         mock_router_llm.generate_structured_mock.return_value = mock_response
 
         # Push app context
-        mock_context_with_token_counter.token_counter.push("test_app", "app")
+        await mock_context_with_token_counter.token_counter.push("test_app", "app")
 
         # Execute routing
         results = await router.route("Process this data", top_k=1)
 
         # Pop app context
-        app_node = mock_context_with_token_counter.token_counter.pop()
+        app_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Verify results
         assert len(results) == 1
@@ -172,7 +172,7 @@ class TestRouterTokenCounting:
         assert app_usage.output_tokens == 100
 
         # Check global summary
-        summary = mock_context_with_token_counter.token_counter.get_summary()
+        summary = await mock_context_with_token_counter.token_counter.get_summary()
         assert summary.usage.total_tokens == 300
         assert "test-model (test_provider)" in summary.model_usage
 
@@ -217,7 +217,7 @@ class TestRouterTokenCounting:
         mock_router_llm.generate_structured_mock.return_value = mock_response
 
         # Push workflow context
-        mock_context_with_token_counter.token_counter.push(
+        await mock_context_with_token_counter.token_counter.push(
             "routing_workflow", "workflow"
         )
 
@@ -225,7 +225,7 @@ class TestRouterTokenCounting:
         results = await router.route("Complex request", top_k=3)
 
         # Pop workflow context
-        workflow_node = mock_context_with_token_counter.token_counter.pop()
+        workflow_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Verify results
         assert len(results) == 3
@@ -256,7 +256,7 @@ class TestRouterTokenCounting:
         )
 
         # Push app context
-        mock_context_with_token_counter.token_counter.push("test_app", "app")
+        await mock_context_with_token_counter.token_counter.push("test_app", "app")
 
         # Test route_to_server
         mock_router_llm.generate_structured_mock.return_value = StructuredResponse(
@@ -304,7 +304,7 @@ class TestRouterTokenCounting:
         assert callable(results[0].result)
 
         # Pop app context
-        app_node = mock_context_with_token_counter.token_counter.pop()
+        app_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Check token usage - 3 LLM calls total
         app_usage = app_node.aggregate_usage()
@@ -330,13 +330,15 @@ class TestRouterTokenCounting:
         )
 
         # Push workflow context
-        mock_context_with_token_counter.token_counter.push("empty_routing", "workflow")
+        await mock_context_with_token_counter.token_counter.push(
+            "empty_routing", "workflow"
+        )
 
         # Execute routing
         results = await router.route("Unknown request")
 
         # Pop workflow context
-        workflow_node = mock_context_with_token_counter.token_counter.pop()
+        workflow_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Verify empty results
         assert len(results) == 0
@@ -387,26 +389,26 @@ class TestRouterTokenCounting:
         )
 
         # Push app context
-        mock_context_with_token_counter.token_counter.push("main_app", "app")
+        await mock_context_with_token_counter.token_counter.push("main_app", "app")
 
         # First routing decision
-        mock_context_with_token_counter.token_counter.push(
+        await mock_context_with_token_counter.token_counter.push(
             "general_routing", "workflow"
         )
         mock_router_llm.generate_structured_mock.return_value = general_response
         await general_router.route("General request")
-        general_node = mock_context_with_token_counter.token_counter.pop()
+        general_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Second routing decision
-        mock_context_with_token_counter.token_counter.push(
+        await mock_context_with_token_counter.token_counter.push(
             "specific_routing", "workflow"
         )
         mock_router_llm.generate_structured_mock.return_value = specific_response
         await specific_router.route("Specific request")
-        specific_node = mock_context_with_token_counter.token_counter.pop()
+        specific_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Pop app context
-        app_node = mock_context_with_token_counter.token_counter.pop()
+        app_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Verify individual routing token usage
         general_usage = general_node.aggregate_usage()
@@ -420,7 +422,7 @@ class TestRouterTokenCounting:
         assert app_usage.total_tokens == 600  # Total from both routers
 
         # Check global summary
-        summary = mock_context_with_token_counter.token_counter.get_summary()
+        summary = await mock_context_with_token_counter.token_counter.get_summary()
         assert summary.usage.total_tokens == 600
 
     @pytest.mark.asyncio
@@ -441,16 +443,16 @@ class TestRouterTokenCounting:
         ):
             # Record tokens manually
             if mock_context_with_token_counter.token_counter:
-                mock_context_with_token_counter.token_counter.push(
+                await mock_context_with_token_counter.token_counter.push(
                     name="router_llm_router_llm", node_type="llm_call"
                 )
-                mock_context_with_token_counter.token_counter.record_usage(
+                await mock_context_with_token_counter.token_counter.record_usage(
                     input_tokens=150,
                     output_tokens=0,  # No output due to error
                     model_name="test-model",
                     provider="test_provider",
                 )
-                mock_context_with_token_counter.token_counter.pop()
+                await mock_context_with_token_counter.token_counter.pop()
             # Then raise error
             raise Exception("LLM routing error")
 
@@ -458,14 +460,16 @@ class TestRouterTokenCounting:
         mock_router_llm.generate_structured = generate_structured_with_error
 
         # Push workflow context
-        mock_context_with_token_counter.token_counter.push("error_workflow", "workflow")
+        await mock_context_with_token_counter.token_counter.push(
+            "error_workflow", "workflow"
+        )
 
         # Execute routing (should raise error)
         with pytest.raises(Exception, match="LLM routing error"):
             await router.route("This will fail")
 
         # Pop workflow context
-        workflow_node = mock_context_with_token_counter.token_counter.pop()
+        workflow_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Verify tokens were still tracked before error
         workflow_usage = workflow_node.aggregate_usage()
@@ -505,13 +509,15 @@ class TestRouterTokenCounting:
         )
 
         # Push context
-        mock_context_with_token_counter.token_counter.push("custom_routing", "workflow")
+        await mock_context_with_token_counter.token_counter.push(
+            "custom_routing", "workflow"
+        )
 
         # Execute routing
         results = await router.route("Help with my account", top_k=2)
 
         # Pop context
-        workflow_node = mock_context_with_token_counter.token_counter.pop()
+        workflow_node = await mock_context_with_token_counter.token_counter.pop()
 
         # Verify results and token usage
         assert len(results) == 1

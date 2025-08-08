@@ -17,6 +17,7 @@ from mcp_agent.workflows.deep_orchestrator.knowledge import KnowledgeExtractor
 from mcp_agent.workflows.deep_orchestrator.memory import WorkspaceMemory
 from mcp_agent.workflows.deep_orchestrator.models import (
     AgentDesign,
+    Step,
     Task,
     TaskResult,
     TaskStatus,
@@ -76,28 +77,21 @@ class TaskExecutor:
         self.max_task_retries = max_task_retries
         self.enable_parallel = enable_parallel
 
-        # Track token usage (will be updated by orchestrator)
-        self.get_current_tokens = lambda: 0
+        # Budget update callback (will be set by orchestrator)
         self.update_budget_tokens = lambda tokens: None
 
-    def set_token_tracking(
-        self,
-        get_current_tokens: Callable[[], int],
-        update_budget_tokens: Callable[[int], None],
-    ):
+    def set_budget_callback(self, update_budget_tokens: Callable[[int], None]):
         """
-        Set token tracking callbacks.
+        Set budget update callback.
 
         Args:
-            get_current_tokens: Function to get current token count
             update_budget_tokens: Function to update budget with token usage
         """
-        self.get_current_tokens = get_current_tokens
         self.update_budget_tokens = update_budget_tokens
 
     async def execute_step(
         self,
-        step,
+        step: Step,
         request_params: Optional[RequestParams],
         executor=None,
     ) -> bool:
@@ -114,6 +108,17 @@ class TaskExecutor:
         """
         logger.info(f"Executing step with {len(step.tasks)} tasks")
 
+        # Push token counter context for this step
+        if self.context and hasattr(self.context, "token_counter"):
+            await self.context.token_counter.push(
+                name=f"step_{step.description[:50]}",
+                node_type="step",
+                metadata={
+                    "description": step.description,
+                    "num_tasks": len(step.tasks),
+                },
+            )
+
         # Prepare tasks for execution
         if self.enable_parallel and executor and len(step.tasks) > 1:
             # Parallel execution with streaming results
@@ -129,6 +134,17 @@ class TaskExecutor:
             for task in step.tasks:
                 result = await self.execute_task(task, request_params)
                 results.append(result)
+
+        # Pop the step context and get its token usage for budget tracking
+        if self.context and hasattr(self.context, "token_counter"):
+            step_node = await self.context.token_counter.pop()
+            if step_node:
+                # Get the aggregated usage for this entire step (all tasks)
+                step_usage = step_node.aggregate_usage()
+                step_tokens = step_usage.total_tokens
+
+                # Update budget with tokens used by this step
+                self.update_budget_tokens(step_tokens)
 
         # Check overall success
         successful = sum(1 for r in results if r.success)
@@ -210,9 +226,6 @@ class TaskExecutor:
             # Build task context
             task_context = self.context_builder.build_task_context(task)
 
-            # Track tokens before
-            tokens_before = self.get_current_tokens()
-
             # Execute with agent
             if isinstance(agent, AugmentedLLM):
                 output = await agent.generate_str(
@@ -227,12 +240,6 @@ class TaskExecutor:
                         request_params=request_params
                         or RequestParams(max_iterations=10),
                     )
-
-            # Update tokens and budget
-            tokens_after = self.get_current_tokens()
-            tokens_used = tokens_after - tokens_before
-            result.tokens_used = tokens_used
-            self.update_budget_tokens(tokens_used)
 
             # Success
             result.status = TaskStatus.COMPLETED
@@ -257,7 +264,7 @@ class TaskExecutor:
 
             logger.info(
                 f"Task completed: {task.name} "
-                f"(duration: {result.duration_seconds:.1f}s, tokens: {tokens_used})"
+                f"(duration: {result.duration_seconds:.1f}s)"
             )
 
         except Exception as e:

@@ -3,7 +3,7 @@ Token counting and cost tracking system for MCP Agent framework.
 Provides hierarchical tracking of token usage across agents and subagents.
 """
 
-import threading
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Callable, Set, Union, Tuple, Awaitable
 from datetime import datetime
@@ -12,7 +12,6 @@ import uuid
 import time
 from concurrent.futures import ThreadPoolExecutor
 import atexit
-import asyncio
 
 from mcp_agent.workflows.llm.llm_selector import load_default_models, ModelInfo
 from mcp_agent.logging.logger import get_logger
@@ -326,11 +325,11 @@ class NodeUsageDetail:
 class TokenCounter:
     """
     Hierarchical token counter with cost calculation.
-    Thread-safe implementation for tracking token usage across the call stack.
+    Tracks token usage across the call stack.
     """
 
     def __init__(self):
-        self._lock = threading.RLock()
+        self._lock = asyncio.Lock()
         self._stack: List[TokenNode] = []
         self._root: Optional[TokenNode] = None
         self._current: Optional[TokenNode] = None
@@ -520,7 +519,7 @@ class TokenCounter:
         self._model_cache[cache_key] = None
         return None
 
-    def push(
+    async def push(
         self, name: str, node_type: str, metadata: Optional[Dict[str, Any]] = None
     ) -> None:
         """
@@ -528,7 +527,7 @@ class TokenCounter:
         This is called when entering a new scope (app, workflow, agent, etc).
         """
         try:
-            with self._lock:
+            async with self._lock:
                 node = TokenNode(
                     name=name, node_type=node_type, metadata=metadata or {}
                 )
@@ -547,13 +546,13 @@ class TokenCounter:
             logger.error(f"Error in TokenCounter.push: {e}", exc_info=True)
             # Continue execution - don't break the program
 
-    def pop(self) -> Optional[TokenNode]:
+    async def pop(self) -> Optional[TokenNode]:
         """
         Pop the current context from the stack.
         Returns the popped node with aggregated usage.
         """
         try:
-            with self._lock:
+            async with self._lock:
                 if not self._stack:
                     logger.warning("Attempted to pop from empty token stack")
                     return None
@@ -566,7 +565,7 @@ class TokenCounter:
             logger.error(f"Error in TokenCounter.pop: {e}", exc_info=True)
             return None
 
-    def record_usage(
+    async def record_usage(
         self,
         input_tokens: int,
         output_tokens: int,
@@ -590,15 +589,16 @@ class TokenCounter:
             input_tokens = int(input_tokens) if input_tokens is not None else 0
             output_tokens = int(output_tokens) if output_tokens is not None else 0
 
-            with self._lock:
-                if not self._current:
-                    logger.warning("No current token context, creating root")
-                    try:
-                        self.push("root", "app")
-                    except Exception as e:
-                        logger.error(f"Failed to create root context: {e}")
-                        return
+            # Check if we need to create root context (without holding lock)
+            if not self._current:
+                logger.warning("No current token context, creating root")
+                try:
+                    await self.push("root", "app")
+                except Exception as e:
+                    logger.error(f"Failed to create root context: {e}")
+                    return
 
+            async with self._lock:
                 # If we have model_name but no model_info, try to look it up
                 if model_name and not model_info:
                     try:
@@ -720,25 +720,26 @@ class TokenCounter:
             # Return a default cost estimate
             return (input_tokens + output_tokens) * 0.5 / 1_000_000
 
-    def get_current_path(self) -> List[str]:
+    async def get_current_path(self) -> List[str]:
         """Get the current stack path (e.g., ['app', 'workflow', 'agent'])"""
-        with self._lock:
+        async with self._lock:
             return [node.name for node in self._stack]
 
-    def get_tree(self) -> Optional[Dict[str, Any]]:
+    async def get_tree(self) -> Optional[Dict[str, Any]]:
         """Get the full token usage tree"""
-        with self._lock:
+        async with self._lock:
             if self._root:
                 return self._root.to_dict()
             return None
 
-    def get_summary(self) -> TokenSummary:
-        """Get summary of token usage and costs"""
+    async def get_summary(self) -> TokenSummary:
+        """Get a complete summary of token usage across all models and nodes"""
         try:
-            with self._lock:
-                total_cost = 0.0
-                model_costs: Dict[str, ModelUsageSummary] = {}
+            total_cost = 0.0
+            model_costs: Dict[str, ModelUsageSummary] = {}
+            total_usage = TokenUsage()
 
+            async with self._lock:
                 # Calculate costs per model
                 for (model_name, provider_key), usage in self._usage_by_model.items():
                     try:
@@ -813,23 +814,28 @@ class TokenCounter:
                         continue
 
                 # Get total usage
-                total_usage = TokenUsage()
                 if self._root:
                     try:
                         total_usage = self._root.aggregate_usage()
                     except Exception as e:
                         logger.error(f"Error aggregating total usage: {e}")
 
-                return TokenSummary(
-                    usage=TokenUsageBase(
-                        input_tokens=total_usage.input_tokens,
-                        output_tokens=total_usage.output_tokens,
-                        total_tokens=total_usage.total_tokens,
-                    ),
-                    cost=total_cost,
-                    model_usage=model_costs,
-                    usage_tree=self.get_tree() if self._root else None,
-                )
+            # Get tree after releasing lock to avoid deadlock
+            if self._root:
+                usage_tree = await self.get_tree()
+            else:
+                usage_tree = None
+
+            return TokenSummary(
+                usage=TokenUsageBase(
+                    input_tokens=total_usage.input_tokens,
+                    output_tokens=total_usage.output_tokens,
+                    total_tokens=total_usage.total_tokens,
+                ),
+                cost=total_cost,
+                model_usage=model_costs,
+                usage_tree=usage_tree,
+            )
         except Exception as e:
             logger.error(f"Error in get_summary: {e}", exc_info=True)
             # Return empty summary on error
@@ -840,9 +846,9 @@ class TokenCounter:
                 usage_tree=None,
             )
 
-    def reset(self) -> None:
+    async def reset(self) -> None:
         """Reset all token tracking"""
-        with self._lock:
+        async with self._lock:
             self._stack.clear()
             self._root = None
             self._current = None
@@ -851,7 +857,7 @@ class TokenCounter:
             self._node_watches.clear()
             logger.debug("Token counter reset")
 
-    def find_node(
+    async def find_node(
         self, name: str, node_type: Optional[str] = None
     ) -> Optional[TokenNode]:
         """
@@ -864,7 +870,7 @@ class TokenCounter:
         Returns:
             The first matching node, or None if not found
         """
-        with self._lock:
+        async with self._lock:
             if not self._root:
                 return None
 
@@ -894,7 +900,7 @@ class TokenCounter:
             logger.error(f"Error in _find_node_recursive: {e}")
             return None
 
-    def find_nodes_by_type(self, node_type: str) -> List[TokenNode]:
+    async def find_nodes_by_type(self, node_type: str) -> List[TokenNode]:
         """
         Find all nodes of a specific type.
 
@@ -904,7 +910,7 @@ class TokenCounter:
         Returns:
             List of matching nodes
         """
-        with self._lock:
+        async with self._lock:
             if not self._root:
                 return []
 
@@ -922,7 +928,7 @@ class TokenCounter:
         for child in node.children:
             self._find_nodes_by_type_recursive(child, node_type, nodes)
 
-    def get_node_usage(
+    async def get_node_usage(
         self, name: str, node_type: Optional[str] = None
     ) -> Optional[TokenUsage]:
         """
@@ -935,13 +941,17 @@ class TokenCounter:
         Returns:
             Aggregated TokenUsage for the node and its children, or None if not found
         """
-        with self._lock:
-            node = self.find_node(name, node_type)
+        async with self._lock:
+            node = (
+                self._find_node_recursive(self._root, name, node_type)
+                if self._root
+                else None
+            )
             if node:
                 return node.aggregate_usage()
             return None
 
-    def get_node_cost(self, name: str, node_type: Optional[str] = None) -> float:
+    async def get_node_cost(self, name: str, node_type: Optional[str] = None) -> float:
         """
         Calculate the total cost for a specific node (including its children).
 
@@ -952,8 +962,12 @@ class TokenCounter:
         Returns:
             Total cost for the node and its children
         """
-        with self._lock:
-            node = self.find_node(name, node_type)
+        async with self._lock:
+            node = (
+                self._find_node_recursive(self._root, name, node_type)
+                if self._root
+                else None
+            )
             if not node:
                 return 0.0
 
@@ -994,29 +1008,29 @@ class TokenCounter:
             logger.error(f"Error in _calculate_node_cost: {e}")
             return 0.0
 
-    def get_app_usage(self) -> Optional[TokenUsage]:
+    async def get_app_usage(self) -> Optional[TokenUsage]:
         """Get total token usage for the entire application (root node)"""
-        with self._lock:
+        async with self._lock:
             if self._root:
                 return self._root.aggregate_usage()
             return None
 
-    def get_agent_usage(self, name: str) -> Optional[TokenUsage]:
+    async def get_agent_usage(self, name: str) -> Optional[TokenUsage]:
         """Get token usage for a specific agent"""
-        return self.get_node_usage(name, "agent")
+        return await self.get_node_usage(name, "agent")
 
-    def get_workflow_usage(self, name: str) -> Optional[TokenUsage]:
+    async def get_workflow_usage(self, name: str) -> Optional[TokenUsage]:
         """Get token usage for a specific workflow"""
-        return self.get_node_usage(name, "workflow")
+        return await self.get_node_usage(name, "workflow")
 
-    def get_current_usage(self) -> Optional[TokenUsage]:
+    async def get_current_usage(self) -> Optional[TokenUsage]:
         """Get token usage for the current context"""
-        with self._lock:
+        async with self._lock:
             if self._current:
                 return self._current.aggregate_usage()
             return None
 
-    def get_node_subtree(
+    async def get_node_subtree(
         self, name: str, node_type: Optional[str] = None
     ) -> Optional[TokenNode]:
         """
@@ -1029,9 +1043,9 @@ class TokenCounter:
         Returns:
             The node with all its children, or None if not found
         """
-        return self.find_node(name, node_type)
+        return await self.find_node(name, node_type)
 
-    def find_node_by_metadata(
+    async def find_node_by_metadata(
         self,
         metadata_key: str,
         metadata_value: Any,
@@ -1051,7 +1065,7 @@ class TokenCounter:
             If return_all_matches is False: The first matching node, or None if not found
             If return_all_matches is True: List of all matching nodes (empty if none found)
         """
-        with self._lock:
+        async with self._lock:
             if not self._root:
                 return [] if return_all_matches else None
 
@@ -1099,12 +1113,12 @@ class TokenCounter:
         except Exception as e:
             logger.error(f"Error in _find_node_by_metadata_recursive: {e}")
 
-    def get_app_node(self) -> Optional[TokenNode]:
+    async def get_app_node(self) -> Optional[TokenNode]:
         """Get the root application node"""
-        with self._lock:
+        async with self._lock:
             return self._root if self._root and self._root.node_type == "app" else None
 
-    def get_workflow_node(
+    async def get_workflow_node(
         self,
         name: Optional[str] = None,
         workflow_id: Optional[str] = None,
@@ -1125,28 +1139,23 @@ class TokenCounter:
         """
         # Priority: run_id > workflow_id > name
         if run_id:
-            return self.find_node_by_metadata(
+            return await self.find_node_by_metadata(
                 "run_id", run_id, "workflow", return_all_matches
             )
         elif workflow_id:
-            return self.find_node_by_metadata(
+            return await self.find_node_by_metadata(
                 "workflow_id", workflow_id, "workflow", return_all_matches
             )
         elif name:
             if return_all_matches:
-                return (
-                    self.find_nodes_by_type("workflow")
-                    if name == "*"
-                    else [
-                        n for n in self.find_nodes_by_type("workflow") if n.name == name
-                    ]
-                )
+                nodes = await self.find_nodes_by_type("workflow")
+                return nodes if name == "*" else [n for n in nodes if n.name == name]
             else:
-                return self.find_node(name, "workflow")
+                return await self.find_node(name, "workflow")
         else:
             return [] if return_all_matches else None
 
-    def get_agent_node(
+    async def get_agent_node(
         self, name: str, return_all_matches: bool = False
     ) -> Optional[TokenNode] | List[TokenNode]:
         """
@@ -1160,11 +1169,12 @@ class TokenCounter:
             The agent node(s) if found
         """
         if return_all_matches:
-            return [n for n in self.find_nodes_by_type("agent") if n.name == name]
+            nodes = await self.find_nodes_by_type("agent")
+            return [n for n in nodes if n.name == name]
         else:
-            return self.find_node(name, "agent")
+            return await self.find_node(name, "agent")
 
-    def get_llm_node(
+    async def get_llm_node(
         self, name: str, return_all_matches: bool = False
     ) -> Optional[TokenNode] | List[TokenNode]:
         """
@@ -1178,11 +1188,12 @@ class TokenCounter:
             The LLM node(s) if found
         """
         if return_all_matches:
-            return [n for n in self.find_nodes_by_type("llm") if n.name == name]
+            nodes = await self.find_nodes_by_type("llm")
+            return [n for n in nodes if n.name == name]
         else:
-            return self.find_node(name, "llm")
+            return await self.find_node(name, "llm")
 
-    def get_node_breakdown(
+    async def get_node_breakdown(
         self, name: str, node_type: Optional[str] = None
     ) -> Optional[NodeUsageDetail]:
         """
@@ -1195,8 +1206,12 @@ class TokenCounter:
         Returns:
             NodeUsageDetail with breakdown by child type and direct children, or None if not found
         """
-        with self._lock:
-            node = self.find_node(name, node_type)
+        async with self._lock:
+            node = (
+                self._find_node_recursive(self._root, name, node_type)
+                if self._root
+                else None
+            )
             if not node:
                 return None
 
@@ -1261,32 +1276,32 @@ class TokenCounter:
                 child_usage=child_usage,
             )
 
-    def get_agents_breakdown(self) -> Dict[str, TokenUsage]:
+    async def get_agents_breakdown(self) -> Dict[str, TokenUsage]:
         """Get token usage breakdown by agent"""
-        agents = self.find_nodes_by_type("agent")
+        agents = await self.find_nodes_by_type("agent")
         breakdown = {}
         for agent in agents:
             usage = agent.aggregate_usage()
             breakdown[agent.name] = usage
         return breakdown
 
-    def get_workflows_breakdown(self) -> Dict[str, TokenUsage]:
+    async def get_workflows_breakdown(self) -> Dict[str, TokenUsage]:
         """Get token usage breakdown by workflow"""
-        workflows = self.find_nodes_by_type("workflow")
+        workflows = await self.find_nodes_by_type("workflow")
         breakdown = {}
         for workflow in workflows:
             usage = workflow.aggregate_usage()
             breakdown[workflow.name] = usage
         return breakdown
 
-    def get_models_breakdown(self) -> List[ModelUsageDetail]:
+    async def get_models_breakdown(self) -> List[ModelUsageDetail]:
         """
         Get detailed breakdown of usage by model.
 
         Returns:
             List of ModelUsageDetail containing usage details and nodes for each model
         """
-        with self._lock:
+        async with self._lock:
             if not self._root:
                 return []
 
@@ -1352,7 +1367,7 @@ class TokenCounter:
         for child in node.children:
             self._collect_model_nodes(child, model_nodes)
 
-    def watch(
+    async def watch(
         self,
         callback: Union[
             Callable[[TokenNode, TokenUsage], None],
@@ -1382,15 +1397,15 @@ class TokenCounter:
 
         Examples:
             # Watch a specific node
-            watch_id = counter.watch(callback, node=my_node)
+            watch_id = await counter.watch(callback, node=my_node)
 
             # Watch all workflow nodes
-            watch_id = counter.watch(callback, node_type="workflow")
+            watch_id = await counter.watch(callback, node_type="workflow")
 
             # Watch with threshold
-            watch_id = counter.watch(callback, node_name="my_agent", threshold=1000)
+            watch_id = await counter.watch(callback, node_name="my_agent", threshold=1000)
         """
-        with self._lock:
+        async with self._lock:
             watch_id = str(uuid.uuid4())
 
             # Detect if callback is async by checking if it's a coroutine function
@@ -1426,7 +1441,7 @@ class TokenCounter:
             )
             return watch_id
 
-    def unwatch(self, watch_id: str) -> bool:
+    async def unwatch(self, watch_id: str) -> bool:
         """
         Remove a watch.
 
@@ -1436,7 +1451,7 @@ class TokenCounter:
         Returns:
             True if watch was removed, False if not found
         """
-        with self._lock:
+        async with self._lock:
             config = self._watches.pop(watch_id, None)
             if not config:
                 return False
@@ -1460,79 +1475,80 @@ class TokenCounter:
             logger.error(f"Error shutting down callback executor: {e}")
 
     def _trigger_watches(self, node: TokenNode) -> None:
-        """Trigger watches for a node and its ancestors"""
+        """Trigger watches for a node and its ancestors
+
+        Note: This is called from within record_usage which already holds the lock,
+        so we don't acquire it again here.
+        """
         try:
             callbacks_to_execute: List[Tuple[WatchConfig, TokenNode, TokenUsage]] = []
             # logger.debug(f"_trigger_watches called for {node.name} ({node.node_type})")
 
-            with self._lock:
-                current = node
-                triggered_nodes = set()
-                is_original_node = True
+            # No lock needed - caller already holds it
+            current = node
+            triggered_nodes = set()
+            is_original_node = True
 
-                # Walk up the tree to collect watches that need triggering
-                while current:
-                    if id(current) in triggered_nodes:
-                        break
-                    triggered_nodes.add(id(current))
+            # Walk up the tree to collect watches that need triggering
+            while current:
+                if id(current) in triggered_nodes:
+                    break
+                triggered_nodes.add(id(current))
 
-                    # Invalidate this node's cache to ensure fresh aggregation
-                    # This is more targeted than cascade invalidation
-                    current._cache_valid = False
-                    current._cached_aggregate = None
+                # Invalidate this node's cache to ensure fresh aggregation
+                # This is more targeted than cascade invalidation
+                current._cache_valid = False
+                current._cached_aggregate = None
 
-                    # Get aggregated usage with fresh data
-                    usage = current.aggregate_usage()
+                # Get aggregated usage with fresh data
+                usage = current.aggregate_usage()
 
-                    # Check all watches
-                    for watch_id, config in self._watches.items():
-                        try:
-                            # Check if this watch applies to the current node
-                            if not self._watch_matches_node(config, current):
+                # Check all watches
+                for watch_id, config in self._watches.items():
+                    try:
+                        # Check if this watch applies to the current node
+                        if not self._watch_matches_node(config, current):
+                            continue
+
+                        # For ancestor nodes, only trigger if include_subtree is True
+                        if not is_original_node and not config.include_subtree:
+                            continue
+
+                        # Check threshold
+                        if config.threshold and usage.total_tokens < config.threshold:
+                            continue
+
+                        # Check throttling
+                        node_key = f"{id(current)}"
+                        if config.throttle_ms:
+                            last_triggered = config._last_triggered.get(node_key, 0)
+                            now = time.time() * 1000  # milliseconds
+                            if now - last_triggered < config.throttle_ms:
                                 continue
+                            config._last_triggered[node_key] = now
 
-                            # For ancestor nodes, only trigger if include_subtree is True
-                            if not is_original_node and not config.include_subtree:
-                                continue
+                        # Clone the usage data to avoid issues with cache updates
+                        usage_copy = TokenUsage(
+                            input_tokens=usage.input_tokens,
+                            output_tokens=usage.output_tokens,
+                            total_tokens=usage.total_tokens,
+                            model_name=usage.model_name,
+                            model_info=usage.model_info,
+                        )
 
-                            # Check threshold
-                            if (
-                                config.threshold
-                                and usage.total_tokens < config.threshold
-                            ):
-                                continue
+                        # Queue callback for execution outside lock
+                        callbacks_to_execute.append((config, current, usage_copy))
+                        logger.debug(
+                            f"Queued watch {config.watch_id} for {current.name} ({current.node_type}) "
+                            f"with {usage_copy.total_tokens} tokens"
+                        )
 
-                            # Check throttling
-                            node_key = f"{id(current)}"
-                            if config.throttle_ms:
-                                last_triggered = config._last_triggered.get(node_key, 0)
-                                now = time.time() * 1000  # milliseconds
-                                if now - last_triggered < config.throttle_ms:
-                                    continue
-                                config._last_triggered[node_key] = now
+                    except Exception as e:
+                        logger.error(f"Error processing watch {watch_id}: {e}")
 
-                            # Clone the usage data to avoid issues with cache updates
-                            usage_copy = TokenUsage(
-                                input_tokens=usage.input_tokens,
-                                output_tokens=usage.output_tokens,
-                                total_tokens=usage.total_tokens,
-                                model_name=usage.model_name,
-                                model_info=usage.model_info,
-                            )
-
-                            # Queue callback for execution outside lock
-                            callbacks_to_execute.append((config, current, usage_copy))
-                            logger.debug(
-                                f"Queued watch {config.watch_id} for {current.name} ({current.node_type}) "
-                                f"with {usage_copy.total_tokens} tokens"
-                            )
-
-                        except Exception as e:
-                            logger.error(f"Error processing watch {watch_id}: {e}")
-
-                    # Move to parent to check watches on ancestors
-                    current = current.parent
-                    is_original_node = False
+                # Move to parent to check watches on ancestors
+                current = current.parent
+                is_original_node = False
 
             # Execute callbacks outside the lock
             for config, callback_node, callback_usage in callbacks_to_execute:

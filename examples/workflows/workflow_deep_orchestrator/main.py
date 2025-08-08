@@ -210,7 +210,7 @@ class DeepOrchestratorMonitor:
 
         return table
 
-    def get_token_stats_panel(self) -> Panel:
+    async def get_token_stats_panel(self) -> Panel:
         """Get token usage statistics"""
         lines = []
 
@@ -221,7 +221,7 @@ class DeepOrchestratorMonitor:
             counter = self.orchestrator.context.token_counter
             if counter:
                 # Get summary
-                summary = counter.get_summary()
+                summary = await counter.get_summary()
                 if summary and hasattr(summary, "usage"):
                     usage = summary.usage
                     lines.append(f"[cyan]Total Tokens:[/cyan] {usage.total_tokens:,}")
@@ -235,7 +235,7 @@ class DeepOrchestratorMonitor:
                         )
 
                     # Get top consumers
-                    node = counter.find_node(self.orchestrator.name)
+                    node = await counter.find_node(self.orchestrator.name)
                     if node and node.children:
                         lines.append("\n[yellow]Top Consumers:[/yellow]")
                         sorted_children = sorted(
@@ -625,7 +625,7 @@ async def main():
 
         # Display token usage if available
         if context.token_counter:
-            summary = context.token_counter.get_summary()
+            summary = await context.token_counter.get_summary()
             console.print(
                 f"\n[bold]Total Tokens:[/bold] {summary.usage.total_tokens:,}"
             )

@@ -102,7 +102,7 @@ async def example_usage():
             logger.info(f"Paragraph as a tweet: {result}")
 
         # Display final comprehensive token usage summary
-        display_token_summary(context)
+        await display_token_summary(context)
 
 
 def display_token_usage(usage: TokenUsage, label: str = "Token Usage"):
@@ -113,13 +113,13 @@ def display_token_usage(usage: TokenUsage, label: str = "Token Usage"):
     print(f"  Output tokens: {usage.output_tokens:,}")
 
 
-def display_token_summary(context: Context):
+async def display_token_summary(context: Context):
     """Display comprehensive token usage summary"""
     if not context.token_counter:
         print("\nNo token counter available")
         return
 
-    summary: TokenSummary = context.token_counter.get_summary()
+    summary: TokenSummary = await context.token_counter.get_summary()
 
     print("\n" + "=" * 50)
     print("TOKEN USAGE SUMMARY")
@@ -147,7 +147,7 @@ def display_token_summary(context: Context):
             print(f"    Cost: ${data.cost:.4f}")
 
     # Breakdown by agent
-    agents_breakdown = context.token_counter.get_agents_breakdown()
+    agents_breakdown = await context.token_counter.get_agents_breakdown()
     if agents_breakdown:
         print("\nBreakdown by Agent:")
         for agent_name, usage in agents_breakdown.items():

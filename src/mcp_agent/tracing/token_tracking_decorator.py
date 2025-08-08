@@ -38,7 +38,7 @@ def track_tokens(
                         metadata["provider"] = self.provider
 
                     # Push context
-                    self.context.token_counter.push(
+                    await self.context.token_counter.push(
                         name=getattr(self, "name", self.__class__.__name__),
                         node_type=node_type,
                         metadata=metadata,
@@ -55,7 +55,7 @@ def track_tokens(
                     # Only pop if we successfully pushed
                     try:
                         if pushed:
-                            self.context.token_counter.pop()
+                            await self.context.token_counter.pop()
                     except Exception:
                         pass
             else:

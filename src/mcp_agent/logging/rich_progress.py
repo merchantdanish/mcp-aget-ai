@@ -1,5 +1,6 @@
 """Rich-based progress display for MCP Agent."""
 
+import asyncio
 import time
 from typing import Optional
 from rich.console import Console
@@ -50,7 +51,13 @@ class RichProgressDisplay:
         """Stop the progress display and token tracking."""
         # Stop token tracking if active
         if self._token_watch_id and self._token_counter:
-            self._token_counter.unwatch(self._token_watch_id)
+            # Schedule async unwatch
+            asyncio.create_task(self._unwatch_async())
+
+    async def _unwatch_async(self):
+        """Unwatch the token counter asynchronously."""
+        if self._token_watch_id and self._token_counter:
+            await self._token_counter.unwatch(self._token_watch_id)
             self._token_watch_id = None
 
         self._progress.stop()
@@ -82,25 +89,34 @@ class RichProgressDisplay:
 
         # Check if root node exists now
         if hasattr(self._token_counter, "_root") and self._token_counter._root:
-            self._token_watch_id = self._token_counter.watch(
+            # Schedule async watch registration
+            asyncio.create_task(self._register_watch_async())
+
+    async def _register_watch_async(self):
+        """Register the token watch asynchronously."""
+        if hasattr(self._token_counter, "_root") and self._token_counter._root:
+            self._token_watch_id = await self._token_counter.watch(
                 callback=self._on_token_update,
                 node=self._token_counter._root,
                 threshold=1,
                 throttle_ms=100,
             )
-
             # Get initial summary and update display
-            initial_summary = self._token_counter.get_summary()
-            if initial_summary.usage.total_tokens > 0:
-                self._progress.update(
-                    self._token_task_id,
-                    description="[bold cyan]Tokens      ",
-                    details=f"{initial_summary.usage.total_tokens:,} tokens | ${initial_summary.cost:.4f}",
-                )
+            await self._update_initial_token_display()
+
+    async def _update_initial_token_display(self):
+        """Update initial token display."""
+        initial_summary = await self._token_counter.get_summary()
+        if initial_summary.usage.total_tokens > 0:
+            self._progress.update(
+                self._token_task_id,
+                description="[bold cyan]Tokens      ",
+                details=f"{initial_summary.usage.total_tokens:,} tokens | ${initial_summary.cost:.4f}",
+            )
 
     async def _on_token_update(self, node, usage):
         """Handle token usage updates."""
-        summary = self._token_counter.get_summary()
+        summary = await self._token_counter.get_summary()
         self._progress.update(
             self._token_task_id,
             description="[bold cyan]Tokens      ",

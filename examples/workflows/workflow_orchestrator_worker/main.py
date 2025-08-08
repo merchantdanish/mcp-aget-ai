@@ -169,10 +169,10 @@ async def example_usage():
         logger.info(f"{result}")
 
         # Display token usage tree for the orchestrator workflow
-        display_run_tree(context, orchestrator.name)
+        await display_run_tree(context, orchestrator.name)
 
         # Show summary at the bottom
-        summary = context.token_counter.get_summary()
+        summary = await context.token_counter.get_summary()
         print(f"\nTotal Cost: ${summary.cost:.4f}")
         print("=" * 60)
 
@@ -222,14 +222,14 @@ def display_node_tree(
             display_node_tree(child, child_indent, i == len(node.children) - 1, context)
 
 
-def display_run_tree(context: Context, name: str):
+async def display_run_tree(context: Context, name: str):
     """Display the agent workflow tree with token usage"""
     if not context.token_counter:
         print("\nNo token counter available")
         return
 
     # Find the agent workflow node by name
-    node = context.token_counter.find_node(name)
+    node = await context.token_counter.find_node(name)
 
     if not node:
         print(f"\nAgent workflow '{name}' not found in token tree")

@@ -251,7 +251,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                 pushed_token_context = False
                 if self.context and self.context.token_counter:
                     try:
-                        self.context.token_counter.push(
+                        await self.context.token_counter.push(
                             name=self.name,
                             node_type="workflow",
                             metadata={
@@ -329,7 +329,7 @@ class Workflow(ABC, Generic[T], ContextDependent):
                         and self.context.token_counter
                     ):
                         try:
-                            self.context.token_counter.pop()
+                            await self.context.token_counter.pop()
                         except Exception as e:
                             self._logger.error(f"Error popping token context: {e}")
 

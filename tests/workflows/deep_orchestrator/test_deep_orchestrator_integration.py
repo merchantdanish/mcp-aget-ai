@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from typing import Optional
 
+from mcp_agent.agents.agent import Agent, InitAggregatorResponse
 from mcp_agent.workflows.deep_orchestrator.orchestrator import DeepOrchestrator
 from mcp_agent.workflows.deep_orchestrator.config import DeepOrchestratorConfig
 from mcp_agent.workflows.deep_orchestrator.models import (
@@ -17,8 +18,8 @@ from mcp_agent.workflows.deep_orchestrator.models import (
     KnowledgeItem,
     VerificationResult,
 )
+from mcp_agent.tracing.token_counter import TokenCounter
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
-from mcp_agent.agents.agent import Agent, InitAggregatorResponse
 
 
 class MockAugmentedLLM(AugmentedLLM):
@@ -131,8 +132,8 @@ class TestDeepOrchestratorIntegration:
         context.model_selector = MagicMock()
         context.model_selector.select_model = MagicMock(return_value="test-model")
 
-        # Add token_counter attribute - set to None like orchestrator tests
-        context.token_counter = None
+        # Create a real TokenCounter
+        context.token_counter = TokenCounter()
 
         return context
 
@@ -218,7 +219,6 @@ class TestDeepOrchestratorIntegration:
                         )
                     ],
                     duration_seconds=2.0,
-                    tokens_used=100,
                 )
                 orchestrator.memory.add_task_result(result)
 
@@ -236,7 +236,7 @@ class TestDeepOrchestratorIntegration:
             mock_task_executor_instance.execute_step = AsyncMock(
                 side_effect=mock_execute_step
             )
-            mock_task_executor_instance.set_token_tracking = MagicMock()
+            mock_task_executor_instance.set_budget_callback = MagicMock()
             MockTaskExecutor.return_value = mock_task_executor_instance
 
             # Mock verification - complete after all steps
@@ -371,7 +371,7 @@ class TestDeepOrchestratorIntegration:
             mock_task_executor_instance.execute_step = AsyncMock(
                 side_effect=mock_execute_with_failure
             )
-            mock_task_executor_instance.set_token_tracking = MagicMock()
+            mock_task_executor_instance.set_budget_callback = MagicMock()
             MockTaskExecutor.return_value = mock_task_executor_instance
 
             # Mock verification
@@ -484,7 +484,7 @@ class TestDeepOrchestratorIntegration:
             mock_task_executor_instance.execute_step = AsyncMock(
                 side_effect=mock_parallel_execution
             )
-            mock_task_executor_instance.set_token_tracking = MagicMock()
+            mock_task_executor_instance.set_budget_callback = MagicMock()
             MockTaskExecutor.return_value = mock_task_executor_instance
 
             # Mock verification and synthesis
@@ -576,7 +576,7 @@ class TestDeepOrchestratorIntegration:
             mock_task_executor_instance.execute_step = AsyncMock(
                 side_effect=mock_expensive_execution
             )
-            mock_task_executor_instance.set_token_tracking = MagicMock()
+            mock_task_executor_instance.set_budget_callback = MagicMock()
             MockTaskExecutor.return_value = mock_task_executor_instance
 
             # Mock synthesizer for forced completion
