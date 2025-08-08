@@ -349,6 +349,7 @@ class TemporalExecutor(Executor):
                 id=workflow_id,
                 task_queue=task_queue,
                 id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                rpc_metadata=self.config.rpc_metadata,
             )
         else:
             handle: WorkflowHandle = await self.client.start_workflow(
@@ -356,6 +357,7 @@ class TemporalExecutor(Executor):
                 id=workflow_id,
                 task_queue=task_queue,
                 id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                rpc_metadata=self.config.rpc_metadata,
             )
 
         # Wait for the result if requested
