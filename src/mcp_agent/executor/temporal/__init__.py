@@ -262,6 +262,7 @@ class TemporalExecutor(Executor):
                 api_key=self.config.api_key,
                 tls=self.config.tls,
                 data_converter=pydantic_data_converter,
+                rpc_metadata=self.config.rpc_metadata,
             )
 
         return self.client
@@ -348,6 +349,7 @@ class TemporalExecutor(Executor):
                 id=workflow_id,
                 task_queue=task_queue,
                 id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                rpc_metadata=self.config.rpc_metadata,
             )
         else:
             handle: WorkflowHandle = await self.client.start_workflow(
@@ -355,6 +357,7 @@ class TemporalExecutor(Executor):
                 id=workflow_id,
                 task_queue=task_queue,
                 id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                rpc_metadata=self.config.rpc_metadata,
             )
 
         # Wait for the result if requested

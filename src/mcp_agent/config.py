@@ -219,6 +219,7 @@ class TemporalSettings(BaseModel):
     task_queue: str
     max_concurrent_activities: int | None = None
     timeout_seconds: int | None = 60
+    rpc_metadata: Dict[str, str] | None = None
 
 
 class UsageTelemetrySettings(BaseModel):

@@ -934,6 +934,21 @@
           ],
           "default": 60,
           "title": "Timeout Seconds"
+        },
+        "rpc_metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rpc Metadata"
         }
       },
       "required": [
