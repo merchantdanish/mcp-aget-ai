@@ -4,7 +4,9 @@ Fixtures for deep_orchestrator tests
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock
+
 from mcp_agent.core.context import Context
+from mcp_agent.tracing.token_counter import TokenCounter
 
 
 @pytest.fixture
@@ -23,9 +25,6 @@ def mock_context():
     # Mock the model selector
     context.model_selector = MagicMock()
     context.model_selector.select_model = MagicMock(return_value="test-model")
-
-    # Create a real TokenCounter
-    from mcp_agent.tracing.token_counter import TokenCounter
 
     context.token_counter = TokenCounter()
 

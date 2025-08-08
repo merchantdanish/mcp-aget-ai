@@ -327,6 +327,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                 model_preferences = request_params.modelPreferences or model_preferences
                 model = request_params.model
                 if model:
+                    # Take user-specified model ID exactly as provided (no normalization)
                     span.set_attribute("request_params.model", model)
                     span.set_attribute("model", model)
                     return model
@@ -339,8 +340,10 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                     model_preferences=model_preferences, provider=self.provider
                 )
 
-                span.set_attribute("model", model_info.name)
-                return model_info.name
+                # Model names from benchmarks are already normalized; return as-is
+                selected = model_info.name
+                span.set_attribute("model", selected)
+                return selected
             except ValueError as e:
                 span.record_exception(e)
                 span.set_status(trace.Status(trace.StatusCode.ERROR))

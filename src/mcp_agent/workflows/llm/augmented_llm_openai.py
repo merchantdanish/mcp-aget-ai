@@ -114,7 +114,9 @@ class OpenAIAugmentedLLM(
             if hasattr(self.context.config.openai, "reasoning_effort"):
                 self._reasoning_effort = self.context.config.openai.reasoning_effort
 
-        self._reasoning = lambda model: model and model.startswith(("o1", "o3", "o4"))
+        self._reasoning = lambda model: model and model.startswith(
+            ("o1", "o3", "o4", "gpt-5")
+        )
 
         if self._reasoning(default_model):
             self.logger.info(

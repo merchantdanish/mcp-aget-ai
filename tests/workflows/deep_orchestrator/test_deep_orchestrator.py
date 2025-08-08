@@ -6,6 +6,8 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from typing import Optional
 
+from mcp_agent.agents.agent import Agent, InitAggregatorResponse
+from mcp_agent.tracing.token_counter import TokenCounter
 from mcp_agent.workflows.deep_orchestrator.orchestrator import DeepOrchestrator
 from mcp_agent.workflows.deep_orchestrator.config import DeepOrchestratorConfig
 from mcp_agent.workflows.deep_orchestrator.models import (
@@ -15,7 +17,6 @@ from mcp_agent.workflows.deep_orchestrator.models import (
     VerificationResult,
 )
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
-from mcp_agent.agents.agent import Agent, InitAggregatorResponse
 
 
 class MockAugmentedLLM(AugmentedLLM):
@@ -92,9 +93,6 @@ class TestDeepOrchestratorInit:
         # Mock the model selector
         context.model_selector = MagicMock()
         context.model_selector.select_model = MagicMock(return_value="test-model")
-
-        # Create a real TokenCounter
-        from mcp_agent.tracing.token_counter import TokenCounter
 
         context.token_counter = TokenCounter()
 
@@ -235,9 +233,6 @@ class TestDeepOrchestratorExecution:
         # Mock the model selector
         context.model_selector = MagicMock()
         context.model_selector.select_model = MagicMock(return_value="test-model")
-
-        # Create a real TokenCounter
-        from mcp_agent.tracing.token_counter import TokenCounter
 
         context.token_counter = TokenCounter()
 

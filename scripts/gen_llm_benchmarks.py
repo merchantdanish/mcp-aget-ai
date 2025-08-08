@@ -9,6 +9,8 @@
 # ///
 
 import locale
+import re
+from typing import Optional, Tuple
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, ConfigDict, Field
 import json
@@ -125,8 +127,192 @@ def parse_context_window(context_str: str) -> int | None:
 
 
 def parse_html_to_models(html_content: str) -> list[ModelInfo]:
+    """
+    Robustly parse Artificial Analysis model listings.
+
+    Strategy:
+    1) First, try to extract embedded JSON objects that the site now renders. These
+       contain rich fields like provider, pricing, speed, and latency.
+    2) If that fails, fall back to the legacy table-based parser.
+    """
+
+    def extract_json_object(text: str, start_index: int) -> tuple[Optional[str], int]:
+        """Extract a balanced JSON object starting at text[start_index] == '{'.
+
+        Returns (json_string, end_index_after_object) or (None, start_index + 1) if
+        no valid object could be parsed.
+        """
+        if start_index < 0 or start_index >= len(text) or text[start_index] != "{":
+            return None, start_index + 1
+
+        brace_count = 0
+        in_string = False
+        escape = False
+        i = start_index
+        while i < len(text):
+            ch = text[i]
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+            else:
+                if ch == '"':
+                    in_string = True
+                elif ch == "{":
+                    brace_count += 1
+                elif ch == "}":
+                    brace_count -= 1
+                    if brace_count == 0:
+                        # Include this closing brace
+                        return text[start_index : i + 1], i + 1
+            i += 1
+
+        return None, start_index + 1
+
+    def coalesce_bool(*values: Optional[bool | None]) -> Optional[bool]:
+        for v in values:
+            if isinstance(v, bool):
+                return v
+        return None
+
+    def normalize_name_from_slug_or_id(
+        slug: Optional[str], host_api_id: Optional[str], fallback: str
+    ) -> str:
+        # Prefer host_api_id if present
+        candidate = host_api_id or slug or fallback
+        if not candidate:
+            return fallback
+        # If looks like a path, take the basename
+        if "/" in candidate:
+            candidate = candidate.rsplit("/", 1)[-1]
+        return str(candidate)
+
+    def try_parse_from_embedded_json(text: str) -> list[ModelInfo]:
+        models_from_json: list[ModelInfo] = []
+
+        # Heuristic: the rich objects begin with '{"id":"' and include both
+        # '"host":{' and '"model":{' blocks.
+        for match in re.finditer(r"\{\s*\"id\"\s*:\s*\"", text):
+            start = match.start()
+            json_str, _end_pos = extract_json_object(text, start)
+            if not json_str:
+                continue
+
+            # Quick filter before json.loads to avoid obvious mismatches
+            if ('"host":' not in json_str) or ('"model":' not in json_str):
+                continue
+
+            try:
+                data = json.loads(json_str)
+            except Exception:
+                continue
+
+            # Validate minimal shape we care about
+            # We expect fields at top-level like name, host_label, prices, timescaleData
+            name = data.get("name") or ((data.get("model") or {}).get("name"))
+            host_label = data.get("host_label") or (
+                (data.get("host") or {}).get("short_name")
+                or (data.get("host") or {}).get("name")
+            )
+            if not name or not host_label:
+                continue
+
+            # Identify API ID / slug and normalize to a usable name
+            api_id_raw = (
+                data.get("slug")
+                or (data.get("model") or {}).get("slug")
+                or name.lower().replace(" ", "-").replace("(", "").replace(")", "")
+            )
+            host_api_id = data.get("host_api_id")
+            api_id = normalize_name_from_slug_or_id(api_id_raw, host_api_id, name)
+
+            # Context window
+            context_window = data.get("context_window_tokens") or (
+                data.get("model") or {}
+            ).get("context_window_tokens")
+            if not context_window:
+                # Try formatted fields like "33k" if tokens are missing
+                formatted = data.get("context_window_formatted") or (
+                    data.get("model") or {}
+                ).get("contextWindowFormatted")
+                context_window = parse_context_window(formatted) if formatted else None
+
+            # Tool calling / JSON mode from various levels
+            tool_calling = coalesce_bool(
+                data.get("function_calling"),
+                (data.get("host") or {}).get("function_calling"),
+                (data.get("model") or {}).get("function_calling"),
+            )
+            structured_outputs = coalesce_bool(
+                data.get("json_mode"),
+                (data.get("host") or {}).get("json_mode"),
+                (data.get("model") or {}).get("json_mode"),
+            )
+
+            # Pricing
+            blended_cost = data.get("price_1m_blended_3_to_1")
+            input_cost = data.get("price_1m_input_tokens")
+            output_cost = data.get("price_1m_output_tokens")
+
+            # Speed/latency
+            timescale = data.get("timescaleData") or {}
+            tokens_per_second = timescale.get("median_output_speed") or 0.0
+            first_chunk_seconds = timescale.get("median_time_to_first_chunk") or 0.0
+            # Ensure positive to satisfy validation
+            if not tokens_per_second or tokens_per_second <= 0:
+                tokens_per_second = 0.1
+            if not first_chunk_seconds or first_chunk_seconds <= 0:
+                first_chunk_seconds = 0.001
+
+            # Intelligence/quality
+            # Prefer estimated_intelligence_index if present, fallback to intelligence_index
+            quality_score = (
+                (data.get("model") or {}).get("estimated_intelligence_index")
+                or (data.get("model") or {}).get("intelligence_index")
+                or data.get("estimated_intelligence_index")
+                or data.get("intelligence_index")
+            )
+
+            model_info = ModelInfo(
+                name=str(api_id),
+                description=str(name),
+                provider=str(host_label),
+                context_window=int(context_window) if context_window else None,
+                tool_calling=tool_calling,
+                structured_outputs=structured_outputs,
+                metrics=ModelMetrics(
+                    cost=ModelCost(
+                        blended_cost_per_1m=blended_cost,
+                        input_cost_per_1m=input_cost,
+                        output_cost_per_1m=output_cost,
+                    ),
+                    speed=ModelLatency(
+                        time_to_first_token_ms=float(first_chunk_seconds) * 1000.0,
+                        tokens_per_second=float(tokens_per_second),
+                    ),
+                    intelligence=ModelBenchmarks(
+                        quality_score=float(quality_score) if quality_score else None
+                    ),
+                ),
+            )
+
+            models_from_json.append(model_info)
+
+        return models_from_json
+
+    # 1) Try embedded JSON pathway first
+    json_models = try_parse_from_embedded_json(html_content)
+    if json_models:
+        console.print(
+            f"[bold blue]Parsed {len(json_models)} models from embedded JSON[/bold blue]"
+        )
+
+    # 2) Fallback: legacy/new table-based parsing
     soup = BeautifulSoup(html_content, "html.parser")
-    models = []
+    models: list[ModelInfo] = []
 
     headers = [th.get_text(strip=True) for th in soup.find_all("th")]
     console.print(f"[bold blue]Found {len(headers)} headers[/bold blue]")
@@ -170,89 +356,115 @@ def parse_html_to_models(html_content: str) -> list[ModelInfo]:
     # 35: FurtherAnalysis
 
     # Find all table rows
-    rows = soup.find_all("tr")[2:]  # Skip header rows
+    rows = soup.find_all("tr")
+
+    # Heuristic: skip header-like rows by requiring at least, say, 6 <td> cells
+    def is_data_row(tr) -> bool:
+        tds = tr.find_all("td")
+        return len(tds) >= 6
+
+    rows = [r for r in rows if is_data_row(r)]
 
     console.print(f"[bold green]Processing {len(rows)} models...[/bold green]")
 
+    def parse_price_tokens_latency(
+        cells: list[str],
+    ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+        # Identify blended price: first cell containing a '$'
+        price = None
+        tokens_per_s = None
+        latency_s = None
+        price_idx = None
+        for idx, txt in enumerate(cells):
+            if "$" in txt:
+                # remove $ and commas
+                try:
+                    price = float(txt.replace("$", "").replace(",", "").strip())
+                    price_idx = idx
+                    break
+                except Exception:
+                    continue
+        if price_idx is not None:
+            # The next two numeric cells are typically tokens/s and first chunk (s)
+            # Be defensive: scan forward for first two parseable floats
+            found = []
+            for txt in cells[price_idx + 1 : price_idx + 6]:
+                try:
+                    val = float(txt.replace(",", "").strip())
+                    found.append(val)
+                except Exception:
+                    continue
+                if len(found) >= 2:
+                    break
+            if len(found) >= 2:
+                tokens_per_s, latency_s = found[0], found[1]
+        return price, tokens_per_s, latency_s
+
     for row in track(rows, description="Parsing models..."):
-        cells = row.find_all("td")
+        cells_el = row.find_all("td")
+        cells = [c.get_text(strip=True) for c in cells_el]
         if not cells:  # Ensure we have enough cells
             continue
 
         try:
-            # Extract provider from cells[0] (API Provider)
-            provider_img = cells[0].find("img")
+            # Extract provider from first cell's <img alt>
+            provider_img = cells_el[0].find("img")
             provider = (
                 provider_img["alt"].replace(" logo", "") if provider_img else "Unknown"
             )
 
-            # Extract model name from cells[1] (Model)
-            model_name_elem = cells[1].find("span")
+            # Extract model display name from second cell
+            model_name_elem = cells_el[1].find("span")
             if model_name_elem:
                 display_name = model_name_elem.text.strip()
             else:
-                display_name = cells[1].get_text(strip=True)
+                display_name = cells[1].strip()
 
-            # Extract API ID from cells[7] (API ID)
-            api_id_text = cells[7].get_text(strip=True)
-            if api_id_text:
-                api_id = api_id_text
-            else:
-                # Use model name as fallback
+            # Prefer href pointing to the model page to derive a stable slug
+            href = None
+            link = row.find("a", href=re.compile(r"/models/"))
+            if link and link.has_attr("href"):
+                href = link["href"]
+            api_id = None
+            if href:
+                # Use the last path segment
+                api_id = href.rstrip("/").rsplit("/", 1)[-1]
+            if not api_id:
+                # Fallback: slugify display name
                 api_id = (
                     display_name.lower()
                     .replace(" ", "-")
                     .replace("(", "")
                     .replace(")", "")
+                    .replace("/", "-")
                 )
 
-            # Extract context window from cells[2] (ContextWindow)
-            context_window_text = cells[2].get_text(strip=True)
+            # Extract context window from third cell
+            context_window_text = cells[2]
             context_window = parse_context_window(context_window_text)
 
-            # Extract tool calling from cells[3] (Function Calling)
-            # Check for checkmark or X icon
-            tool_calling_elem = cells[3].find("svg")
-            if tool_calling_elem:
-                # Check if it has "Yes" in the title
-                title_elem = tool_calling_elem.find("title")
-                tool_calling = (
-                    True if title_elem and "Yes" in title_elem.text else False
-                )
-            else:
-                tool_calling = None
+            # Newer tables often omit explicit tool/json icons in the list view
+            tool_calling = None
+            structured_outputs = None
 
-            # Extract structured outputs from cells[4] (JSON Mode)
-            structured_outputs_elem = cells[4].find("svg")
-            if structured_outputs_elem:
-                # Check if it has "Yes" in the title
-                title_elem = structured_outputs_elem.find("title")
-                structured_outputs = (
-                    True if title_elem and "Yes" in title_elem.text else False
-                )
-            else:
-                structured_outputs = None
+            # Extract quality score if present (percentage-like cell anywhere)
+            quality_score = None
+            for txt in cells:
+                if txt.endswith("%"):
+                    try:
+                        quality_score = float(txt.replace("%", "").strip())
+                        break
+                    except Exception:
+                        pass
 
-            # Extract quality score from cells[9] (Artificial AnalysisIntelligence Index)
-            quality_text = cells[9].get_text(strip=True).replace("%", "")
-            quality_score = (
-                locale.atof(quality_text)
-                if quality_text.replace(".", "").isdigit()
-                else 0
+            # Extract price, tokens/s, latency with heuristics
+            blended_cost, tokens_per_sec, latency_sec = parse_price_tokens_latency(
+                cells
             )
-
-            # Extract cost from cells[19] (BlendedUSD/1M Tokens)
-            cost_text = cells[19].get_text(strip=True).replace("$", "").replace(",", "")
-            blended_cost = locale.atof(cost_text) if cost_text else 0
-
-            # Extract performance metrics
-            # Tokens per second from cells[22] (MedianTokens/s)
-            tokens_text = cells[22].get_text(strip=True).replace(",", "")
-            tokens_per_sec = locale.atof(tokens_text) if tokens_text else 0.1
-
-            # Latency from cells[27] (MedianFirst Chunk (s))
-            latency_text = cells[27].get_text(strip=True).replace(",", "")
-            latency_sec = locale.atof(latency_text) if latency_text else 0
+            if tokens_per_sec is None:
+                tokens_per_sec = 0.1
+            if latency_sec is None:
+                latency_sec = 0.001
 
             model_info = ModelInfo(
                 name=api_id,
@@ -264,9 +476,8 @@ def parse_html_to_models(html_content: str) -> list[ModelInfo]:
                 metrics=ModelMetrics(
                     cost=ModelCost(blended_cost_per_1m=blended_cost),
                     speed=ModelLatency(
-                        time_to_first_token_ms=latency_sec
-                        * 1000,  # Convert to milliseconds
-                        tokens_per_second=tokens_per_sec,
+                        time_to_first_token_ms=float(latency_sec) * 1000.0,
+                        tokens_per_second=float(tokens_per_sec),
                     ),
                     intelligence=ModelBenchmarks(quality_score=quality_score),
                 ),
@@ -279,6 +490,16 @@ def parse_html_to_models(html_content: str) -> list[ModelInfo]:
             console.print(f"[yellow]Row content: {str(row)}[/yellow]")
             continue
 
+    # 3) Merge JSON models (if any) with table models; prefer JSON values and add any missing
+    if json_models:
+        merged: dict[tuple[str, str], ModelInfo] = {}
+        for m in json_models:
+            merged[(m.provider.lower(), m.name.lower())] = m
+        for m in models:
+            key = (m.provider.lower(), m.name.lower())
+            if key not in merged:
+                merged[key] = m
+        return list(merged.values())
     return models
 
 

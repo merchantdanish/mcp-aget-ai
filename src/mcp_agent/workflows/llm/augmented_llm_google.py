@@ -47,7 +47,7 @@ class GoogleAugmentedLLM(
     def __init__(self, *args, **kwargs):
         super().__init__(*args, type_converter=GoogleMCPTypeConverter, **kwargs)
 
-        self.provider = "Google (AI Studio)"
+        self.provider = "Google (AI_Studio)"
         # Initialize logger with name if available
         self.logger = get_logger(f"{__name__}.{self.name}" if self.name else __name__)
 
