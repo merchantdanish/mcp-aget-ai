@@ -90,7 +90,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, type_converter=MCPAzureTypeConverter, **kwargs)
 
-        self.provider = "Microsoft Azure"
+        self.provider = "Azure"
         # Initialize logger with name if available
         self.logger = get_logger(f"{__name__}.{self.name}" if self.name else __name__)
 
@@ -129,7 +129,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
     async def generate(self, message, request_params: RequestParams | None = None):
         """
         Process a query using an LLM and available tools.
-        The default implementation uses Azure OpenAI 4o-mini as the LLM.
+        The default implementation uses Azure OpenAI 5 as the LLM.
         Override this method to use a different LLM.
         """
         tracer = get_tracer(self.context)
