@@ -37,7 +37,7 @@ class TodoQueue:
         self.seen_step_descriptions: Set[str] = set()
         self.seen_task_hashes: Set[Tuple[str, ...]] = set()
 
-        logger.info("Initialized TodoQueue")
+        logger.debug("Initialized TodoQueue")
 
     def load_plan(self, plan: Plan) -> None:
         """
@@ -57,7 +57,7 @@ class TodoQueue:
                 added_steps += 1
                 added_tasks += len(filtered_step.tasks)
 
-        logger.info(f"Loaded plan: {added_steps} steps, {added_tasks} tasks")
+        logger.debug(f"Loaded plan: {added_steps} steps, {added_tasks} tasks")
 
     def merge_plan(self, plan: Plan) -> int:
         """
@@ -78,7 +78,7 @@ class TodoQueue:
                 self.seen_step_descriptions.add(step.description)
 
         added = len(self.pending_steps) - initial_count
-        logger.info(f"Merged plan: {added} new steps added")
+        logger.debug(f"Merged plan: {added} new steps added")
         return added
 
     def _filter_step(self, step: Step) -> Optional[Step]:
@@ -149,7 +149,7 @@ class TodoQueue:
                 completed_count += 1
                 logger.debug(f"Task completed: {task.name} - {task.description}")
 
-        logger.info(
+        logger.debug(
             f"Step completed: {step.description} "
             f"({completed_count}/{len(step.tasks)} tasks successful)"
         )
@@ -235,4 +235,32 @@ class TodoQueue:
         self.failed_task_names.clear()
         self.seen_step_descriptions.clear()
         self.seen_task_hashes.clear()
-        logger.info("Queue cleared")
+        logger.debug("Queue cleared")
+
+    def enqueue_step(self, step: Step) -> None:
+        """
+        Enqueue a single step to the queue.
+
+        Args:
+            step: Step to enqueue
+        """
+        filtered_step = self._filter_step(step)
+        if filtered_step and filtered_step.tasks:
+            self.pending_steps.append(filtered_step)
+            self.seen_step_descriptions.add(step.description)
+            logger.debug(
+                f"Enqueued step: {step.description} with {len(filtered_step.tasks)} tasks"
+            )
+
+    def dequeue_step(self) -> Optional[Step]:
+        """
+        Dequeue and return the next step from the queue.
+
+        Returns:
+            Next step or None if queue is empty
+        """
+        if self.pending_steps:
+            step = self.pending_steps.pop(0)
+            logger.debug(f"Dequeued step: {step.description}")
+            return step
+        return None
