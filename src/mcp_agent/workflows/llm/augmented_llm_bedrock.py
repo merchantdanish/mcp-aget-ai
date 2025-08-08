@@ -155,7 +155,7 @@ class BedrockAugmentedLLM(AugmentedLLM[MessageUnionTypeDef, MessageUnionTypeDef]
                     "additionalModelRequestFields": params.metadata,
                 }
 
-            self.logger.debug(f"{arguments}")
+            self.logger.debug("Completion request arguments:", data=arguments)
             self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
             response: ConverseResponseTypeDef = await self.executor.execute(
