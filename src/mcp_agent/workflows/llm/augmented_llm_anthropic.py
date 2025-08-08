@@ -1,8 +1,10 @@
+import asyncio
+import functools
 from typing import Any, Iterable, List, Type, Union, cast
 
 from pydantic import BaseModel
 
-from anthropic import Anthropic, AnthropicBedrock, AnthropicVertex
+from anthropic import Anthropic, AnthropicBedrock, AnthropicVertex, AsyncAnthropic
 from anthropic.types import (
     ContentBlock,
     DocumentBlockParam,
@@ -747,13 +749,22 @@ class AnthropicCompletionTasks:
         """
         Request a completion from Anthropic's API.
         """
-
-        anthropic = create_anthropic_instance(request.config)
-
-        payload = request.payload
-        response = anthropic.messages.create(**payload)
-        response = ensure_serializable(response)
-        return response
+        # Prefer async client where available to avoid blocking the event loop
+        if request.config.provider in (None, "", "anthropic"):
+            client = AsyncAnthropic(api_key=request.config.api_key)
+            payload = request.payload
+            response = await client.messages.create(**payload)
+            response = ensure_serializable(response)
+            return response
+        else:
+            anthropic = create_anthropic_instance(request.config)
+            payload = request.payload
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(
+                None, functools.partial(anthropic.messages.create, **payload)
+            )
+            response = ensure_serializable(response)
+            return response
 
     @staticmethod
     @workflow_task
@@ -778,12 +789,17 @@ class AnthropicCompletionTasks:
         # We pass the text through instructor to extract structured data
         client = instructor.from_anthropic(create_anthropic_instance(request.config))
 
-        # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
-            model=request.model,
-            response_model=response_model,
-            messages=[{"role": "user", "content": request.response_str}],
-            max_tokens=request.params.maxTokens,
+        # Extract structured data from natural language without blocking the loop
+        loop = asyncio.get_running_loop()
+        structured_response = await loop.run_in_executor(
+            None,
+            functools.partial(
+                client.chat.completions.create,
+                model=request.model,
+                response_model=response_model,
+                messages=[{"role": "user", "content": request.response_str}],
+                max_tokens=request.params.maxTokens,
+            ),
         )
 
         return structured_response

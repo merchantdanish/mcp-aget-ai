@@ -1,3 +1,5 @@
+import asyncio
+import functools
 from typing import TYPE_CHECKING, Type
 from boto3 import Session
 
@@ -395,7 +397,11 @@ class BedrockCompletionTasks:
             bedrock_client = session.client("bedrock-runtime")
 
         payload = request.payload
-        response = bedrock_client.converse(**payload)
+        # Offload to a thread to avoid blocking the event loop
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None, functools.partial(bedrock_client.converse, **payload)
+        )
         return response
 
     @staticmethod
@@ -432,11 +438,16 @@ class BedrockCompletionTasks:
 
         client = instructor.from_bedrock(bedrock_client)
 
-        # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
-            modelId=request.model,
-            messages=[{"role": "user", "content": request.response_str}],
-            response_model=response_model,
+        # Extract structured data from natural language without blocking
+        loop = asyncio.get_running_loop()
+        structured_response = await loop.run_in_executor(
+            None,
+            functools.partial(
+                client.chat.completions.create,
+                modelId=request.model,
+                messages=[{"role": "user", "content": request.response_str}],
+                response_model=response_model,
+            ),
         )
 
         return structured_response

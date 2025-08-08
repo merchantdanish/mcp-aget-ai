@@ -444,7 +444,7 @@ class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
         llm = self.llm_factory(planner)
 
         # Try to create a valid plan with retries
-        max_verification_attempts = 3
+        max_verification_attempts = 10
         previous_plan: Plan = None
         previous_errors = None
 

@@ -2028,12 +2028,13 @@ wheels = [
 
 [[package]]
 name = "mcp-agent"
-version = "0.1.9"
+version = "0.1.10"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "fastapi" },
     { name = "instructor" },
+    { name = "jsonref" },
     { name = "mcp" },
     { name = "numpy" },
     { name = "opentelemetry-distro" },
@@ -2117,6 +2118,7 @@ requires-dist = [
     { name = "google-cloud-aiplatform", marker = "extra == 'anthropic-vertex'", specifier = ">=1.101.0" },
     { name = "google-genai", marker = "extra == 'google'", specifier = ">=1.10.0" },
     { name = "instructor", specifier = ">=1.7.9" },
+    { name = "jsonref", specifier = ">=1.1.0" },
     { name = "langchain-core", marker = "extra == 'langchain'", specifier = ">=0.3.64" },
     { name = "mcp", specifier = ">=1.10.1" },
     { name = "numpy", specifier = ">=2.1.3" },

@@ -1,6 +1,6 @@
 [project]
 name = "mcp-agent"
-version = "0.1.9"
+version = "0.1.10"
 description = "Build effective agents with Model Context Protocol (MCP) using simple, composable patterns."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -31,6 +31,7 @@ dependencies = [
     "opentelemetry-instrumentation-openai>=0.39.3",
     "opentelemetry-instrumentation-anthropic>=0.39.3",
     "mcp>=1.10.1",
+    "jsonref>=1.1.0",
 ]
 
 [project.optional-dependencies]
