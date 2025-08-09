@@ -5,6 +5,7 @@ A central context object to store global state that is shared across the applica
 import asyncio
 import concurrent.futures
 from typing import Any, Optional, TYPE_CHECKING
+import warnings
 
 from pydantic import BaseModel, ConfigDict
 
@@ -275,6 +276,13 @@ def get_current_context() -> Context:
                 _global_context = loop.run_until_complete(initialize_context())
         except RuntimeError:
             _global_context = asyncio.run(initialize_context())
+
+        # Advisory: using a global context can cause cross-thread coupling
+        warnings.warn(
+            "get_current_context() created a global Context. "
+            "In multithreaded runs, instantiate an MCPApp per thread and use app.context instead.",
+            stacklevel=2,
+        )
     return _global_context
 
 

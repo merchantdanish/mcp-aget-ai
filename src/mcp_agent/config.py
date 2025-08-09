@@ -5,6 +5,8 @@ for the application configuration.
 
 from pathlib import Path
 from typing import Dict, List, Literal, Optional
+import threading
+import warnings
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -517,4 +519,16 @@ def get_settings(config_path: str | None = None) -> Settings:
 
     # No valid config found anywhere
     _settings = Settings()
+
+    # Thread-safety advisory: warn when using global singleton from non-main thread
+    if (
+        threading.current_thread() is not threading.main_thread()
+        and config_path is None
+    ):
+        warnings.warn(
+            "get_settings() returned the global Settings singleton on a non-main thread. "
+            "In multithreaded environments, prefer passing a Settings instance explicitly to MCPApp("
+            "settings=...) or provide a per-thread config_path to avoid cross-thread coupling.",
+            stacklevel=2,
+        )
     return _settings

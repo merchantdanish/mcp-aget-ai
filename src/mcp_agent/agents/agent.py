@@ -201,6 +201,8 @@ class Agent(BaseModel):
             # Fall back to global context if available
             from mcp_agent.core.context import get_current_context
 
+            # Advisory: obtaining a global context can be unsafe in multithreaded runs
+            # Prefer explicitly setting agent.context = app.context when running per-thread apps
             self.context = get_current_context()
 
         tracer = get_tracer(self.context)
@@ -1050,16 +1052,14 @@ class AgentTasks:
     Agent tasks for executing agent-related activities.
     """
 
-    # --- global-per-worker state -------------------------------------------------
-    # Maps agent name to its corresponding MCPAggregator
-    server_aggregators_for_agent: Dict[str, MCPAggregator] = {}
-    server_aggregators_for_agent_lock: asyncio.Lock = asyncio.Lock()
-    # Maps agent name to its reference count
-    agent_refcounts: dict[str, int] = {}
-    # ---------------------------------------------------------------------------
-
     def __init__(self, context: "Context"):
         self.context = context
+        # --- instance-scoped state (thread-safe for Temporal worker event loop) ---
+        # Using instance attributes avoids cross-thread event loop affinity issues with asyncio.Lock
+        # when activities run concurrently in Temporal workers or multi-threaded environments.
+        self.server_aggregators_for_agent: Dict[str, MCPAggregator] = {}
+        self.server_aggregators_for_agent_lock: asyncio.Lock = asyncio.Lock()
+        self.agent_refcounts: dict[str, int] = {}
 
     async def initialize_aggregator_task(
         self, request: InitAggregatorRequest
