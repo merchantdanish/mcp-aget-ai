@@ -282,8 +282,21 @@ class OpenAIAugmentedLLM(
 
                 self._annotate_span_for_completion_response(span, response, i)
 
-                total_input_tokens += response.usage.prompt_tokens
-                total_output_tokens += response.usage.completion_tokens
+                # Per-iteration token counts
+                iteration_input = response.usage.prompt_tokens
+                iteration_output = response.usage.completion_tokens
+
+                total_input_tokens += iteration_input
+                total_output_tokens += iteration_output
+
+                # Incremental token tracking inside loop so watchers update during long runs
+                if self.context.token_counter:
+                    await self.context.token_counter.record_usage(
+                        input_tokens=iteration_input,
+                        output_tokens=iteration_output,
+                        model_name=model,
+                        provider=self.provider,
+                    )
 
                 if not response.choices or len(response.choices) == 0:
                     # No response from the model, we're done
@@ -372,15 +385,6 @@ class OpenAIAugmentedLLM(
                         )
                     )
                     span.set_attributes(response_data)
-
-            # Record token usage in context token counter
-            if self.context.token_counter:
-                await self.context.token_counter.record_usage(
-                    input_tokens=total_input_tokens,
-                    output_tokens=total_output_tokens,
-                    model_name=model,
-                    provider=self.provider,
-                )
 
             return responses
 
