@@ -1,4 +1,4 @@
-from typing import Callable, List, Literal, Optional, TYPE_CHECKING
+from typing import Any, Callable, List, Literal, Optional, TYPE_CHECKING
 
 from opentelemetry import trace
 from pydantic import BaseModel
@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from mcp_agent.agents.agent import Agent
 from mcp_agent.tracing.semconv import GEN_AI_REQUEST_TOP_K
 from mcp_agent.tracing.telemetry import get_tracer
-from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
+from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM, RequestParams
 from mcp_agent.workflows.router.router_base import ResultT, Router, RouterResult
 from mcp_agent.logging.logger import get_logger
 
@@ -79,9 +79,14 @@ class StructuredResponse(BaseModel):
     """A list of categories to route the input to."""
 
 
-class LLMRouter(Router):
+class LLMRouter(AugmentedLLM[Any, Any], Router):
     """
-    A router that uses an LLM to route an input to a specific category.
+    A router workflow that also behaves like an AugmentedLLM.
+
+    - As a Router: provides route/route_to_* APIs that return routing targets.
+    - As an AugmentedLLM: generate/generate_str/generate_structured delegate to routing
+      and return the routing outputs in unstructured or structured forms, enabling
+      composition with other AugmentedLLM-based workflows (Parallel, Evaluator/Optimizer, etc.).
     """
 
     def __init__(
@@ -94,7 +99,9 @@ class LLMRouter(Router):
         context: Optional["Context"] = None,
         **kwargs,
     ):
-        super().__init__(
+        # Initialize Router side (category discovery, etc.)
+        Router.__init__(
+            self,
             server_names=server_names,
             agents=agents,
             functions=functions,
@@ -103,7 +110,21 @@ class LLMRouter(Router):
             **kwargs,
         )
 
-        self.llm = llm
+        # Initialize AugmentedLLM side for workflow composition
+        # We do not use this class itself to call a provider; we delegate to the
+        # provided classifier LLM. Still, initializing allows uniform tracing/name.
+        AugmentedLLM.__init__(
+            self,
+            name=(f"{llm.name}-router" if getattr(llm, "name", None) else None),
+            instruction="You are a router workflow that returns categories.",
+            context=context,
+            **kwargs,
+        )
+
+        # Inner LLM that makes the routing decision
+        self.classifier_llm: AugmentedLLM = llm
+        # Back-compat alias
+        self.llm: AugmentedLLM = llm
 
     @classmethod
     async def create(
@@ -248,8 +269,8 @@ class LLMRouter(Router):
                 context=context, request=request, top_k=top_k
             )
 
-            # Get routes from LLM
-            response = await self.llm.generate_structured(
+            # Get routes from the inner/classifier LLM
+            response = await self.classifier_llm.generate_structured(
                 message=prompt,
                 response_model=StructuredResponse,
             )
@@ -312,7 +333,8 @@ class LLMRouter(Router):
             return
         span.set_attribute("request", request)
         span.set_attribute(GEN_AI_REQUEST_TOP_K, top_k)
-        span.set_attribute("llm", self.llm.name)
+        if getattr(self.classifier_llm, "name", None):
+            span.set_attribute("llm", self.classifier_llm.name)
         span.set_attribute(
             "agents", [a.name for a in self.agents] if self.agents else []
         )
@@ -372,3 +394,53 @@ class LLMRouter(Router):
                 idx += 1
 
         return "\n\n".join(context_list)
+
+    # --- AugmentedLLM interface -------------------------------------------------
+    async def generate(
+        self,
+        message: str | Any | List[Any],
+        request_params: RequestParams | None = None,
+    ) -> List[Any]:
+        """Return routing results as a list for composition with other workflows.
+
+        The return value is a list of dicts: [{"category": name, "confidence": str, "reasoning": str?}]
+        """
+        results = await self._route_with_llm(str(message), top_k=5)
+        payload = [
+            {
+                "category": (
+                    r.result
+                    if isinstance(r.result, str)
+                    else (
+                        r.result.name
+                        if isinstance(r.result, Agent)
+                        else getattr(r.result, "__name__", str(r.result))
+                    )
+                ),
+                "confidence": r.confidence,
+                "reasoning": r.reasoning,
+            }
+            for r in results
+        ]
+        return payload  # type: ignore[return-value]
+
+    async def generate_str(
+        self,
+        message: str | Any | List[Any],
+        request_params: RequestParams | None = None,
+    ) -> str:
+        """Return routing results as JSON string."""
+        import json
+
+        payload = await self.generate(message=message, request_params=request_params)
+        return json.dumps({"categories": payload})
+
+    async def generate_structured(
+        self,
+        message: str | Any | List[Any],
+        response_model: type[StructuredResponse],
+        request_params: RequestParams | None = None,
+    ) -> StructuredResponse:
+        """Return routing results as a StructuredResponse Pydantic model."""
+        txt = await self.generate_str(message=message, request_params=request_params)
+        return response_model.model_validate_json(txt)

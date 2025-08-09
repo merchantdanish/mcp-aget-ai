@@ -1,6 +1,7 @@
 from typing import Callable, List, Optional, TYPE_CHECKING
 
 from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.router.router_llm import LLMRouter
 
@@ -49,6 +50,7 @@ class OpenAILLMRouter(LLMRouter):
     @classmethod
     async def create(
         cls,
+        llm: AugmentedLLM | None = None,
         server_names: List[str] | None = None,
         agents: List[Agent] | None = None,
         functions: List[Callable] | None = None,

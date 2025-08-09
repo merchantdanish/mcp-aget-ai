@@ -20,6 +20,7 @@ from mcp.types import (
     CallToolResult,
     CreateMessageRequestParams,
     CreateMessageResult,
+    ListToolsResult,
     SamplingMessage,
     TextContent,
     PromptMessage,
@@ -679,3 +680,19 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
             identifier = str(self.context.executor.uuid())
 
         return f"{prefix}-{identifier}"
+
+    # --- Agent convenience proxies -------------------------------------------------
+    async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
+        """Proxy to the underlying agent's list_tools for a simpler API."""
+        return await self.agent.list_tools(server_name=server_name)
+
+    async def close(self):
+        """Close underlying agent connections."""
+        await self.agent.close()
+
+    async def __aenter__(self):
+        await self.agent.__aenter__()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.agent.__aexit__(exc_type, exc_val, exc_tb)
