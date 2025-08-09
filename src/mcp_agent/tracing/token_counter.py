@@ -4,6 +4,7 @@ Provides hierarchical tracking of token usage across agents and subagents.
 """
 
 import asyncio
+import contextvars
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Callable, Set, Union, Tuple, Awaitable
 from datetime import datetime
@@ -12,6 +13,7 @@ import uuid
 import time
 from concurrent.futures import ThreadPoolExecutor
 import atexit
+from typing import AsyncContextManager
 
 from mcp_agent.workflows.llm.llm_selector import load_default_models, ModelInfo
 from mcp_agent.logging.logger import get_logger
@@ -124,12 +126,49 @@ class TokenNode:
     _cache_valid: bool = field(default=False, init=False)
     """Whether the cached aggregate is valid"""
 
+    # Internal reference back to the TokenCounter for convenience methods
+    _counter: Optional["TokenCounter"] = field(default=None, init=False, repr=False)
+
     def add_child(self, child: "TokenNode") -> None:
         """Add a child node"""
         child.parent = self
+        # Propagate counter reference to child if available
+        if self._counter and not child._counter:
+            child._counter = self._counter
         self.children.append(child)
         # Invalidate cache when structure changes
         self.invalidate_cache()
+
+    async def watch(
+        self,
+        callback: Union[
+            Callable[["TokenNode", TokenUsage], None],
+            Callable[["TokenNode", TokenUsage], Awaitable[None]],
+        ],
+        *,
+        threshold: Optional[int] = None,
+        throttle_ms: Optional[int] = None,
+        include_subtree: bool = True,
+    ) -> Optional[str]:
+        """Register a watch on this node for token usage updates.
+
+        Returns a watch_id or None if not available.
+        """
+        if not self._counter:
+            return None
+        return await self._counter.watch(
+            callback=callback,
+            node=self,
+            threshold=threshold,
+            throttle_ms=throttle_ms,
+            include_subtree=include_subtree,
+        )
+
+    async def unwatch(self, watch_id: str) -> bool:
+        """Remove a previously registered watch from this node."""
+        if not self._counter:
+            return False
+        return await self._counter.unwatch(watch_id)
 
     def invalidate_cache(self) -> None:
         """Invalidate cache for this node and all ancestors"""
@@ -209,6 +248,102 @@ class TokenNode:
             "metadata": self.metadata,
             "children": [child.to_dict() for child in self.children],
         }
+
+    # -------- Convenience APIs on the node --------
+    def format_tree(self) -> str:
+        """Return a human-friendly view of this node's subtree (synchronous)."""
+        lines: List[str] = []
+
+        def _walk(n: "TokenNode", prefix: str, is_last: bool) -> None:
+            connector = "└── " if is_last else "├── "
+            usage = n.aggregate_usage()
+            lines.append(
+                f"{prefix}{connector}{n.name} [{n.node_type}] — total {usage.total_tokens:,} (in {usage.input_tokens:,} / out {usage.output_tokens:,})"
+            )
+            child_prefix = prefix + ("    " if is_last else "│   ")
+            for idx, child in enumerate(n.children):
+                _walk(child, child_prefix, idx == len(n.children) - 1)
+
+        _walk(self, "", True)
+        return "\n".join(lines)
+
+    def get_usage(self) -> TokenUsageBase:
+        """Return this node's aggregated usage as TokenUsageBase."""
+        agg = self.aggregate_usage()
+        return TokenUsageBase(
+            input_tokens=agg.input_tokens,
+            output_tokens=agg.output_tokens,
+            total_tokens=agg.total_tokens,
+        )
+
+    def get_cost(self) -> float:
+        """Return this node's total cost using the owning TokenCounter if available."""
+        if not self._counter:
+            return 0.0
+        return self._counter._calculate_node_cost(self)
+
+    def get_summary(self) -> "NodeUsageDetail":
+        """Return a NodeUsageDetail for this node and its direct children."""
+        # Group children by type
+        children_by_type: Dict[str, List[TokenNode]] = defaultdict(list)
+        for child in self.children:
+            children_by_type[child.node_type].append(child)
+
+        # Calculate usage by child type
+        usage_by_node_type: Dict[str, NodeTypeUsage] = {}
+        for child_type, children in children_by_type.items():
+            type_usage = TokenUsage()
+            for child in children:
+                child_usage = child.aggregate_usage()
+                type_usage.input_tokens += child_usage.input_tokens
+                type_usage.output_tokens += child_usage.output_tokens
+                type_usage.total_tokens += child_usage.total_tokens
+
+            usage_by_node_type[child_type] = NodeTypeUsage(
+                node_type=child_type,
+                node_count=len(children),
+                usage=TokenUsageBase(
+                    input_tokens=type_usage.input_tokens,
+                    output_tokens=type_usage.output_tokens,
+                    total_tokens=type_usage.total_tokens,
+                ),
+            )
+
+        # Add individual children info
+        child_usage: List[NodeSummary] = []
+        for child in self.children:
+            child_aggregated = child.aggregate_usage()
+            child_usage.append(
+                NodeSummary(
+                    name=child.name,
+                    node_type=child.node_type,
+                    usage=TokenUsageBase(
+                        input_tokens=child_aggregated.input_tokens,
+                        output_tokens=child_aggregated.output_tokens,
+                        total_tokens=child_aggregated.total_tokens,
+                    ),
+                )
+            )
+
+        # Get aggregated usage for this node
+        aggregated = self.aggregate_usage()
+
+        return NodeUsageDetail(
+            name=self.name,
+            node_type=self.node_type,
+            direct_usage=TokenUsageBase(
+                input_tokens=self.usage.input_tokens,
+                output_tokens=self.usage.output_tokens,
+                total_tokens=self.usage.total_tokens,
+            ),
+            usage=TokenUsageBase(
+                input_tokens=aggregated.input_tokens,
+                output_tokens=aggregated.output_tokens,
+                total_tokens=aggregated.total_tokens,
+            ),
+            usage_by_node_type=usage_by_node_type,
+            child_usage=child_usage,
+        )
 
 
 @dataclass
@@ -330,9 +465,13 @@ class TokenCounter:
 
     def __init__(self):
         self._lock = asyncio.Lock()
-        self._stack: List[TokenNode] = []
+        # Global root of the usage tree (shared across tasks)
         self._root: Optional[TokenNode] = None
-        self._current: Optional[TokenNode] = None
+        # Per-async-context stack of nodes using ContextVar to isolate concurrent tasks
+        # NOTE: Never mutate the list in-place; always create a new list when setting
+        self._context_stack: contextvars.ContextVar[Optional[List[TokenNode]]] = (
+            contextvars.ContextVar("token_counter_stack", default=None)
+        )
 
         # Load model costs
         self._models: List[ModelInfo] = load_default_models()
@@ -368,6 +507,75 @@ class TokenCounter:
 
         # Register cleanup on shutdown
         atexit.register(self._cleanup_executor)
+
+    # -----------------------
+    # Public helpers
+    # -----------------------
+    def scope(
+        self, name: str, node_type: str, metadata: Optional[Dict[str, Any]] = None
+    ) -> AsyncContextManager[None]:
+        """Return an async context manager that pushes/pops a token scope safely.
+
+        Example:
+            async with counter.scope("MyAgent", "agent", {"method": "generate"}):
+                ...
+        """
+
+        counter = self
+
+        class _TokenScope:
+            def __init__(
+                self,
+                name: str,
+                node_type: str,
+                metadata: Optional[Dict[str, Any]] = None,
+            ) -> None:
+                self._name = name
+                self._node_type = node_type
+                self._metadata = metadata or {}
+                self._pushed = False
+
+            async def __aenter__(self) -> None:
+                try:
+                    await counter.push(self._name, self._node_type, self._metadata)
+                    self._pushed = True
+                except Exception:
+                    # Do not propagate errors from token tracking
+                    self._pushed = False
+
+            async def __aexit__(self, exc_type, exc, tb) -> None:
+                try:
+                    if self._pushed:
+                        await counter.pop()
+                except Exception:
+                    pass
+
+        return _TokenScope(name, node_type, metadata)
+
+    # -----------------------
+    # Internal helpers (per-task stack)
+    # -----------------------
+    def _get_stack(self) -> List[TokenNode]:
+        """Return the current task's stack (never None)."""
+        stack = self._context_stack.get()
+        return list(stack) if stack else []
+
+    def _set_stack(self, new_stack: List[TokenNode]) -> None:
+        """Set the current task's stack. Always pass a new list (no in-place mutation)."""
+        self._context_stack.set(list(new_stack))
+
+    def _get_current_node(self) -> Optional[TokenNode]:
+        stack = self._get_stack()
+        return stack[-1] if stack else None
+
+    # Backward-compatibility for existing tests and code that read these attributes
+    @property
+    def _stack(self) -> List[TokenNode]:  # type: ignore[override]
+        return self._get_stack()
+
+    @property
+    def _current(self) -> Optional[TokenNode]:  # type: ignore[override]
+        return self._get_current_node()
 
     def _build_cost_lookup(self) -> Dict[Tuple[str, str], Dict[str, float]]:
         """Build lookup table for model costs"""
@@ -548,15 +756,21 @@ class TokenCounter:
                 node = TokenNode(
                     name=name, node_type=node_type, metadata=metadata or {}
                 )
+                # Attach back-reference so node convenience methods can compute costs and watches
+                node._counter = self
 
-                if self._current:
-                    self._current.add_child(node)
+                # Determine parent from current task's stack; fall back to global root
+                parent = self._get_current_node() or self._root
+                if parent:
+                    parent.add_child(node)
                 else:
-                    # This is the root
+                    # First node in the tree becomes the root
                     self._root = node
 
-                self._stack.append(node)
-                self._current = node
+                # Update this task's stack
+                stack = self._get_stack()
+                stack.append(node)
+                self._set_stack(stack)
 
                 # logger.debug(f"Pushed token context: {name} ({node_type})")
         except Exception as e:
@@ -570,13 +784,14 @@ class TokenCounter:
         """
         try:
             async with self._lock:
-                if not self._stack:
+                stack = self._get_stack()
+                if not stack:
                     logger.warning("Attempted to pop from empty token stack")
                     return None
 
-                node = self._stack.pop()
-                self._current = self._stack[-1] if self._stack else None
-
+                node = stack[-1]
+                # Set the new stack without the last element
+                self._set_stack(stack[:-1])
                 return node
         except Exception as e:
             logger.error(f"Error in TokenCounter.pop: {e}", exc_info=True)
@@ -606,13 +821,18 @@ class TokenCounter:
             input_tokens = int(input_tokens) if input_tokens is not None else 0
             output_tokens = int(output_tokens) if output_tokens is not None else 0
 
-            # Check if we need to create root context (without holding lock)
-            if not self._current:
-                logger.warning("No current token context, creating root")
+            # Ensure this task has a current context; if not, bind it to the global root
+            if not self._get_current_node():
+                logger.warning("No current token context; binding to root")
                 try:
-                    await self.push("root", "app")
+                    async with self._lock:
+                        if not self._root:
+                            self._root = TokenNode(name="root", node_type="app")
+                            self._root._counter = self
+                        # Attach this task's stack to the root node without creating a new node
+                        self._set_stack([self._root])
                 except Exception as e:
-                    logger.error(f"Failed to create root context: {e}")
+                    logger.error(f"Failed to bind to root context: {e}")
                     return
 
             async with self._lock:
@@ -624,16 +844,17 @@ class TokenCounter:
                         logger.debug(f"Failed to find model info for {model_name}: {e}")
 
                 # Update current node's usage
-                if self._current and hasattr(self._current, "usage"):
-                    self._current.usage.input_tokens += input_tokens
-                    self._current.usage.output_tokens += output_tokens
-                    self._current.usage.total_tokens += input_tokens + output_tokens
+                current_node = self._get_current_node()
+                if current_node and hasattr(current_node, "usage"):
+                    current_node.usage.input_tokens += input_tokens
+                    current_node.usage.output_tokens += output_tokens
+                    current_node.usage.total_tokens += input_tokens + output_tokens
 
                     # Store model information
-                    if model_name and not self._current.usage.model_name:
-                        self._current.usage.model_name = model_name
-                    if model_info and not self._current.usage.model_info:
-                        self._current.usage.model_info = model_info
+                    if model_name and not current_node.usage.model_name:
+                        current_node.usage.model_name = model_name
+                    if model_info and not current_node.usage.model_info:
+                        current_node.usage.model_info = model_info
 
                     # logger.debug(
                     #     f"Recording {input_tokens + output_tokens} tokens for node {self._current.name} "
@@ -642,14 +863,14 @@ class TokenCounter:
 
                     # Only invalidate the current node's cache (not ancestors)
                     # This prevents cascade invalidation up the tree
-                    self._current._cache_valid = False
-                    self._current._cached_aggregate = None
+                    current_node._cache_valid = False
+                    current_node._cached_aggregate = None
                     # logger.debug(
                     #     f"Invalidated cache for {self._current.name} (targeted)"
                     # )
 
                     # Trigger watches which will handle ancestor updates
-                    self._trigger_watches(self._current)
+                    self._trigger_watches(current_node)
                     # logger.debug(f"Triggered watches for {self._current.name}")
 
                 # Track global usage by model and provider
@@ -749,9 +970,39 @@ class TokenCounter:
             return (input_tokens + output_tokens) * 0.5 / 1_000_000
 
     async def get_current_path(self) -> List[str]:
-        """Get the current stack path (e.g., ['app', 'workflow', 'agent'])"""
+        """Get the current task's stack path (e.g., ['app', 'workflow', 'agent'])."""
         async with self._lock:
-            return [node.name for node in self._stack]
+            stack = self._get_stack()
+            return [node.name for node in stack]
+
+    async def get_current_node(self) -> Optional[TokenNode]:
+        """Return the current task's token node (top of the stack)."""
+        async with self._lock:
+            return self._get_current_node()
+
+    # -----------------------
+    # Human-friendly display helpers
+    # -----------------------
+    async def format_node_tree(self, node: Optional[TokenNode] = None) -> str:
+        """Return a human-friendly string of the node tree starting at node (defaults to app root)."""
+        async with self._lock:
+            start = node or self._root
+        if not start:
+            return "(no token usage)"
+
+        lines: List[str] = []
+
+        def _walk(n: TokenNode, prefix: str, is_last: bool):
+            connector = "└── " if is_last else "├── "
+            usage = n.aggregate_usage()
+            line = f"{prefix}{connector}{n.name} [{n.node_type}] — total {usage.total_tokens:,} (in {usage.input_tokens:,} / out {usage.output_tokens:,})"
+            lines.append(line)
+            child_prefix = prefix + ("    " if is_last else "│   ")
+            for idx, child in enumerate(n.children):
+                _walk(child, child_prefix, idx == len(n.children) - 1)
+
+        _walk(start, "", True)
+        return "\n".join(lines)
 
     async def get_tree(self) -> Optional[Dict[str, Any]]:
         """Get the full token usage tree"""
@@ -877,9 +1128,11 @@ class TokenCounter:
     async def reset(self) -> None:
         """Reset all token tracking"""
         async with self._lock:
-            self._stack.clear()
+            # Clear global structures; individual task stacks are per-context and will
+            # be reset for the current task only.
             self._root = None
-            self._current = None
+            # Reset this task's stack to empty
+            self._set_stack([])
             self._usage_by_model.clear()
             self._watches.clear()
             self._node_watches.clear()
@@ -1052,10 +1305,11 @@ class TokenCounter:
         return await self.get_node_usage(name, "workflow")
 
     async def get_current_usage(self) -> Optional[TokenUsage]:
-        """Get token usage for the current context"""
+        """Get token usage for the current task's context"""
         async with self._lock:
-            if self._current:
-                return self._current.aggregate_usage()
+            current = self._get_current_node()
+            if current:
+                return current.aggregate_usage()
             return None
 
     async def get_node_subtree(

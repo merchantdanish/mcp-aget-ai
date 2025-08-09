@@ -212,6 +212,51 @@ class MCPApp:
             },
         )
 
+    async def get_token_node(self):
+        """Return the root app token node, if available."""
+        if not self._context or not getattr(self._context, "token_counter", None):
+            return None
+        return await self._context.token_counter.get_app_node()
+
+    async def get_token_usage(self):
+        """Return total token usage across the app (root node)."""
+        if not self._context or not getattr(self._context, "token_counter", None):
+            return None
+        node = await self.get_token_node()
+        return node.get_usage() if node else None
+
+    async def get_token_summary(self):
+        """Return TokenSummary across the entire app."""
+        if not self._context or not getattr(self._context, "token_counter", None):
+            return None
+        # Keep summary for model breakdowns while delegating node-sourced methods elsewhere
+        return await self._context.token_counter.get_summary()
+
+    async def watch_tokens(
+        self,
+        callback,
+        *,
+        threshold: int | None = None,
+        throttle_ms: int | None = None,
+        include_subtree: bool = True,
+    ) -> str | None:
+        """Watch the root app token usage. Returns a watch_id or None if not available."""
+        node = await self.get_token_node()
+        if not node:
+            return None
+        return await node.watch(
+            callback,
+            threshold=threshold,
+            throttle_ms=throttle_ms,
+            include_subtree=include_subtree,
+        )
+
+    async def format_token_tree(self) -> str:
+        node = await self.get_token_node()
+        if not node:
+            return "(no token usage)"
+        return node.format_tree()
+
     async def cleanup(self):
         """Cleanup application resources."""
         if not self._initialized:

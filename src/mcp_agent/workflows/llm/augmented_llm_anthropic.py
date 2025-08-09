@@ -266,13 +266,26 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
                 self._annotate_span_for_completion_response(span, response, i)
 
-                total_input_tokens += response.usage.input_tokens
-                total_output_tokens += response.usage.output_tokens
+                # Per-iteration token counts
+                iteration_input = response.usage.input_tokens
+                iteration_output = response.usage.output_tokens
+
+                total_input_tokens += iteration_input
+                total_output_tokens += iteration_output
 
                 response_as_message = self.convert_message_to_message_param(response)
                 messages.append(response_as_message)
                 responses.append(response)
                 finish_reasons.append(response.stop_reason)
+
+                # Incremental token tracking inside loop so watchers update during long runs
+                if self.context.token_counter:
+                    await self.context.token_counter.record_usage(
+                        input_tokens=iteration_input,
+                        output_tokens=iteration_output,
+                        model_name=model,
+                        provider=self.provider,
+                    )
 
                 if response.stop_reason == "end_turn":
                     self.logger.debug(
@@ -358,15 +371,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                         )
                     )
                     span.set_attributes(response_data)
-
-            # Record token usage in context token counter
-            if self.context.token_counter:
-                await self.context.token_counter.record_usage(
-                    input_tokens=total_input_tokens,
-                    output_tokens=total_output_tokens,
-                    model_name=model,
-                    provider=self.provider,
-                )
 
             return responses
 

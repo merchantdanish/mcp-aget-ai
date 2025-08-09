@@ -278,15 +278,32 @@ class TestOrchestratorTokenCounting:
                 orchestrator_node = child
                 break
 
-        assert orchestrator_node is not None, (
-            "Orchestrator agent node not found in hierarchy"
-        )
+        assert (
+            orchestrator_node is not None
+        ), "Orchestrator agent node not found in hierarchy"
 
         # The Orchestrator agent node should have the same token count as the app
         orchestrator_usage = orchestrator_node.aggregate_usage()
         assert orchestrator_usage.total_tokens == 720
         assert orchestrator_usage.input_tokens == 480
         assert orchestrator_usage.output_tokens == 240
+
+        # Regression: planner/synthesizer nodes should have non-zero totals and sum(children) <= parent
+        child_totals = 0
+        planner_seen = False
+        synthesizer_seen = False
+        for child in orchestrator_node.children:
+            usage = child.aggregate_usage()
+            child_totals += usage.total_tokens
+            if "Planner" in child.name:
+                planner_seen = True
+                assert usage.total_tokens > 0
+            if "Synthesizer" in child.name:
+                synthesizer_seen = True
+                assert usage.total_tokens > 0
+        assert planner_seen, "Planner node not found under orchestrator"
+        assert synthesizer_seen, "Synthesizer node not found under orchestrator"
+        assert child_totals <= orchestrator_usage.total_tokens
 
     @pytest.mark.asyncio
     async def test_orchestrator_token_tracking_iterative_plan(
@@ -367,9 +384,9 @@ class TestOrchestratorTokenCounting:
                 orchestrator_node = child
                 break
 
-        assert orchestrator_node is not None, (
-            "Orchestrator agent node not found in hierarchy"
-        )
+        assert (
+            orchestrator_node is not None
+        ), "Orchestrator agent node not found in hierarchy"
 
         # The Orchestrator agent node should have the same token count
         orchestrator_usage = orchestrator_node.aggregate_usage()

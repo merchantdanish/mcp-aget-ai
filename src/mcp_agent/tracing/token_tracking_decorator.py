@@ -25,39 +25,22 @@ def track_tokens(
         async def wrapper(self, *args, **kwargs) -> T:
             # Only track if we have a token counter in context
             if hasattr(self, "context") and self.context and self.context.token_counter:
-                pushed = False
-                try:
-                    # Build metadata
-                    metadata = {
-                        "method": method.__name__,
-                        "class": self.__class__.__name__,
-                    }
+                # Build metadata
+                metadata = {
+                    "method": method.__name__,
+                    "class": self.__class__.__name__,
+                }
 
-                    # Add any model info if available
-                    if hasattr(self, "provider"):
-                        metadata["provider"] = self.provider
+                # Add any model info if available
+                if hasattr(self, "provider"):
+                    metadata["provider"] = getattr(self, "provider")
 
-                    # Push context
-                    await self.context.token_counter.push(
-                        name=getattr(self, "name", self.__class__.__name__),
-                        node_type=node_type,
-                        metadata=metadata,
-                    )
-                    pushed = True
-                except Exception:
-                    pass  # Ignore errors in pushing context
-
-                try:
-                    # Execute the wrapped method
-                    result = await method(self, *args, **kwargs)
-                    return result
-                finally:
-                    # Only pop if we successfully pushed
-                    try:
-                        if pushed:
-                            await self.context.token_counter.pop()
-                    except Exception:
-                        pass
+                async with self.context.token_counter.scope(
+                    name=getattr(self, "name", self.__class__.__name__),
+                    node_type=node_type,
+                    metadata=metadata,
+                ):
+                    return await method(self, *args, **kwargs)
             else:
                 # No token counter, just execute normally
                 return await method(self, *args, **kwargs)

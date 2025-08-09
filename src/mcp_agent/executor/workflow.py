@@ -510,6 +510,71 @@ class Workflow(ABC, Generic[T], ContextDependent):
 
     # Static registry methods have been moved to the WorkflowRegistry class
 
+    async def get_token_node(self, return_all_matches: bool = False):
+        """Return this Workflow's token node(s) from the global counter."""
+        if not self.context or not getattr(self.context, "token_counter", None):
+            return [] if return_all_matches else None
+        counter = self.context.token_counter
+        if return_all_matches:
+            nodes = await counter.get_workflow_node(
+                name=self.name, return_all_matches=True
+            )
+            # Also support matching by IDs if present
+            if self.id:
+                nodes += await counter.get_workflow_node(
+                    workflow_id=self.id, return_all_matches=True
+                )
+            if self.run_id:
+                nodes += await counter.get_workflow_node(
+                    run_id=self.run_id, return_all_matches=True
+                )
+            return nodes
+        # Prefer run_id, then workflow_id, then name
+        if self.run_id:
+            node = await counter.get_workflow_node(run_id=self.run_id)
+            if node:
+                return node
+        if self.id:
+            node = await counter.get_workflow_node(workflow_id=self.id)
+            if node:
+                return node
+        return await counter.get_workflow_node(name=self.name)
+
+    async def get_token_usage(self):
+        """Return aggregated token usage for this Workflow (including children)."""
+        node = await self.get_token_node()
+        return node.get_usage() if node else None
+
+    async def get_token_cost(self) -> float:
+        """Return total cost for this Workflow (including children)."""
+        node = await self.get_token_node()
+        return node.get_cost() if node else 0.0
+
+    async def watch_tokens(
+        self,
+        callback,
+        *,
+        threshold: int | None = None,
+        throttle_ms: int | None = None,
+        include_subtree: bool = True,
+    ) -> str | None:
+        """Watch this Workflow's token usage. Returns a watch_id or None if not available."""
+        node = await self.get_token_node()
+        if not node:
+            return None
+        return await node.watch(
+            callback,
+            threshold=threshold,
+            throttle_ms=throttle_ms,
+            include_subtree=include_subtree,
+        )
+
+    async def format_token_tree(self) -> str:
+        node = await self.get_token_node()
+        if not node:
+            return "(no token usage)"
+        return node.format_tree()
+
     async def update_state(self, **kwargs):
         """Syntactic sugar to update workflow state."""
         for key, value in kwargs.items():
