@@ -25,6 +25,7 @@ from mcp_agent.human_input.types import HumanInputRequest
 from pydantic import ConfigDict
 from temporalio import activity, workflow, exceptions
 from temporalio.client import Client as TemporalClient, WorkflowHandle
+from temporalio.contrib.opentelemetry import TracingInterceptor
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.worker import Worker
@@ -262,6 +263,9 @@ class TemporalExecutor(Executor):
                 api_key=self.config.api_key,
                 tls=self.config.tls,
                 data_converter=pydantic_data_converter,
+                interceptors=[TracingInterceptor()]
+                if self.context.tracing_enabled
+                else [],
                 rpc_metadata=self.config.rpc_metadata,
             )
 

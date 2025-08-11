@@ -1,4 +1,5 @@
 version = 1
+revision = 1
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -2085,7 +2086,7 @@ openai = [
     { name = "openai" },
 ]
 temporal = [
-    { name = "temporalio" },
+    { name = "temporalio", extra = ["opentelemetry"] },
 ]
 
 [package.dev-dependencies]
@@ -2134,10 +2135,11 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rich", specifier = ">=13.9.4" },
     { name = "scikit-learn", specifier = ">=1.6.0" },
-    { name = "temporalio", marker = "extra == 'temporal'", specifier = ">=1.10.0" },
+    { name = "temporalio", extras = ["opentelemetry"], marker = "extra == 'temporal'", specifier = ">=1.10.0" },
     { name = "typer", specifier = ">=0.15.1" },
     { name = "websockets", specifier = ">=12.0" },
 ]
+provides-extras = ["temporal", "anthropic", "anthropic-bedrock", "anthropic-vertex", "bedrock", "openai", "azure", "google", "cohere", "langchain", "crewai"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -4135,6 +4137,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f2/43/245578eaeaddc4166ec5726adfeea7cc356a6600f9996e55d74b13e162e6/temporalio-1.11.1-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:96711fc26387e6308ff68c12653a887230bb86cf26e6bc00c7f9208d3e6641df", size = 11864944 },
     { url = "https://files.pythonhosted.org/packages/6e/43/f7fe59b4d2a4ed1b14aadaa8b3a848ea5a36958f51f78d0e32c7d44f0d37/temporalio-1.11.1-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:78f6d4d1032ede5051a10e41670d6168e2821a5c2e533e2a2eafa0eb8d2d1911", size = 12041100 },
     { url = "https://files.pythonhosted.org/packages/88/17/1d58baeccbd4caea47360d623e67165120023ff8bbb7bc1f24e0f300d26a/temporalio-1.11.1-cp39-abi3-win_amd64.whl", hash = "sha256:504f6ddb219bd7b39c67b7648c599edf3626043eef90d11da952af5db8c7f1a5", size = 12125170 },
+]
+
+[package.optional-dependencies]
+opentelemetry = [
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-sdk" },
 ]
 
 [[package]]
