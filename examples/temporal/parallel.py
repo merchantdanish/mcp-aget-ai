@@ -155,7 +155,6 @@ async def display_token_summary(context: Context):
 
 async def main():
     async with app.run() as orchestrator_app:
-        context = orchestrator_app.context
         executor: TemporalExecutor = orchestrator_app.executor
 
         handle = await executor.start_workflow(

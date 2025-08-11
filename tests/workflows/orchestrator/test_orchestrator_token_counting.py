@@ -278,9 +278,9 @@ class TestOrchestratorTokenCounting:
                 orchestrator_node = child
                 break
 
-        assert (
-            orchestrator_node is not None
-        ), "Orchestrator agent node not found in hierarchy"
+        assert orchestrator_node is not None, (
+            "Orchestrator agent node not found in hierarchy"
+        )
 
         # The Orchestrator agent node should have the same token count as the app
         orchestrator_usage = orchestrator_node.aggregate_usage()
@@ -384,9 +384,9 @@ class TestOrchestratorTokenCounting:
                 orchestrator_node = child
                 break
 
-        assert (
-            orchestrator_node is not None
-        ), "Orchestrator agent node not found in hierarchy"
+        assert orchestrator_node is not None, (
+            "Orchestrator agent node not found in hierarchy"
+        )
 
         # The Orchestrator agent node should have the same token count
         orchestrator_usage = orchestrator_node.aggregate_usage()

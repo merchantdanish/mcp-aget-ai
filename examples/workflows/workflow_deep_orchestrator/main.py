@@ -443,7 +443,7 @@ async def main():
         # Create configuration for the Deep Orchestrator
         config = DeepOrchestratorConfig(
             name="DeepAssignmentGrader",
-            #available_agents=_predefined_agents,  # UNCOMMENT to use predefined agents
+            # available_agents=_predefined_agents,  # UNCOMMENT to use predefined agents
             available_servers=list(context.server_registry.registry.keys()),
             execution=ExecutionConfig(
                 max_iterations=25,
