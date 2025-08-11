@@ -23,8 +23,32 @@ def track_tokens(
     def decorator(method: Callable[..., T]) -> Callable[..., T]:
         @functools.wraps(method)
         async def wrapper(self, *args, **kwargs) -> T:
+            # Fast-path: only perform Temporal replay checks if engine is Temporal
+            is_temporal_replay = False
+            is_temporal_engine = False
+            try:
+                cfg = getattr(getattr(self, "context", None), "config", None)
+                is_temporal_engine = (
+                    getattr(cfg, "execution_engine", None) == "temporal"
+                )
+            except Exception:
+                is_temporal_engine = False
+
+            if is_temporal_engine:
+                try:
+                    from temporalio import workflow as _twf  # type: ignore
+
+                    if _twf._Runtime.current():  # type: ignore[attr-defined]
+                        is_temporal_replay = _twf.unsafe.is_replaying()  # type: ignore[attr-defined]
+                except Exception:
+                    is_temporal_replay = False
             # Only track if we have a token counter in context
-            if hasattr(self, "context") and self.context and self.context.token_counter:
+            if (
+                hasattr(self, "context")
+                and self.context
+                and self.context.token_counter
+                and not is_temporal_replay
+            ):
                 # Build metadata
                 metadata = {
                     "method": method.__name__,

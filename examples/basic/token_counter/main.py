@@ -145,7 +145,7 @@ async def display_node_tree(
         print(f"{indent}{'    ' if is_last else '│   '}")
         child_indent = indent + ("    " if is_last else "│   ")
         for i, child in enumerate(node.children):
-            display_node_tree(child, child_indent, i == len(node.children) - 1, context)
+            await display_node_tree(child, child_indent, i == len(node.children) - 1, context)
 
 
 async def example_with_token_monitoring():

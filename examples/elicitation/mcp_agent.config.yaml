@@ -4,7 +4,7 @@ execution_engine: asyncio
 logger:
   transports: [file]
   level: debug
-  progress_display: true
+  progress_display: false
   path_settings:
     path_pattern: "logs/mcp-agent-{unique_id}.jsonl"
     unique_id: "timestamp" # Options: "timestamp" or "session_id"

@@ -197,8 +197,8 @@ async def initialize_context(
 
     context.session_id = str(context.executor.uuid())
 
-    # Initialize token counter
-    context.token_counter = TokenCounter()
+    # Initialize token counter with engine hint for fast path checks
+    context.token_counter = TokenCounter(execution_engine=config.execution_engine)
 
     # Configure logging and telemetry
     context.tracing_config = await configure_otel(config, context.session_id)

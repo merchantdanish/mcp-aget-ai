@@ -463,8 +463,13 @@ class TokenCounter:
     Tracks token usage across the call stack.
     """
 
-    def __init__(self):
+    def __init__(self, execution_engine: Optional[str] = None):
         self._lock = asyncio.Lock()
+        # Engine hint for fast-path behavior (avoid imports when not Temporal)
+        self._engine: Optional[str] = execution_engine
+        self._is_temporal_engine: bool = (
+            execution_engine == "temporal" if execution_engine is not None else False
+        )
         # Global root of the usage tree (shared across tasks)
         self._root: Optional[TokenNode] = None
         # Per-async-context stack of nodes using ContextVar to isolate concurrent tasks
@@ -817,6 +822,18 @@ class TokenCounter:
             model_info: Optional full ModelInfo object with metadata
         """
         try:
+            # Skip recording during Temporal workflow replay to avoid double counting
+            if self._is_temporal_engine:
+                try:
+                    from temporalio import workflow as _twf  # type: ignore
+
+                    if _twf._Runtime.current():  # type: ignore[attr-defined]
+                        if _twf.unsafe.is_replaying():  # type: ignore[attr-defined]
+                            return
+                except Exception:
+                    # If Temporal is unavailable or not in a workflow runtime, ignore
+                    pass
+
             # Validate inputs
             input_tokens = int(input_tokens) if input_tokens is not None else 0
             output_tokens = int(output_tokens) if output_tokens is not None else 0
