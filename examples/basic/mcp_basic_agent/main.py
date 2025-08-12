@@ -3,7 +3,6 @@ import os
 import time
 
 from mcp_agent.app import MCPApp
-from mcp_agent.core.context import Context
 from mcp_agent.config import (
     Settings,
     LoggerSettings,
@@ -17,7 +16,7 @@ from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.llm.llm_selector import ModelPreferences
 from mcp_agent.workflows.llm.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-from mcp_agent.tracing.token_counter import TokenUsage, TokenSummary
+from mcp_agent.tracing.token_counter import TokenSummary
 
 settings = Settings(
     execution_engine="asyncio",
@@ -101,39 +100,23 @@ async def example_usage():
             )
             logger.info(f"Paragraph as a tweet: {result}")
 
-        # Display final comprehensive token usage summary
-        await display_token_summary(context)
+        # Display final comprehensive token usage summary (use app convenience)
+        await display_token_summary(agent_app, finder_agent)
 
 
-def display_token_usage(usage: TokenUsage, label: str = "Token Usage"):
-    """Display token usage in a formatted way"""
-    print(f"\n{label}:")
-    print(f"  Total tokens: {usage.total_tokens:,}")
-    print(f"  Input tokens: {usage.input_tokens:,}")
-    print(f"  Output tokens: {usage.output_tokens:,}")
-
-
-async def display_token_summary(context: Context):
-    """Display comprehensive token usage summary"""
-    if not context.token_counter:
-        print("\nNo token counter available")
-        return
-
-    summary: TokenSummary = await context.token_counter.get_summary()
+async def display_token_summary(app_ctx: MCPApp, agent: Agent | None = None):
+    """Display comprehensive token usage summary using app/agent convenience APIs."""
+    summary: TokenSummary = await app_ctx.get_token_summary()
 
     print("\n" + "=" * 50)
     print("TOKEN USAGE SUMMARY")
     print("=" * 50)
 
-    # Total usage
-    display_token_usage(
-        TokenUsage(
-            total_tokens=summary.usage.total_tokens,
-            input_tokens=summary.usage.input_tokens,
-            output_tokens=summary.usage.output_tokens,
-        ),
-        label="Total Usage",
-    )
+    # Total usage and cost
+    print("\nTotal Usage:")
+    print(f"  Total tokens: {summary.usage.total_tokens:,}")
+    print(f"  Input tokens: {summary.usage.input_tokens:,}")
+    print(f"  Output tokens: {summary.usage.output_tokens:,}")
     print(f"  Total cost: ${summary.cost:.4f}")
 
     # Breakdown by model
@@ -146,15 +129,15 @@ async def display_token_summary(context: Context):
             )
             print(f"    Cost: ${data.cost:.4f}")
 
-    # Breakdown by agent
-    agents_breakdown = await context.token_counter.get_agents_breakdown()
-    if agents_breakdown:
-        print("\nBreakdown by Agent:")
-        for agent_name, usage in agents_breakdown.items():
-            print(f"\n  {agent_name}:")
-            print(f"    Total tokens: {usage.total_tokens:,}")
-            print(f"    Input tokens: {usage.input_tokens:,}")
-            print(f"    Output tokens: {usage.output_tokens:,}")
+    # Optional: show a specific agent's aggregated usage
+    if agent is not None:
+        agent_usage = await agent.get_token_usage()
+        if agent_usage:
+            print("\nAgent Usage:")
+            print(f"  Agent: {agent.name}")
+            print(f"  Total tokens: {agent_usage.total_tokens:,}")
+            print(f"  Input tokens: {agent_usage.input_tokens:,}")
+            print(f"  Output tokens: {agent_usage.output_tokens:,}")
 
     print("\n" + "=" * 50)
 

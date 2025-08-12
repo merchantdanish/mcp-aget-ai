@@ -191,6 +191,71 @@ class Agent(BaseModel):
                     span.set_attribute(f"llm.{attr}", value)
             return self.llm
 
+    async def get_token_node(self, return_all_matches: bool = False):
+        """Return this Agent's token node(s) from the global counter."""
+        if not self.context or not getattr(self.context, "token_counter", None):
+            return [] if return_all_matches else None
+        counter = self.context.token_counter
+        return (
+            await counter.get_agent_node(self.name, return_all_matches=True)
+            if return_all_matches
+            else await counter.get_agent_node(self.name)
+        )
+
+    async def get_token_usage(self):
+        """Return aggregated token usage for this Agent (including children)."""
+        node = await self.get_token_node()
+        return node.get_usage() if node else None
+
+    async def get_token_cost(self) -> float:
+        """Return total cost for this Agent (including children)."""
+        node = await self.get_token_node()
+        return node.get_cost() if node else 0.0
+
+    async def watch_tokens(
+        self,
+        callback,
+        *,
+        threshold: int | None = None,
+        throttle_ms: int | None = None,
+        include_subtree: bool = True,
+    ) -> str | None:
+        """Watch this Agent's token usage. Returns a watch_id or None if not available."""
+        if not self.context or not getattr(self.context, "token_counter", None):
+            return None
+        counter = self.context.token_counter
+        # If there are multiple nodes with the same agent name, register a name/type-based watch
+        nodes = await counter.get_agent_node(self.name, return_all_matches=True)
+        if isinstance(nodes, list) and len(nodes) > 1:
+            return await counter.watch(
+                callback,
+                node_name=self.name,
+                node_type="agent",
+                threshold=threshold,
+                throttle_ms=throttle_ms,
+                include_subtree=include_subtree,
+            )
+        # Otherwise fall back to watching a specific resolved node
+        node = (
+            nodes[0]
+            if isinstance(nodes, list) and nodes
+            else await self.get_token_node()
+        )
+        if not node:
+            return None
+        return await node.watch(
+            callback,
+            threshold=threshold,
+            throttle_ms=throttle_ms,
+            include_subtree=include_subtree,
+        )
+
+    async def format_token_tree(self) -> str:
+        node = await self.get_token_node()
+        if not node:
+            return "(no token usage)"
+        return node.format_tree()
+
     async def initialize(self, force: bool = False):
         """Initialize the agent."""
 
@@ -201,6 +266,8 @@ class Agent(BaseModel):
             # Fall back to global context if available
             from mcp_agent.core.context import get_current_context
 
+            # Advisory: obtaining a global context can be unsafe in multithreaded runs
+            # Prefer explicitly setting agent.context = app.context when running per-thread apps
             self.context = get_current_context()
 
         tracer = get_tracer(self.context)
@@ -1050,16 +1117,14 @@ class AgentTasks:
     Agent tasks for executing agent-related activities.
     """
 
-    # --- global-per-worker state -------------------------------------------------
-    # Maps agent name to its corresponding MCPAggregator
-    server_aggregators_for_agent: Dict[str, MCPAggregator] = {}
-    server_aggregators_for_agent_lock: asyncio.Lock = asyncio.Lock()
-    # Maps agent name to its reference count
-    agent_refcounts: dict[str, int] = {}
-    # ---------------------------------------------------------------------------
-
     def __init__(self, context: "Context"):
         self.context = context
+        # --- instance-scoped state (thread-safe for Temporal worker event loop) ---
+        # Using instance attributes avoids cross-thread event loop affinity issues with asyncio.Lock
+        # when activities run concurrently in Temporal workers or multi-threaded environments.
+        self.server_aggregators_for_agent: Dict[str, MCPAggregator] = {}
+        self.server_aggregators_for_agent_lock: asyncio.Lock = asyncio.Lock()
+        self.agent_refcounts: dict[str, int] = {}
 
     async def initialize_aggregator_task(
         self, request: InitAggregatorRequest

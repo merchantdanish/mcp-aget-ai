@@ -1,8 +1,10 @@
+import asyncio
+import functools
 from typing import Any, Iterable, List, Type, Union, cast
 
 from pydantic import BaseModel
 
-from anthropic import Anthropic, AnthropicBedrock, AnthropicVertex
+from anthropic import Anthropic, AnthropicBedrock, AnthropicVertex, AsyncAnthropic
 from anthropic.types import (
     ContentBlock,
     DocumentBlockParam,
@@ -236,7 +238,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                 if params.metadata:
                     arguments = {**arguments, **params.metadata}
 
-                self.logger.debug(f"{arguments}")
+                self.logger.debug("Completion request arguments:", data=arguments)
                 self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
                 request = RequestCompletionRequest(
@@ -264,13 +266,26 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
 
                 self._annotate_span_for_completion_response(span, response, i)
 
-                total_input_tokens += response.usage.input_tokens
-                total_output_tokens += response.usage.output_tokens
+                # Per-iteration token counts
+                iteration_input = response.usage.input_tokens
+                iteration_output = response.usage.output_tokens
+
+                total_input_tokens += iteration_input
+                total_output_tokens += iteration_output
 
                 response_as_message = self.convert_message_to_message_param(response)
                 messages.append(response_as_message)
                 responses.append(response)
                 finish_reasons.append(response.stop_reason)
+
+                # Incremental token tracking inside loop so watchers update during long runs
+                if self.context.token_counter:
+                    await self.context.token_counter.record_usage(
+                        input_tokens=iteration_input,
+                        output_tokens=iteration_output,
+                        model_name=model,
+                        provider=self.provider,
+                    )
 
                 if response.stop_reason == "end_turn":
                     self.logger.debug(
@@ -356,15 +371,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
                         )
                     )
                     span.set_attributes(response_data)
-
-            # Record token usage in context token counter
-            if self.context.token_counter:
-                await self.context.token_counter.record_usage(
-                    input_tokens=total_input_tokens,
-                    output_tokens=total_output_tokens,
-                    model_name=model,
-                    provider=self.provider,
-                )
 
             return responses
 
@@ -747,13 +753,22 @@ class AnthropicCompletionTasks:
         """
         Request a completion from Anthropic's API.
         """
-
-        anthropic = create_anthropic_instance(request.config)
-
-        payload = request.payload
-        response = anthropic.messages.create(**payload)
-        response = ensure_serializable(response)
-        return response
+        # Prefer async client where available to avoid blocking the event loop
+        if request.config.provider in (None, "", "anthropic"):
+            client = AsyncAnthropic(api_key=request.config.api_key)
+            payload = request.payload
+            response = await client.messages.create(**payload)
+            response = ensure_serializable(response)
+            return response
+        else:
+            anthropic = create_anthropic_instance(request.config)
+            payload = request.payload
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(
+                None, functools.partial(anthropic.messages.create, **payload)
+            )
+            response = ensure_serializable(response)
+            return response
 
     @staticmethod
     @workflow_task
@@ -778,12 +793,17 @@ class AnthropicCompletionTasks:
         # We pass the text through instructor to extract structured data
         client = instructor.from_anthropic(create_anthropic_instance(request.config))
 
-        # Extract structured data from natural language
-        structured_response = client.chat.completions.create(
-            model=request.model,
-            response_model=response_model,
-            messages=[{"role": "user", "content": request.response_str}],
-            max_tokens=request.params.maxTokens,
+        # Extract structured data from natural language without blocking the loop
+        loop = asyncio.get_running_loop()
+        structured_response = await loop.run_in_executor(
+            None,
+            functools.partial(
+                client.chat.completions.create,
+                model=request.model,
+                response_model=response_model,
+                messages=[{"role": "user", "content": request.response_str}],
+                max_tokens=request.params.maxTokens,
+            ),
         )
 
         return structured_response

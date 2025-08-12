@@ -455,6 +455,122 @@ class Workflow(ABC, Generic[T], ContextDependent):
                     else:
                         cb(sig_obj)
 
+        @workflow.query(name="token_tree")
+        def _query_token_tree(self) -> str:
+            """Return a best-effort token usage tree string from the workflow process.
+
+            Notes:
+            - Queries must be deterministic and fast. We avoid awaiting any locks and read
+              the current in-memory snapshot. This may be slightly stale during execution
+              but is safe and sufficient for observability.
+            """
+            try:
+                counter = getattr(self.context, "token_counter", None)
+                if not counter:
+                    return "(no token usage)"
+                root = getattr(counter, "_root", None)
+                if not root:
+                    return "(no token usage)"
+                return root.format_tree()
+            except Exception:
+                return "(no token usage)"
+
+        @workflow.query(name="token_summary")
+        def _query_token_summary(self) -> Dict[str, Any]:
+            """Return a JSON-serializable token usage summary from the workflow process.
+
+            Structure:
+              {
+                "total_usage": {"total_tokens": int, "input_tokens": int, "output_tokens": int},
+                "total_cost": float,
+                "models": {
+                  "<model>(<provider>)" | "<model>": {
+                    "input_tokens": int,
+                    "output_tokens": int,
+                    "total_tokens": int,
+                    "cost": float,
+                    "provider": str | None
+                  }
+                },
+                "token_tree": str
+              }
+            """
+            summary: Dict[str, Any] = {
+                "total_usage": {
+                    "total_tokens": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                },
+                "total_cost": 0.0,
+                "models": {},
+                "token_tree": "(no token usage)",
+            }
+
+            try:
+                counter = getattr(self.context, "token_counter", None)
+                if not counter:
+                    return summary
+
+                # Build tree string from current root snapshot
+                root = getattr(counter, "_root", None)
+                if not root:
+                    return summary
+
+                summary["token_tree"] = root.format_tree()
+                agg = root.aggregate_usage()
+                summary["total_usage"] = {
+                    "input_tokens": int(agg.input_tokens),
+                    "output_tokens": int(agg.output_tokens),
+                    "total_tokens": int(agg.total_tokens),
+                }
+
+                # Derive model usage strictly from the current tree to avoid cross-run accumulation
+                from collections import defaultdict as _dd
+
+                model_nodes = _dd(list)  # type: ignore[var-annotated]
+                try:
+                    counter._collect_model_nodes(root, model_nodes)  # type: ignore[attr-defined]
+                except Exception:
+                    model_nodes = {}
+
+                total_cost = 0.0
+                for (model_name, provider), nodes in getattr(
+                    model_nodes, "items", lambda: []
+                )():
+                    total_input = 0
+                    total_output = 0
+                    for n in nodes:
+                        total_input += int(getattr(n.usage, "input_tokens", 0) or 0)
+                        total_output += int(getattr(n.usage, "output_tokens", 0) or 0)
+                    total_tokens = total_input + total_output
+
+                    cost = 0.0
+                    try:
+                        cost = float(
+                            counter.calculate_cost(
+                                model_name, total_input, total_output, provider
+                            )
+                        )
+                    except Exception:
+                        cost = 0.0
+                    total_cost += cost
+
+                    key = f"{model_name} ({provider})" if provider else model_name
+                    summary["models"][key] = {
+                        "input_tokens": total_input,
+                        "output_tokens": total_output,
+                        "total_tokens": total_tokens,
+                        "cost": cost,
+                        "provider": provider,
+                    }
+
+                summary["total_cost"] = total_cost
+            except Exception:
+                # Return whatever we have
+                pass
+
+            return summary
+
     async def get_status(self) -> Dict[str, Any]:
         """
         Get the current status of the workflow.
@@ -509,6 +625,71 @@ class Workflow(ABC, Generic[T], ContextDependent):
         self.state.updated_at = datetime.now(timezone.utc).timestamp()
 
     # Static registry methods have been moved to the WorkflowRegistry class
+
+    async def get_token_node(self, return_all_matches: bool = False):
+        """Return this Workflow's token node(s) from the global counter."""
+        if not self.context or not getattr(self.context, "token_counter", None):
+            return [] if return_all_matches else None
+        counter = self.context.token_counter
+        if return_all_matches:
+            nodes = await counter.get_workflow_node(
+                name=self.name, return_all_matches=True
+            )
+            # Also support matching by IDs if present
+            if self.id:
+                nodes += await counter.get_workflow_node(
+                    workflow_id=self.id, return_all_matches=True
+                )
+            if self.run_id:
+                nodes += await counter.get_workflow_node(
+                    run_id=self.run_id, return_all_matches=True
+                )
+            return nodes
+        # Prefer run_id, then workflow_id, then name
+        if self.run_id:
+            node = await counter.get_workflow_node(run_id=self.run_id)
+            if node:
+                return node
+        if self.id:
+            node = await counter.get_workflow_node(workflow_id=self.id)
+            if node:
+                return node
+        return await counter.get_workflow_node(name=self.name)
+
+    async def get_token_usage(self):
+        """Return aggregated token usage for this Workflow (including children)."""
+        node = await self.get_token_node()
+        return node.get_usage() if node else None
+
+    async def get_token_cost(self) -> float:
+        """Return total cost for this Workflow (including children)."""
+        node = await self.get_token_node()
+        return node.get_cost() if node else 0.0
+
+    async def watch_tokens(
+        self,
+        callback,
+        *,
+        threshold: int | None = None,
+        throttle_ms: int | None = None,
+        include_subtree: bool = True,
+    ) -> str | None:
+        """Watch this Workflow's token usage. Returns a watch_id or None if not available."""
+        node = await self.get_token_node()
+        if not node:
+            return None
+        return await node.watch(
+            callback,
+            threshold=threshold,
+            throttle_ms=throttle_ms,
+            include_subtree=include_subtree,
+        )
+
+    async def format_token_tree(self) -> str:
+        node = await self.get_token_node()
+        if not node:
+            return "(no token usage)"
+        return node.format_tree()
 
     async def update_state(self, **kwargs):
         """Syntactic sugar to update workflow state."""

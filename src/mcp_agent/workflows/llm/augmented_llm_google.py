@@ -127,7 +127,7 @@ class GoogleAugmentedLLM(
                 "config": inference_config,
             }
 
-            self.logger.debug(f"{arguments}")
+            self.logger.debug("Completion request arguments:", data=arguments)
             self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
             response: types.GenerateContentResponse = await self.executor.execute(

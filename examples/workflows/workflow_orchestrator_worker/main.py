@@ -168,36 +168,37 @@ async def example_usage():
         )
         logger.info(f"{result}")
 
-        # Display token usage tree for the orchestrator workflow
-        await display_run_tree(context, orchestrator.name)
+        # Display token usage tree for the orchestrator workflow using helper
+        node = await orchestrator.get_token_node()
+        if node:
+            display_node_tree(node, context=context)
 
-        # Show summary at the bottom
-        summary = await context.token_counter.get_summary()
+        # Show summary at the bottom (use convenience API)
+        summary = await orchestrator_app.get_token_summary()
         print(f"\nTotal Cost: ${summary.cost:.4f}")
         print("=" * 60)
 
 
 def display_node_tree(
-    node: TokenNode, indent="", is_last=True, context: Context = None
+    node: TokenNode,
+    indent: str = "",
+    is_last: bool = True,
+    context: Context | None = None,
+    skip_empty: bool = True,
 ):
-    """Display a node and its children in a tree structure with token usage"""
+    """Display a node and its children with aggregate token usage and cost."""
     # Connector symbols
     connector = "└── " if is_last else "├── "
 
-    # Get node usage
-    usage = node.aggregate_usage()
+    # Get aggregate usage and cost via node helpers
+    usage = node.get_usage()
+    cost = node.get_cost() if hasattr(node, "get_cost") else 0.0
 
-    # Calculate cost if context available
-    cost_str = ""
-    if context and context.token_counter and node.usage.model_name:
-        cost = context.token_counter.calculate_cost(
-            node.usage.model_name,
-            node.usage.input_tokens,
-            node.usage.output_tokens,
-            node.usage.model_info.provider if node.usage.model_info else None,
-        )
-        if cost > 0:
-            cost_str = f" (${cost:.4f})"
+    # Optionally skip nodes with no usage
+    if skip_empty and usage.total_tokens == 0:
+        return
+
+    cost_str = f" (${cost:.4f})" if cost and cost > 0 else ""
 
     # Display node info
     print(f"{indent}{connector}{node.name} [{node.node_type}]")
@@ -219,7 +220,13 @@ def display_node_tree(
         print(f"{indent}{'    ' if is_last else '│   '}")
         child_indent = indent + ("    " if is_last else "│   ")
         for i, child in enumerate(node.children):
-            display_node_tree(child, child_indent, i == len(node.children) - 1, context)
+            display_node_tree(
+                child,
+                child_indent,
+                i == len(node.children) - 1,
+                context=context,
+                skip_empty=skip_empty,
+            )
 
 
 async def display_run_tree(context: Context, name: str):

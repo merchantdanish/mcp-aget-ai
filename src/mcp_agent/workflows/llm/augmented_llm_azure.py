@@ -1,3 +1,5 @@
+import asyncio
+import functools
 import json
 from typing import Any, Iterable, Optional, Type, Union
 from azure.ai.inference import ChatCompletionsClient
@@ -196,7 +198,7 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                 if params.metadata:
                     arguments = {**arguments, **params.metadata}
 
-                self.logger.debug(f"{arguments}")
+                self.logger.debug("Completion request arguments:", data=arguments)
                 self._log_chat_progress(chat_turn=(len(messages) + 1) // 2, model=model)
 
                 request = RequestCompletionRequest(
@@ -220,9 +222,22 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
 
                 self._annotate_span_for_completion_response(span, response, i)
 
-                total_input_tokens += response.usage["prompt_tokens"]
-                total_output_tokens += response.usage["completion_tokens"]
+                # Per-iteration token counts
+                iteration_input = response.usage["prompt_tokens"]
+                iteration_output = response.usage["completion_tokens"]
+
+                total_input_tokens += iteration_input
+                total_output_tokens += iteration_output
                 finish_reasons.append(response.choices[0].finish_reason)
+
+                # Incremental token tracking inside loop so watchers update during long runs
+                if self.context.token_counter:
+                    await self.context.token_counter.record_usage(
+                        input_tokens=iteration_input,
+                        output_tokens=iteration_output,
+                        model_name=model,
+                        provider=self.provider,
+                    )
 
                 message = response.choices[0].message
                 responses.append(message)
@@ -281,15 +296,6 @@ class AzureAugmentedLLM(AugmentedLLM[MessageParam, ResponseMessage]):
                         )
                     )
                     span.set_attributes(response_data)
-
-            # Record token usage in context token counter
-            if self.context.token_counter:
-                await self.context.token_counter.record_usage(
-                    input_tokens=total_input_tokens,
-                    output_tokens=total_output_tokens,
-                    model_name=model,
-                    provider=self.provider,
-                )
 
             return responses
 
@@ -529,7 +535,11 @@ class AzureCompletionTasks:
             )
 
         payload = request.payload
-        response = azure_client.complete(**payload)
+        # Offload sync SDK call to a thread to avoid blocking the event loop
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None, functools.partial(azure_client.complete, **payload)
+        )
         return response
 
 

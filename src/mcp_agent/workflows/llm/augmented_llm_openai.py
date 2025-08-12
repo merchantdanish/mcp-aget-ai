@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, Type, cast
 from pydantic import BaseModel
 
 
-from openai import OpenAI, AsyncOpenAI
+from openai import AsyncOpenAI
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionContentPartParam,
@@ -254,7 +254,7 @@ class OpenAIAugmentedLLM(
                 if params.metadata:
                     arguments = {**arguments, **params.metadata}
 
-                self.logger.debug(f"{arguments}")
+                self.logger.debug("Completion request arguments:", data=arguments)
                 self._log_chat_progress(chat_turn=len(messages) // 2, model=model)
 
                 request = RequestCompletionRequest(
@@ -282,8 +282,21 @@ class OpenAIAugmentedLLM(
 
                 self._annotate_span_for_completion_response(span, response, i)
 
-                total_input_tokens += response.usage.prompt_tokens
-                total_output_tokens += response.usage.completion_tokens
+                # Per-iteration token counts
+                iteration_input = response.usage.prompt_tokens
+                iteration_output = response.usage.completion_tokens
+
+                total_input_tokens += iteration_input
+                total_output_tokens += iteration_output
+
+                # Incremental token tracking inside loop so watchers update during long runs
+                if self.context.token_counter:
+                    await self.context.token_counter.record_usage(
+                        input_tokens=iteration_input,
+                        output_tokens=iteration_output,
+                        model_name=model,
+                        provider=self.provider,
+                    )
 
                 if not response.choices or len(response.choices) == 0:
                     # No response from the model, we're done
@@ -372,15 +385,6 @@ class OpenAIAugmentedLLM(
                         )
                     )
                     span.set_attributes(response_data)
-
-            # Record token usage in context token counter
-            if self.context.token_counter:
-                await self.context.token_counter.record_usage(
-                    input_tokens=total_input_tokens,
-                    output_tokens=total_output_tokens,
-                    model_name=model,
-                    provider=self.provider,
-                )
 
             return responses
 
@@ -864,8 +868,7 @@ class OpenAICompletionTasks:
         """
         Request a completion from OpenAI's API.
         """
-
-        openai_client = OpenAI(
+        async with AsyncOpenAI(
             api_key=request.config.api_key,
             base_url=request.config.base_url,
             http_client=request.config.http_client
@@ -874,12 +877,11 @@ class OpenAICompletionTasks:
             default_headers=request.config.default_headers
             if hasattr(request.config, "default_headers")
             else None,
-        )
-
-        payload = request.payload
-        response = openai_client.chat.completions.create(**payload)
-        response = ensure_serializable(response)
-        return response
+        ) as async_openai_client:
+            payload = request.payload
+            response = await async_openai_client.chat.completions.create(**payload)
+            response = ensure_serializable(response)
+            return response
 
     @staticmethod
     @workflow_task
@@ -903,56 +905,48 @@ class OpenAICompletionTasks:
             )
 
         # Next we pass the text through instructor to extract structured data
-        client = instructor.from_openai(
-            AsyncOpenAI(
-                api_key=request.config.api_key,
-                base_url=request.config.base_url,
-                http_client=request.config.http_client
-                if hasattr(request.config, "http_client")
-                else None,
-                default_headers=request.config.default_headers
-                if hasattr(request.config, "default_headers")
-                else None,
-            ),
-            mode=instructor.Mode.TOOLS_STRICT,
-        )
-
-        try:
-            # Extract structured data from natural language
-            structured_response = await client.chat.completions.create(
-                model=request.model,
-                response_model=response_model,
-                messages=[
-                    {"role": "user", "content": request.response_str},
-                ],
-                user=request.user,
-            )
-        except InstructorRetryException:
-            # Retry the request with JSON mode
+        async with AsyncOpenAI(
+            api_key=request.config.api_key,
+            base_url=request.config.base_url,
+            http_client=request.config.http_client
+            if hasattr(request.config, "http_client")
+            else None,
+            default_headers=request.config.default_headers
+            if hasattr(request.config, "default_headers")
+            else None,
+        ) as async_client:
             client = instructor.from_openai(
-                AsyncOpenAI(
-                    api_key=request.config.api_key,
-                    base_url=request.config.base_url,
-                    http_client=request.config.http_client
-                    if hasattr(request.config, "http_client")
-                    else None,
-                    default_headers=request.config.default_headers
-                    if hasattr(request.config, "default_headers")
-                    else None,
-                ),
-                mode=instructor.Mode.JSON,
+                async_client,
+                mode=instructor.Mode.TOOLS_STRICT,
             )
 
-            structured_response = await client.chat.completions.create(
-                model=request.model,
-                response_model=response_model,
-                messages=[
-                    {"role": "user", "content": request.response_str},
-                ],
-                user=request.user,
-            )
+            try:
+                # Extract structured data from natural language
+                structured_response = await client.chat.completions.create(
+                    model=request.model,
+                    response_model=response_model,
+                    messages=[
+                        {"role": "user", "content": request.response_str},
+                    ],
+                    user=request.user,
+                )
+            except InstructorRetryException:
+                # Retry the request with JSON mode
+                client = instructor.from_openai(
+                    async_client,
+                    mode=instructor.Mode.JSON,
+                )
 
-        return structured_response
+                structured_response = await client.chat.completions.create(
+                    model=request.model,
+                    response_model=response_model,
+                    messages=[
+                        {"role": "user", "content": request.response_str},
+                    ],
+                    user=request.user,
+                )
+
+            return structured_response
 
 
 class MCPOpenAITypeConverter(

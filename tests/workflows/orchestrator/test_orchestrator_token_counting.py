@@ -288,6 +288,23 @@ class TestOrchestratorTokenCounting:
         assert orchestrator_usage.input_tokens == 480
         assert orchestrator_usage.output_tokens == 240
 
+        # Regression: planner/synthesizer nodes should have non-zero totals and sum(children) <= parent
+        child_totals = 0
+        planner_seen = False
+        synthesizer_seen = False
+        for child in orchestrator_node.children:
+            usage = child.aggregate_usage()
+            child_totals += usage.total_tokens
+            if "Planner" in child.name:
+                planner_seen = True
+                assert usage.total_tokens > 0
+            if "Synthesizer" in child.name:
+                synthesizer_seen = True
+                assert usage.total_tokens > 0
+        assert planner_seen, "Planner node not found under orchestrator"
+        assert synthesizer_seen, "Synthesizer node not found under orchestrator"
+        assert child_totals <= orchestrator_usage.total_tokens
+
     @pytest.mark.asyncio
     async def test_orchestrator_token_tracking_iterative_plan(
         self, mock_llm_factory_with_tokens, mock_agents, mock_context_with_token_counter

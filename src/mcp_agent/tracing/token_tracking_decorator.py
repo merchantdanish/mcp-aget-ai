@@ -23,41 +23,48 @@ def track_tokens(
     def decorator(method: Callable[..., T]) -> Callable[..., T]:
         @functools.wraps(method)
         async def wrapper(self, *args, **kwargs) -> T:
-            # Only track if we have a token counter in context
-            if hasattr(self, "context") and self.context and self.context.token_counter:
-                pushed = False
+            # Fast-path: only perform Temporal replay checks if engine is Temporal
+            is_temporal_replay = False
+            is_temporal_engine = False
+            try:
+                cfg = getattr(getattr(self, "context", None), "config", None)
+                is_temporal_engine = (
+                    getattr(cfg, "execution_engine", None) == "temporal"
+                )
+            except Exception:
+                is_temporal_engine = False
+
+            if is_temporal_engine:
                 try:
-                    # Build metadata
-                    metadata = {
-                        "method": method.__name__,
-                        "class": self.__class__.__name__,
-                    }
+                    from temporalio import workflow as _twf  # type: ignore
 
-                    # Add any model info if available
-                    if hasattr(self, "provider"):
-                        metadata["provider"] = self.provider
-
-                    # Push context
-                    await self.context.token_counter.push(
-                        name=getattr(self, "name", self.__class__.__name__),
-                        node_type=node_type,
-                        metadata=metadata,
-                    )
-                    pushed = True
+                    if _twf._Runtime.current():  # type: ignore[attr-defined]
+                        is_temporal_replay = _twf.unsafe.is_replaying()  # type: ignore[attr-defined]
                 except Exception:
-                    pass  # Ignore errors in pushing context
+                    is_temporal_replay = False
+            # Only track if we have a token counter in context
+            if (
+                hasattr(self, "context")
+                and self.context
+                and self.context.token_counter
+                and not is_temporal_replay
+            ):
+                # Build metadata
+                metadata = {
+                    "method": method.__name__,
+                    "class": self.__class__.__name__,
+                }
 
-                try:
-                    # Execute the wrapped method
-                    result = await method(self, *args, **kwargs)
-                    return result
-                finally:
-                    # Only pop if we successfully pushed
-                    try:
-                        if pushed:
-                            await self.context.token_counter.pop()
-                    except Exception:
-                        pass
+                # Add any model info if available
+                if hasattr(self, "provider"):
+                    metadata["provider"] = getattr(self, "provider")
+
+                async with self.context.token_counter.scope(
+                    name=getattr(self, "name", self.__class__.__name__),
+                    node_type=node_type,
+                    metadata=metadata,
+                ):
+                    return await method(self, *args, **kwargs)
             else:
                 # No token counter, just execute normally
                 return await method(self, *args, **kwargs)

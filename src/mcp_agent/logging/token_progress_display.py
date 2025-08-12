@@ -42,20 +42,33 @@ class TokenProgressDisplay:
         )
 
         # Register watch on app node for aggregate totals
-        if hasattr(self.token_counter, "_root") and self.token_counter._root:
-            # Schedule async watch registration
-            asyncio.create_task(self._register_watch())
+        # Schedule async watch registration (robust against timing of root creation)
+        asyncio.create_task(self._register_watch())
 
     async def _register_watch(self):
         """Register watch asynchronously."""
-        if hasattr(self.token_counter, "_root") and self.token_counter._root:
-            watch_id = await self.token_counter.watch(
-                callback=self._on_token_update,
-                node=self.token_counter._root,
-                threshold=1,
-                throttle_ms=100,
-            )
-            self._watch_ids.append(watch_id)
+        try:
+            app_node = await self.token_counter.get_app_node()
+            if app_node:
+                watch_id = await self.token_counter.watch(
+                    callback=self._on_token_update,
+                    node=app_node,
+                    threshold=1,
+                    throttle_ms=100,
+                )
+                self._watch_ids.append(watch_id)
+            else:
+                # Fallback: watch any app node that appears later
+                watch_id = await self.token_counter.watch(
+                    callback=self._on_token_update,
+                    node_type="app",
+                    threshold=1,
+                    throttle_ms=100,
+                )
+                self._watch_ids.append(watch_id)
+        except Exception:
+            # Silently ignore display registration failures
+            pass
 
     async def _unregister_watches(self):
         """Unregister all watches asynchronously."""

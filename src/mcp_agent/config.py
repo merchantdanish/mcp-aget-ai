@@ -3,8 +3,12 @@ Reading settings from environment variables and providing a settings object
 for the application configuration.
 """
 
+import sys
+from io import StringIO
 from pathlib import Path
 from typing import Dict, List, Literal, Optional
+import threading
+import warnings
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -250,6 +254,7 @@ class TemporalSettings(BaseModel):
     task_queue: str
     max_concurrent_activities: int | None = None
     timeout_seconds: int | None = 60
+    rpc_metadata: Dict[str, str] | None = None
 
 
 class UsageTelemetrySettings(BaseModel):
@@ -508,8 +513,38 @@ class Settings(BaseSettings):
         return None
 
 
+class PreloadSettings(BaseSettings):
+    """
+    Class for preloaded settings of the MCP Agent application.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="mcp_app_settings_")
+
+    preload: str | None = None
+    """ A literal YAML string to interpret as a serialized Settings model.
+    For example, the value given by `pydantic_yaml.to_yaml_str(settings)`.
+    Env Var: `MCP_APP_SETTINGS_PRELOAD`.
+    """
+
+    preload_strict: bool = False
+    """ Whether to perform strict parsing of the preload string.
+    If true, failures in parsing will raise an exception.
+    If false (default), failures in parsing will fall through to the default
+    settings loading.
+    Env Var: `MCP_APP_SETTINGS_PRELOAD_STRICT`.
+    """
+
+
 # Global settings object
 _settings: Settings | None = None
+
+
+def _clear_global_settings():
+    """
+    Convenience for testing - clear the global memoized settings.
+    """
+    global _settings
+    _settings = None
 
 
 def get_settings(config_path: str | None = None) -> Settings:
@@ -536,6 +571,28 @@ def get_settings(config_path: str | None = None) -> Settings:
     import yaml  # pylint: disable=C0415
 
     merged_settings = {}
+
+    preload_settings = PreloadSettings()
+    preload_config = preload_settings.preload
+    if preload_config:
+        try:
+            # Write to an intermediate buffer to force interpretation as literal data and not a file path
+            buf = StringIO()
+            buf.write(preload_config)
+            buf.seek(0)
+            settings = yaml.safe_load(buf)
+            settings = Settings(**settings)
+            return settings
+        except Exception as e:
+            if preload_settings.preload_strict:
+                raise ValueError(
+                    "MCP App Preloaded Settings value failed validation"
+                ) from e
+            # TODO: Decide the right logging call here - I'm cautious that it's in a very central scope
+            print(
+                f"MCP App Preloaded Settings value failed validation: {e}",
+                file=sys.stderr,
+            )
 
     # Determine the config file to use
     if config_path:
@@ -576,4 +633,16 @@ def get_settings(config_path: str | None = None) -> Settings:
 
     # No valid config found anywhere
     _settings = Settings()
+
+    # Thread-safety advisory: warn when using global singleton from non-main thread
+    if (
+        threading.current_thread() is not threading.main_thread()
+        and config_path is None
+    ):
+        warnings.warn(
+            "get_settings() returned the global Settings singleton on a non-main thread. "
+            "In multithreaded environments, prefer passing a Settings instance explicitly to MCPApp("
+            "settings=...) or provide a per-thread config_path to avoid cross-thread coupling.",
+            stacklevel=2,
+        )
     return _settings

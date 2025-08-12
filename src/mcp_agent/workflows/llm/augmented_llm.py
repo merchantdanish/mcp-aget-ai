@@ -230,6 +230,8 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
     provider: str | None = None
     logger: Union["Logger", None] = None
+    # Suggested node type for token tracking for base LLMs
+    token_node_type: str = "llm"
 
     def __init__(
         self,
@@ -681,7 +683,6 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
         return f"{prefix}-{identifier}"
 
-    # --- Agent convenience proxies -------------------------------------------------
     async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
         """Proxy to the underlying agent's list_tools for a simpler API."""
         return await self.agent.list_tools(server_name=server_name)
@@ -696,3 +697,79 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.agent.__aexit__(exc_type, exc_val, exc_tb)
+
+    async def get_token_node(
+        self, return_all_matches: bool = False, node_type: str | None = None
+    ):
+        """Return this LLM's token node(s) from the global counter."""
+        if not self.context or not getattr(self.context, "token_counter", None):
+            return [] if return_all_matches else None
+        counter = self.context.token_counter
+        # Prefer explicit node_type, else default to this class's suggested node type
+        t = node_type or getattr(self, "token_node_type", None)
+        if return_all_matches:
+            if t == "llm":
+                return await counter.get_llm_node(self.name, return_all_matches=True)
+            if t == "agent":
+                return await counter.get_agent_node(self.name, return_all_matches=True)
+            # Fallback: gather both types
+            nodes = await counter.get_llm_node(self.name, return_all_matches=True)
+            nodes += await counter.get_agent_node(self.name, return_all_matches=True)
+            return nodes
+        else:
+            if t == "agent":
+                node = await counter.get_agent_node(self.name)
+                if node:
+                    return node
+            if t == "llm" or not t:
+                node = await counter.get_llm_node(self.name)
+                if node:
+                    return node
+            # Fallback try agent if not found
+            return await counter.get_agent_node(self.name)
+
+    async def get_token_usage(self, node_type: str | None = None):
+        """Return aggregated token usage for this LLM node (including children)."""
+        if not self.context or not getattr(self.context, "token_counter", None):
+            return None
+        counter = self.context.token_counter
+        t = node_type or getattr(self, "token_node_type", None)
+        if t == "agent":
+            return await counter.get_agent_usage(self.name)
+        if t == "llm":
+            return await counter.get_node_usage(self.name, "llm")
+        # Unknown type: try both
+        return await counter.get_node_usage(self.name)
+
+    async def get_token_cost(self, node_type: str | None = None) -> float:
+        """Return total cost for this LLM node (including children)."""
+        if not self.context or not getattr(self.context, "token_counter", None):
+            return 0.0
+        counter = self.context.token_counter
+        t = node_type or getattr(self, "token_node_type", None)
+        if t:
+            return await counter.get_node_cost(self.name, t)
+        return await counter.get_node_cost(self.name)
+
+    async def watch_tokens(
+        self,
+        callback,
+        *,
+        threshold: int | None = None,
+        throttle_ms: int | None = None,
+        include_subtree: bool = True,
+        node_type: str | None = None,
+    ) -> str | None:
+        """Watch this LLM's token usage. Returns a watch_id or None if not available."""
+        if not self.context or not getattr(self.context, "token_counter", None):
+            return None
+        counter = self.context.token_counter
+        t = node_type or getattr(self, "token_node_type", None) or "llm"
+        return await counter.watch(
+            callback=callback,
+            node_name=self.name,
+            node_type=t,
+            threshold=threshold,
+            throttle_ms=throttle_ms,
+            include_subtree=include_subtree,
+        )

@@ -11,7 +11,7 @@ from mcp_agent.executor.temporal import TemporalExecutor
 from mcp_agent.executor.workflow import Workflow, WorkflowResult
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
-from mcp_agent.tracing.token_counter import TokenNode, TokenSummary
+from mcp_agent.tracing.token_counter import TokenSummary
 from mcp_agent.core.context import Context
 
 from main import app
@@ -97,52 +97,16 @@ class ParallelWorkflow(Workflow[str]):
             message=f"Student short story submission: {input}",
         )
 
-        return WorkflowResult(value=result)
+        # Get token usage information
+        metadata = {}
+        if hasattr(parallel, "get_token_node"):
+            token_node = await parallel.get_token_node()
+            if token_node:
+                metadata["token_usage"] = token_node.get_usage()
+                metadata["token_cost"] = token_node.get_cost()
+                metadata["token_tree"] = token_node.format_tree()
 
-
-def display_node_tree(
-    node: TokenNode, indent="", is_last=True, context: Context = None
-):
-    """Display a node and its children in a tree structure with token usage"""
-    # Connector symbols
-    connector = "└── " if is_last else "├── "
-
-    # Get node usage
-    usage = node.aggregate_usage()
-
-    # Calculate cost if context available
-    cost_str = ""
-    if context and context.token_counter and node.usage.model_name:
-        cost = context.token_counter.calculate_cost(
-            node.usage.model_name,
-            node.usage.input_tokens,
-            node.usage.output_tokens,
-            node.usage.model_info.provider if node.usage.model_info else None,
-        )
-        if cost > 0:
-            cost_str = f" (${cost:.4f})"
-
-    # Display node info
-    print(f"{indent}{connector}{node.name} [{node.node_type}]")
-    print(
-        f"{indent}{'    ' if is_last else '│   '}├─ Total: {usage.total_tokens:,} tokens{cost_str}"
-    )
-    print(f"{indent}{'    ' if is_last else '│   '}├─ Input: {usage.input_tokens:,}")
-    print(f"{indent}{'    ' if is_last else '│   '}└─ Output: {usage.output_tokens:,}")
-
-    # If node has model info, show it
-    if node.usage.model_name:
-        model_str = node.usage.model_name
-        if node.usage.model_info and node.usage.model_info.provider:
-            model_str += f" ({node.usage.model_info.provider})"
-        print(f"{indent}{'    ' if is_last else '│   '}   Model: {model_str}")
-
-    # Process children
-    if node.children:
-        print(f"{indent}{'    ' if is_last else '│   '}")
-        child_indent = indent + ("    " if is_last else "│   ")
-        for i, child in enumerate(node.children):
-            display_node_tree(child, child_indent, i == len(node.children) - 1, context)
+        return WorkflowResult(value=result, metadata=metadata)
 
 
 async def display_token_summary(context: Context):
@@ -157,12 +121,17 @@ async def display_token_summary(context: Context):
     print("TOKEN USAGE SUMMARY")
     print("=" * 60)
 
-    # Display usage tree
-    if summary.usage_tree:
+    # Display usage tree using the root node directly
+    root_node = await context.token_counter.get_app_node()
+    if root_node:
         print("\nToken Usage Tree:")
         print("-" * 40)
-        root_node = TokenNode(**summary.usage_tree)
-        display_node_tree(root_node, context=context)
+        print(root_node.format_tree())
+
+        # Display cost for the root node
+        total_cost = root_node.get_cost()
+        if total_cost > 0:
+            print(f"\nTotal cost from tree: ${total_cost:.4f}")
 
     # Total usage
     print("\nTotal Usage:")
@@ -186,7 +155,6 @@ async def display_token_summary(context: Context):
 
 async def main():
     async with app.run() as orchestrator_app:
-        context = orchestrator_app.context
         executor: TemporalExecutor = orchestrator_app.executor
 
         handle = await executor.start_workflow(
@@ -195,10 +163,42 @@ async def main():
         )
         result = await handle.result()
         print("\n=== WORKFLOW RESULT ===")
-        print(result)
+        print(result.value)
 
-        # Display token usage summary
-        await display_token_summary(context)
+        # Display token information from workflow metadata if available
+        if result.metadata and "token_tree" in result.metadata:
+            print("\n=== WORKFLOW TOKEN USAGE ===")
+            print(result.metadata["token_tree"])
+            if "token_cost" in result.metadata:
+                print(f"\nWorkflow Cost: ${result.metadata['token_cost']:.4f}")
+            if "token_usage" in result.metadata:
+                usage = result.metadata["token_usage"]
+                print(
+                    f"Workflow Tokens: {usage.total_tokens:,} (input: {usage.input_tokens:,}, output: {usage.output_tokens:,})"
+                )
+
+        # Query the running workflow for its in-process token usage
+        try:
+            remote_tree = await handle.query("token_tree")
+            remote_summary = await handle.query("token_summary")
+
+            print("\n=== WORKFLOW TOKEN USAGE (queried) ===")
+            if isinstance(remote_tree, str):
+                print(remote_tree)
+            if isinstance(remote_summary, dict):
+                tu = remote_summary.get("total_usage", {})
+                print(
+                    f"\nTotal (queried): {tu.get('total_tokens', 0):,} (input: {tu.get('input_tokens', 0):,}, output: {tu.get('output_tokens', 0):,})"
+                )
+                print(
+                    f"Total cost (queried): ${remote_summary.get('total_cost', 0.0):.4f}"
+                )
+        except Exception:
+            # Queries may be unavailable if worker didn't register them; ignore
+            pass
+
+        # The local context's token counter reflects the client process and may be 0 under Temporal.
+        # We rely on the queried workflow metrics above instead of local TokenCounter here.
 
 
 if __name__ == "__main__":

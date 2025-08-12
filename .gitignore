@@ -177,3 +177,5 @@ prompt.md
 # example logs
 examples/**/*.jsonl
 **/.DS_Store
+
+.idea
