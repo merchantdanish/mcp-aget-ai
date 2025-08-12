@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Literal, Optional, TYPE_CHECKING
+from typing import Callable, List, Literal, Optional, TYPE_CHECKING
 
 from opentelemetry import trace
 from pydantic import BaseModel
@@ -6,7 +6,14 @@ from pydantic import BaseModel
 from mcp_agent.agents.agent import Agent
 from mcp_agent.tracing.semconv import GEN_AI_REQUEST_TOP_K
 from mcp_agent.tracing.telemetry import get_tracer
-from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM, RequestParams
+from mcp_agent.tracing.token_tracking_decorator import track_tokens
+from mcp_agent.workflows.llm.augmented_llm import (
+    AugmentedLLM,
+    MessageParamT,
+    MessageT,
+    RequestParams,
+    ModelT,
+)
 from mcp_agent.workflows.router.router_base import ResultT, Router, RouterResult
 from mcp_agent.logging.logger import get_logger
 
@@ -14,6 +21,13 @@ if TYPE_CHECKING:
     from mcp_agent.core.context import Context
 
 logger = get_logger(__name__)
+
+ROUTING_SYSTEM_INSTRUCTION = """
+You are a highly accurate request router that directs incoming requests to the most appropriate category.
+A category is a specialized destination, such as a Function, an MCP Server (a collection of tools/functions), or an Agent (a collection of servers).
+You will be provided with a request and a list of categories to choose from.
+You can choose one or more categories, or choose none if no category is appropriate.
+"""
 
 
 DEFAULT_ROUTING_INSTRUCTION = """
@@ -79,11 +93,12 @@ class StructuredResponse(BaseModel):
     """A list of categories to route the input to."""
 
 
-class LLMRouter(AugmentedLLM[Any, Any], Router):
+class LLMRouter(Router, AugmentedLLM[MessageParamT, MessageT]):
     """
-    A router workflow that also behaves like an AugmentedLLM.
+    A router that uses an LLM to route an input to a specific category.
 
-    - As a Router: provides route/route_to_* APIs that return routing targets.
+    Exposes:
+    - route/route_to_* APIs that return routing targets.
     - As an AugmentedLLM: generate/generate_str/generate_structured delegate to routing
       and return the routing outputs in unstructured or structured forms, enabling
       composition with other AugmentedLLM-based workflows (Parallel, Evaluator/Optimizer, etc.).
@@ -91,47 +106,59 @@ class LLMRouter(AugmentedLLM[Any, Any], Router):
 
     def __init__(
         self,
-        llm: AugmentedLLM,
+        name: str | None = None,
+        llm_factory: Callable[[Agent], AugmentedLLM] | None = None,
         server_names: List[str] | None = None,
-        agents: List[Agent] | None = None,
+        agents: List[Agent | AugmentedLLM] | None = None,
         functions: List[Callable] | None = None,
         routing_instruction: str | None = None,
         context: Optional["Context"] = None,
         **kwargs,
     ):
-        # Initialize Router side (category discovery, etc.)
-        Router.__init__(
-            self,
+        # Cooperative super init: Router gets routing params; AugmentedLLM gets name/instruction
+        router_name = f"{name}-router" if name else None
+        super().__init__(
             server_names=server_names,
             agents=agents,
             functions=functions,
             routing_instruction=routing_instruction,
             context=context,
-            **kwargs,
-        )
-
-        # Initialize AugmentedLLM side for workflow composition
-        # We do not use this class itself to call a provider; we delegate to the
-        # provided classifier LLM. Still, initializing allows uniform tracing/name.
-        AugmentedLLM.__init__(
-            self,
-            name=(f"{llm.name}-router" if getattr(llm, "name", None) else None),
+            name=router_name,
             instruction="You are a router workflow that returns categories.",
-            context=context,
             **kwargs,
         )
 
-        # Inner LLM that makes the routing decision
-        self.classifier_llm: AugmentedLLM = llm
-        # Back-compat alias
-        self.llm: AugmentedLLM = llm
+        # Factory to create downstream LLMs for routed agents
+        if llm_factory is None:
+            raise ValueError("llm_factory must be provided to LLMRouter")
+        self.llm_factory: Callable[[Agent], AugmentedLLM] = llm_factory
+
+        # Create the classifier LLM used to make routing decisions via factory
+        classifier_agent = Agent(
+            name=f"{name}-classifier" if name else "router-classifier",
+            instruction=ROUTING_SYSTEM_INSTRUCTION,
+        )
+        try:
+            self.classifier_llm: AugmentedLLM = self.llm_factory(
+                agent=classifier_agent,
+                instruction=ROUTING_SYSTEM_INSTRUCTION,
+                context=context,
+            )
+            if getattr(self.classifier_llm, "instruction", None) in (None, ""):
+                setattr(self.classifier_llm, "instruction", ROUTING_SYSTEM_INSTRUCTION)
+        except TypeError:
+            self.classifier_llm = self.llm_factory(classifier_agent)
+
+        # Back-compat alias for introspection
+        self.llm: AugmentedLLM = self.classifier_llm
 
     @classmethod
     async def create(
         cls,
-        llm: AugmentedLLM,
+        name: str | None = None,
+        llm_factory: Callable[[Agent], AugmentedLLM] | None = None,
         server_names: List[str] | None = None,
-        agents: List[Agent] | None = None,
+        agents: List[Agent | AugmentedLLM] | None = None,
         functions: List[Callable] | None = None,
         routing_instruction: str | None = None,
         context: Optional["Context"] = None,
@@ -141,7 +168,8 @@ class LLMRouter(AugmentedLLM[Any, Any], Router):
         Use this instead of constructor since we need async initialization.
         """
         instance = cls(
-            llm=llm,
+            name=name,
+            llm_factory=llm_factory,
             server_names=server_names,
             agents=agents,
             functions=functions,
@@ -153,7 +181,7 @@ class LLMRouter(AugmentedLLM[Any, Any], Router):
 
     async def route(
         self, request: str, top_k: int = 1
-    ) -> List[LLMRouterResult[str | Agent | Callable]]:
+    ) -> List[LLMRouterResult[str | Agent | AugmentedLLM | Callable]]:
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(f"{self.__class__.__name__}.route") as span:
             self._annotate_span_for_route_request(span, request, top_k)
@@ -189,7 +217,7 @@ class LLMRouter(AugmentedLLM[Any, Any], Router):
 
     async def route_to_agent(
         self, request: str, top_k: int = 1
-    ) -> List[LLMRouterResult[Agent]]:
+    ) -> List[LLMRouterResult[Agent | AugmentedLLM]]:
         tracer = get_tracer(self.context)
         with tracer.start_as_current_span(
             f"{self.__class__.__name__}.route_to_agent"
@@ -230,6 +258,80 @@ class LLMRouter(AugmentedLLM[Any, Any], Router):
             )
             self._annotate_span_for_router_result(span, res)
             return res
+
+    # region AugmentedLLM interface
+
+    @track_tokens(node_type="agent")
+    async def generate(
+        self,
+        message: str | MessageParamT | List[MessageParamT],
+        request_params: RequestParams | None = None,
+    ) -> List[MessageT]:
+        """Delegate generation to the routed agent/LLM and return its response."""
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.generate"
+        ) as span:
+            # Build a routing string from the provided message
+            routing_text = self._normalize_message_to_text(message)
+            self._annotate_span_for_route_request(span, routing_text, top_k=1)
+
+            # Select the best downstream agent/LLM
+            delegate_llm = await self._select_delegate_llm(routing_text, span)
+
+            # Delegate the call with the original message and return downstream results
+            return (
+                await delegate_llm.generate(message)
+                if request_params is None
+                else await delegate_llm.generate(message, request_params)
+            )  # type: ignore[return-value]
+
+    @track_tokens(node_type="agent")
+    async def generate_str(
+        self,
+        message: str | MessageParamT | List[MessageParamT],
+        request_params: RequestParams | None = None,
+    ) -> str:
+        """Delegate to the routed agent/LLM and return its string response."""
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.generate_str"
+        ) as span:
+            routing_text = self._normalize_message_to_text(message)
+            self._annotate_span_for_route_request(span, routing_text, top_k=1)
+
+            delegate_llm = await self._select_delegate_llm(routing_text, span)
+            return (
+                await delegate_llm.generate_str(message)
+                if request_params is None
+                else await delegate_llm.generate_str(message, request_params)
+            )
+
+    @track_tokens(node_type="agent")
+    async def generate_structured(
+        self,
+        message: str | MessageParamT | List[MessageParamT],
+        response_model: type[ModelT],
+        request_params: RequestParams | None = None,
+    ) -> ModelT:
+        """Delegate to the routed agent/LLM and return its structured response."""
+        tracer = get_tracer(self.context)
+        with tracer.start_as_current_span(
+            f"{self.__class__.__name__}.generate_structured"
+        ) as span:
+            routing_text = self._normalize_message_to_text(message)
+            self._annotate_span_for_route_request(span, routing_text, top_k=1)
+
+            delegate_llm = await self._select_delegate_llm(routing_text, span)
+            return (
+                await delegate_llm.generate_structured(message, response_model)
+                if request_params is None
+                else await delegate_llm.generate_structured(
+                    message, response_model, request_params
+                )
+            )
+
+    # endregion
 
     async def _route_with_llm(
         self,
@@ -395,52 +497,74 @@ class LLMRouter(AugmentedLLM[Any, Any], Router):
 
         return "\n\n".join(context_list)
 
-    # --- AugmentedLLM interface -------------------------------------------------
-    async def generate(
-        self,
-        message: str | Any | List[Any],
-        request_params: RequestParams | None = None,
-    ) -> List[Any]:
-        """Return routing results as a list for composition with other workflows.
-
-        The return value is a list of dicts: [{"category": name, "confidence": str, "reasoning": str?}]
-        """
-        results = await self._route_with_llm(str(message), top_k=5)
-        payload = [
-            {
-                "category": (
-                    r.result
-                    if isinstance(r.result, str)
-                    else (
-                        r.result.name
-                        if isinstance(r.result, Agent)
-                        else getattr(r.result, "__name__", str(r.result))
-                    )
-                ),
-                "confidence": r.confidence,
-                "reasoning": r.reasoning,
-            }
-            for r in results
-        ]
-        return payload  # type: ignore[return-value]
-
-    async def generate_str(
-        self,
-        message: str | Any | List[Any],
-        request_params: RequestParams | None = None,
+    def _normalize_message_to_text(
+        self, message: str | MessageParamT | List[MessageParamT]
     ) -> str:
-        """Return routing results as JSON string."""
-        import json
+        """Convert incoming message(s) to a routing text string.
 
-        payload = await self.generate(message=message, request_params=request_params)
-        return json.dumps({"categories": payload})
+        This ensures compatibility across heterogeneous LLM MessageParam types.
+        """
+        if isinstance(message, str):
+            return message
+        if isinstance(message, list):
+            parts: List[str] = []
+            for m in message:
+                try:
+                    parts.append(self.message_param_str(m))
+                except Exception:
+                    parts.append(str(m))
+            return "\n\n".join(parts)
+        try:
+            return self.message_param_str(message)
+        except Exception:
+            return str(message)
 
-    async def generate_structured(
-        self,
-        message: str | Any | List[Any],
-        response_model: type[StructuredResponse],
-        request_params: RequestParams | None = None,
-    ) -> StructuredResponse:
-        """Return routing results as a StructuredResponse Pydantic model."""
-        txt = await self.generate_str(message=message, request_params=request_params)
-        return response_model.model_validate_json(txt)
+    async def _select_delegate_llm(
+        self, routing_text: str, span: trace.Span | None = None
+    ) -> AugmentedLLM:
+        """Route to an agent and return its attached LLM for delegation."""
+        results = await self.route_to_agent(request=routing_text, top_k=1)
+        if not results:
+            raise ValueError("Router did not find a suitable agent for this request")
+
+        target = results[0].result
+
+        # The base router stores Agents as categories. If an AugmentedLLM was
+        # directly provided as an agent in a subclass, handle that here too.
+        delegate_llm: AugmentedLLM | None = None
+        if isinstance(target, AugmentedLLM):
+            delegate_llm = target
+        elif isinstance(target, Agent):
+            # Attach a new LLM to the agent; wrap factory to inject context when supported
+            def _factory_with_context(agent: Agent, **kw):
+                try:
+                    llm = self.llm_factory(agent=agent, context=self.context, **kw)
+                    return llm
+                except TypeError:
+                    return self.llm_factory(agent)
+
+            delegate_llm = await target.attach_llm(llm_factory=_factory_with_context)
+
+        if span and self.context.tracing_enabled:
+            span.add_event(
+                "router.generate.delegated",
+                {
+                    "delegate.type": (
+                        "llm" if isinstance(target, AugmentedLLM) else "agent"
+                    ),
+                    "delegate.name": (
+                        target.name
+                        if isinstance(target, Agent)
+                        else getattr(target, "name", "")
+                    ),
+                },
+            )
+
+        logger.info(f"Routing to agent {target.name}")
+
+        if not isinstance(delegate_llm, AugmentedLLM) or delegate_llm is None:
+            raise ValueError(
+                "Selected agent does not have an attached LLM to delegate generation"
+            )
+
+        return delegate_llm

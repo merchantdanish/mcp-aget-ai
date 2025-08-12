@@ -132,8 +132,10 @@ class TestRouterTokenCounting:
     ):
         """Test basic token tracking in router"""
         # Create router
+        # Factory should return the mock LLM instance so token tracking works
         router = LLMRouter(
-            llm=mock_router_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_router_llm,
             server_names=["test_server"],
             agents=mock_agents,
             context=mock_context_with_token_counter,
@@ -149,6 +151,7 @@ class TestRouterTokenCounting:
                 )
             ]
         )
+        # Configure mock LLM to return response and simulate token tracking
         mock_router_llm.generate_structured_mock.return_value = mock_response
 
         # Push app context
@@ -187,14 +190,16 @@ class TestRouterTokenCounting:
         """Test token tracking when router returns multiple routes"""
         # Create router with all types
         router = LLMRouter(
-            llm=mock_router_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_router_llm,
             server_names=["test_server_1", "test_server_2"],
             agents=mock_agents[:2],
             functions=test_functions,
             context=mock_context_with_token_counter,
         )
 
-        # Mock LLM response with multiple categories
+        # Mock LLM response with multiple categories (including a server that exists
+        # in the router's server_categories)
         mock_response = StructuredResponse(
             categories=[
                 StructuredResponseCategory(
@@ -221,7 +226,7 @@ class TestRouterTokenCounting:
             "routing_workflow", "workflow"
         )
 
-        # Execute routing with top_k=3
+        # Execute routing with top_k=3 (should include server, agent, function)
         results = await router.route("Complex request", top_k=3)
 
         # Pop workflow context
@@ -248,7 +253,8 @@ class TestRouterTokenCounting:
         """Test token tracking for specific route methods (route_to_server, route_to_agent, route_to_function)"""
         # Create router
         router = LLMRouter(
-            llm=mock_router_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_router_llm,
             server_names=["test_server"],
             agents=mock_agents,
             functions=test_functions,
@@ -269,6 +275,8 @@ class TestRouterTokenCounting:
             ]
         )
 
+        # Ensure router has initialized categories (server list populated)
+        await router.initialize()
         results = await router.route_to_server("Server request")
         assert len(results) == 1
         assert results[0].result == "test_server"
@@ -319,7 +327,8 @@ class TestRouterTokenCounting:
         """Test token tracking when router returns empty results"""
         # Create router
         router = LLMRouter(
-            llm=mock_router_llm,
+            name="test_router",
+            llm_factory=lambda agent: mock_router_llm,
             agents=mock_agents,
             context=mock_context_with_token_counter,
         )
@@ -352,16 +361,16 @@ class TestRouterTokenCounting:
         self, mock_context_with_token_counter, mock_router_llm, mock_agents
     ):
         """Test token tracking when router is used within a larger workflow"""
-        # Create multiple routers for different purposes
+        # Create multiple routers for different purposes using the same mock factory
         general_router = LLMRouter(
-            llm=mock_router_llm,
+            llm_factory=lambda agent: mock_router_llm,
             agents=mock_agents,
             context=mock_context_with_token_counter,
             routing_instruction="Route general requests",
         )
 
         specific_router = LLMRouter(
-            llm=mock_router_llm,
+            llm_factory=lambda agent: mock_router_llm,
             server_names=["specialized_server"],
             context=mock_context_with_token_counter,
             routing_instruction="Route specialized requests",
@@ -432,7 +441,7 @@ class TestRouterTokenCounting:
         """Test that tokens are tracked even when routing errors occur"""
         # Create router
         router = LLMRouter(
-            llm=mock_router_llm,
+            llm_factory=lambda agent: mock_router_llm,
             agents=mock_agents,
             context=mock_context_with_token_counter,
         )
@@ -457,6 +466,7 @@ class TestRouterTokenCounting:
             raise Exception("LLM routing error")
 
         # Replace the method
+        # Override classifier on the same mock instance
         mock_router_llm.generate_structured = generate_structured_with_error
 
         # Push workflow context
@@ -491,7 +501,7 @@ class TestRouterTokenCounting:
         """
 
         router = LLMRouter(
-            llm=mock_router_llm,
+            llm_factory=lambda agent: mock_router_llm,
             agents=mock_agents,
             routing_instruction=custom_instruction,
             context=mock_context_with_token_counter,
