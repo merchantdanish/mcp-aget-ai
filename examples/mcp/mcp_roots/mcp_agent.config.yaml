@@ -4,7 +4,7 @@ execution_engine: asyncio
 logger:
   type: file
   level: debug
-  path: "./mcp_root_test.jsonl"
+  path: "./mcp_roots.jsonl"
 
 mcp:
   servers:
