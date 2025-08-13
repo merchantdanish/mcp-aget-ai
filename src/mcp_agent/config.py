@@ -10,7 +10,7 @@ from typing import Dict, List, Literal, Optional
 import threading
 import warnings
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -126,11 +126,40 @@ class BedrockSettings(BaseModel):
     Settings for using Bedrock models in the MCP Agent application.
     """
 
-    aws_access_key_id: str | None = None
-    aws_secret_access_key: str | None = None
-    aws_session_token: str | None = None
-    aws_region: str | None = None
-    profile: str | None = None
+    aws_access_key_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "aws_access_key_id", "AWS_ACCESS_KEY_ID", "bedrock__aws_access_key_id"
+        ),
+    )
+
+    aws_secret_access_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "aws_secret_access_key",
+            "AWS_SECRET_ACCESS_KEY",
+            "bedrock__aws_secret_access_key",
+        ),
+    )
+
+    aws_session_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "aws_session_token", "AWS_SESSION_TOKEN", "bedrock__aws_session_token"
+        ),
+    )
+
+    aws_region: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "aws_region", "AWS_REGION", "bedrock__aws_region"
+        ),
+    )
+
+    profile: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("profile", "AWS_PROFILE", "bedrock__profile"),
+    )
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
@@ -140,7 +169,13 @@ class AnthropicSettings(VertexAISettings, BedrockSettings):
     Settings for using Anthropic models in the MCP Agent application.
     """
 
-    api_key: str | None = None
+    api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "api_key", "ANTHROPIC_API_KEY", "anthropic__api_key"
+        ),
+    )
+
     default_model: str | None = None
     provider: Literal["anthropic", "bedrock", "vertexai"] = "anthropic"
 
@@ -152,7 +187,10 @@ class CohereSettings(BaseModel):
     Settings for using Cohere models in the MCP Agent application.
     """
 
-    api_key: str | None = None
+    api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("COHERE_API_KEY", "cohere__api_key"),
+    )
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
@@ -162,7 +200,11 @@ class OpenAISettings(BaseModel):
     Settings for using OpenAI models in the MCP Agent application.
     """
 
-    api_key: str | None = None
+    api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("api_key", "OPENAI_API_KEY", "openai__api_key"),
+    )
+
     reasoning_effort: Literal["low", "medium", "high"] = "medium"
     base_url: str | None = None
     user: str | None = None
@@ -183,9 +225,19 @@ class AzureSettings(BaseModel):
     Settings for using Azure models in the MCP Agent application.
     """
 
-    api_key: str | None = None
+    api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "api_key", "AZURE_OPENAI_API_KEY", "AZURE_AI_API_KEY", "azure__api_key"
+        ),
+    )
 
-    endpoint: str
+    endpoint: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "endpoint", "AZURE_OPENAI_ENDPOINT", "AZURE_AI_ENDPOINT", "azure__endpoint"
+        ),
+    )
 
     credential_scopes: List[str] | None = Field(
         default=["https://cognitiveservices.azure.com/.default"]
@@ -199,14 +251,32 @@ class GoogleSettings(BaseModel):
     Settings for using Google models in the MCP Agent application.
     """
 
-    api_key: str | None = None
-    """Or use the GOOGLE_API_KEY environment variable"""
+    api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "api_key", "GOOGLE_API_KEY", "GEMINI_API_KEY", "google__api_key"
+        ),
+    )
 
     vertexai: bool = False
 
-    project: str | None = None
+    project: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "project", "PROJECT_ID", "GOOGLE_CLOUD_PROJECT", "google__project"
+        ),
+    )
 
-    location: str | None = None
+    location: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "location",
+            "LOCATION",
+            "CLOUD_LOCATION",
+            "GOOGLE_CLOUD_LOCATION",
+            "google__location",
+        ),
+    )
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
