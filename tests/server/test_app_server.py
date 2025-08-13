@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
 from mcp_agent.server.app_server import _workflow_run
 from mcp_agent.executor.workflow import WorkflowExecution
 
@@ -7,12 +8,15 @@ from mcp_agent.executor.workflow import WorkflowExecution
 @pytest.fixture
 def mock_server_context():
     """Mock server context for testing"""
-    context = MagicMock()
-    context.request_context = MagicMock()
-    context.request_context.lifespan_context = MagicMock()
-    context.request_context.lifespan_context.workflows = {}
-    context.request_context.lifespan_context.context = MagicMock()
-    return context
+    # Build a minimal ctx object compatible with new resolution helpers
+    app_context = MagicMock()
+    server_context = SimpleNamespace(workflows={}, context=app_context)
+
+    ctx = MagicMock()
+    ctx.request_context = SimpleNamespace(lifespan_context=server_context)
+    # Ensure no attached app path is used in tests; rely on lifespan path
+    ctx.fastmcp = SimpleNamespace(_mcp_agent_app=None)
+    return ctx
 
 
 @pytest.fixture
