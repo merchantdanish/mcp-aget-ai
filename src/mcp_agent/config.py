@@ -112,77 +112,91 @@ class MCPSettings(BaseModel):
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
-class VertexAISettings(BaseModel):
-    """Settings for using VertexAI models in the MCP Agent application"""
+class VertexAIMixin(BaseModel):
+    """Common fields for Vertex AI-compatible settings."""
 
-    project: str | None = None
-    location: str | None = None
+    project: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("PROJECT_ID", "GOOGLE_CLOUD_PROJECT"),
+    )
+
+    location: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "LOCATION", "CLOUD_LOCATION", "GOOGLE_CLOUD_LOCATION"
+        ),
+    )
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
-class BedrockSettings(BaseModel):
-    """
-    Settings for using Bedrock models in the MCP Agent application.
-    """
+class BedrockMixin(BaseModel):
+    """Common fields for Bedrock-compatible settings."""
 
     aws_access_key_id: str | None = Field(
         default=None,
-        validation_alias=AliasChoices(
-            "aws_access_key_id", "AWS_ACCESS_KEY_ID", "bedrock__aws_access_key_id"
-        ),
+        validation_alias=AliasChoices("AWS_ACCESS_KEY_ID"),
     )
 
     aws_secret_access_key: str | None = Field(
         default=None,
-        validation_alias=AliasChoices(
-            "aws_secret_access_key",
-            "AWS_SECRET_ACCESS_KEY",
-            "bedrock__aws_secret_access_key",
-        ),
+        validation_alias=AliasChoices("AWS_SECRET_ACCESS_KEY"),
     )
 
     aws_session_token: str | None = Field(
         default=None,
-        validation_alias=AliasChoices(
-            "aws_session_token", "AWS_SESSION_TOKEN", "bedrock__aws_session_token"
-        ),
+        validation_alias=AliasChoices("AWS_SESSION_TOKEN"),
     )
 
     aws_region: str | None = Field(
         default=None,
-        validation_alias=AliasChoices(
-            "aws_region", "AWS_REGION", "bedrock__aws_region"
-        ),
+        validation_alias=AliasChoices("AWS_REGION"),
     )
 
     profile: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("profile", "AWS_PROFILE", "bedrock__profile"),
+        validation_alias=AliasChoices("AWS_PROFILE"),
     )
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
-class AnthropicSettings(VertexAISettings, BedrockSettings):
+class BedrockSettings(BaseSettings, BedrockMixin):
+    """
+    Settings for using Bedrock models in the MCP Agent application.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="", extra="allow", arbitrary_types_allowed=True
+    )
+
+
+class AnthropicSettings(BaseSettings, VertexAIMixin, BedrockMixin):
     """
     Settings for using Anthropic models in the MCP Agent application.
     """
 
     api_key: str | None = Field(
         default=None,
+        validation_alias=AliasChoices("ANTHROPIC_API_KEY", "anthropic__api_key"),
+    )
+    default_model: str | None = Field(
+        default=None,
         validation_alias=AliasChoices(
-            "api_key", "ANTHROPIC_API_KEY", "anthropic__api_key"
+            "ANTHROPIC_DEFAULT_MODEL", "anthropic__default_model"
         ),
     )
+    provider: Literal["anthropic", "bedrock", "vertexai"] = Field(
+        default="anthropic",
+        validation_alias=AliasChoices("ANTHROPIC_PROVIDER", "anthropic__provider"),
+    )
 
-    default_model: str | None = None
-    provider: Literal["anthropic", "bedrock", "vertexai"] = "anthropic"
+    model_config = SettingsConfigDict(
+        env_prefix="", extra="allow", arbitrary_types_allowed=True
+    )
 
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
-
-class CohereSettings(BaseModel):
+class CohereSettings(BaseSettings):
     """
     Settings for using Cohere models in the MCP Agent application.
     """
@@ -192,35 +206,54 @@ class CohereSettings(BaseModel):
         validation_alias=AliasChoices("COHERE_API_KEY", "cohere__api_key"),
     )
 
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+    model_config = SettingsConfigDict(
+        env_prefix="", extra="allow", arbitrary_types_allowed=True
+    )
 
 
-class OpenAISettings(BaseModel):
+class OpenAISettings(BaseSettings):
     """
     Settings for using OpenAI models in the MCP Agent application.
     """
 
     api_key: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("api_key", "OPENAI_API_KEY", "openai__api_key"),
+        validation_alias=AliasChoices("OPENAI_API_KEY", "openai__api_key"),
     )
 
-    reasoning_effort: Literal["low", "medium", "high"] = "medium"
-    base_url: str | None = None
-    user: str | None = None
+    reasoning_effort: Literal["low", "medium", "high"] = Field(
+        default="medium",
+        validation_alias=AliasChoices(
+            "OPENAI_REASONING_EFFORT", "openai__reasoning_effort"
+        ),
+    )
+    base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_BASE_URL", "openai__base_url"),
+    )
+
+    user: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_USER", "openai__user"),
+    )
 
     default_headers: Dict[str, str] | None = None
-    default_model: str | None = None
+    default_model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_DEFAULT_MODEL", "openai__default_model"),
+    )
 
     # NOTE: An http_client can be programmatically specified
     # and will be used by the OpenAI client. However, since it is
     # not a JSON-serializable object, it cannot be set via configuration.
     # http_client: Client | None = None
 
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+    model_config = SettingsConfigDict(
+        env_prefix="", extra="allow", arbitrary_types_allowed=True
+    )
 
 
-class AzureSettings(BaseModel):
+class AzureSettings(BaseSettings):
     """
     Settings for using Azure models in the MCP Agent application.
     """
@@ -228,14 +261,14 @@ class AzureSettings(BaseModel):
     api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
-            "api_key", "AZURE_OPENAI_API_KEY", "AZURE_AI_API_KEY", "azure__api_key"
+            "AZURE_OPENAI_API_KEY", "AZURE_AI_API_KEY", "azure__api_key"
         ),
     )
 
     endpoint: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
-            "endpoint", "AZURE_OPENAI_ENDPOINT", "AZURE_AI_ENDPOINT", "azure__endpoint"
+            "AZURE_OPENAI_ENDPOINT", "AZURE_AI_ENDPOINT", "azure__endpoint"
         ),
     )
 
@@ -243,10 +276,12 @@ class AzureSettings(BaseModel):
         default=["https://cognitiveservices.azure.com/.default"]
     )
 
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+    model_config = SettingsConfigDict(
+        env_prefix="", extra="allow", arbitrary_types_allowed=True
+    )
 
 
-class GoogleSettings(BaseModel):
+class GoogleSettings(BaseSettings, VertexAIMixin):
     """
     Settings for using Google models in the MCP Agent application.
     """
@@ -254,31 +289,26 @@ class GoogleSettings(BaseModel):
     api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
-            "api_key", "GOOGLE_API_KEY", "GEMINI_API_KEY", "google__api_key"
+            "GOOGLE_API_KEY", "GEMINI_API_KEY", "google__api_key"
         ),
     )
 
-    vertexai: bool = False
-
-    project: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices(
-            "project", "PROJECT_ID", "GOOGLE_CLOUD_PROJECT", "google__project"
-        ),
+    vertexai: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("GOOGLE_VERTEXAI", "google__vertexai"),
     )
 
-    location: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices(
-            "location",
-            "LOCATION",
-            "CLOUD_LOCATION",
-            "GOOGLE_CLOUD_LOCATION",
-            "google__location",
-        ),
+    model_config = SettingsConfigDict(
+        env_prefix="", extra="allow", arbitrary_types_allowed=True
     )
 
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+class VertexAISettings(BaseSettings, VertexAIMixin):
+    """Standalone Vertex AI settings (for future use)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="", extra="allow", arbitrary_types_allowed=True
+    )
 
 
 class TemporalSettings(BaseModel):
@@ -295,6 +325,8 @@ class TemporalSettings(BaseModel):
     timeout_seconds: int | None = 60
     rpc_metadata: Dict[str, str] | None = None
 
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
 
 class UsageTelemetrySettings(BaseModel):
     """
@@ -307,6 +339,8 @@ class UsageTelemetrySettings(BaseModel):
 
     enable_detailed_telemetry: bool = False
     """If enabled, detailed telemetry data, including prompts and agents, will be sent to the telemetry server."""
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class TracePathSettings(BaseModel):
@@ -332,6 +366,8 @@ class TracePathSettings(BaseModel):
     Uses Python's datetime.strftime format.
     """
 
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
 
 class TraceOTLPSettings(BaseModel):
     """
@@ -340,6 +376,8 @@ class TraceOTLPSettings(BaseModel):
 
     endpoint: str
     """OTLP endpoint for exporting traces."""
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class OpenTelemetrySettings(BaseModel):
@@ -375,6 +413,8 @@ class OpenTelemetrySettings(BaseModel):
     Ignored if 'path' is specified.
     """
 
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
 
 class LogPathSettings(BaseModel):
     """
@@ -400,6 +440,8 @@ class LogPathSettings(BaseModel):
     Format string for timestamps when unique_id is set to "timestamp".
     Uses Python's datetime.strftime format.
     """
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class LoggerSettings(BaseModel):
@@ -447,6 +489,8 @@ class LoggerSettings(BaseModel):
     http_timeout: float = 5.0
     """HTTP timeout seconds for event transport"""
 
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
 
 class Settings(BaseSettings):
     """
@@ -470,22 +514,22 @@ class Settings(BaseSettings):
     temporal: TemporalSettings | None = None
     """Settings for Temporal workflow orchestration"""
 
-    anthropic: AnthropicSettings | None = None
+    anthropic: AnthropicSettings | None = Field(default_factory=AnthropicSettings)
     """Settings for using Anthropic models in the MCP Agent application"""
 
-    bedrock: BedrockSettings | None = None
+    bedrock: BedrockSettings | None = Field(default_factory=BedrockSettings)
     """Settings for using Bedrock models in the MCP Agent application"""
 
-    cohere: CohereSettings | None = None
+    cohere: CohereSettings | None = Field(default_factory=CohereSettings)
     """Settings for using Cohere models in the MCP Agent application"""
 
-    openai: OpenAISettings | None = None
+    openai: OpenAISettings | None = Field(default_factory=OpenAISettings)
     """Settings for using OpenAI models in the MCP Agent application"""
 
-    azure: AzureSettings | None = None
+    azure: AzureSettings | None = Field(default_factory=AzureSettings)
     """Settings for using Azure models in the MCP Agent application"""
 
-    google: GoogleSettings | None = None
+    google: GoogleSettings | None = Field(default_factory=GoogleSettings)
     """Settings for using Google models in the MCP Agent application"""
 
     otel: OpenTelemetrySettings | None = OpenTelemetrySettings()
