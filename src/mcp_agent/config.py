@@ -117,13 +117,13 @@ class VertexAIMixin(BaseModel):
 
     project: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("PROJECT_ID", "GOOGLE_CLOUD_PROJECT"),
+        validation_alias=AliasChoices("project", "PROJECT_ID", "GOOGLE_CLOUD_PROJECT"),
     )
 
     location: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
-            "LOCATION", "CLOUD_LOCATION", "GOOGLE_CLOUD_LOCATION"
+            "location", "LOCATION", "CLOUD_LOCATION", "GOOGLE_CLOUD_LOCATION"
         ),
     )
 
@@ -135,27 +135,27 @@ class BedrockMixin(BaseModel):
 
     aws_access_key_id: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("AWS_ACCESS_KEY_ID"),
+        validation_alias=AliasChoices("aws_access_key_id", "AWS_ACCESS_KEY_ID"),
     )
 
     aws_secret_access_key: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("AWS_SECRET_ACCESS_KEY"),
+        validation_alias=AliasChoices("aws_secret_access_key", "AWS_SECRET_ACCESS_KEY"),
     )
 
     aws_session_token: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("AWS_SESSION_TOKEN"),
+        validation_alias=AliasChoices("aws_session_token", "AWS_SESSION_TOKEN"),
     )
 
     aws_region: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("AWS_REGION"),
+        validation_alias=AliasChoices("aws_region", "AWS_REGION"),
     )
 
     profile: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("AWS_PROFILE"),
+        validation_alias=AliasChoices("profile", "AWS_PROFILE"),
     )
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
@@ -167,7 +167,11 @@ class BedrockSettings(BaseSettings, BedrockMixin):
     """
 
     model_config = SettingsConfigDict(
-        env_prefix="", extra="allow", arbitrary_types_allowed=True
+        env_prefix="",
+        extra="allow",
+        arbitrary_types_allowed=True,
+        env_file=".env",
+        env_file_encoding="utf-8",
     )
 
 
@@ -178,21 +182,29 @@ class AnthropicSettings(BaseSettings, VertexAIMixin, BedrockMixin):
 
     api_key: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("ANTHROPIC_API_KEY", "anthropic__api_key"),
+        validation_alias=AliasChoices(
+            "api_key", "ANTHROPIC_API_KEY", "anthropic__api_key"
+        ),
     )
     default_model: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
-            "ANTHROPIC_DEFAULT_MODEL", "anthropic__default_model"
+            "default_model", "ANTHROPIC_DEFAULT_MODEL", "anthropic__default_model"
         ),
     )
     provider: Literal["anthropic", "bedrock", "vertexai"] = Field(
         default="anthropic",
-        validation_alias=AliasChoices("ANTHROPIC_PROVIDER", "anthropic__provider"),
+        validation_alias=AliasChoices(
+            "provider", "ANTHROPIC_PROVIDER", "anthropic__provider"
+        ),
     )
 
     model_config = SettingsConfigDict(
-        env_prefix="", extra="allow", arbitrary_types_allowed=True
+        env_prefix="ANTHROPIC_",
+        extra="allow",
+        arbitrary_types_allowed=True,
+        env_file=".env",
+        env_file_encoding="utf-8",
     )
 
 
@@ -203,11 +215,15 @@ class CohereSettings(BaseSettings):
 
     api_key: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("COHERE_API_KEY", "cohere__api_key"),
+        validation_alias=AliasChoices("api_key", "COHERE_API_KEY", "cohere__api_key"),
     )
 
     model_config = SettingsConfigDict(
-        env_prefix="", extra="allow", arbitrary_types_allowed=True
+        env_prefix="COHERE_",
+        extra="allow",
+        arbitrary_types_allowed=True,
+        env_file=".env",
+        env_file_encoding="utf-8",
     )
 
 
@@ -218,29 +234,33 @@ class OpenAISettings(BaseSettings):
 
     api_key: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("OPENAI_API_KEY", "openai__api_key"),
+        validation_alias=AliasChoices("api_key", "OPENAI_API_KEY", "openai__api_key"),
     )
 
     reasoning_effort: Literal["low", "medium", "high"] = Field(
         default="medium",
         validation_alias=AliasChoices(
-            "OPENAI_REASONING_EFFORT", "openai__reasoning_effort"
+            "reasoning_effort", "OPENAI_REASONING_EFFORT", "openai__reasoning_effort"
         ),
     )
     base_url: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("OPENAI_BASE_URL", "openai__base_url"),
+        validation_alias=AliasChoices(
+            "base_url", "OPENAI_BASE_URL", "openai__base_url"
+        ),
     )
 
     user: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("OPENAI_USER", "openai__user"),
+        validation_alias=AliasChoices("user", "openai__user"),
     )
 
     default_headers: Dict[str, str] | None = None
     default_model: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("OPENAI_DEFAULT_MODEL", "openai__default_model"),
+        validation_alias=AliasChoices(
+            "default_model", "OPENAI_DEFAULT_MODEL", "openai__default_model"
+        ),
     )
 
     # NOTE: An http_client can be programmatically specified
@@ -249,7 +269,11 @@ class OpenAISettings(BaseSettings):
     # http_client: Client | None = None
 
     model_config = SettingsConfigDict(
-        env_prefix="", extra="allow", arbitrary_types_allowed=True
+        env_prefix="OPENAI_",
+        extra="allow",
+        arbitrary_types_allowed=True,
+        env_file=".env",
+        env_file_encoding="utf-8",
     )
 
 
@@ -261,14 +285,14 @@ class AzureSettings(BaseSettings):
     api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
-            "AZURE_OPENAI_API_KEY", "AZURE_AI_API_KEY", "azure__api_key"
+            "api_key", "AZURE_OPENAI_API_KEY", "AZURE_AI_API_KEY", "azure__api_key"
         ),
     )
 
     endpoint: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
-            "AZURE_OPENAI_ENDPOINT", "AZURE_AI_ENDPOINT", "azure__endpoint"
+            "endpoint", "AZURE_OPENAI_ENDPOINT", "AZURE_AI_ENDPOINT", "azure__endpoint"
         ),
     )
 
@@ -277,7 +301,11 @@ class AzureSettings(BaseSettings):
     )
 
     model_config = SettingsConfigDict(
-        env_prefix="", extra="allow", arbitrary_types_allowed=True
+        env_prefix="AZURE_",
+        extra="allow",
+        arbitrary_types_allowed=True,
+        env_file=".env",
+        env_file_encoding="utf-8",
     )
 
 
@@ -289,17 +317,23 @@ class GoogleSettings(BaseSettings, VertexAIMixin):
     api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
-            "GOOGLE_API_KEY", "GEMINI_API_KEY", "google__api_key"
+            "api_key", "GOOGLE_API_KEY", "GEMINI_API_KEY", "google__api_key"
         ),
     )
 
     vertexai: bool = Field(
         default=False,
-        validation_alias=AliasChoices("GOOGLE_VERTEXAI", "google__vertexai"),
+        validation_alias=AliasChoices(
+            "vertexai", "GOOGLE_VERTEXAI", "google__vertexai"
+        ),
     )
 
     model_config = SettingsConfigDict(
-        env_prefix="", extra="allow", arbitrary_types_allowed=True
+        env_prefix="GOOGLE_",
+        extra="allow",
+        arbitrary_types_allowed=True,
+        env_file=".env",
+        env_file_encoding="utf-8",
     )
 
 
@@ -307,7 +341,11 @@ class VertexAISettings(BaseSettings, VertexAIMixin):
     """Standalone Vertex AI settings (for future use)."""
 
     model_config = SettingsConfigDict(
-        env_prefix="", extra="allow", arbitrary_types_allowed=True
+        env_prefix="VERTEXAI_",
+        extra="allow",
+        arbitrary_types_allowed=True,
+        env_file=".env",
+        env_file_encoding="utf-8",
     )
 
 
@@ -541,6 +579,12 @@ class Settings(BaseSettings):
     usage_telemetry: UsageTelemetrySettings | None = UsageTelemetrySettings()
     """Usage tracking settings for the MCP Agent application"""
 
+    def __eq__(self, other):  # type: ignore[override]
+        if not isinstance(other, Settings):
+            return NotImplemented
+        # Compare by full JSON dump to avoid differences in internal field-set tracking
+        return self.model_dump(mode="json") == other.model_dump(mode="json")
+
     @classmethod
     def find_config(cls) -> Path | None:
         """Find the config file in the current directory or parent directories."""
@@ -634,9 +678,10 @@ def get_settings(config_path: str | None = None) -> Settings:
             buf = StringIO()
             buf.write(preload_config)
             buf.seek(0)
-            settings = yaml.safe_load(buf)
-            settings = Settings(**settings)
-            return settings
+            yaml_settings = yaml.safe_load(buf) or {}
+
+            # Preload is authoritative: construct from YAML directly (no env overlay)
+            return Settings(**yaml_settings)
         except Exception as e:
             if preload_settings.preload_strict:
                 raise ValueError(

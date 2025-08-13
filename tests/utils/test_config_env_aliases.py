@@ -161,7 +161,7 @@ bedrock:
         assert getattr(settings.bedrock, "aws_region") == "us-east-2"
         assert getattr(settings.bedrock, "profile") == "default"
 
-    def test_env_overrides_yaml_for_openai(self, monkeypatch):
+    def test_preload_yaml_overrides_env(self, monkeypatch):
         # Even when env is set, YAML (preload) wins for that provider
         monkeypatch.setenv("OPENAI_API_KEY", "env-openai")
         yaml_payload = """
@@ -170,21 +170,72 @@ openai:
 """
         monkeypatch.setenv("MCP_APP_SETTINGS_PRELOAD", yaml_payload)
         settings = get_settings()
+        assert getattr(settings.openai, "api_key") == "yaml-openai"
+
+    def test_yaml_used_when_env_missing_value(self, monkeypatch):
+        yaml_payload = """
+    openai:
+      api_key: yaml-openai
+    """
+        monkeypatch.setenv("MCP_APP_SETTINGS_PRELOAD", yaml_payload)
+        settings = get_settings()
+        assert getattr(settings.openai, "api_key") == "yaml-openai"
+
+        # Now set ENV
+        monkeypatch.setenv("OPENAI_API_KEY", "env-openai")
+        settings = get_settings()
+        # Preload remains authoritative; env should not override when preload is set
+        assert getattr(settings.openai, "api_key") == "yaml-openai"
+
+    def test_env_vs_secrets_yaml_precedence(self, monkeypatch):
+        # Simulate having a config + secrets file loaded by injecting preload as those mappings
+        yaml_payload = """
+openai:
+  api_key: yaml-openai
+anthropic:
+  api_key: yaml-claude
+"""
+        monkeypatch.setenv("MCP_APP_SETTINGS_PRELOAD", yaml_payload)
+
+        # Without env, values come from YAML
+        settings = get_settings()
+        assert getattr(settings.openai, "api_key") == "yaml-openai"
+        assert getattr(settings.anthropic, "api_key") == "yaml-claude"
+
+        # Now set env and ensure it overrides YAML when preload is NOT set
+        monkeypatch.delenv("MCP_APP_SETTINGS_PRELOAD", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "env-openai")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "env-claude")
+        _clear_global_settings()
+        settings = get_settings()
         assert getattr(settings.openai, "api_key") == "env-openai"
+        assert getattr(settings.anthropic, "api_key") == "env-claude"
 
-    #     def test_yaml_used_when_env_missing_value(self, monkeypatch):
-    #         yaml_payload = """
-    # openai:
-    #   api_key: yaml-openai
-    # """
-    #         monkeypatch.setenv("MCP_APP_SETTINGS_PRELOAD", yaml_payload)
-    #         settings = get_settings()
-    #         assert getattr(settings.openai, "api_key") == "yaml-openai"
+    def test_dotenv_loading_from_cwd(self, monkeypatch, tmp_path):
+        # Create a temp project with a .env
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        env_file = proj / ".env"
+        env_file.write_text(
+            "OPENAI_API_KEY=dotenv-openai\nANTHROPIC_API_KEY=dotenv-claude\n"
+        )
 
-    #         # Now set ENV
-    #         monkeypatch.setenv("OPENAI_API_KEY", "env-openai")
-    #         settings = get_settings()
-    #         assert getattr(settings.openai, "api_key") == "env-openai"
+        # Change working directory
+        monkeypatch.chdir(proj)
+        _clear_global_settings()
+        settings = get_settings()
+        assert getattr(settings.openai, "api_key") == "dotenv-openai"
+        assert getattr(settings.anthropic, "api_key") == "dotenv-claude"
+
+    def test_nested_and_flat_env_compat(self, monkeypatch):
+        # Flat env
+        monkeypatch.setenv("OPENAI_API_KEY", "flat-openai")
+        # Nested style via env_nested_delimiter at top level
+        monkeypatch.setenv("ANTHROPIC__API_KEY", "nested-claude")
+        _clear_global_settings()
+        settings = get_settings()
+        assert getattr(settings.openai, "api_key") == "flat-openai"
+        assert getattr(settings.anthropic, "api_key") == "nested-claude"
 
     def test_anthropic_provider_bedrock_via_nested_env(self, monkeypatch):
         # Verify nested env path sets provider and AWS creds on Anthropic settings

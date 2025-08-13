@@ -44,21 +44,19 @@ class TestConfigPreload:
         _clear_global_settings()
 
     @pytest.fixture(autouse=True)
-    def clear_test_env(self):
-        yield
-        if "MCP_APP_SETTINGS_PRELOAD" in os.environ:
-            del os.environ["MCP_APP_SETTINGS_PRELOAD"]
-        if "MCP_APP_SETTINGS_PRELOAD_STRICT" in os.environ:
-            del os.environ["MCP_APP_SETTINGS_PRELOAD_STRICT"]
+    def clear_test_env(self, monkeypatch: pytest.MonkeyPatch):
+        # Ensure a clean env before each test
+        monkeypatch.delenv("MCP_APP_SETTINGS_PRELOAD", raising=False)
+        monkeypatch.delenv("MCP_APP_SETTINGS_PRELOAD_STRICT", raising=False)
 
     @pytest.fixture(scope="session")
     def example_settings(self):
         return _EXAMPLE_SETTINGS
 
     @pytest.fixture(scope="function")
-    def settings_env(self, example_settings: Settings):
+    def settings_env(self, example_settings: Settings, monkeypatch: pytest.MonkeyPatch):
         settings_str = to_yaml_str(example_settings)
-        os.environ["MCP_APP_SETTINGS_PRELOAD"] = settings_str
+        monkeypatch.setenv("MCP_APP_SETTINGS_PRELOAD", settings_str)
 
     def test_config_preload(self, example_settings: Settings, settings_env):
         assert os.environ.get("MCP_APP_SETTINGS_PRELOAD")
@@ -72,10 +70,13 @@ class TestConfigPreload:
 
     # Invalid string value with lenient parsing
     @pytest.fixture(scope="function")
-    def invalid_settings_env(self):
-        os.environ["MCP_APP_SETTINGS_PRELOAD"] = """
+    def invalid_settings_env(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv(
+            "MCP_APP_SETTINGS_PRELOAD",
+            """
             badsadwewqeqr231232321
-        """
+        """,
+        )
 
     def test_config_preload_invalid_lenient(self, invalid_settings_env):
         assert os.environ.get("MCP_APP_SETTINGS_PRELOAD")
@@ -84,8 +85,8 @@ class TestConfigPreload:
         assert loaded_settings
 
     @pytest.fixture(scope="function")
-    def strict_parsing_env(self):
-        os.environ["MCP_APP_SETTINGS_PRELOAD_STRICT"] = "true"
+    def strict_parsing_env(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("MCP_APP_SETTINGS_PRELOAD_STRICT", "true")
 
     def test_config_preload_invalid_throws(
         self, invalid_settings_env, strict_parsing_env
