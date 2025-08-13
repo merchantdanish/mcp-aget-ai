@@ -66,7 +66,10 @@ pip install mcp-agent
 >
 > ```bash
 > cd examples/basic/mcp_basic_agent # Or any other example
-> cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml # Update API keys
+> # Option A: secrets YAML
+> # cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml && edit mcp_agent.secrets.yaml
+> # Option B: .env
+> cp .env.example .env && edit .env
 > uv run main.py
 > ```
 
@@ -591,7 +594,7 @@ lost_baggage = SwarmAgent(
 
 ### App Config
 
-Create an [`mcp_agent.config.yaml`](/schema/mcp-agent.config.schema.json) and a gitignored [`mcp_agent.secrets.yaml`](./examples/basic/mcp_basic_agent/mcp_agent.secrets.yaml.example) to define MCP app configuration. This controls logging, execution, LLM provider APIs, and MCP server configuration.
+Create an [`mcp_agent.config.yaml`](/schema/mcp-agent.config.schema.json) and define secrets via either a gitignored [`mcp_agent.secrets.yaml`](./examples/basic/mcp_basic_agent/mcp_agent.secrets.yaml.example) or a local [`.env`](./examples/basic/mcp_basic_agent/.env.example). In production, prefer `MCP_APP_SETTINGS_PRELOAD` to avoid writing plaintext secrets to disk.
 
 ### MCP server management
 
