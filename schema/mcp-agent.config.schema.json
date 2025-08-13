@@ -143,8 +143,16 @@
           "title": "Api Key"
         },
         "endpoint": {
-          "title": "Endpoint",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endpoint"
         },
         "credential_scopes": {
           "anyOf": [
@@ -164,9 +172,6 @@
           "title": "Credential Scopes"
         }
       },
-      "required": [
-        "endpoint"
-      ],
       "title": "AzureSettings",
       "type": "object"
     },
@@ -262,24 +267,6 @@
       "additionalProperties": true,
       "description": "Settings for using Google models in the MCP Agent application.",
       "properties": {
-        "api_key": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Api Key",
-          "description": "Or use the GOOGLE_API_KEY environment variable"
-        },
-        "vertexai": {
-          "default": false,
-          "title": "Vertexai",
-          "type": "boolean"
-        },
         "project": {
           "anyOf": [
             {
@@ -303,12 +290,30 @@
           ],
           "default": null,
           "title": "Location"
+        },
+        "api_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
+        },
+        "vertexai": {
+          "default": false,
+          "title": "Vertexai",
+          "type": "boolean"
         }
       },
       "title": "GoogleSettings",
       "type": "object"
     },
     "LogPathSettings": {
+      "additionalProperties": true,
       "description": "Settings for configuring log file paths with dynamic elements like timestamps or session IDs.",
       "properties": {
         "path_pattern": {
@@ -335,6 +340,7 @@
       "type": "object"
     },
     "LoggerSettings": {
+      "additionalProperties": true,
       "description": "Logger settings for the MCP Agent application.",
       "properties": {
         "type": {
@@ -783,6 +789,7 @@
       "type": "object"
     },
     "OpenTelemetrySettings": {
+      "additionalProperties": true,
       "description": "OTEL settings for the MCP Agent application.",
       "properties": {
         "enabled": {
@@ -879,6 +886,7 @@
       "type": "object"
     },
     "TemporalSettings": {
+      "additionalProperties": true,
       "description": "Temporal settings for the MCP Agent application.",
       "properties": {
         "host": {
@@ -959,6 +967,7 @@
       "type": "object"
     },
     "TraceOTLPSettings": {
+      "additionalProperties": true,
       "description": "Settings for OTLP exporter in OpenTelemetry.",
       "properties": {
         "endpoint": {
@@ -995,6 +1004,7 @@
       "type": "object"
     },
     "TracePathSettings": {
+      "additionalProperties": true,
       "description": "Settings for configuring trace file paths with dynamic elements like timestamps or session IDs.",
       "properties": {
         "path_pattern": {
@@ -1021,6 +1031,7 @@
       "type": "object"
     },
     "UsageTelemetrySettings": {
+      "additionalProperties": true,
       "description": "Settings for usage telemetry in the MCP Agent application.\nAnonymized usage metrics are sent to a telemetry server to help improve the product.",
       "properties": {
         "enabled": {
@@ -1088,7 +1099,6 @@
           "type": "null"
         }
       ],
-      "default": null,
       "description": "Settings for using Anthropic models in the MCP Agent application"
     },
     "bedrock": {
@@ -1100,7 +1110,6 @@
           "type": "null"
         }
       ],
-      "default": null,
       "description": "Settings for using Bedrock models in the MCP Agent application"
     },
     "cohere": {
@@ -1112,7 +1121,6 @@
           "type": "null"
         }
       ],
-      "default": null,
       "description": "Settings for using Cohere models in the MCP Agent application"
     },
     "openai": {
@@ -1124,7 +1132,6 @@
           "type": "null"
         }
       ],
-      "default": null,
       "description": "Settings for using OpenAI models in the MCP Agent application"
     },
     "azure": {
@@ -1136,7 +1143,6 @@
           "type": "null"
         }
       ],
-      "default": null,
       "description": "Settings for using Azure models in the MCP Agent application"
     },
     "google": {
@@ -1148,7 +1154,6 @@
           "type": "null"
         }
       ],
-      "default": null,
       "description": "Settings for using Google models in the MCP Agent application"
     },
     "otel": {
