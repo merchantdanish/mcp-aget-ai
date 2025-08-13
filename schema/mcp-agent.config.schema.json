@@ -962,14 +962,35 @@
       "description": "Settings for OTLP exporter in OpenTelemetry.",
       "properties": {
         "endpoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
           "title": "Endpoint",
-          "type": "string",
           "description": "OTLP endpoint for exporting traces."
+        },
+        "headers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Headers",
+          "description": "Optional headers for OTLP exporter."
         }
       },
-      "required": [
-        "endpoint"
-      ],
       "title": "TraceOTLPSettings",
       "type": "object"
     },
