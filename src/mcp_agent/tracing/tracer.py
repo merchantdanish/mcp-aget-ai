@@ -105,7 +105,10 @@ class TracingConfig:
                 if settings.otlp_settings:
                     tracer_provider.add_span_processor(
                         BatchSpanProcessor(
-                            OTLPSpanExporter(endpoint=settings.otlp_settings.endpoint)
+                            OTLPSpanExporter(
+                                endpoint=settings.otlp_settings.endpoint,
+                                headers=settings.otlp_settings.headers,
+                            )
                         )
                     )
                 else:

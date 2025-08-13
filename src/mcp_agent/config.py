@@ -412,8 +412,11 @@ class TraceOTLPSettings(BaseModel):
     Settings for OTLP exporter in OpenTelemetry.
     """
 
-    endpoint: str
+    endpoint: str | None = None
     """OTLP endpoint for exporting traces."""
+
+    headers: Dict[str, str] | None = None
+    """Optional headers for OTLP exporter."""
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
