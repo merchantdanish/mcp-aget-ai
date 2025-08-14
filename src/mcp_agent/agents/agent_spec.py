@@ -6,9 +6,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class AgentSpec(BaseModel):
-    """Canonical, strongly-typed Agent specification used across the system.
+    """
+    Canonical, strongly-typed Agent specification used across the system.
 
     This represents a declarative way to define an Agent without constructing it yet.
+    AgentSpec is used to create an Agent instance.
+    It can be defined as a config (loaded from a md, yaml, json, etc.), or
+    it can be created programmatically.
     """
 
     name: str

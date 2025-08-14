@@ -1,6 +1,7 @@
 from typing import Callable, List, Optional, TYPE_CHECKING
 
 from mcp_agent.agents.agent import Agent
+from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM, RequestParams
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.workflows.router.router_llm import LLMRouter
 
@@ -17,16 +18,20 @@ class OpenAILLMRouter(LLMRouter):
         self,
         name: str | None = None,
         server_names: List[str] | None = None,
-        agents: List[Agent] | None = None,
+        agents: List[Agent | AugmentedLLM] | None = None,
         functions: List[Callable] | None = None,
         routing_instruction: str | None = None,
+        request_params: RequestParams | None = None,
         context: Optional["Context"] = None,
         **kwargs,
     ):
         super().__init__(
             name=name,
             llm_factory=lambda agent, **kw: OpenAIAugmentedLLM(
-                agent=agent, instruction=kw.get("instruction"), context=context
+                agent=agent,
+                instruction=kw.get("instruction"),
+                default_request_params=request_params,
+                context=context,
             ),
             server_names=server_names,
             agents=agents,
@@ -41,9 +46,10 @@ class OpenAILLMRouter(LLMRouter):
         cls,
         name: str | None = None,
         server_names: List[str] | None = None,
-        agents: List[Agent] | None = None,
+        agents: List[Agent | AugmentedLLM] | None = None,
         functions: List[Callable] | None = None,
         routing_instruction: str | None = None,
+        request_params: RequestParams | None = None,
         context: Optional["Context"] = None,
     ) -> "OpenAILLMRouter":
         """

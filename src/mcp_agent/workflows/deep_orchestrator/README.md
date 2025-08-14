@@ -4,7 +4,7 @@ A production-ready adaptive workflow orchestration system that implements multi-
 
 ## Overview
 
-The Deep Orchestrator extends beyond traditional orchestrator-worker patterns by implementing:
+The Deep Orchestrator extends beyond [basic orchestrator-worker](../orchestrator/orchestrator.py) pattern by implementing:
 
 - **Adaptive Planning**: Creates comprehensive execution plans upfront, then adapts based on results
 - **Dynamic Agent Creation**: Designs and spawns specialized agents optimized for each task

@@ -99,7 +99,7 @@ class DeepOrchestratorConfig(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # Core settings
-    name: str = "AdaptiveOrchestrator"
+    name: str = "DeepOrchestrator"
     """Name of the orchestrator"""
 
     available_agents: List[Agent | AugmentedLLM] = []
@@ -118,7 +118,7 @@ class DeepOrchestratorConfig(BaseModel):
     @classmethod
     def from_simple(
         cls,
-        name: str = "AdaptiveOrchestrator",
+        name: str = "DeepOrchestrator",
         max_iterations: int = 20,
         max_tokens: int = 100000,
         max_cost: float = 10.0,

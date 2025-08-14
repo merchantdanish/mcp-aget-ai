@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, List, Optional, Sequence, Union, Any
+from typing import Any, Callable, List, Literal, Sequence, Tuple
 import os
 import re
 import json
@@ -9,11 +9,21 @@ from glob import glob
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.agents.agent_spec import AgentSpec
+from mcp_agent.core.context import Context
+from mcp_agent.workflows.embedding.embedding_base import EmbeddingModel
+from mcp_agent.workflows.intent_classifier.intent_classifier_embedding import (
+    EmbeddingIntentClassifier,
+)
+from mcp_agent.workflows.intent_classifier.intent_classifier_llm import (
+    LLMIntentClassifier,
+)
 from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm import RequestParams
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
+from mcp_agent.workflows.router.router_embedding import EmbeddingRouter
 from mcp_agent.workflows.router.router_llm import LLMRouter
 from mcp_agent.workflows.parallel.parallel_llm import ParallelLLM
+from mcp_agent.workflows.parallel.fan_in import FanInInput
 from mcp_agent.workflows.evaluator_optimizer.evaluator_optimizer import (
     EvaluatorOptimizerLLM,
 )
@@ -27,12 +37,21 @@ from mcp_agent.workflows.swarm.swarm import Swarm, SwarmAgent
 from mcp_agent.workflows.intent_classifier.intent_classifier_base import Intent
 from mcp.types import ModelPreferences
 
+# TODO: saqadri - move this to agents/factory.py
 
-def _agent_from_spec(spec: AgentSpec, context=None) -> Agent:
-    # Import locally to avoid circular import at module import time
-    from mcp_agent.agents.agent import Agent as _Agent
+SupportedLLMProviders = Literal[
+    "openai", "anthropic", "azure", "google", "bedrock", "ollama"
+]
+SupportedRoutingProviders = Literal["openai", "anthropic"]
+SupportedEmbeddingProviders = Literal["openai", "cohere"]
 
-    return _Agent(
+
+def create_agent(spec: AgentSpec, context: Context | None = None) -> Agent:
+    return agent_from_spec(spec, context=context)
+
+
+def agent_from_spec(spec: AgentSpec, context: Context | None = None) -> Agent:
+    return Agent(
         name=spec.name,
         instruction=spec.instruction,
         server_names=spec.server_names or [],
@@ -43,139 +62,79 @@ def _agent_from_spec(spec: AgentSpec, context=None) -> Agent:
     )
 
 
-def _parse_model_identifier(model_id: str) -> tuple[Optional[str], str]:
-    """Parse a model identifier that may be prefixed with provider (e.g., 'openai:gpt-4o')."""
-    if ":" in model_id:
-        prov, name = model_id.split(":", 1)
-        return (prov.strip().lower() or None, name.strip())
-    return (None, model_id)
-
-
-def _select_provider_and_model(
-    *,
-    provider: Optional[str],
-    model_preferences: Optional[Union[str, ModelPreferences]],
-    context=None,
-) -> tuple[str, Optional[str]]:
-    """Return (provider, model_name) using a string model id or ModelSelector.
-
-    - If model_preferences is a str, treat it as model id; allow 'provider:model' pattern.
-    - If it's a ModelPreferences, use ModelSelector.
-    - Otherwise, return default provider and no model.
-    """
-    prov = (provider or "openai").lower()
-    if isinstance(model_preferences, str):
-        inferred_provider, model_name = _parse_model_identifier(model_preferences)
-        return (inferred_provider or prov, model_name)
-    if isinstance(model_preferences, ModelPreferences):
-        selector = ModelSelector(context=context)
-        info = selector.select_best_model(
-            model_preferences=model_preferences, provider=prov
-        )
-        return (info.provider.lower(), info.name)
-    return (prov, None)
-
-
-def _get_provider_class(prov: str):
-    p = prov.lower()
-    if p == "openai":
-        from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-
-        return OpenAIAugmentedLLM
-    if p == "anthropic":
-        from mcp_agent.workflows.llm.augmented_llm_anthropic import (
-            AnthropicAugmentedLLM,
-        )
-
-        return AnthropicAugmentedLLM
-    if p == "azure":
-        from mcp_agent.workflows.llm.augmented_llm_azure import AzureAugmentedLLM
-
-        return AzureAugmentedLLM
-    if p == "google":
-        from mcp_agent.workflows.llm.augmented_llm_google import GoogleAugmentedLLM
-
-        return GoogleAugmentedLLM
-    if p == "bedrock":
-        from mcp_agent.workflows.llm.augmented_llm_bedrock import BedrockAugmentedLLM
-
-        return BedrockAugmentedLLM
-    if p == "ollama":
-        from mcp_agent.workflows.llm.augmented_llm_ollama import OllamaAugmentedLLM
-
-        return OllamaAugmentedLLM
-    raise ValueError(f"Unsupported provider: {prov}")
-
-
-def _llm_factory(
-    *,
-    provider: Optional[str],
-    model_preferences: Optional[Union[str, ModelPreferences]],
-    context=None,
-) -> Callable[[Agent], AugmentedLLM]:
-    prov, model_name = _select_provider_and_model(
-        provider=provider, model_preferences=model_preferences, context=context
-    )
-    provider_cls = _get_provider_class(prov)
-
-    def _default_params() -> RequestParams | None:
-        if model_name and isinstance(model_preferences, ModelPreferences):
-            return RequestParams(model=model_name, modelPreferences=model_preferences)
-        if model_name and isinstance(model_preferences, str):
-            return RequestParams(model=model_name)
-        if isinstance(model_preferences, ModelPreferences):
-            return RequestParams(modelPreferences=model_preferences)
-        return None
-
-    return lambda agent: provider_cls(
-        agent=agent, default_request_params=_default_params(), context=context
-    )
-
-
 def create_llm(
     agent_name: str,
-    server_names: Optional[List[str]] = None,
-    instruction: Optional[str] = None,
-    provider: Optional[str] = "openai",
-    model_preferences: Optional[Union[str, ModelPreferences]] = None,
-    context=None,
+    server_names: List[str] | None = None,
+    instruction: str | None = None,
+    provider: str = "openai",
+    model: str | ModelPreferences | None = None,
+    request_params: RequestParams | None = None,
+    context: Context | None = None,
 ) -> AugmentedLLM:
-    agent = _agent_from_spec(
+    agent = agent_from_spec(
         AgentSpec(
             name=agent_name, instruction=instruction, server_names=server_names or []
         ),
         context=context,
     )
     factory = _llm_factory(
-        provider=provider, model_preferences=model_preferences, context=context
+        provider=provider, model=model, request_params=request_params, context=context
     )
     return factory(agent=agent)
 
 
 async def create_router_llm(
     *,
-    server_names: Optional[List[str]] = None,
-    agents: Optional[List[AgentSpec | AugmentedLLM]] = None,
-    functions: Optional[List[Callable]] = None,
-    routing_instruction: Optional[str] = None,
-    provider: str = "openai",
-    context=None,
+    server_names: List[str] | None = None,
+    agents: List[AgentSpec | Agent | AugmentedLLM] | None = None,
+    functions: List[Callable] | None = None,
+    routing_instruction: str | None = None,
+    name: str | None = None,
+    provider: SupportedRoutingProviders = "openai",
+    model: str | ModelPreferences | None = None,
+    request_params: RequestParams | None = None,
+    context: Context | None = None,
     **kwargs,
 ) -> LLMRouter:
+    """
+    A router that uses an LLM to route requests to appropriate categories.
+    This class helps to route an input to a specific MCP server, an Agent (an aggregation of MCP servers),
+    or a function (any Callable).
+
+    A router is also an AugmentedLLM, so if you call router.generate(...), it will route the input to the
+    agent that is the best match for the input.
+
+    Args:
+        provider: The provider to use for the embedding router.
+        model: The model to use for the embedding router.
+        server_names: The server names to add to the routing categories.
+        agents: The agents to add to the routing categories.
+        functions: The functions to add to the routing categories.
+        context: The context to use for the embedding router.
+    """
+    request_params = _merge_model_preferences(
+        provider=provider, model=model, request_params=request_params, context=context
+    )
+
     normalized_agents: List[Agent] = []
     for a in agents or []:
         if isinstance(a, AgentSpec):
-            normalized_agents.append(_agent_from_spec(a, context=context))
+            normalized_agents.append(agent_from_spec(a, context=context))
+        elif isinstance(a, Agent | AugmentedLLM):
+            normalized_agents.append(a)
         else:
-            normalized_agents.append(a.agent)
+            raise ValueError(f"Unsupported agent type: {type(a)}")
+
     if provider.lower() == "openai":
         from mcp_agent.workflows.router.router_llm_openai import OpenAILLMRouter
 
         return await OpenAILLMRouter.create(
+            name=name,
             server_names=server_names,
             agents=normalized_agents,
             functions=functions,
             routing_instruction=routing_instruction,
+            request_params=request_params,
             context=context,
             **kwargs,
         )
@@ -183,31 +142,55 @@ async def create_router_llm(
         from mcp_agent.workflows.router.router_llm_anthropic import AnthropicLLMRouter
 
         return await AnthropicLLMRouter.create(
+            name=name,
             server_names=server_names,
             agents=normalized_agents,
             functions=functions,
             routing_instruction=routing_instruction,
+            request_params=request_params,
             context=context,
             **kwargs,
         )
     else:
-        raise ValueError(f"Unsupported provider: {provider}")
+        raise ValueError(
+            f"Unsupported routing provider: {provider}. Currently supported providers are: ['openai', 'anthropic']. To request support, please create an issue at https://github.com/lastmile-ai/mcp-agent/issues"
+        )
 
 
-async def create_embedding_router(
+async def create_router_embedding(
     *,
-    provider: str = "openai",
-    server_names: Optional[List[str]] = None,
-    agents: Optional[List[AgentSpec | AugmentedLLM]] = None,
-    functions: Optional[List[Callable]] = None,
-    context=None,
-):
-    normalized_agents: List[Agent] = []
+    provider: SupportedEmbeddingProviders = "openai",
+    model: EmbeddingModel | None = None,
+    server_names: List[str] | None = None,
+    agents: List[AgentSpec | Agent | AugmentedLLM] | None = None,
+    functions: List[Callable] | None = None,
+    context: Context | None = None,
+) -> EmbeddingRouter:
+    """
+    A router that uses embedding similarity to route requests to appropriate categories.
+    This class helps to route an input to a specific MCP server, an Agent (an aggregation of MCP servers),
+    or a function (any Callable).
+
+    A router is also an AugmentedLLM, so if you call router.generate(...), it will route the input to the
+    agent that is the best match for the input.
+
+    Args:
+        provider: The provider to use for the embedding router.
+        model: The model to use for the embedding router.
+        server_names: The server names to add to the routing categories.
+        agents: The agents to add to the routing categories.
+        functions: The functions to add to the routing categories.
+        context: The context to use for the embedding router.
+    """
+    normalized_agents: List[Agent | AugmentedLLM] = []
     for a in agents or []:
         if isinstance(a, AgentSpec):
-            normalized_agents.append(_agent_from_spec(a, context=context))
+            normalized_agents.append(agent_from_spec(a, context=context))
+        elif isinstance(a, Agent | AugmentedLLM):
+            normalized_agents.append(a)
         else:
-            normalized_agents.append(a.agent)
+            raise ValueError(f"Unsupported agent type: {type(a)}")
+
     prov = provider.lower()
     if prov == "openai":
         from mcp_agent.workflows.router.router_embedding_openai import (
@@ -215,6 +198,7 @@ async def create_embedding_router(
         )
 
         return await OpenAIEmbeddingRouter.create(
+            embedding_model=model,
             server_names=server_names,
             agents=normalized_agents,
             functions=functions,
@@ -226,67 +210,125 @@ async def create_embedding_router(
         )
 
         return await CohereEmbeddingRouter.create(
+            embedding_model=model,
             server_names=server_names,
             agents=normalized_agents,
             functions=functions,
             context=context,
         )
-    raise ValueError(f"Unsupported provider: {provider}")
+
+    raise ValueError(
+        f"Unsupported embedding provider: {provider}. Currently supported providers are: ['openai', 'cohere']. To request support, please create an issue at https://github.com/lastmile-ai/mcp-agent/issues"
+    )
 
 
 def create_orchestrator(
     *,
-    available_agents: Sequence[AgentSpec | AugmentedLLM],
-    plan_type: str = "full",
-    provider: Optional[str] = "openai",
-    model_preferences: Optional[ModelPreferences] = None,
+    available_agents: Sequence[AgentSpec | Agent | AugmentedLLM],
+    planner: AgentSpec | Agent | AugmentedLLM | None = None,
+    synthesizer: AgentSpec | Agent | AugmentedLLM | None = None,
+    plan_type: Literal["full", "iterative"] = "full",
+    provider: SupportedLLMProviders = "openai",
+    model: str | ModelPreferences | None = None,
     overrides: OrchestratorOverrides | None = None,
-    name: Optional[str] = None,
-    context=None,
+    name: str | None = None,
+    context: Context | None = None,
     **kwargs,
 ) -> Orchestrator:
-    factory = _llm_factory(
-        provider=provider, model_preferences=model_preferences, context=context
-    )
-    normalized: List[Agent | AugmentedLLM] = []
+    """
+    In the orchestrator-workers workflow, a planner LLM dynamically breaks down tasks,
+    delegates them to worker LLMs, and synthesizes their results. It does this
+    in a loop until the task is complete.
+
+    This is a simpler (and faster) form of the [deep orchestrator](https://github.com/lastmile-ai/mcp-agent/blob/main/src/mcp_agent/workflows/deep_orchestrator/README.md) workflow,
+    which is more suitable for complex, long-running tasks with multiple agents and MCP servers where the number of agents is not known in advance.
+
+    Args:
+        available_agents: The agents/LLMs/workflows that can be used to execute the task.
+        plan_type: The type of plan to use for the orchestrator ["full", "iterative"].
+            "full" planning generates the full plan first, then executes. "iterative" plans the next step, and loops until success.
+        provider: The provider to use for the LLM.
+        model: The model to use as the LLM.
+        overrides: Optional overrides for instructions and prompt templates.
+        name: The name of this orchestrator workflow. Can be used as an identifier.
+        context: The context to use for the orchestrator.
+    """
+    factory = _llm_factory(provider=provider, model=model, context=context)
+
+    agents: List[Agent | AugmentedLLM] = []
     for item in available_agents:
         if isinstance(item, AgentSpec):
-            normalized.append(_agent_from_spec(item, context=context))
+            agents.append(agent_from_spec(item, context=context))
         else:
-            normalized.append(item)
+            agents.append(item)
+
+    planner_obj: Agent | AugmentedLLM | None = None
+    synthesizer_obj: Agent | AugmentedLLM | None = None
+    if planner:
+        planner_obj = (
+            planner
+            if isinstance(planner, Agent | AugmentedLLM)
+            else agent_from_spec(planner, context=context)
+        )
+    if synthesizer:
+        synthesizer_obj = (
+            synthesizer
+            if isinstance(synthesizer, Agent | AugmentedLLM)
+            else agent_from_spec(synthesizer, context=context)
+        )
+
     return Orchestrator(
         llm_factory=factory,
         name=name,
-        plan_type=plan_type,  # type: ignore[arg-type]
-        available_agents=normalized,
-        context=context,
+        planner=planner_obj,
+        synthesizer=synthesizer_obj,
+        available_agents=agents,
+        plan_type=plan_type,
         overrides=overrides,
+        context=context,
         **kwargs,
     )
 
 
 def create_deep_orchestrator(
     *,
-    available_agents: Sequence[AgentSpec | AugmentedLLM],
-    config: Optional[DeepOrchestratorConfig] = None,
-    provider: Optional[str] = "openai",
-    model_preferences: Optional[ModelPreferences] = None,
-    context=None,
+    available_agents: Sequence[AgentSpec | Agent | AugmentedLLM],
+    config: DeepOrchestratorConfig | None = None,
+    name: str | None = None,
+    provider: SupportedLLMProviders = "openai",
+    model: str | ModelPreferences | None = None,
+    context: Context | None = None,
     **kwargs,
 ) -> DeepOrchestrator:
-    factory = _llm_factory(
-        provider=provider, model_preferences=model_preferences, context=context
+    """
+    Create a deep research-style orchestrator workflow that can be used to execute complex, long-running tasks with
+    multiple agents and MCP servers.
+
+    Args:
+        available_agents: The agents/LLMs/workflows that can be used to execute the task.
+        config: The configuration for the deep orchestrator.
+        name: The name of this deep orchestrator workflow. Can be used as an identifier.
+        provider: The provider to use for the LLM.
+        model: The model to use as the LLM.
+        context: The context to use for the LLM.
+    """
+    factory = _llm_factory(provider=provider, model=model, context=context)
+
+    agents: List[Agent | AugmentedLLM] = (
+        config.available_agents if config and config.available_agents else []
     )
-    agents_mixed: List[Agent | AugmentedLLM] = []
     for item in available_agents:
         if isinstance(item, AgentSpec):
-            agents_mixed.append(_agent_from_spec(item, context=context))
+            agents.append(agent_from_spec(item, context=context))
         else:
-            agents_mixed.append(item)
+            agents.append(item)
+
     if config is None:
-        config = DeepOrchestratorConfig()
-    # Inject available agents
-    config.available_agents = agents_mixed
+        config = DeepOrchestratorConfig.from_simple()
+
+    config.available_agents = agents
+    config.name = name or config.name
+
     return DeepOrchestrator(
         llm_factory=factory,
         config=config,
@@ -297,35 +339,54 @@ def create_deep_orchestrator(
 
 def create_parallel_llm(
     *,
-    fan_in: Union[AugmentedLLM, Callable[[Any], Any], AgentSpec],
-    fan_out: Optional[List[Union[AugmentedLLM, AgentSpec, Callable]]] = None,
-    provider: Optional[str] = "openai",
-    model_preferences: Optional[ModelPreferences] = None,
+    fan_in: AgentSpec | Agent | AugmentedLLM | Callable[[FanInInput], Any],
+    fan_out: List[AgentSpec | Agent | AugmentedLLM | Callable] | None = None,
+    name: str | None = None,
+    provider: SupportedLLMProviders | None = "openai",
+    model: str | ModelPreferences | None = None,
+    request_params: RequestParams | None = None,
     context=None,
     **kwargs,
 ) -> ParallelLLM:
+    """
+    Create a parallel workflow that can fan out to multiple agents to execute in parallel, and fan in/aggregate the results.
+
+    Args:
+        fan_in: The agent/LLM/workflow that generates responses.
+        fan_out: The agents/LLMs/workflows that generate responses.
+        name: The name of the parallel workflow. Can be used to identify the workflow in logs.
+        provider: The provider to use for the LLM.
+        model: The model to use as the LLM.
+        request_params: The default request parameters to use for the LLM.
+        context: The context to use for the LLM.
+    """
     factory = _llm_factory(
-        provider=provider, model_preferences=model_preferences, context=context
+        provider=provider, model=model, request_params=request_params, context=context
     )
-    fan_in_agent_or_llm: Union[AugmentedLLM, Agent, Callable[[Any], Any]]
+
+    fan_in_agent_or_llm: Agent | AugmentedLLM | Callable[[FanInInput], Any]
     if isinstance(fan_in, AgentSpec):
-        fan_in_agent_or_llm = _agent_from_spec(fan_in, context=context)
+        fan_in_agent_or_llm = agent_from_spec(fan_in, context=context)
     else:
-        fan_in_agent_or_llm = fan_in  # already AugmentedLLM or callable
+        fan_in_agent_or_llm = fan_in  # already Agent or AugmentedLLM or callable
+
     fan_out_agents: List[Agent | AugmentedLLM] = []
     fan_out_functions: List[Callable] = []
     for item in fan_out or []:
-        if callable(item) and not isinstance(item, AugmentedLLM):
+        if isinstance(item, AgentSpec):
+            fan_out_agents.append(agent_from_spec(item, context=context))
+        elif isinstance(item, Agent):
+            fan_out_agents.append(item)
+        elif isinstance(item, AugmentedLLM):
+            fan_out_agents.append(item)
+        elif callable(item):
             fan_out_functions.append(item)  # function
-        elif isinstance(item, AgentSpec):
-            fan_out_agents.append(_agent_from_spec(item, context=context))
-        else:
-            fan_out_agents.append(item)  # AugmentedLLM
 
     return ParallelLLM(
-        fan_in_agent=fan_in_agent_or_llm,  # type: ignore[arg-type]
-        fan_out_agents=fan_out_agents or None,  # accepts Agents or LLMs
+        fan_in_agent=fan_in_agent_or_llm,
+        fan_out_agents=fan_out_agents or None,
         fan_out_functions=fan_out_functions or None,
+        name=name,
         llm_factory=factory,
         context=context,
         **kwargs,
@@ -334,34 +395,52 @@ def create_parallel_llm(
 
 def create_evaluator_optimizer_llm(
     *,
-    optimizer: Union[AugmentedLLM, AgentSpec],
-    evaluator: Union[str, AugmentedLLM, AgentSpec],
-    min_rating=None,
+    optimizer: AgentSpec | Agent | AugmentedLLM,
+    evaluator: str | AgentSpec | Agent | AugmentedLLM,
+    name: str | None = None,
+    min_rating: int | None = None,
     max_refinements: int = 3,
-    provider: Optional[str] = "openai",
-    model_preferences: Optional[ModelPreferences] = None,
-    context=None,
+    provider: SupportedLLMProviders | None = None,
+    model: str | ModelPreferences | None = None,
+    request_params: RequestParams | None = None,
+    context: Context | None = None,
     **kwargs,
 ) -> EvaluatorOptimizerLLM:
+    """
+    Create an evaluator-optimizer workflow that generates responses and evaluates them iteratively until they achieve a necessary quality criteria.
+
+    Args:
+        optimizer: The agent/LLM/workflow that generates responses.
+        evaluator: The agent/LLM that evaluates responses
+        name: The name of the evaluator-optimizer workflow.
+        min_rating: Minimum acceptable quality rating
+        max_refinements: Maximum refinement iterations (max number of times to refine the response)
+        provider: The provider to use for the LLM.
+        model: The model to use as the LLM.
+        request_params: The default request parameters to use for the LLM.
+        context: The context to use for the LLM.
+
+    """
     factory = _llm_factory(
-        provider=provider, model_preferences=model_preferences, context=context
+        provider=provider, model=model, request_params=request_params, context=context
     )
-    optimizer_obj: Union[AugmentedLLM, Agent]
-    evaluator_obj: Union[str, AugmentedLLM, Agent]
+    optimizer_obj: AugmentedLLM | Agent
+    evaluator_obj: str | AugmentedLLM | Agent
 
     optimizer_obj = (
-        _agent_from_spec(optimizer, context=context)
+        agent_from_spec(optimizer, context=context)
         if isinstance(optimizer, AgentSpec)
         else optimizer
     )
     if isinstance(evaluator, AgentSpec):
-        evaluator_obj = _agent_from_spec(evaluator, context=context)
+        evaluator_obj = agent_from_spec(evaluator, context=context)
     else:
         evaluator_obj = evaluator
 
     return EvaluatorOptimizerLLM(
         optimizer=optimizer_obj,
         evaluator=evaluator_obj,
+        name=name,
         min_rating=min_rating,
         max_refinements=max_refinements,
         llm_factory=factory,
@@ -373,17 +452,30 @@ def create_evaluator_optimizer_llm(
 def create_swarm(
     *,
     name: str,
-    instruction: Optional[Union[str, Callable[[dict], str]]] = None,
-    server_names: Optional[List[str]] = None,
-    functions: Optional[List[Callable]] = None,
-    provider: str = "openai",
-    context=None,
+    instruction: str | Callable[[dict], str] | None = None,
+    server_names: List[str] | None = None,
+    functions: List[Callable] | None = None,
+    provider: Literal["openai", "anthropic"] = "openai",
+    context: Context | None = None,
 ) -> Swarm:
+    """
+    Create a swarm agent that can use tools via MCP servers.
+    Swarm agents can use tools to handoff to other agents, and communnicate with MCP servers.
+
+    Args:
+        name: str - The name of the swarm agent.
+        instruction: str | Callable[[dict], str] | None - The instruction for the swarm agent.
+        server_names: List[str] | None - The server names to use for the swarm agent.
+        functions: List[Callable] | None - The functions to use for the swarm agent.
+        provider: Literal["openai", "anthropic"] - The provider to use for the swarm agent.
+        context: Context | None - The context to use for the swarm agent.
+    """
+
     swarm_agent = SwarmAgent(
         name=name,
         instruction=instruction or "You are a helpful agent.",
-        server_names=server_names or [],
-        functions=functions or [],
+        server_names=server_names,
+        functions=functions,
         context=context,
     )
     if provider.lower() == "openai":
@@ -394,18 +486,39 @@ def create_swarm(
         from mcp_agent.workflows.swarm.swarm_anthropic import AnthropicSwarm
 
         return AnthropicSwarm(agent=swarm_agent)
-    raise ValueError(f"Unsupported provider: {provider}")
+    raise ValueError(
+        f"Unsupported swarm provider: {provider}. Currently supported providers are: ['openai', 'anthropic']. To request support, please create an issue at https://github.com/lastmile-ai/mcp-agent/issues"
+    )
 
 
 async def create_intent_classifier_llm(
     *,
     intents: List[Intent],
-    provider: str = "openai",
-    classification_instruction: Optional[str] = None,
-    name: Optional[str] = None,
-    context=None,
-):
+    provider: Literal["openai", "anthropic"] = "openai",
+    model: str | ModelPreferences | None = None,
+    classification_instruction: str | None = None,
+    name: str | None = None,
+    request_params: RequestParams | None = None,
+    context: Context | None = None,
+) -> LLMIntentClassifier:
+    """
+    Create an intent classifier that uses an LLM to classify the given intents.
+
+    Args:
+        intents: List[Intent] - The list of intents to classify.
+        provider: Literal["openai", "anthropic"] - The LLM provider to use.
+        model: str | ModelPreferences | None - The model to use as the LLM.
+        classification_instruction: str | None - The instruction to the LLM.
+        name: str | None - The name of the intent classifier.
+        request_params: RequestParams | None - The default request parameters to use for the LLM.
+        context: Context | None - Context object for the intent classifier.
+    """
+
     prov = provider.lower()
+    request_params = _merge_model_preferences(
+        provider=provider, model=model, request_params=request_params, context=context
+    )
+
     if prov == "openai":
         from mcp_agent.workflows.intent_classifier.intent_classifier_llm_openai import (
             OpenAILLMIntentClassifier,
@@ -414,7 +527,10 @@ async def create_intent_classifier_llm(
         llm_cls = _get_provider_class(prov)
         return await OpenAILLMIntentClassifier.create(
             llm=llm_cls(
-                name=name, instruction=classification_instruction, context=context
+                name=name,
+                instruction=classification_instruction,
+                default_request_params=request_params,
+                context=context,
             ),
             intents=intents,
             classification_instruction=classification_instruction,
@@ -429,17 +545,59 @@ async def create_intent_classifier_llm(
         llm_cls = _get_provider_class(prov)
         return await AnthropicLLMIntentClassifier.create(
             llm=llm_cls(
-                name=name, instruction=classification_instruction, context=context
+                name=name,
+                instruction=classification_instruction,
+                default_request_params=request_params,
+                context=context,
             ),
             intents=intents,
             classification_instruction=classification_instruction,
             name=name,
             context=context,
         )
-    raise ValueError(f"Unsupported provider: {provider}")
+    raise ValueError(
+        f"Unsupported intent classifier provider: {provider}. Currently supported providers are: ['openai', 'anthropic']. To request support, please create an issue at https://github.com/lastmile-ai/mcp-agent/issues"
+    )
 
 
-# ------------------------- AgentSpec Loaders ----------------------------------
+async def create_intent_classifier_embedding(
+    *,
+    intents: List[Intent],
+    provider: SupportedEmbeddingProviders = "openai",
+    model: EmbeddingModel | None = None,
+    context: Context | None = None,
+) -> EmbeddingIntentClassifier:
+    """
+    Create an intent classifier that uses embedding similarity to classify intents.
+
+    Args:
+        intents: List[Intent] - The list of intents to classify.
+        provider: Literal["openai", "cohere"] - The provider to use for embedding generation.
+        context: Context | None - Context object for the intent classifier.
+    """
+
+    if provider.lower() == "openai":
+        from mcp_agent.workflows.intent_classifier.intent_classifier_embedding_openai import (
+            OpenAIEmbeddingIntentClassifier,
+        )
+
+        return await OpenAIEmbeddingIntentClassifier.create(
+            intents=intents, embedding_model=model, context=context
+        )
+    if provider.lower() == "cohere":
+        from mcp_agent.workflows.intent_classifier.intent_classifier_embedding_cohere import (
+            CohereEmbeddingIntentClassifier,
+        )
+
+        return await CohereEmbeddingIntentClassifier.create(
+            intents=intents, embedding_model=model, context=context
+        )
+    raise ValueError(
+        f"Unsupported embedding provider: {provider}. Currently supported providers are: ['openai', 'cohere']. To request support, please create an issue at https://github.com/lastmile-ai/mcp-agent/issues"
+    )
+
+
+# region AgentSpec loaders
 
 
 def _resolve_callable(ref: str) -> Callable:
@@ -479,7 +637,7 @@ def _normalize_agents_data(data: Any) -> list[dict]:
 
 
 def _agent_spec_from_dict(
-    obj: dict, context=None, *, default_instruction: Optional[str] = None
+    obj: dict, context: Context | None = None, *, default_instruction: str | None = None
 ) -> AgentSpec:
     name = obj.get("name")
     if not name:
@@ -493,6 +651,8 @@ def _agent_spec_from_dict(
         else:
             instruction = default_instruction or desc
     server_names = obj.get("server_names") or obj.get("servers") or []
+    # TODO: saqadri - Claude subagents usually specify 'tools' that are not MCP server names.
+    # For now, we map 'tools' to server_names as a convenience, but this should be modeled separately.
     connection_persistence = obj.get("connection_persistence", True)
     functions = obj.get("functions", [])
     # If no servers provided, consider 'tools' as a hint for server names
@@ -532,34 +692,47 @@ def _load_yaml(text: str) -> Any:
     return yaml.safe_load(text)
 
 
-def _extract_front_matter_md(text: str) -> Optional[str]:
-    """Extract YAML front-matter delimited by --- at the top of a Markdown file."""
-    if text.startswith("---\n"):
-        end = text.find("\n---", 4)
+def _extract_front_matter_md(text: str) -> str | None:
+    """Extract YAML front-matter delimited by --- at the top of a Markdown file.
+
+    Allows leading whitespace/BOM before the first ---.
+    """
+    s = text.lstrip("\ufeff\r\n \t")
+    if s.startswith("---\n"):
+        end = s.find("\n---", 4)
         if end != -1:
-            return text[4:end]
+            return s[4:end]
     return None
 
 
-def _extract_front_matter_and_body_md(text: str) -> tuple[Optional[str], str]:
-    """Return (front_matter_yaml, body_text)."""
-    if text.startswith("---\n"):
-        end = text.find("\n---", 4)
+def _extract_front_matter_and_body_md(text: str) -> tuple[str | None, str]:
+    """Return (front_matter_yaml, body_text).
+
+    Allows leading whitespace/BOM before front matter.
+    """
+    s = text.lstrip("\ufeff\r\n \t")
+    if s.startswith("---\n"):
+        end = s.find("\n---", 4)
         if end != -1:
-            fm = text[4:end]
-            body = text[end + len("\n---") :].lstrip("\n")
+            fm = s[4:end]
+            body = s[end + len("\n---") :].lstrip("\n")
             return fm, body
     return None, text
 
 
 def _extract_code_blocks_md(text: str) -> list[tuple[str, str]]:
-    """Return list of (lang, code) for fenced code blocks."""
-    pattern = re.compile(r"```(\w+)?\n([\s\S]*?)```", re.MULTILINE)
+    """Return list of (lang, code) for fenced code blocks.
+
+    Relaxed to allow attributes after language, e.g. ```yaml title="...".
+    """
+    pattern = re.compile(
+        r"```\s*([A-Za-z0-9_-]+)(?:[^\n]*)?\n([\s\S]*?)```", re.MULTILINE
+    )
     return [(m.group(1) or "", m.group(2)) for m in pattern.finditer(text)]
 
 
 def load_agent_specs_from_text(
-    text: str, *, fmt: Optional[str] = None, context=None
+    text: str, *, fmt: str | None = None, context: Context | None = None
 ) -> List[AgentSpec]:
     """Load AgentSpec list from text in yaml/json/md.
 
@@ -597,7 +770,7 @@ def load_agent_specs_from_text(
             data = parser(text)
         except Exception:
             continue
-        body_text: Optional[str] = None
+        body_text: str | None = None
         if (
             isinstance(data, tuple)
             and len(data) == 3
@@ -654,26 +827,141 @@ def load_agent_specs_from_dir(
     return results
 
 
-async def create_intent_classifier_embedding(
+# endregion
+
+
+# region helpers
+
+
+def _parse_model_identifier(model_id: str) -> Tuple[str | None, str]:
+    """Parse a model identifier that may be prefixed with provider (e.g., 'openai:gpt-4o')."""
+    if ":" in model_id:
+        prov, name = model_id.split(":", 1)
+        return (prov.strip().lower() or None, name.strip())
+    return (None, model_id)
+
+
+def _select_provider_and_model(
     *,
-    intents: List[Intent],
-    provider: str = "openai",
-    context=None,
+    model: str | ModelPreferences | None = None,
+    provider: SupportedLLMProviders | None = None,
+    context: Context | None = None,
+) -> Tuple[str, str | None]:
+    """
+    Return (provider, model_name) using a string model id or ModelSelector.
+
+    - If model is a str, treat it as model id; allow 'provider:model' pattern.
+    - If it's a ModelPreferences, use ModelSelector.
+    - Otherwise, return default provider and no model.
+    """
+    prov = (provider or "openai").lower()
+    if isinstance(model, str):
+        inferred_provider, model_name = _parse_model_identifier(model)
+        return (inferred_provider or prov, model_name)
+    if isinstance(model, ModelPreferences):
+        selector = ModelSelector(context=context)
+        model_info = selector.select_best_model(model_preferences=model, provider=prov)
+        return (model_info.provider.lower(), model_info.name)
+    return (prov, None)
+
+
+def _merge_model_preferences(
+    provider: str | None = None,
+    model: str | ModelPreferences | None = None,
+    request_params: RequestParams | None = None,
+    context: Context | None = None,
+) -> RequestParams:
+    """
+    Merge model preferences from provider, model, and request params.
+    Explicitly specified model takes precedence over request_params.
+    """
+
+    _, model_name = _select_provider_and_model(
+        provider=provider,
+        model=model or getattr(request_params, "model", None),
+        context=context,
+    )
+
+    if request_params is not None:
+        if model_name and isinstance(model, ModelPreferences):
+            request_params.model = model_name
+            request_params.modelPreferences = model
+        elif model_name and isinstance(model, str):
+            request_params.model = model_name
+        elif isinstance(model, ModelPreferences):
+            request_params.modelPreferences = model
+    else:
+        request_params = RequestParams(model=model_name)
+        if isinstance(model, ModelPreferences):
+            request_params.modelPreferences = model
+
+    return request_params
+
+
+def _get_provider_class(
+    provider: SupportedLLMProviders,
 ):
-    if provider.lower() == "openai":
-        from mcp_agent.workflows.intent_classifier.intent_classifier_embedding_openai import (
-            OpenAIEmbeddingIntentClassifier,
+    p = provider.lower()
+    if p == "openai":
+        from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
+
+        return OpenAIAugmentedLLM
+    if p == "anthropic":
+        from mcp_agent.workflows.llm.augmented_llm_anthropic import (
+            AnthropicAugmentedLLM,
         )
 
-        return await OpenAIEmbeddingIntentClassifier.create(
-            intents=intents, context=context
-        )
-    if provider.lower() == "cohere":
-        from mcp_agent.workflows.intent_classifier.intent_classifier_embedding_cohere import (
-            CohereEmbeddingIntentClassifier,
-        )
+        return AnthropicAugmentedLLM
+    if p == "azure":
+        from mcp_agent.workflows.llm.augmented_llm_azure import AzureAugmentedLLM
 
-        return await CohereEmbeddingIntentClassifier.create(
-            intents=intents, context=context
-        )
-    raise ValueError(f"Unsupported provider: {provider}")
+        return AzureAugmentedLLM
+    if p == "google":
+        from mcp_agent.workflows.llm.augmented_llm_google import GoogleAugmentedLLM
+
+        return GoogleAugmentedLLM
+    if p == "bedrock":
+        from mcp_agent.workflows.llm.augmented_llm_bedrock import BedrockAugmentedLLM
+
+        return BedrockAugmentedLLM
+    if p == "ollama":
+        from mcp_agent.workflows.llm.augmented_llm_ollama import OllamaAugmentedLLM
+
+        return OllamaAugmentedLLM
+
+    raise ValueError(
+        f"mcp-agent doesn't support provider: {provider}. To request support, please create an issue at https://github.com/lastmile-ai/mcp-agent/issues"
+    )
+
+
+def _llm_factory(
+    *,
+    provider: SupportedLLMProviders | None = None,
+    model: str | ModelPreferences | None = None,
+    request_params: RequestParams | None = None,
+    context: Context | None = None,
+) -> Callable[[Agent], AugmentedLLM]:
+    prov, model_name = _select_provider_and_model(
+        provider=provider,
+        model=model or getattr(request_params, "model", None),
+        context=context,
+    )
+    provider_cls = _get_provider_class(prov)
+
+    def _default_params() -> RequestParams | None:
+        if model_name and isinstance(model, ModelPreferences):
+            return RequestParams(model=model_name, modelPreferences=model)
+        if model_name and isinstance(model, str):
+            return RequestParams(model=model_name)
+        if isinstance(model, ModelPreferences):
+            return RequestParams(modelPreferences=model)
+        return None
+
+    return lambda agent: provider_cls(
+        agent=agent,
+        default_request_params=request_params or _default_params(),
+        context=context,
+    )
+
+
+# endregion
