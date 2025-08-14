@@ -701,6 +701,92 @@
       "title": "MCPSettings",
       "type": "object"
     },
+    "OllamaSettings": {
+      "additionalProperties": true,
+      "description": "Settings for using Ollama models in the MCP Agent application.\nInherits from OpenAISettings to maintain compatibility with OpenAI API.",
+      "properties": {
+        "api_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
+        },
+        "reasoning_effort": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Reasoning Effort",
+          "type": "string"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
+        },
+        "user": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User"
+        },
+        "default_headers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Headers"
+        },
+        "default_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Model"
+        },
+        "think": {
+          "default": true,
+          "title": "Think",
+          "type": "boolean"
+        }
+      },
+      "title": "OllamaSettings",
+      "type": "object"
+    },
     "OpenAISettings": {
       "additionalProperties": true,
       "description": "Settings for using OpenAI models in the MCP Agent application.",
@@ -1090,6 +1176,18 @@
       ],
       "default": null,
       "description": "Settings for using OpenAI models in the MCP Agent application"
+    },
+    "ollama": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OllamaSettings"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Settings for using Ollama models in the MCP Agent application"
     },
     "azure": {
       "anyOf": [
