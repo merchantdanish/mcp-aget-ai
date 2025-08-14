@@ -20,6 +20,11 @@ from mcp.types import (
     CallToolResult,
     CreateMessageRequestParams,
     CreateMessageResult,
+    GetPromptResult,
+    ListPromptsResult,
+    ListResourcesResult,
+    ListToolsResult,
+    ReadResourceResult,
     SamplingMessage,
     TextContent,
     PromptMessage,
@@ -287,6 +292,16 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         self.model_selector = self.context.model_selector
         self.type_converter = type_converter
 
+    async def __aenter__(self):
+        if self.agent:
+            await self.agent.__aenter__()
+
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.agent:
+            await self.agent.__aexit__(exc_type, exc_val, exc_tb)
+
     @abstractmethod
     async def generate(
         self,
@@ -424,6 +439,8 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         last_message = await self.get_last_message()
         return self.message_param_str(last_message) if last_message else None
 
+    # region Agent / MCP convenience methods
+
     async def pre_tool_call(
         self, tool_call_id: str | None, request: CallToolRequest
     ) -> CallToolRequest | bool:
@@ -515,6 +532,38 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
                         )
                     ],
                 )
+
+    async def list_tools(self, server_name: str | None = None) -> ListToolsResult:
+        """Call the underlying agent's list_tools method for a given server."""
+        return await self.agent.list_tools(server_name=server_name)
+
+    async def list_resources(
+        self, server_name: str | None = None
+    ) -> ListResourcesResult:
+        """Call the underlying agent's list_resources method for a given server."""
+        return await self.agent.list_resources(server_name=server_name)
+
+    async def read_resource(
+        self, uri: str, server_name: str | None = None
+    ) -> ReadResourceResult:
+        """Call the underlying agent's read_resource method for a given server."""
+        return await self.agent.read_resource(uri=uri, server_name=server_name)
+
+    async def list_prompts(self, server_name: str | None = None) -> ListPromptsResult:
+        """Call the underlying agent's list_prompts method for a given server."""
+        return await self.agent.list_prompts(server_name=server_name)
+
+    async def get_prompt(
+        self, name: str, server_name: str | None = None
+    ) -> GetPromptResult:
+        """Call the underlying agent's get_prompt method for a given server."""
+        return await self.agent.get_prompt(name=name, server_name=server_name)
+
+    async def close(self):
+        """Close underlying agent connections."""
+        await self.agent.close()
+
+    # endregion
 
     def message_param_str(self, message: MessageParamT) -> str:
         """Convert an input message to a string representation."""
@@ -682,6 +731,8 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
 
         return f"{prefix}-{identifier}"
 
+    # region Token tracking
+
     async def get_token_node(
         self, return_all_matches: bool = False, node_type: str | None = None
     ):
@@ -757,3 +808,5 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
             throttle_ms=throttle_ms,
             include_subtree=include_subtree,
         )
+
+    # endregion

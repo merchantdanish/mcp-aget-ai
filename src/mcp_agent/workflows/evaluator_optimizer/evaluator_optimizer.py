@@ -85,11 +85,11 @@ class EvaluatorOptimizerLLM(AugmentedLLM[MessageParamT, MessageT]):
                      - An Agent that will be converted to an AugmentedLLM
                      - An AugmentedLLM instance
                      - An Orchestrator/Router/ParallelLLM workflow
-            evaluator_agent: The agent/LLM that evaluates responses
-            evaluation_criteria: Criteria for the evaluator to assess responses
+            evaluator: The agent/LLM that evaluates responses
             min_rating: Minimum acceptable quality rating
-            max_refinements: Maximum refinement iterations
+            max_refinements: Maximum refinement iterations (max number of times to refine the response)
             llm_factory: Optional factory to create LLMs from agents
+            context: The context to use for the LLM.
         """
         super().__init__(
             name=name,

@@ -1,9 +1,11 @@
+import asyncio
+import os
+import sys
 import functools
+
 from types import MethodType
 from typing import Any, Dict, Optional, Type, TypeVar, Callable, TYPE_CHECKING
 from datetime import timedelta
-import asyncio
-import sys
 from contextlib import asynccontextmanager
 
 from mcp import ServerSession
@@ -26,8 +28,10 @@ from mcp_agent.elicitation.types import ElicitationCallback
 from mcp_agent.tracing.telemetry import get_tracer
 from mcp_agent.utils.common import unwrap
 from mcp_agent.workflows.llm.llm_selector import ModelSelector
+from mcp_agent.workflows.factory import load_agent_specs_from_dir
 
 if TYPE_CHECKING:
+    from mcp_agent.agents.agent_spec import AgentSpec
     from mcp_agent.executor.workflow import Workflow
 
 R = TypeVar("R")
@@ -204,6 +208,59 @@ class MCPApp:
 
         # Store a reference to this app instance in the context for easier access
         self._context.app = self
+
+        # Auto-load subagents if enabled in settings
+        try:
+            subagents = self._config.agents
+
+            if subagents is not None and subagents.enabled:
+                self.logger.info("Loading subagents from configuration...")
+
+                # Enforce precedence and deduplicate by name:
+                # - Inline definitions (highest precedence)
+                # - search_paths in given order (earlier has higher precedence)
+                loaded_by_name: Dict[str, "AgentSpec"] = {}
+
+                # Process search paths from lowest to highest precedence so that
+                # higher precedence can overwrite lower ones while logging a warning.
+                for p in reversed(subagents.search_paths or []):
+                    path = os.path.expanduser(p)
+                    agents_from_search_path = load_agent_specs_from_dir(
+                        path=path, pattern=subagents.pattern, context=self._context
+                    )
+
+                    if agents_from_search_path:
+                        self.logger.info(
+                            f"Found subagents in {path}",
+                            data={"count": len(agents_from_search_path)},
+                        )
+                        for spec in agents_from_search_path:
+                            if spec.name in loaded_by_name:
+                                self.logger.warning(
+                                    "Duplicate subagent name encountered; overwriting with higher-precedence definition",
+                                    data={"agent_name": spec.name, "source": path},
+                                )
+                            loaded_by_name[spec.name] = spec
+
+                # Inline subagents (highest precedence): overwrite if duplicate
+                for spec in subagents.definitions or []:
+                    if spec.name in loaded_by_name:
+                        self.logger.warning(
+                            "Duplicate subagent name encountered; overwriting with inline definition",
+                            data={"agent_name": spec.name},
+                        )
+                    loaded_by_name[spec.name] = spec
+
+                if loaded_by_name:
+                    # Keep the loaded specs on context for access by workflows/factories
+                    self._context.loaded_subagents = list(loaded_by_name.values())
+                    self.logger.info(
+                        "Loaded subagents",
+                        data={"count": len(self._context.loaded_subagents)},
+                    )
+        except Exception as e:
+            # Non-fatal: log and continue
+            self.logger.warning(f"Subagent discovery failed: {e}")
 
         self._register_global_workflow_tasks()
 

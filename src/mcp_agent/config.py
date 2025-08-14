@@ -14,6 +14,9 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+from mcp_agent.agents.agent_spec import AgentSpec
+
+
 class MCPServerAuthSettings(BaseModel):
     """Represents authentication configuration for a server."""
 
@@ -349,6 +352,34 @@ class VertexAISettings(BaseSettings, VertexAIMixin):
     )
 
 
+class SubagentSettings(BaseModel):
+    """
+    Settings for discovering and loading project/user subagents (AgentSpec files).
+    Supports common formats like Claude Code subagents.
+    """
+
+    enabled: bool = True
+    """Enable automatic subagent discovery and loading."""
+
+    search_paths: List[str] = Field(
+        default_factory=lambda: [
+            ".claude/agents",
+            "~/.claude/agents",
+            ".mcp-agent/agents",
+            "~/.mcp-agent/agents",
+        ]
+    )
+    """Ordered list of directories to scan. Earlier entries take precedence on name conflicts (project before user)."""
+
+    pattern: str = "**/*.*"
+    """Glob pattern within each directory to match files (YAML/JSON/Markdown supported)."""
+
+    definitions: List[AgentSpec] = Field(default_factory=list)
+    """Inline AgentSpec definitions directly in config."""
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
 class TemporalSettings(BaseModel):
     """
     Temporal settings for the MCP Agent application.
@@ -582,6 +613,9 @@ class Settings(BaseSettings):
     usage_telemetry: UsageTelemetrySettings | None = UsageTelemetrySettings()
     """Usage tracking settings for the MCP Agent application"""
 
+    agents: SubagentSettings | None = SubagentSettings()
+    """Settings for defining and loading subagents for the MCP Agent application"""
+
     def __eq__(self, other):  # type: ignore[override]
         if not isinstance(other, Settings):
             return NotImplemented
@@ -600,16 +634,42 @@ class Settings(BaseSettings):
 
     @classmethod
     def _find_config(cls, filenames: List[str]) -> Path | None:
-        """Find the config file of one of the possible names in the current directory or parent directories."""
+        """Find a file by name in current, parents, and `.mcp-agent` subdirs, with home fallback.
+
+        Search order:
+          - For each directory from CWD -> root:
+              - <dir>/<filename>
+              - <dir>/.mcp-agent/<filename>
+          - Home-level fallback:
+              - ~/.mcp-agent/<filename>
+        Returns the first match found.
+        """
         current_dir = Path.cwd()
 
-        # Check current directory and parent directories
-        while current_dir != current_dir.parent:
+        # Check current directory and parent directories (direct and .mcp-agent subdir)
+        while True:
             for filename in filenames:
-                config_path = current_dir / filename
-                if config_path.exists():
-                    return config_path
+                direct = current_dir / filename
+                if direct.exists():
+                    return direct
+
+                mcp_dir = current_dir / ".mcp-agent" / filename
+                if mcp_dir.exists():
+                    return mcp_dir
+
+            if current_dir == current_dir.parent:
+                break
             current_dir = current_dir.parent
+
+        # Home directory fallback
+        try:
+            home = Path.home()
+            for filename in filenames:
+                home_file = home / ".mcp-agent" / filename
+                if home_file.exists():
+                    return home_file
+        except Exception:
+            pass
 
         return None
 

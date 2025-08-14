@@ -4,7 +4,7 @@ A central context object to store global state that is shared across the applica
 
 import asyncio
 import concurrent.futures
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, List, Optional, TYPE_CHECKING
 import warnings
 
 from pydantic import BaseModel, ConfigDict
@@ -36,6 +36,7 @@ from mcp_agent.tracing.token_counter import TokenCounter
 
 
 if TYPE_CHECKING:
+    from mcp_agent.agents.agent_spec import AgentSpec
     from mcp_agent.human_input.types import HumanInputCallback
     from mcp_agent.elicitation.types import ElicitationCallback
     from mcp_agent.executor.workflow_signal import SignalWaitCallback
@@ -43,6 +44,7 @@ if TYPE_CHECKING:
     from mcp_agent.app import MCPApp
 else:
     # Runtime placeholders for the types
+    AgentSpec = Any
     HumanInputCallback = Any
     ElicitationCallback = Any
     SignalWaitCallback = Any
@@ -67,6 +69,9 @@ class Context(BaseModel):
     model_selector: Optional[ModelSelector] = None
     session_id: str | None = None
     app: Optional["MCPApp"] = None
+
+    # Subagents
+    loaded_subagents: List["AgentSpec"] = []
 
     # Registries
     server_registry: Optional[ServerRegistry] = None

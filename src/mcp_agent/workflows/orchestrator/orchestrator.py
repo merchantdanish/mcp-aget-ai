@@ -115,7 +115,7 @@ class OrchestratorOverrides:
 
 class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
     """
-    In the orchestrator-workers workflow, a central LLM dynamically breaks down tasks,
+    In the orchestrator-workers workflow, a central planner LLM dynamically breaks down tasks,
     delegates them to worker LLMs, and synthesizes their results. It does this
     in a loop until the task is complete.
 
@@ -134,12 +134,12 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
         self,
         llm_factory: Callable[[Agent], AugmentedLLM[MessageParamT, MessageT]],
         name: str | None = None,
-        planner: AugmentedLLM | None = None,
-        synthesizer: AugmentedLLM | None = None,
+        planner: Agent | AugmentedLLM | None = None,
+        synthesizer: Agent | AugmentedLLM | None = None,
         available_agents: List[Agent | AugmentedLLM] | None = None,
         plan_type: Literal["full", "iterative"] = "full",
-        context: Optional["Context"] = None,
         overrides: OrchestratorOverrides | None = None,
+        context: Optional["Context"] = None,
         **kwargs,
     ):
         """
@@ -176,24 +176,36 @@ class Orchestrator(AugmentedLLM[MessageParamT, MessageT]):
             """
         )
 
-        self.planner = planner or llm_factory(
-            agent=Agent(
-                name="LLM Orchestration Planner",
-                instruction=planner_instruction,
+        if planner is not None:
+            if isinstance(planner, Agent):
+                self.planner = llm_factory(planner)
+            else:
+                self.planner = planner
+        else:
+            self.planner = llm_factory(
+                agent=Agent(
+                    name="LLM Orchestration Planner",
+                    instruction=planner_instruction,
+                )
             )
-        )
 
-        synthesizer_instruction = (
-            self.overrides.synthesizer_instruction
-            or "You are an expert at synthesizing the results of a plan into a single coherent message."
-        )
-
-        self.synthesizer = synthesizer or llm_factory(
-            agent=Agent(
-                name="LLM Orchestration Synthesizer",
-                instruction=synthesizer_instruction,
+        if synthesizer is not None:
+            if isinstance(synthesizer, Agent):
+                self.synthesizer = llm_factory(synthesizer)
+            else:
+                self.synthesizer = synthesizer
+        else:
+            synthesizer_instruction = (
+                self.overrides.synthesizer_instruction
+                or "You are an expert at synthesizing the results of a plan into a single coherent message."
             )
-        )
+
+            self.synthesizer = llm_factory(
+                agent=Agent(
+                    name="LLM Orchestration Synthesizer",
+                    instruction=synthesizer_instruction,
+                )
+            )
 
         if plan_type not in ["full", "iterative"]:
             raise ValueError("plan_type must be 'full' or 'iterative'")

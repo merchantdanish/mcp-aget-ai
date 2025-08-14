@@ -18,6 +18,7 @@ This example demonstrates **both resources and prompts**.
 ## Example Overview
 
 - **demo_server.py** implements a simple MCP server that exposes several resources and a prompt:
+
   - **Resources:**
     - `demo://docs/readme`: A sample README file (Markdown)
     - `demo://config/settings`: Example configuration settings (JSON)
@@ -61,7 +62,7 @@ Clone the repo and navigate to this example:
 
 ```bash
 git clone https://github.com/lastmile-ai/mcp-agent.git
-cd mcp-agent/examples/mcp_primitives/mcp_basic_agent
+cd mcp-agent/examples/mcp/mcp_prompts_and_resources
 ```
 
 ---
@@ -75,6 +76,7 @@ uv run main.py
 ```
 
 You should see logs showing:
+
 - The agent connecting to the demo server
 - Listing available resources and prompts
 - Retrieving both a resource and a prompt in a single call

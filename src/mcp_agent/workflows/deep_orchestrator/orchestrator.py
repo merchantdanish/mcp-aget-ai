@@ -62,18 +62,33 @@ logger = get_logger(__name__)
 
 class DeepOrchestrator(AugmentedLLM[MessageParamT, MessageT]):
     """
-    Production-ready adaptive orchestrator with all recommended enhancements.
+    Production-ready adaptive orchestrator for deep research–style, long-horizon tasks.
+    Coordinates specialized agents and MCP servers through comprehensive planning,
+    iterative execution, knowledge accumulation, policy-driven replanning, and
+    final synthesis.
 
-    Features:
+    When to use this workflow:
+    - Complex research tasks requiring extensive exploration and synthesis
+    - Unknown task decomposition where subtasks emerge during execution
+    - Long-running workflows that may require many iterations and replanning
+    - Knowledge building across steps with persistent, reusable insights
+    - Strict resource constraints (tokens, cost, time, context)
+    - Adaptive requirements that benefit from policy-driven control
+
+    Key capabilities:
     - Comprehensive upfront planning with dependency management
-    - Dynamic agent creation optimized for each task
-    - Knowledge extraction and accumulation
-    - Smart replanning based on results and verification
-    - Budget management (tokens, cost, time)
-    - Policy-driven execution control
-    - Parallel task execution with dependency resolution
-    - Agent caching to reduce costs
-    - Context management to prevent overflow
+    - Dynamic agent design and caching optimized for each task
+    - Parallel task execution with deduplication and dependency resolution
+    - Knowledge extraction, categorization, and relevance-based retrieval
+    - Smart context management (relevance scoring, compression, propagation)
+    - Budget tracking for tokens, cost, time, and per-task context
+    - Policy-driven decisions (continue, replan, force-complete, emergency stop)
+    - Final synthesis that aggregates results, knowledge, and artifacts
+
+    Examples:
+    - Research: Multi-faceted literature/code research with consolidated findings
+    - Code analysis: Security review with prioritized fix plan and applied changes
+    - Content creation: Long-form content with examples, best practices, and pitfalls
     """
 
     def __init__(
