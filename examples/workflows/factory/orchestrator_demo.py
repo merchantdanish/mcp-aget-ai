@@ -1,5 +1,7 @@
 import asyncio
 
+from pathlib import Path
+
 from mcp_agent.app import MCPApp
 from mcp_agent.workflows.factory import (
     load_agent_specs_from_file,
@@ -14,28 +16,27 @@ async def main():
         context = agent_app.context
         context.config.mcp.servers["filesystem"].args.extend(["."])
 
-        specs = load_agent_specs_from_file(
-            "examples/workflows/factory/agents.yaml", context=context
-        )
+        agents_path = Path(__file__).resolve().parent / "agents.yaml"
+        specs = load_agent_specs_from_file(str(agents_path), context=context)
 
         # Build an LLM with a specific model id
         planner_llm = create_llm(
             agent_name="planner",
             provider="openai",
-            model_preferences="openai:gpt-4o-mini",
+            model="gpt-4o-mini",
             context=context,
         )
 
         orch = create_orchestrator(
             available_agents=[planner_llm, *specs],
             provider="anthropic",
-            model_preferences=ModelPreferences(
+            model=ModelPreferences(
                 costPriority=0.2, speedPriority=0.3, intelligencePriority=0.5
             ),
             context=context,
         )
 
-        result = await orch.generate_str("Summarize key components in this repository.")
+        result = await orch.generate_str("Summarize key components in this README.md.")
         print("Orchestrator result:\n", result)
 
 

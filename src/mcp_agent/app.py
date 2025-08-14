@@ -256,7 +256,12 @@ class MCPApp:
                     self._context.loaded_subagents = list(loaded_by_name.values())
                     self.logger.info(
                         "Loaded subagents",
-                        data={"count": len(self._context.loaded_subagents)},
+                        data={
+                            "count": len(self._context.loaded_subagents),
+                            "agents": [
+                                spec.name for spec in self._context.loaded_subagents
+                            ],
+                        },
                     )
         except Exception as e:
             # Non-fatal: log and continue

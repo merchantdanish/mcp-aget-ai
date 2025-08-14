@@ -1,5 +1,7 @@
 import asyncio
 
+from pathlib import Path
+
 from mcp_agent.app import MCPApp
 from mcp_agent.workflows.factory import (
     load_agent_specs_from_file,
@@ -13,9 +15,8 @@ async def main():
         # Add current directory to filesystem server (if needed by your setup)
         context.config.mcp.servers["filesystem"].args.extend(["."])
 
-        specs = load_agent_specs_from_file(
-            "examples/workflows/factory/agents.yaml", context=context
-        )
+        agents_path = Path(__file__).resolve().parent / "agents.yaml"
+        specs = load_agent_specs_from_file(str(agents_path), context=context)
 
         router = await create_router_llm(
             server_names=["filesystem", "fetch"],

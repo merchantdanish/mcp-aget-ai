@@ -24,7 +24,7 @@ agents:
   # Search paths are evaluated in order of precedence: earlier entries have higher precedence
   # Project-level examples first, then user-level defaults
   search_paths:
-    - "examples/workflows/factory" # demo local agents (e.g., agents.yaml, markdown agents)
+    - "." # i.e. "examples/workflows/factory" -- demo local agents (e.g., agents.yaml, markdown agents)
     - ".claude/agents"
     - "~/.claude/agents"
     - ".mcp-agent/agents"

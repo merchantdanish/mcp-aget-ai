@@ -16,7 +16,7 @@ async def main():
         fan_in_llm = create_llm(
             agent_name="aggregator",
             provider="openai",
-            model_preferences="gpt-4o-mini",
+            model="gpt-4o-mini",
             context=context,
         )
 
@@ -26,7 +26,7 @@ async def main():
                 create_llm(
                     agent_name="worker1",
                     provider="openai",
-                    model_preferences="gpt-4o-mini",
+                    model="gpt-4o-mini",
                     context=context,
                 ),
                 AgentSpec(
@@ -34,7 +34,8 @@ async def main():
                     server_names=["filesystem"],
                     instruction="Read files and summarize",
                 ),
-                lambda _: "fallback function path",
+                # Functions in fan_out must return a list of messages, not a single string
+                lambda _: ["fallback function path"],
             ],
             provider="openai",
             context=context,

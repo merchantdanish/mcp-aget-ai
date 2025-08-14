@@ -55,10 +55,10 @@ def agent_from_spec(spec: AgentSpec, context: Context | None = None) -> Agent:
         name=spec.name,
         instruction=spec.instruction,
         server_names=spec.server_names or [],
-        functions=spec.functions or [],
+        functions=getattr(spec, "functions", []),
         connection_persistence=spec.connection_persistence,
         human_input_callback=(
-            getattr(spec, "human_input_callback")
+            getattr(spec, "human_input_callback", None)
             or (context.human_input_handler if context else None)
         ),
         context=context,
