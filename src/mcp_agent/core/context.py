@@ -10,6 +10,7 @@ import warnings
 from pydantic import BaseModel, ConfigDict
 
 from mcp import ServerSession
+from mcp.server.fastmcp import FastMCP
 
 from opentelemetry import trace
 
@@ -92,6 +93,10 @@ class Context(BaseModel):
         extra="allow",
         arbitrary_types_allowed=True,  # Tell Pydantic to defer type evaluation
     )
+
+    @property
+    def mcp(self) -> FastMCP | None:
+        return self.app.mcp if self.app else None
 
 
 async def configure_otel(

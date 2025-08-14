@@ -6,7 +6,7 @@ mcp-agent workflows and agents as MCP tools.
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Type, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, Type, TYPE_CHECKING
 
 from mcp.server.fastmcp import Context as MCPContext, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -81,6 +81,53 @@ class ServerContext(ContextDependent):
         return self.context.workflow_registry
 
 
+def _get_attached_app(mcp: FastMCP) -> MCPApp | None:
+    """Return the MCPApp instance attached to the FastMCP server, if any."""
+    return getattr(mcp, "_mcp_agent_app", None)
+
+
+def _get_attached_server_context(mcp: FastMCP) -> ServerContext | None:
+    """Return the ServerContext attached to the FastMCP server, if any."""
+    return getattr(mcp, "_mcp_agent_server_context", None)
+
+
+def _resolve_workflows_and_context(
+    ctx: MCPContext,
+) -> Tuple[Dict[str, Type["Workflow"]] | None, Optional["Context"]]:
+    """Resolve the workflows mapping and underlying app context regardless of startup mode.
+
+    Tries lifespan ServerContext first (including compatible mocks), then attached app.
+    """
+    # Try lifespan-provided ServerContext first
+    lifespan_ctx = getattr(ctx.request_context, "lifespan_context", None)
+    if (
+        lifespan_ctx is not None
+        and hasattr(lifespan_ctx, "workflows")
+        and hasattr(lifespan_ctx, "context")
+    ):
+        return lifespan_ctx.workflows, lifespan_ctx.context
+
+    # Fall back to app attached to FastMCP
+    app: MCPApp | None = _get_attached_app(ctx.fastmcp)
+    if app is not None:
+        return app.workflows, app.context
+
+    return None, None
+
+
+def _resolve_workflow_registry(ctx: MCPContext) -> WorkflowRegistry | None:
+    """Resolve the workflow registry regardless of startup mode."""
+    lifespan_ctx = getattr(ctx.request_context, "lifespan_context", None)
+    if lifespan_ctx is not None and hasattr(lifespan_ctx, "workflow_registry"):
+        return lifespan_ctx.workflow_registry
+
+    app: MCPApp | None = _get_attached_app(ctx.fastmcp)
+    if app is not None and app.context is not None:
+        return app.context.workflow_registry
+
+    return None
+
+
 def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
     """
     Create an MCP server for a given MCPApp instance.
@@ -103,7 +150,7 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         # Create the server context which is available during the lifespan of the server
         server_context = ServerContext(mcp=mcp, context=app.context)
 
-        # Register initial workflow tools
+        # Register initial workflow tools when running with our managed lifespan
         create_workflow_tools(mcp, server_context)
 
         try:
@@ -112,16 +159,35 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
             # Don't clean up the MCPApp here - let the caller handle that
             pass
 
-    # Create FastMCP server with the app's name
-    mcp = FastMCP(
-        name=app.name or "mcp_agent_server",
-        # TODO: saqadri (MAC) - create a much more detailed description
-        # based on all the available agents and workflows,
-        # or use the MCPApp's description if available.
-        instructions=f"MCP server exposing {app.name} workflows and agents. Description: {app.description}",
-        lifespan=app_specific_lifespan,
-        **kwargs,
-    )
+    # Create or attach FastMCP server
+    if app.mcp:
+        # Using an externally provided FastMCP instance: attach app and context
+        mcp = app.mcp
+        setattr(mcp, "_mcp_agent_app", app)
+
+        # Create and attach a ServerContext since we don't control the server's lifespan
+        # This enables tools to access context via ctx.fastmcp._mcp_agent_server_context
+        if not hasattr(mcp, "_mcp_agent_server_context"):
+            server_context = ServerContext(mcp=mcp, context=app.context)
+            setattr(mcp, "_mcp_agent_server_context", server_context)
+        else:
+            server_context = getattr(mcp, "_mcp_agent_server_context")
+
+        # Register per-workflow tools
+        create_workflow_tools(mcp, server_context)
+    else:
+        mcp = FastMCP(
+            name=app.name or "mcp_agent_server",
+            # TODO: saqadri (MAC) - create a much more detailed description
+            # based on all the available agents and workflows,
+            # or use the MCPApp's description if available.
+            instructions=f"MCP server exposing {app.name} workflows and agents. Description: {app.description}",
+            lifespan=app_specific_lifespan,
+            **kwargs,
+        )
+        # Store the server on the app so it's discoverable and can be extended further
+        app.mcp = mcp
+        setattr(mcp, "_mcp_agent_app", app)
 
     # region Workflow Tools
 
@@ -132,10 +198,10 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns information about each workflow type including name, description, and parameters.
         This helps in making an informed decision about which workflow to run.
         """
-        server_context: ServerContext = ctx.request_context.lifespan_context
-
-        result = {}
-        for workflow_name, workflow_cls in server_context.workflows.items():
+        result: Dict[str, Dict[str, Any]] = {}
+        workflows, _ = _resolve_workflows_and_context(ctx)
+        workflows = workflows or {}
+        for workflow_name, workflow_cls in workflows.items():
             # Get workflow documentation
             run_fn_tool = FastTool.from_function(workflow_cls.run)
 
@@ -167,7 +233,11 @@ def create_mcp_server_for_app(app: MCPApp, **kwargs: Any) -> FastMCP:
         Returns:
             A dictionary mapping workflow instance IDs to their detailed status information.
         """
-        server_context: ServerContext = ctx.request_context.lifespan_context
+        server_context = getattr(
+            ctx.request_context, "lifespan_context", None
+        ) or _get_attached_server_context(ctx.fastmcp)
+        if server_context is None or not hasattr(server_context, "workflow_registry"):
+            raise ToolError("Server context not available for MCPApp Server.")
 
         # Get all workflow statuses from the registry
         workflow_statuses = (
@@ -412,20 +482,21 @@ async def _workflow_run(
     run_parameters: Dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> Dict[str, str]:
-    server_context: ServerContext = ctx.request_context.lifespan_context
+    # Resolve workflows and app context irrespective of startup mode
+    workflows_dict, app_context = _resolve_workflows_and_context(ctx)
+    if not workflows_dict or not app_context:
+        raise ToolError("Server context not available for MCPApp Server.")
 
-    if workflow_name not in server_context.workflows:
+    if workflow_name not in workflows_dict:
         raise ToolError(f"Workflow '{workflow_name}' not found.")
 
     # Get the workflow class
-    workflow_cls = server_context.workflows[workflow_name]
+    workflow_cls = workflows_dict[workflow_name]
 
     # Create and initialize the workflow instance using the factory method
     try:
         # Create workflow instance
-        workflow = await workflow_cls.create(
-            name=workflow_name, context=server_context.context
-        )
+        workflow = await workflow_cls.create(name=workflow_name, context=app_context)
 
         run_parameters = run_parameters or {}
 
@@ -459,8 +530,7 @@ async def _workflow_run(
 async def _workflow_status(
     ctx: MCPContext, run_id: str, workflow_name: str | None = None
 ) -> Dict[str, Any]:
-    server_context: ServerContext = ctx.request_context.lifespan_context
-    workflow_registry: WorkflowRegistry = server_context.workflow_registry
+    workflow_registry: WorkflowRegistry | None = _resolve_workflow_registry(ctx)
 
     if not workflow_registry:
         raise ToolError("Workflow registry not found for MCPApp Server.")

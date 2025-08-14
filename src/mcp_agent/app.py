@@ -9,6 +9,7 @@ from datetime import timedelta
 from contextlib import asynccontextmanager
 
 from mcp import ServerSession
+from mcp.server.fastmcp import FastMCP
 from mcp_agent.core.context import Context, initialize_context, cleanup_context
 from mcp_agent.config import Settings, get_settings
 from mcp_agent.executor.signal_registry import SignalRegistry
@@ -61,12 +62,13 @@ class MCPApp:
         self,
         name: str = "mcp_application",
         description: str | None = None,
-        settings: Optional[Settings] | str = None,
-        human_input_callback: Optional[HumanInputCallback] = None,
-        elicitation_callback: Optional[ElicitationCallback] = None,
-        signal_notification: Optional[SignalWaitCallback] = None,
+        settings: Settings | str | None = None,
+        mcp: FastMCP | None = None,
+        human_input_callback: HumanInputCallback | None = None,
+        elicitation_callback: ElicitationCallback | None = None,
+        signal_notification: SignalWaitCallback | None = None,
         upstream_session: Optional["ServerSession"] = None,
-        model_selector: ModelSelector = None,
+        model_selector: ModelSelector | None = None,
     ):
         """
         Initialize the application with a name and optional settings.
@@ -76,6 +78,9 @@ class MCPApp:
                 provide a detailed description, since it will be used as the server's description.
             settings: Application configuration - If unspecified, the settings are loaded from mcp_agent.config.yaml.
                 If this is a string, it is treated as the path to the config file to load.
+            mcp: MCP server instance to use for the application to expose agents and workflows as tools.
+                If not provided, a default FastMCP server will be created by create_mcp_server_for_app().
+                If provided, the MCPApp will add tools to the provided server instance.
             human_input_callback: Callback for handling human input
             signal_notification: Callback for getting notified on workflow signals/events.
             upstream_session: Upstream session if the MCPApp is running as a server to an MCP client.
@@ -83,6 +88,7 @@ class MCPApp:
         """
         self.name = name
         self.description = description or "MCP Agent Application"
+        self.mcp = mcp
 
         # We use these to initialize the context in initialize()
         if settings is None:
