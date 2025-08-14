@@ -1,5 +1,44 @@
 {
   "$defs": {
+    "AgentSpec": {
+      "additionalProperties": true,
+      "description": "Canonical, strongly-typed Agent specification used across the system.\n\nThis represents a declarative way to define an Agent without constructing it yet.\nAgentSpec is used to create an Agent instance.\nIt can be defined as a config (loaded from a md, yaml, json, etc.), or\nit can be created programmatically.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "instruction": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
+        "server_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Server Names",
+          "type": "array"
+        },
+        "connection_persistence": {
+          "default": true,
+          "title": "Connection Persistence",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "AgentSpec",
+      "type": "object"
+    },
     "AnthropicSettings": {
       "additionalProperties": true,
       "description": "Settings for using Anthropic models in the MCP Agent application.",
@@ -885,6 +924,41 @@
       "title": "OpenTelemetrySettings",
       "type": "object"
     },
+    "SubagentSettings": {
+      "additionalProperties": true,
+      "description": "Settings for discovering and loading project/user subagents (AgentSpec files).\nSupports common formats like Claude Code subagents.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean",
+          "description": "Enable automatic subagent discovery and loading."
+        },
+        "search_paths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Search Paths",
+          "type": "array"
+        },
+        "pattern": {
+          "default": "**/*.*",
+          "title": "Pattern",
+          "type": "string",
+          "description": "Glob pattern within each directory to match files (YAML/JSON/Markdown supported)."
+        },
+        "definitions": {
+          "items": {
+            "$ref": "#/$defs/AgentSpec"
+          },
+          "title": "Definitions",
+          "type": "array",
+          "description": "Inline AgentSpec definitions directly in config."
+        }
+      },
+      "title": "SubagentSettings",
+      "type": "object"
+    },
     "TemporalSettings": {
       "additionalProperties": true,
       "description": "Temporal settings for the MCP Agent application.",
@@ -1217,6 +1291,28 @@
         "enable_detailed_telemetry": false
       },
       "description": "Usage tracking settings for the MCP Agent application"
+    },
+    "agents": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SubagentSettings"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": {
+        "enabled": true,
+        "search_paths": [
+          ".claude/agents",
+          "~/.claude/agents",
+          ".mcp-agent/agents",
+          "~/.mcp-agent/agents"
+        ],
+        "pattern": "**/*.*",
+        "definitions": []
+      },
+      "description": "Settings for defining and loading subagents for the MCP Agent application"
     }
   },
   "title": "MCP Agent Configuration Schema",
