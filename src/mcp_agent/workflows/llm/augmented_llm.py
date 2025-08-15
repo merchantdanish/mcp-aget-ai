@@ -559,7 +559,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol[MessageParamT, Message
         if hasattr(request_params, "use_history"):
             span.set_attribute("request_params.use_history", request_params.use_history)
         if hasattr(request_params, "think"):
-            span.set_attribute("requeste_params.think", request_params.think)
+            span.set_attribute("request_params.think", request_params.think)
         if hasattr(request_params, "parallel_tool_calls"):
             span.set_attribute(
                 "request_params.parallel_tool_calls", request_params.parallel_tool_calls
