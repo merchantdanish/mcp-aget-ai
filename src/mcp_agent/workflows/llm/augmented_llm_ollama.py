@@ -1,8 +1,10 @@
-from typing import Type, Any
+from typing import Type, Any, List
 from pydantic import BaseModel
 from openai import OpenAI
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from mcp_agent.config import OllamaSettings
 from mcp_agent.executor.workflow_task import workflow_task
+from mcp_agent.tracing.token_tracking_decorator import track_tokens
 from mcp_agent.utils.pydantic_type_serializer import serialize_model, deserialize_model
 from mcp_agent.workflows.llm.augmented_llm import (
     ModelT,
@@ -10,7 +12,6 @@ from mcp_agent.workflows.llm.augmented_llm import (
 )
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 
-# Unused
 class RequestCompletionRequest(BaseModel):
     config: OllamaSettings
     payload: dict
@@ -42,6 +43,48 @@ class OllamaAugmentedLLM(OpenAIAugmentedLLM):
         super().__init__(*args, **updated_kwargs)
 
         self.provider = "Ollama"
+
+    def _build_request_arguments(
+        self,
+        model: str,
+        messages: List[ChatCompletionMessageParam],
+        available_tools: List[ChatCompletionToolParam] | None,
+        user: str | None,
+        params: RequestParams,
+    ) -> dict:
+        """Build arguments dict for API completion request, adding Ollama-specific think parameter."""
+        arguments = super()._build_request_arguments(
+            model=model,
+            messages=messages,
+            available_tools=available_tools,
+            user=user,
+            params=params,
+        )
+        
+        # Add think parameter if specified
+        if hasattr(params, 'think') and params.think is not None:
+            arguments["think"] = params.think
+            
+        return arguments
+
+    def _create_completion_request(self, arguments: dict) -> RequestCompletionRequest:
+        """Create Ollama-specific RequestCompletionRequest object."""
+        return RequestCompletionRequest(
+            config=self.context.config.ollama,
+            payload=arguments,
+        )
+
+    def _get_completion_task(self):
+        """Get the Ollama completion task to use for API calls."""
+        return OllamaCompletionTasks.request_completion_task
+
+    @track_tokens()
+    async def generate(
+            self,
+            message,
+            request_params: RequestParams | None = None,
+    ):
+        return await super().generate(message, request_params)
 
     async def generate_structured(
         self,
@@ -90,6 +133,38 @@ class OllamaAugmentedLLM(OpenAIAugmentedLLM):
 
 
 class OllamaCompletionTasks:
+    @staticmethod
+    @workflow_task
+    async def request_completion_task(
+        request: RequestCompletionRequest,
+    ):
+        """
+        Request a completion from Ollama's OpenAI-compatible API.
+        """
+        from openai.types.chat import ChatCompletion
+        from mcp_agent.utils.common import ensure_serializable
+        
+        openai_client = OpenAI(
+            api_key=request.config.api_key,
+            base_url=request.config.base_url,
+            http_client=request.config.http_client
+            if hasattr(request.config, "http_client")
+            else None,
+        )
+
+        payload = request.payload.copy()
+        
+        # Extract Ollama-specific parameters that the OpenAI client doesn't understand
+        think = payload.pop('think', None)
+        
+        # TODO: Investigate how to properly pass 'think' parameter to Ollama
+        # For now, we'll skip it to avoid the OpenAI client error
+        # The think parameter might need to be passed differently to Ollama's API
+        
+        response = openai_client.chat.completions.create(**payload)
+        response = ensure_serializable(response)
+        return response
+
     @staticmethod
     @workflow_task
     async def request_structured_completion_task(

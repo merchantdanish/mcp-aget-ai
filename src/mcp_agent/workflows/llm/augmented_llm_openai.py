@@ -224,46 +224,23 @@ class OpenAIAugmentedLLM(
             finish_reasons = []
 
             for i in range(params.max_iterations):
-                arguments = {
-                    "model": model,
-                    "messages": messages,
-                    "tools": available_tools,
-                }
-
-                if user:
-                    arguments["user"] = user
-
-                if params.stopSequences is not None:
-                    arguments["stop"] = params.stopSequences
-
-                if self._reasoning(model):
-                    arguments = {
-                        **arguments,
-                        # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
-                        # "max_tokens": params.maxTokens,
-                        "max_completion_tokens": params.maxTokens,
-                        "reasoning_effort": self._reasoning_effort,
-                    }
-                else:
-                    arguments = {**arguments, "max_tokens": params.maxTokens}
-                    # if available_tools:
-                    #     arguments["parallel_tool_calls"] = params.parallel_tool_calls
-
-                if params.metadata:
-                    arguments = {**arguments, **params.metadata}
+                arguments = self._build_request_arguments(
+                    model=model,
+                    messages=messages,
+                    available_tools=available_tools,
+                    user=user,
+                    params=params,
+                )
 
                 self.logger.debug(f"{arguments}")
                 self._log_chat_progress(chat_turn=len(messages) // 2, model=model)
 
-                request = RequestCompletionRequest(
-                    config=self.context.config.openai,
-                    payload=arguments,
-                )
+                request = self._create_completion_request(arguments)
 
                 self._annotate_span_for_completion_request(span, request, i)
 
                 response: ChatCompletion = await self.executor.execute(
-                    OpenAICompletionTasks.request_completion_task,
+                    self._get_completion_task(),
                     ensure_serializable(request),
                 )
 
@@ -381,6 +358,56 @@ class OpenAIAugmentedLLM(
                 )
 
             return responses
+
+    def _build_request_arguments(
+        self,
+        model: str,
+        messages: List[ChatCompletionMessageParam],
+        available_tools: List[ChatCompletionToolParam] | None,
+        user: str | None,
+        params: RequestParams,
+    ) -> dict:
+        """Build arguments dict for API completion request."""
+        arguments = {
+            "model": model,
+            "messages": messages,
+            "tools": available_tools,
+        }
+
+        if user:
+            arguments["user"] = user
+
+        if params.stopSequences is not None:
+            arguments["stop"] = params.stopSequences
+
+        if self._reasoning(model):
+            arguments = {
+                **arguments,
+                # DEPRECATED: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
+                # "max_tokens": params.maxTokens,
+                "max_completion_tokens": params.maxTokens,
+                "reasoning_effort": self._reasoning_effort,
+            }
+        else:
+            arguments = {**arguments, "max_tokens": params.maxTokens}
+            # if available_tools:
+            #     arguments["parallel_tool_calls"] = params.parallel_tool_calls
+
+        if params.metadata:
+            arguments = {**arguments, **params.metadata}
+
+        return arguments
+
+    def _create_completion_request(self, arguments: dict) -> RequestCompletionRequest:
+        """Create RequestCompletionRequest object."""
+        return RequestCompletionRequest(
+            config=self.context.config.openai,
+            payload=arguments,
+        )
+
+    def _get_completion_task(self):
+        """Get the completion task to use for API calls."""
+        return OpenAICompletionTasks.request_completion_task
 
     async def generate_str(
         self,
